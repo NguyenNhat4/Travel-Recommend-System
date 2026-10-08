@@ -1,10 +1,12 @@
 /**
- * Từ giá trị của tấm tìm kiếm sang URL `/search` (docs/plan/2026-09-29-ui-trang-danh-muc-va-header.md §3).
+ * Từ giá trị của tấm tìm kiếm sang URL của trang danh mục (docs/plan/2026-09-29-ui-trang-danh-muc-va-header.md §3;
+ * kết quả hiện tại chính trang đó: đề xuất PRD update-archive/2026-10-07-tim-kiem-tai-trang-danh-muc.md).
  * Ngày và số khách đi theo URL làm ngữ cảnh chuyến đi (features/search/tripContext.ts), không phải bộ lọc phòng trống.
  */
 import type { Taxonomy } from '../../../types/travel';
 import { DEFAULT_QUERY } from '../../../services/search';
 import { serializeTripContext, type TripContext } from '../../search/tripContext';
+import { verticalForTaxonomy } from './verticals';
 
 /** Bỏ dấu, hạ chữ thường: "Đà Nẵng" và "da nang" là một. */
 export function fold(text: string): string {
@@ -43,17 +45,28 @@ export interface SearchSheetValues {
   trip: TripContext;
 }
 
+/** `q` là câu mặc định theo danh mục (ô tìm trống), không phải chữ người dùng gõ. */
+export function isDefaultQuery(query: string): boolean {
+  return (Object.values(DEFAULT_QUERY) as string[]).includes(query.trim().toLowerCase());
+}
+
+/**
+ * URL của lần tìm: về chính trang danh mục của loại dịch vụ (`/hotels?q=…`), `q` có mặt nghĩa là đang tìm.
+ * `type` chỉ ghi khi không phải tab đầu của trang (như `LandingHero.tabHref`). Vé máy bay tìm tại chỗ ở `/flights`
+ * (`flightHref.ts`); nhánh này chỉ là đường dự phòng về `/search?type=flight`.
+ */
 export function buildSearchHref(values: SearchSheetValues): string {
   const text = [values.origin, values.destination ? '' : values.location]
     .map((part) => part.trim())
     .filter(Boolean)
     .join(' ');
+  const vertical = values.taxonomy === 'flight' ? null : verticalForTaxonomy(values.taxonomy);
   const params = new URLSearchParams();
   params.set('q', text || DEFAULT_QUERY[values.taxonomy]);
-  params.set('type', values.taxonomy);
+  if (!vertical || values.taxonomy !== vertical.tabs[0].taxonomy) params.set('type', values.taxonomy);
   if (values.destination) params.set('destination', values.destination);
   const trip = serializeTripContext(values.trip);
-  return `/search?${params.toString()}${trip ? `&${trip}` : ''}`;
+  return `${vertical?.route ?? '/search'}?${params.toString()}${trip ? `&${trip}` : ''}`;
 }
 
 /** Giá trị của query param có thể là mảng khi lặp khóa; lấy giá trị đầu, bỏ khoảng trắng thừa. */

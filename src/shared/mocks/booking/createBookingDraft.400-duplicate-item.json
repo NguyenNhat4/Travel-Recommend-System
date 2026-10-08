@@ -1,0 +1,17 @@
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Thông tin đặt chỗ chưa hợp lệ.",
+    "retryable": false,
+    "requestId": "draft-01JXYZ",
+    "details": {
+      "fields": [
+        {
+          "field": "items[1]",
+          "reason": "DUPLICATE_ITEM",
+          "message": "Sản phẩm này đã có trong lần đặt với cùng ngày."
+        }
+      ]
+    }
+  }
+}

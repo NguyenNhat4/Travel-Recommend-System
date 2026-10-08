@@ -16,8 +16,8 @@ from typing import Any, Mapping, Sequence
 
 from .fares import PER_PERSON_TAXONOMIES, FareType
 from .party import (
-    ADULT_MIN_AGE, MAX_PARTY, Guests, Traveler, TravelerDocuments, TravelerType, adult_from, age_on,
-    fare_type_on, is_infant_on,
+    ADULT_MIN_AGE, MAX_PARTY, MAX_ROOMS, Guests, Traveler, TravelerDocuments, TravelerType, adult_from, age_on,
+    fare_type_on, is_infant_on, item_party_cap, order_party_cap, room_capacity,
 )
 
 NAME_PART_MAX = 50
@@ -147,16 +147,17 @@ def check_contact(contact: ContactInput) -> list[Violation]:
 
 def check_party(
     inputs: Sequence[TravelerInput], *, earliest: date | None, today: date, flight_dates: Sequence[date] = (),
+    max_party: int = MAX_PARTY,
 ) -> tuple[list[Traveler], list[Violation]]:
     """R-TRV-01…06, R-DOC-01…08. Trả về đoàn đã chuẩn hoá (để luật theo dịch vụ dùng tiếp) cùng danh sách vi phạm.
 
     `earliest` là ngày sử dụng sớm nhất của đơn; `today` là ngày hôm nay theo giờ Việt Nam; `flight_dates` là ngày bay của
-    các mục vé máy bay trong giỏ (rỗng thì không áp luật giấy tờ, FR-BKG-13).
+    các mục vé máy bay trong giỏ (rỗng thì không áp luật giấy tờ, FR-BKG-13); `max_party` là trần của đoàn (`order_party_cap`).
     """
     out: list[Violation] = []
     travelers: list[Traveler] = []
-    if len(inputs) > MAX_PARTY:
-        out.append(Violation("travelers", "PARTY_TOO_LARGE"))
+    if len(inputs) > max_party:
+        out.append(Violation("travelers", "PARTY_TOO_LARGE", {"max_party": max_party}))
     if not any(item.type == "ADULT" for item in inputs):
         out.append(Violation("travelers", "ADULT_REQUIRED", {"scope": "party"}))
     seen_refs: set[str] = set()
@@ -391,9 +392,9 @@ def _check_hotel(index: int, detail: ItemInput, facts: CartFacts, by_ref: Mappin
         adults = [ref for ref in refs if ref in by_ref and fare_type_on(by_ref[ref], facts.using_date) is FareType.ADULT]
         if not adults:
             out.append(Violation(room_path, "ADULT_REQUIRED", {"scope": "room", "room_no": k + 1}, cid))
-        if facts.max_occupancy and len(refs) > facts.max_occupancy:
-            out.append(Violation(room_path, "OCCUPANCY_EXCEEDED",
-                                 {"room_no": k + 1, "max_occupancy": facts.max_occupancy}, cid))
+        capacity = room_capacity(facts.max_occupancy)
+        if len(refs) > capacity:
+            out.append(Violation(room_path, "OCCUPANCY_EXCEEDED", {"room_no": k + 1, "max_occupancy": capacity}, cid))
         if adults and room.lead_traveler_ref not in adults:
             out.append(Violation(f"{room_path}.leadTravelerRef", "LEAD_GUEST_INVALID", {"room_no": k + 1}, cid))
     return out
@@ -410,8 +411,15 @@ def check_checkout(
 ) -> tuple[list[Traveler], list[Violation]]:
     """Toàn bộ luật của `POST /bookings` khi request có `travelers` (§8.3 bước 5)."""
     earliest = min((c.using_date for c in cart), default=None)
-    travelers, violations = check_party(inputs, earliest=earliest, today=today, flight_dates=flight_dates_of(cart))
-    return travelers, [*check_contact(contact), *violations, *check_items(travelers, details, cart)]
+    cap = order_party_cap((c.taxonomy, c.quantity) for c in cart)
+    travelers, violations = check_party(
+        inputs, earliest=earliest, today=today, flight_dates=flight_dates_of(cart), max_party=cap)
+    # Khách sạn trên 9 khách phải đặt riêng: đơn trộn với dịch vụ khác chỉ khai được đoàn tối đa 9 người.
+    mixed = [
+        Violation("itemDetails", "PARTY_TOO_LARGE", {"scope": "mixed", "item_name": c.name}, c.cart_item_id)
+        for c in cart if c.taxonomy == "hotel" and c.adults + c.children > cap
+    ]
+    return travelers, [*check_contact(contact), *violations, *mixed, *check_items(travelers, details, cart)]
 
 
 # --- request cũ không có `travelers` (§7.6) ---------------------------------------------------------
@@ -468,17 +476,22 @@ def _merge_guests(taxonomy: str, existing: Guests, added: Guests) -> Guests:
 
 
 def check_cart_guests(taxonomy: str, quantity: int, guests: Guests, max_occupancy: int | None) -> list[Violation]:
-    """R-CRT-01, R-CRT-03."""
+    """R-CRT-01, R-CRT-03. Khách sạn: tối đa 9 phòng và 9 khách mỗi phòng; loại khác: tối đa 9 khách."""
     out: list[Violation] = []
     if guests.adults < 1:
         out.append(Violation("guests.adults", "ADULT_REQUIRED", {"scope": "party"}))
-    if guests.total > MAX_PARTY:
-        out.append(Violation("guests", "PARTY_TOO_LARGE"))
+    if taxonomy == "hotel" and quantity > MAX_ROOMS:
+        out.append(Violation("quantity", "ROOMS_TOO_MANY", {"max_rooms": MAX_ROOMS}))
+    cap = item_party_cap(taxonomy, min(quantity, MAX_ROOMS))
+    if guests.total > cap:
+        out.append(Violation("guests", "PARTY_TOO_LARGE",
+                             {"max_party": cap, "rooms": quantity} if taxonomy == "hotel" else {"max_party": cap}))
     if taxonomy == "hotel":
         if 1 <= guests.adults < quantity:
             out.append(Violation("guests.adults", "ADULT_REQUIRED", {"scope": "room"}))
-        if max_occupancy and guests.total > max_occupancy * quantity:
-            out.append(Violation("guests", "OCCUPANCY_EXCEEDED", {"max_occupancy": max_occupancy}))
+        capacity = room_capacity(max_occupancy)
+        if max_occupancy and guests.total > capacity * quantity:
+            out.append(Violation("guests", "OCCUPANCY_EXCEEDED", {"max_occupancy": capacity}))
     return out
 
 

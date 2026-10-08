@@ -67,6 +67,15 @@ class InMemoryUsers:
     async def update_password_hash(self, user_id, password_hash):
         self.by_id[user_id] = replace(self.by_id[user_id], password_hash=password_hash)
 
+    async def update_profile(self, user_id, *, display_name, phone, set_phone):
+        user = self.by_id.get(user_id)
+        if user is None:
+            return None
+        self.by_id[user_id] = replace(
+            user, display_name=display_name if display_name is not None else user.display_name,
+            phone=phone if set_phone else user.phone)
+        return self.by_id[user_id]
+
     async def touch_last_login(self, user_id):
         self.last_login.append(user_id)
 

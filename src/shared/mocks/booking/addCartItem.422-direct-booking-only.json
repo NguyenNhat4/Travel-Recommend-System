@@ -1,0 +1,12 @@
+{
+  "error": {
+    "code": "DIRECT_BOOKING_ONLY",
+    "message": "Khách sạn và vé máy bay được đặt trực tiếp, không thêm vào giỏ hàng.",
+    "retryable": false,
+    "requestId": "cart-01JXYZ",
+    "details": {
+      "productId": "nt-h-01",
+      "taxonomy": "hotel"
+    }
+  }
+}

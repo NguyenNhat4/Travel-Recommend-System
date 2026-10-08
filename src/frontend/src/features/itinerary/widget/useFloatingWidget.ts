@@ -1,7 +1,9 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useTravel } from '../../../context/TravelContext';
 import { useAssistant } from '../../../context/AssistantProvider';
-import { useAssistantCart } from '../../../hooks/useAssistantCart';
+import { useAssistantCart, useBookItinerary } from '../../../hooks/useAssistantCart';
+import { isCartEligible } from '../../../services/booking';
+import { listAssistantConversations, type AssistantConversationList } from '../../../services/assistantHistory';
 import { convertItineraryCompletedToGroundedPlan, locateProduct, narrationProducts } from './widgetPlan';
 import type { WidgetPlan, WidgetChatMessage, ConversationSession } from './widgetTypes';
 import type { Product } from '../../../types/travel';
@@ -14,8 +16,29 @@ interface SelectedProduct {
   plan?: WidgetPlan;
 }
 
+const HISTORY_PAGE_SIZE = 20;
+const HISTORY_TITLE_MAX = 35;
+const historyTimeFormat = new Intl.DateTimeFormat('vi-VN', {
+  timeZone: 'Asia/Ho_Chi_Minh', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+});
+
+type HistoryStatus = 'idle' | 'loading' | 'error';
+
+function truncateTitle(text: string) {
+  return text.length > HISTORY_TITLE_MAX ? `${text.slice(0, HISTORY_TITLE_MAX)}...` : text;
+}
+
+function toConversationSession(summary: AssistantConversationList['data'][number]): ConversationSession {
+  return {
+    id: summary.conversationId,
+    title: summary.title || 'Hội thoại mới',
+    timestamp: historyTimeFormat.format(new Date(summary.updatedAt)),
+  };
+}
+
 export function useFloatingWidget() {
-  const { addToCart, showToast, navigate, currentRoute } = useTravel();
+  const { showToast, currentRoute, currentPersona } = useTravel();
+  const personaId = currentPersona?.id ?? null;
   const {
     state: assistantState,
     sendMessage,
@@ -26,6 +49,7 @@ export function useFloatingWidget() {
     loadConversation,
   } = useAssistant();
   const addItineraryToCart = useAssistantCart();
+  const bookItinerary = useBookItinerary();
   const { addPlanItemToCart, cartAddStates } = useWidgetCart();
 
   // Widget States
@@ -34,7 +58,6 @@ export function useFloatingWidget() {
   const [inputVal, setInputVal] = useState<string>('');
   const [activePlan, setActivePlan] = useState<WidgetPlan | null>(null);
   const [activeDayTab, setActiveDayTab] = useState<number>(1);
-  const [isCheckingOut, setIsCheckingOut] = useState<boolean>(false);
   const [isChatCollapsed, setIsChatCollapsed] = useState<boolean>(false);
   const [hoveredCoordinate, setHoveredCoordinate] = useState<{ lat: number; lng: number } | null>(null);
   const [hoveredPointId, setHoveredPointId] = useState<string | null>(null);
@@ -44,10 +67,45 @@ export function useFloatingWidget() {
   const [selectedProduct, setSelectedProduct] = useState<SelectedProduct | null>(null);
   // History Conversation & Drawer States
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
-  const [conversations, setConversations] = useState<ConversationSession[]>([]);
-  const [activeSessionId, setActiveSessionId] = useState<string>('conv-current');
+  // Lịch sử lấy từ archive của backend (FR-AGT-01, spec Frontend §9.6); khách không có lịch sử lâu dài.
+  const [archivedConversations, setArchivedConversations] = useState<ConversationSession[]>([]);
+  const [historyStatus, setHistoryStatus] = useState<HistoryStatus>('idle');
+  const historyRequestRef = useRef(0);
+  const isSignedIn = personaId !== null;
+  const activeSessionId = assistantState.conversationId;
 
   const isRunning = assistantState.phase === 'connecting' || assistantState.phase === 'streaming';
+
+  const loadHistory = useCallback(async () => {
+    const requestId = ++historyRequestRef.current;
+    if (!personaId) {
+      setArchivedConversations([]);
+      setHistoryStatus('idle');
+      return;
+    }
+    setHistoryStatus('loading');
+    try {
+      const list = await listAssistantConversations(1, HISTORY_PAGE_SIZE);
+      if (requestId !== historyRequestRef.current) return;
+      setArchivedConversations(list.data.map(toConversationSession));
+      setHistoryStatus('idle');
+    } catch {
+      // Giữ danh sách cũ để người dùng vẫn mở được; panel hiện lỗi và nút Thử lại.
+      if (requestId !== historyRequestRef.current) return;
+      setHistoryStatus('error');
+    }
+  }, [personaId]);
+
+  // Đổi tài khoản: bỏ danh sách của tài khoản trước, kể cả response đang bay về.
+  useEffect(() => {
+    historyRequestRef.current += 1;
+    setArchivedConversations([]);
+    setHistoryStatus('idle');
+  }, [personaId]);
+
+  useEffect(() => {
+    if (isHistoryOpen) void loadHistory();
+  }, [isHistoryOpen, loadHistory]);
 
   const chatScrollRef = useRef<HTMLDivElement>(null);
 
@@ -107,6 +165,16 @@ export function useFloatingWidget() {
     });
   }, [assistantState.transcript]);
 
+  // Cuộc đang chat có thể chưa vào archive (khách, hoặc lượt đầu chưa ghi xong): vẫn hiện ở đầu danh sách.
+  const conversations = useMemo<ConversationSession[]>(() => {
+    const currentId = assistantState.conversationId;
+    const firstUserText = messages.find((m) => m.sender === 'user')?.text;
+    if (!currentId || !firstUserText || archivedConversations.some((c) => c.id === currentId)) {
+      return archivedConversations;
+    }
+    return [{ id: currentId, title: truncateTitle(firstUserText), timestamp: 'Đang trò chuyện' }, ...archivedConversations];
+  }, [archivedConversations, assistantState.conversationId, messages]);
+
   // Scroll to the latest message
   useEffect(() => {
     if (isOpen && messages.length) {
@@ -148,9 +216,9 @@ export function useFloatingWidget() {
     }
   }, [isOpen]);
 
-  // Close widget when navigating to checkout
+  // Đóng widget khi sang thanh toán hoặc giỏ hàng (toast "Xem giỏ"): widget phủ toàn màn hình nên không đóng thì che mất trang.
   useEffect(() => {
-    if (currentRoute.startsWith('/checkout')) {
+    if (currentRoute.startsWith('/checkout') || currentRoute.startsWith('/cart')) {
       setIsOpen(false);
       setIsExpanded(false);
     }
@@ -168,9 +236,9 @@ export function useFloatingWidget() {
     setInputVal(promptText);
   };
 
-  // Xác nhận form gợi ý: đặt câu yêu cầu hoàn chỉnh vào ô nhập để người dùng đọc lại, sửa rồi mới gửi — không tự gửi.
+  // Xác nhận form gợi ý: gửi ngay câu yêu cầu hoàn chỉnh (PRD user-flow.md, AC-AGT-01).
   const handleConfirmTripDetails = (prompt: string) => {
-    setInputVal(prompt);
+    handleSendMessage(prompt);
   };
 
 
@@ -199,40 +267,29 @@ export function useFloatingWidget() {
     ? () => addPlanItemToCart(selectedProduct.plan!, selectedProduct.productId)
     : undefined;
 
-  const handleCheckoutPlan = (e?: React.MouseEvent) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    if (!activePlan || isCheckingOut) return;
-    if (!activePlan.cartItems.length) {
-      showToast('Lịch trình chưa có dịch vụ nào đặt được.');
-      return;
-    }
-    // Thêm tuần tự rồi mới sang /checkout: checkout đọc GET /cart ngay khi mở, nên phải chờ mọi mục vào giỏ.
-    setIsCheckingOut(true);
-    void addItineraryToCart(activePlan.cartItems, () => navigate('/checkout'))
-      .finally(() => setIsCheckingOut(false));
+  // Panel chi tiết: khách sạn và vé máy bay chỉ có Đặt ngay; tour, golf, combo có thêm Thêm vào giỏ (R-DIR-02).
+  const selectedItem = selectedProduct?.plan?.cartItems.find((item) => item.product.productId === selectedProduct.productId);
+  const selectedCanAddToCart = Boolean(selectedItem && isCartEligible(selectedItem.product.taxonomy));
+  const bookSelectedNow = selectedItem ? () => { void bookItinerary(selectedItem); } : undefined;
+
+  /**
+   * Nút riêng của từng sản phẩm trong lịch trình (thẻ và ghim bản đồ): khách sạn, vé máy bay chỉ có Đặt ngay; tour, golf,
+   * combo có thêm Thêm vào giỏ. Sản phẩm chưa đặt được (ví dụ khách sạn chưa có hạng phòng) không có nút nào: thẻ vẫn mở
+   * trang chi tiết như trước (spec dat-truc-tiep-theo-don-nhap.md §16, ghi chú Q11c).
+   */
+  const itemActions = (productId: string) => {
+    const item = activePlan?.cartItems?.find((i) => i.product.productId === productId);
+    if (!item) return null;
+    return {
+      canAddToCart: isCartEligible(item.product.taxonomy),
+      bookNow: () => { void bookItinerary(item); },
+      addToCart: () => { void addItineraryToCart([item]); },
+    };
   };
 
   const handleStartNewChat = () => {
-    // Nếu phiên hiện tại có tin nhắn từ người dùng, lưu vào danh sách lịch sử
-    const hasUserMsg = messages.some(m => m.sender === 'user');
-    if (hasUserMsg && assistantState.conversationId) {
-      const firstUserMsg = messages.find(m => m.sender === 'user')?.text || 'Hội thoại mới';
-      const newSession: ConversationSession = {
-        id: assistantState.conversationId,
-        title: activePlan?.title || (firstUserMsg.length > 35 ? firstUserMsg.slice(0, 35) + '...' : firstUserMsg),
-        timestamp: 'Vừa xong',
-        messages: [...messages],
-        plan: activePlan
-      };
-      setConversations(prev => [newSession, ...prev.filter(session => session.id !== newSession.id)]);
-    }
-
-    // Reset về hội thoại mới với backend agent
+    // Cuộc cũ đã nằm trong archive của backend; lần mở panel sau tải lại danh sách.
     resetConversation();
-    setActiveSessionId('conv-' + Date.now());
     setActivePlan(null);
     setFocusedProductId(null);
     setSelectedProduct(null);
@@ -244,31 +301,33 @@ export function useFloatingWidget() {
   };
 
   const handleSelectConversation = async (session: ConversationSession) => {
+    if (session.id === assistantState.conversationId) {
+      setIsHistoryOpen(false);
+      return;
+    }
     try {
       await loadConversation(session.id);
     } catch {
       showToast('Không thể mở lại hội thoại. Vui lòng thử lại.');
       return;
     }
-    setActiveSessionId(session.id);
-    setActivePlan(session.plan);
+    // Lịch trình dựng lại từ response đã lưu qua effect đồng bộ `assistantState.response` ở trên.
+    setActivePlan(null);
+    setFocusedProductId(null);
     setSelectedProduct(null);
     setActiveDayTab(1);
     setIsHistoryOpen(false);
   };
 
-  const handleDeleteConversation = (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    setConversations(prev => prev.filter(c => c.id !== id));
-  };
-
   return { isOpen, setIsOpen, isExpanded, setIsExpanded, activePlan, activeDayTab, setActiveDayTab,
-    isCheckingOut, isChatCollapsed, setIsChatCollapsed, hoveredCoordinate, hoveredPointId,
+    isChatCollapsed, setIsChatCollapsed, hoveredCoordinate, hoveredPointId,
     setHoveredCoordinate, setHoveredPointId, focusedProductId, isHistoryOpen, setIsHistoryOpen, conversations, activeSessionId,
+    isSignedIn, historyStatus, loadHistory,
     selectedProduct, openProductDetail, closeProductDetail, addPlanItemToCart, addSelectedToCart, cartAddStates,
-    assistantState, isRunning, messages, inputVal, setInputVal, chatScrollRef, addToCart, retry, abort,
-    handleSendMessage, handleQuickPrompt, handleConfirmTripDetails, handleCheckoutPlan,
-    handleStartNewChat, handleSelectConversation, handleDeleteConversation };
+    selectedCanAddToCart, bookSelectedNow, itemActions,
+    assistantState, isRunning, messages, inputVal, setInputVal, chatScrollRef, retry, abort,
+    handleSendMessage, handleQuickPrompt, handleConfirmTripDetails,
+    handleStartNewChat, handleSelectConversation };
 }
 
 export type FloatingWidgetController = ReturnType<typeof useFloatingWidget>;

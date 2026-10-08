@@ -20,6 +20,8 @@ import statistics
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 
+import log
+
 VN = timezone(timedelta(hours=7))
 ALERTS = "alerts.jsonl"
 SEEN = "alerts_seen.json"
@@ -112,8 +114,10 @@ def publish(alerts: list[dict], state_dir: Path, run_dir: Path | None, cooldown_
         fh.write(lines)
     _write_json(state_dir / SEEN, seen)
     for item in shown:
-        print(f"alert.{item['level']} kind={item['kind']} step={item['step'] or '-'} source={item['source'] or '-'} "
-              f"{item['message']}", flush=True)
+        text = (f"alert.{item['level']} kind={item['kind']} step={item['step'] or '-'} source={item['source'] or '-'} "
+                f"{item['message']}")
+        log.emit(f"alert.{item['level']}", text, "ERROR" if item["level"] in ("error", "critical") else "WARNING",
+                 kind=item["kind"], step=item["step"] or None, source=item["source"] or None)
     return shown
 
 

@@ -1,0 +1,158 @@
+{
+ "F12_betweenRawPop03": {
+  "llbo": {
+   "n": 800,
+   "hit@20": 0.8363,
+   "ndcg@10": 0.525,
+   "hit@4": 0.5737
+  },
+  "temporal": {
+   "n": 775,
+   "hit@20": 0.1303,
+   "ndcg@10": 0.0861,
+   "hit@4": 0.0981
+  },
+  "nexttrip": {
+   "n": 800,
+   "hit@20": 0.03,
+   "ndcg@10": 0.0087,
+   "hit@4": 0.005
+  },
+  "syn_between": {
+   "themePrec": 0.767,
+   "themePrec_beach": 0.752,
+   "themePrec_mountain": 0.752,
+   "themePrec_city": 0.798,
+   "distinctDestsTotal": 43,
+   "top5Dests": [
+    [
+     "TP. Hồ Chí Minh",
+     59
+    ],
+    [
+     "Nha Trang",
+     56
+    ],
+    [
+     "Hà Nội",
+     42
+    ],
+    [
+     "Sa Pa",
+     40
+    ],
+    [
+     "Đà Lạt",
+     39
+    ]
+   ]
+  },
+  "syn_open": {
+   "themePrec": 0.767,
+   "themePrec_beach": 0.75,
+   "themePrec_mountain": 0.8,
+   "themePrec_city": 0.75,
+   "distinctDestsTotal": 40,
+   "top5Dests": [
+    [
+     "Hải Phòng",
+     56
+    ],
+    [
+     "Đà Lạt",
+     52
+    ],
+    [
+     "Phú Quốc",
+     48
+    ],
+    [
+     "Vũng Tàu",
+     48
+    ],
+    [
+     "TP. Hồ Chí Minh",
+     48
+    ]
+   ]
+  }
+ },
+ "F12b_betweenRawPop05": {
+  "llbo": {
+   "n": 800,
+   "hit@20": 0.8363,
+   "ndcg@10": 0.525,
+   "hit@4": 0.5737
+  },
+  "temporal": {
+   "n": 775,
+   "hit@20": 0.1355,
+   "ndcg@10": 0.0894,
+   "hit@4": 0.1071
+  },
+  "nexttrip": {
+   "n": 800,
+   "hit@20": 0.0375,
+   "ndcg@10": 0.0109,
+   "hit@4": 0.0063
+  },
+  "syn_between": {
+   "themePrec": 0.739,
+   "themePrec_beach": 0.785,
+   "themePrec_mountain": 0.708,
+   "themePrec_city": 0.722,
+   "distinctDestsTotal": 40,
+   "top5Dests": [
+    [
+     "Nha Trang",
+     110
+    ],
+    [
+     "TP. Hồ Chí Minh",
+     63
+    ],
+    [
+     "Sa Pa",
+     45
+    ],
+    [
+     "Phan Thiết",
+     40
+    ],
+    [
+     "Hà Nội",
+     40
+    ]
+   ]
+  },
+  "syn_open": {
+   "themePrec": 0.767,
+   "themePrec_beach": 0.75,
+   "themePrec_mountain": 0.8,
+   "themePrec_city": 0.75,
+   "distinctDestsTotal": 40,
+   "top5Dests": [
+    [
+     "Hải Phòng",
+     56
+    ],
+    [
+     "Đà Lạt",
+     52
+    ],
+    [
+     "Phú Quốc",
+     48
+    ],
+    [
+     "Vũng Tàu",
+     48
+    ],
+    [
+     "TP. Hồ Chí Minh",
+     48
+    ]
+   ]
+  }
+ }
+}

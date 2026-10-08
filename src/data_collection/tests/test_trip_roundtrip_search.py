@@ -214,6 +214,18 @@ class FreshCommandTests(unittest.TestCase):
         self.assertEqual(command[command.index('--fares-minutes') + 1], '30')
         self.assertEqual(command[command.index('--source-deadline-minutes') + 1], str(values['timeout.tripFlights']))
 
+    def test_agoda_fresh_step_uses_api_room_collector_for_one_real_price_day(self):
+        import fresh_catalog
+        import fresh_settings
+        with tempfile.TemporaryDirectory() as tmp:
+            values = fresh_settings.load(Path(tmp), env={})
+        command = fresh_catalog.source_command(Path('/tmp/run'), 'agoda-hotels', '@core', values)
+        self.assertIn('agoda-api', command)
+        self.assertNotIn('agoda-hotels', command)
+        self.assertEqual(command[command.index('--per-city') + 1], str(values['agoda.hotelsPerDestination']))
+        self.assertEqual(command[command.index('--days') + 1], '1')
+        self.assertNotIn('--concurrency', command)
+
 
 if __name__ == '__main__':
     unittest.main()

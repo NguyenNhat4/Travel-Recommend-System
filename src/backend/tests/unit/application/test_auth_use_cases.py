@@ -23,6 +23,7 @@ from src.backend.app.application.auth.use_cases import (
     RegisterUser,
     RevokeSession,
     RotateSession,
+    UpdateProfile,
 )
 from src.backend.app.domain.auth.identifiers import is_web_cdp_user_id
 from src.backend.app.infrastructure.auth.rate_limiter import InMemoryRateLimiter
@@ -260,3 +261,45 @@ def test_current_user_rejects_principal_not_matching_row():
         run(get(AuthPrincipal(seeded_user().user_id, "VP0000999", "x")))
     with pytest.raises(TokenInvalid):
         run(get(AuthPrincipal("missing", "VP0000001", "x")))
+
+
+def _profile_world():
+    user = AuthenticatedUser("u-1", "a@example.com", HASHER.hash(PASSWORD), "Minh Anh", "VP0000001")
+    users = InMemoryUsers([user])
+    return users, UpdateProfile(users=users), AuthPrincipal(user_id="u-1", cdp_user_id="VP0000001", email="a@example.com")
+
+
+def test_update_profile_changes_name_phone_and_never_email_or_password():
+    users, update, principal = _profile_world()
+    before = users.by_id["u-1"]
+    after = asyncio.run(update(principal, full_name="Tên Mới", phone="0345484496", set_phone=True))
+    assert (after.display_name, after.phone) == ("Tên Mới", "0345484496")
+    assert (after.email, after.password_hash, after.cdp_user_id) == (before.email, before.password_hash, before.cdp_user_id)
+
+
+def test_update_profile_leaves_the_phone_alone_unless_told_and_clears_it_on_request():
+    users, update, principal = _profile_world()
+    asyncio.run(update(principal, phone="0345484496", set_phone=True))
+    kept = asyncio.run(update(principal, full_name="Chỉ đổi tên"))
+    assert kept.phone == "0345484496" and kept.display_name == "Chỉ đổi tên"
+    cleared = asyncio.run(update(principal, phone=None, set_phone=True))
+    assert cleared.phone is None and cleared.display_name == "Chỉ đổi tên"
+
+
+def test_update_profile_rejects_a_principal_that_does_not_match_the_user_row(caplog):
+    users, update, _ = _profile_world()
+    stranger = AuthPrincipal(user_id="u-1", cdp_user_id="VP9999999", email="a@example.com")
+    with pytest.raises(TokenInvalid):
+        asyncio.run(update(stranger, full_name="Kẻ lạ"))
+    gone = AuthPrincipal(user_id="u-404", cdp_user_id="VP0000001", email="a@example.com")
+    with pytest.raises(TokenInvalid):
+        asyncio.run(update(gone, full_name="Không tồn tại"))
+    assert users.by_id["u-1"].display_name == "Minh Anh"
+
+
+def test_update_profile_logs_without_personal_data(caplog):
+    _, update, principal = _profile_world()
+    with caplog.at_level(logging.INFO):
+        asyncio.run(update(principal, full_name="Tên Rất Riêng", phone="0345484496", set_phone=True))
+    logged = " ".join(r.getMessage() for r in caplog.records)
+    assert "auth.profile.updated" in logged and "Tên Rất Riêng" not in logged and "0345484496" not in logged

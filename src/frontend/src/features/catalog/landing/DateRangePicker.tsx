@@ -85,7 +85,7 @@ export function DateRangePicker({ mode, start, end, min, startLabel, endLabel, h
               type="button"
               onClick={() => setSelecting(which)}
               aria-pressed={selecting === which}
-              className={`flex-1 cursor-pointer rounded-lg px-2.5 py-1.5 text-left transition ${selecting === which ? 'bg-white text-blue-600 shadow-xs ring-1 ring-blue-500/20' : 'text-slate-600 hover:text-slate-900'}`}
+              className={`flex-1 cursor-pointer rounded-lg px-2.5 py-1.5 text-left transition ${selecting === which ? 'bg-white text-brand-600 shadow-xs ring-1 ring-brand-500/20' : 'text-slate-600 hover:text-slate-900'}`}
             >
               <span className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-400">{label}</span>
               <span className="block text-sm font-bold">{value ? formatDisplayDate(value) : '—'}</span>
@@ -94,7 +94,7 @@ export function DateRangePicker({ mode, start, end, min, startLabel, endLabel, h
         </div>
       ) : (
         <p className="text-sm font-bold text-slate-800">
-          {startLabel}: <span className="text-blue-600">{formatDisplayDate(start)}</span>
+          {startLabel}: <span className="text-brand-600">{formatDisplayDate(start)}</span>
         </p>
       )}
 
@@ -121,7 +121,7 @@ export function DateRangePicker({ mode, start, end, min, startLabel, endLabel, h
           const isEnd = rangeEnd !== null && day === rangeEnd;
           const inRange = rangeEnd !== null && day > start && day < rangeEnd;
           return (
-            <div key={day} className={`flex h-9 items-center justify-center ${inRange ? 'bg-blue-50' : ''} ${isStart && rangeEnd ? 'rounded-l-full bg-blue-50' : ''} ${isEnd ? 'rounded-r-full bg-blue-50' : ''}`}>
+            <div key={day} className={`flex h-9 items-center justify-center ${inRange ? 'bg-brand-50' : ''} ${isStart && rangeEnd ? 'rounded-l-full bg-brand-50' : ''} ${isEnd ? 'rounded-r-full bg-brand-50' : ''}`}>
               <button
                 type="button"
                 disabled={disabled}
@@ -130,7 +130,7 @@ export function DateRangePicker({ mode, start, end, min, startLabel, endLabel, h
                 aria-label={`${i + 1} tháng ${view.month + 1}, ${view.year}`}
                 aria-pressed={isStart || isEnd}
                 className={`flex h-9 w-9 cursor-pointer items-center justify-center rounded-full text-sm font-semibold transition disabled:cursor-not-allowed disabled:text-slate-300 ${
-                  isStart || isEnd ? 'bg-blue-600 font-bold text-white' : inRange ? 'text-blue-700 hover:bg-blue-100' : 'text-slate-700 hover:bg-slate-100 disabled:hover:bg-transparent'
+                  isStart || isEnd ? 'bg-brand-600 font-bold text-white' : inRange ? 'text-brand-700 hover:bg-brand-100' : 'text-slate-700 hover:bg-slate-100 disabled:hover:bg-transparent'
                 }`}
               >
                 {i + 1}

@@ -9,16 +9,30 @@ WORKDIR /app
 RUN useradd --create-home --uid 10001 app \
     && chown -R app:app /app
 
+# torch bản CPU (bản mặc định của PyPI kéo CUDA, nặng vài GB) rồi tải sẵn e5-small đúng revision ghim trong core/config.py:
+# runtime không cần mạng tới Hugging Face (HF_HUB_OFFLINE=1).
+ARG EMBED_MODEL=intfloat/multilingual-e5-small
+ARG EMBED_MODEL_REVISION=614241f622f53c4eeff9890bdc4f31cfecc418b3
+ENV HF_HOME=/opt/hf
+RUN python -m pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu "torch>=2.3"
 COPY src/backend/requirements.txt /tmp/backend-requirements.txt
 RUN python -m pip install --no-cache-dir -r /tmp/backend-requirements.txt
+RUN python -c "from huggingface_hub import snapshot_download; snapshot_download('${EMBED_MODEL}', revision='${EMBED_MODEL_REVISION}', allow_patterns=['*.json', '*.safetensors', 'sentencepiece.bpe.model'])" \
+    && chmod -R a+rX /opt/hf
+ENV HF_HUB_OFFLINE=1
 
 # The API imports the backend package, OpenAPI bundle and shared itinerary fixtures.
 COPY src/backend /app/src/backend
 COPY src/shared/contracts /app/src/shared/contracts
 COPY src/shared/mocks /app/src/shared/mocks
+# Runner migration chạy trong image này lúc deploy (scripts/deploy-backend-vm.sh); chỉ cần thư mục migrations.
+COPY db/migrations /app/db/migrations
 
 USER app
 
 EXPOSE 8000
 
-CMD ["python", "-m", "uvicorn", "src.backend.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Số worker đọc từ UVICORN_WORKERS (mặc định 1). Thời gian chờ SSE đang chạy khi VM bị rút khỏi LB đọc từ
+# UVICORN_TIMEOUT_GRACEFUL_SHUTDOWN (uvicorn tự đọc biến này); nhóm HA đặt 100 giây để phủ SSE 90 giây của trợ lý.
+ENV UVICORN_TIMEOUT_GRACEFUL_SHUTDOWN=30
+CMD ["python", "-m", "uvicorn", "src.backend.app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]

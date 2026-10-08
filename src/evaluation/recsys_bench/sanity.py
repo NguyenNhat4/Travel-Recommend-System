@@ -26,6 +26,7 @@ import numpy as np
 from src.backend.app.application.ports import UnitIndex
 
 from .events import parse_ts
+from .metrics import gini   # chuyển sang metrics.py 01/10 (exposure_gini của score); giữ tên ở đây cho sanity / test cũ
 
 VN = ZoneInfo("Asia/Ho_Chi_Minh")
 STAGES = ("new", "active", "dormant", "churned")
@@ -165,14 +166,6 @@ def messy_edges(events: list[dict], index: UnitIndex) -> Check:
     return Check("messy_edges", ok, f"purchase {n}: orphan {orphan} ({po:.1%}, đích {EXPECTED_ORPHAN:.1%}) · thiếu eventGroupId {no_gid} "
                  f"({pg:.1%}, đích {EXPECTED_MISSING_GID:.1%}) · ± {EDGE_TOL:.1%}",
                  {"purchases": n, "orphan": orphan, "missingGid": no_gid, "orphanShare": po, "missingGidShare": pg})
-
-
-def gini(counts: list[int]) -> float:
-    x = np.sort(np.asarray(counts, dtype=float))
-    if x.size == 0 or x.sum() == 0:
-        return 0.0
-    i = np.arange(1, x.size + 1)
-    return float((2 * np.sum(i * x) / (x.size * x.sum())) - (x.size + 1) / x.size)
 
 
 def zipf_slope(counts: list[int]) -> float | None:

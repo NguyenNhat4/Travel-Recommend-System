@@ -35,6 +35,7 @@ from src.backend.app.application.auth.principal import AuthPrincipal
 from src.backend.app.application.catalog.errors import CatalogError
 from src.backend.app.application.catalog.views import destination_list
 from src.backend.app.application.ports.call_telemetry import CallTelemetry
+from src.backend.app.application.ports.embedder import EmbeddingUnavailableError
 from src.backend.app.application.ports.itinerary_tools import ToolError
 from src.backend.app.application.recommendation.responses import recommendation_response
 from src.backend.app.application.search.responses import search_tool_payload
@@ -59,12 +60,14 @@ class InProcessItineraryTools:
 
     def __init__(self, *, search: Provider, recommend: Provider, index: Provider, product_detail: Provider,
                  similar_products: Provider, token_verifier: Provider, revoked_tokens: Provider,
+                 list_products: Provider | None = None,
                  executor: Executor | None = None, telemetry: CallTelemetry | None = None):
         self._search = search
         self._recommend = recommend
         self._index = index
         self._product_detail = product_detail
         self._similar_products = similar_products
+        self._list_products = list_products or (lambda: None)
         self._token_verifier = token_verifier
         self._revoked_tokens = revoked_tokens
         self._executor = executor
@@ -86,6 +89,9 @@ class InProcessItineraryTools:
 
     async def get_product_detail(self, product_id: str) -> dict[str, Any]:
         return await self._guard("get_product_detail", self._get_product_detail(product_id))
+
+    async def list_products(self, params: dict[str, Any]) -> dict[str, Any]:
+        return await self._guard("list_products", self._list_products_page(params))
 
     async def list_destinations(self) -> dict[str, Any]:
         # Index None → 503: agent bỏ qua bước kiểm điểm đến thay vì báo mọi điểm đến là ngoài catalog.
@@ -111,6 +117,14 @@ class InProcessItineraryTools:
 
     async def _get_product_detail(self, product_id: str) -> dict[str, Any]:
         return await self._require("get_product_detail", self._product_detail)(product_id)
+
+    async def _list_products_page(self, params: dict[str, Any]) -> dict[str, Any]:
+        use_case = self._require("list_products", self._list_products)
+        result = await use_case(destination=params.get("destination"), taxonomy=params.get("taxonomy"),
+                                available_only=bool(params.get("availableOnly")), sort=params.get("sort", "popular"),
+                                limit=params.get("limit", 20), offset=params.get("offset", 0),
+                                parent_product_id=params.get("parentProductId"))
+        return {**result, "requestId": current_request_id() or "catalog"}
 
     async def _list_destinations(self) -> dict[str, Any]:
         return destination_list(self._require("list_destinations", self._index).destination)
@@ -163,6 +177,9 @@ class InProcessItineraryTools:
             raise
         except CatalogError as exc:
             raise ToolError(exc.code, retryable=exc.retryable, http_status=exc.http_status) from None
+        except EmbeddingUnavailableError as exc:  # adapter embedding đã log lỗi; lý do đi tiếp vào trace
+            raise ToolError("SEARCH_UNAVAILABLE", retryable=exc.retryable, http_status=503,
+                            reason=f"embed:{exc.reason}") from None
         except Exception as exc:
             # Tên kiểu lỗi và các frame traceback (chỉ file, dòng, mã nguồn), không kèm thông điệp: thông điệp có thể
             # chứa câu truy vấn của người dùng. Frame đủ để lần ra bug, vì lỗi này bị thử lại chứ không nổi lên 500.

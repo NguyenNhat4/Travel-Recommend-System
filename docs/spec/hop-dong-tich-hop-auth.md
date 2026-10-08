@@ -247,7 +247,9 @@ Quy tắc dùng, không có ngoại lệ:
 | Nhóm endpoint | Dependency | Thiếu danh tính thì |
 |---|---|---|
 | `/products`, `/products/{id}`, `/destinations`, `/search`, `/recommendations`, `/popular`, `/assistant/*` | `optional_principal` | Trả kết quả không cá nhân hóa (`strategy: popular`) |
-| `/cart/*`, `/bookings`, `/bookings/{ref}`, `/events` | `current_principal` | `401 UNAUTHENTICATED` |
+| `/bookings`, `/bookings/{ref}`, `/events` | `current_principal` | `401 UNAUTHENTICATED` |
+| `/cart/*`, `/booking-drafts/*` | `cart_owner`: Bearer hợp lệ → người dùng; không có Bearer nhưng có `X-Service-Token` hợp lệ **và** `X-Guest-Id` đúng dạng → khách (§3.7a) | `401 UNAUTHENTICATED` |
+| `/guest-bookings/merge` | `X-Service-Token` **và** `current_principal` | `401` |
 | `/auth/session/*` | `X-Service-Token` | `401 INVALID_TOKEN` |
 
 **Đóng `TODO` hiện tại.** `recommendations.py` phải đổi:
@@ -349,6 +351,24 @@ Vì vậy `anon_id` **chưa bao giờ** được ghi xuống database. Nó chỉ
 
 Nếu sau này muốn mở phần ghép: nó cần một bảng `app.anonymous_links(anon_id, cdp_user_id, linked_at)` và một quyết định của CDP về sự kiện `identify`. Đừng tự thêm; mở spec và hỏi reviewer CDP (`AGENTS.md` §6).
 
+### 3.7a. Giỏ và đơn nháp của khách chưa đăng nhập (thêm 2026-10-01)
+
+> Thêm theo đề xuất đã chốt `docs/prd/update-archive/2026-10-01-khach-san-ve-may-bay-dat-truc-tiep.md` (FR-BKG-01, FR-USR-03). Bộ luật: `docs/spec/booking/dat-truc-tiep-theo-don-nhap.md` §8, §9. **Cần chủ auth rà lại** phần cookie và header dưới đây.
+
+Khách chưa đăng nhập thêm giỏ, Đặt ngay và điền thông tin thanh toán được; chỉ tạo đơn cần đăng nhập. Việc này **không** đổi ranh giới của §3.7: khách vẫn không sinh event CDP, không có profile, và không có định danh nào của khách được ghi xuống PostgreSQL.
+
+| Điểm | Quy định |
+|---|---|
+| Định danh | `guestId` = `g_` + 22 ký tự base64url (128 bit ngẫu nhiên), do **BFF** phát. Tách khỏi `anon_id`: phiên khách hết sau 30 phút không hoạt động, còn giỏ của khách phải sống 3 ngày |
+| Cookie | `vota_guest`: HttpOnly, `SameSite=Lax`, `Secure` như `vota_sid`, `Path=/`, `Max-Age` 3 ngày. Chỉ chứa `guestId`, không chứa dữ liệu. BFF phát khi khách chưa đăng nhập gọi lần đầu vào `/cart*` hoặc `/booking-drafts*` |
+| Chuyển tiếp | BFF xoá `x-guest-id` do trình duyệt gửi, rồi tự gắn `X-Service-Token` + `X-Guest-Id` cho request của khách tới hai nhóm route trên. Trình duyệt không đọc được và không tự đặt được mã khách |
+| Backend tin gì | `X-Guest-Id` chỉ có nghĩa khi `X-Service-Token` hợp lệ (so sánh hằng thời gian). Có Bearer thì Bearer thắng, mã khách bị bỏ qua |
+| Lưu ở đâu | Redis: `guest:cart:{guestId}`, `guest:draft:{draftId}`, `guest:drafts:{guestId}`, TTL `GUEST_BOOKING_TTL_DAYS` (3 ngày). `guestId` **không bao giờ** được ghi vào PostgreSQL, log nghiệp vụ hay CDP |
+| Gộp khi đăng nhập | Request đầu tiên tới `/cart*`, `/booking-drafts*`, `/bookings*` của phiên đã đăng nhập mà còn cookie `vota_guest`: BFF gọi `POST /api/v1/guest-bookings/merge` (`X-Service-Token` + Bearer) rồi xoá cookie. Backend chép mục chưa có vào giỏ tài khoản, bỏ mục trùng, chuyển đơn nháp còn hạn, xoá dữ liệu Redis của khách. Gọi lại không gây trùng |
+| Không mở ra ngoài | BFF trả `404` cho mọi request từ trình duyệt tới `/api/v1/guest-bookings/*` |
+
+Quyền sở hữu: đơn nháp của khách chỉ đọc được bằng đúng `guestId` đã tạo nó; đơn nháp của tài khoản chỉ đọc được bằng `cdp_user_id` của tài khoản đó. Sai chủ thì `404 BOOKING_DRAFT_NOT_FOUND`, không lộ sự tồn tại.
+
 ### 3.8. Bảng chuyển trạng thái phiên
 
 Mỗi dòng là một chuyển trạng thái. Cột "Xoay sid" là biện pháp chống **session fixation**: bất cứ khi nào mức đặc quyền đổi, sid cũ bị `DEL` và sid mới được phát.
@@ -411,8 +431,8 @@ FastAPI, theo thứ tự, dừng ở dòng khớp đầu tiên:
 | 3 | có, `exp` đã qua | — | `401 TOKEN_EXPIRED` |
 | 4 | có, hợp lệ, `state=pending_mfa` (`amr` thiếu yếu tố thứ hai mà user đã bật) | — | `403 MFA_REQUIRED` |
 | 5 | có, hợp lệ | — | `principal` đầy đủ |
-| 6 | không | có | Ngữ cảnh service; chỉ vào được `/auth/session/*` và `/internal/*` |
-| 7 | có **và** có | — | Ưu tiên Bearer; `X-Service-Token` chỉ mở thêm `/internal/*` |
+| 6 | không | có | Ngữ cảnh service; chỉ vào được `/auth/session/*` và `/internal/*`. Kèm `X-Guest-Id` đúng dạng thì thêm `/cart/*` và `/booking-drafts/*` với danh tính khách (§3.7a) |
+| 7 | có **và** có | — | Ưu tiên Bearer; `X-Service-Token` chỉ mở thêm `/internal/*` và `/guest-bookings/merge` |
 
 Dòng 2 là chủ ý và giữ nguyên `hop-dong-tich-hop-backend.md` §6.5 + `hop-dong-tich-hop-frontend.md` §7.5: **token hỏng không bao giờ im lặng thành khách vãng lai.** Nếu hạ ngầm, người dùng sẽ thấy gợi ý của người lạ mà không hiểu vì sao, và bug xác thực sẽ không bao giờ lộ ra trong demo.
 
@@ -443,6 +463,8 @@ headers.delete('authorization');   // client không được tự đặt
 if (session?.accessToken) headers.set('authorization', `Bearer ${session.accessToken}`);
 ```
 
+Proxy cũng xoá `x-guest-id` và `x-service-token` do trình duyệt gửi; hai header này chỉ BFF tự gắn cho khách chưa đăng nhập ở `/cart*` và `/booking-drafts*` (§3.7a).
+
 Và phải chuyển tiếp thêm `x-request-id` (hiện response chỉ giữ lại `content-type`, `cache-control`, `location` — mất `X-Request-ID`, phá `hop-dong-tich-hop-backend.md` §8.4).
 
 ### 4.2. Quy tắc phía component
@@ -461,7 +483,7 @@ Thay điều 1–2 và 8 của `hop-dong-tich-hop-frontend.md` §7:
 
 ## 5. Bề mặt Backend (FastAPI)
 
-**Nhóm v1 cũ giữ nguyên, không sửa một dòng nào.** `POST /auth/register`, `POST /auth/login`, `GET /auth/me` tiếp tục trả `AuthResponse` có `accessToken` cho client nội bộ, Agent, CLI và contract test. Đây là điều kiện để không phải lên v2 (`AGENTS.md` §3).
+**Nhóm v1 cũ giữ nguyên, không sửa một dòng nào.** (Từ contract 1.18.0 (gộp từ nhánh hồ sơ và đơn hàng; số 1.15.0 và 1.16.0 từng được hai nhánh dùng cho thay đổi khác nhau): `AuthUser` thêm trường `phone` — chỉ thêm, nullable — và có thêm `PATCH /auth/me` sửa họ tên, số điện thoại; BFF ghi họ tên, số điện thoại mới vào phiên sau khi Backend trả 200.) `POST /auth/register`, `POST /auth/login`, `GET /auth/me` tiếp tục trả `AuthResponse` có `accessToken` cho client nội bộ, Agent, CLI và contract test. Đây là điều kiện để không phải lên v2 (`AGENTS.md` §3).
 
 Nhóm mới, **chỉ BFF gọi**, bắt buộc `X-Service-Token`:
 
@@ -491,6 +513,7 @@ Tách `/auth/session` khỏi `/auth/login` vì hai bên trả khác nhau: `/auth
 |---|---|---|---|---|---|---|
 | `vota_sid` | session id đục | **Có** | Có¹ | `Lax` | `/` | phiên (không đặt) |
 | `vota_csrf` | CSRF token | **Không**² | Có¹ | `Lax` | `/` | phiên |
+| `vota_guest` | mã khách của giỏ và đơn nháp (§3.7a) | **Có** | Có¹ | `Lax` | `/` | 3 ngày; xoá sau khi gộp vào tài khoản |
 
 ¹ `Secure` bật trừ khi `APP_ENV=development` trên `localhost`. Ở staging/production, TLS bắt buộc và thêm `Strict-Transport-Security: max-age=31536000; includeSubDomains`.
 
@@ -765,7 +788,9 @@ Mọi thứ frontend kiểm đều phải kiểm lại ở FastAPI, không có n
 
 | Frontend làm | Server **phải** làm lại |
 |---|---|
-| Ẩn nút "Thêm vào giỏ" khi chưa đăng nhập | `current_principal` trên `POST /cart/items` → `401` |
+| Mở modal đăng nhập khi khách bấm Thanh toán | `current_principal` trên `POST /bookings` → `401` |
+| Không hiện nút "Thêm vào giỏ" cho khách sạn, vé máy bay | `POST /cart/items` từ chối bằng `422 DIRECT_BOOKING_ONLY` |
+| Chỉ gửi mã khách qua BFF | `cart_owner` chỉ nhận `X-Guest-Id` khi `X-Service-Token` hợp lệ; không có thì `401` |
 | Kiểm mật khẩu ≥ 8 ký tự (`LoginView.tsx:17-19`) | Validate lại toàn bộ chính sách §8.3 |
 | Chỉ hiện đơn của người dùng | `WHERE cdp_user_id = :principal` trong truy vấn |
 | Không gửi `cdp_user_id` của người khác | Không đọc `cdp_user_id` từ request, chấm hết |
@@ -856,6 +881,7 @@ Chia theo quyết định đã chốt: **Redis giữ phần phù du, Postgres gi
 | `oauth:state:{state}` | string (JSON) | 10 phút | `code_verifier`, `nonce`, `redirect`, `provider` (P2) |
 | `jwt:revoked:{jti}` | string | tới `exp` | Thu hồi khẩn (§10.3 điểm 9) |
 | `idx:user_sessions:{user_id}` | set | — | Danh sách `sid` để thu hồi hàng loạt (§3.8 dòng J) |
+| `guest:cart:{guestId}`, `guest:draft:{draftId}`, `guest:drafts:{guestId}` | string (JSON) / set | 3 ngày (`GUEST_BOOKING_TTL_DAYS`) | Giỏ và đơn nháp của khách chưa đăng nhập (§3.7a). Do **Backend** ghi qua `BOOKING_REDIS_URL`, không phải BFF |
 
 Thêm service `redis:7-alpine` vào `docker-compose.yml`, bind `127.0.0.1` như Postgres, `--requirepass` ngay cả ở local. Cấu hình `maxmemory-policy noeviction` cho database chứa session: `allkeys-lru` sẽ ngẫu nhiên đá người dùng ra khi bộ nhớ đầy.
 

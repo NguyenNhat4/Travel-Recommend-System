@@ -1,4 +1,8 @@
-"""Tạo đơn giữ chỗ và phiên thanh toán Stripe (spec booking §6.2, FR-BKG-02, FR-BKG-05, FR-BKG-06)."""
+"""Tạo đơn giữ chỗ và phiên thanh toán Stripe (spec booking §6.2, FR-BKG-02, FR-BKG-05, FR-BKG-06).
+
+Hai nguồn mục, không bao giờ trộn (spec dat-truc-tiep-theo-don-nhap.md §6): có `draft_id` thì thanh toán đúng đơn nháp đó
+(Đặt ngay), không có thì thanh toán toàn bộ giỏ.
+"""
 from __future__ import annotations
 
 import logging
@@ -9,6 +13,8 @@ from typing import Callable
 
 from src.backend.app.application.auth.principal import AuthPrincipal
 from src.backend.app.application.booking.errors import (
+    BookingDraftExpired,
+    BookingDraftNotFound,
     CartEmpty,
     LineRejected,
     PaymentUnavailable,
@@ -19,6 +25,7 @@ from src.backend.app.application.booking.errors import (
 from src.backend.app.application.booking.messages import validation_failed
 from src.backend.app.application.booking.reconcile import ReconcileBookings
 from src.backend.app.application.booking.views import booking_response, iso
+from src.backend.app.application.ports.booking_draft_repository import BookingDraftRepository
 from src.backend.app.application.ports.booking_store import BookingStore, PendingBookingExists, ReferenceCodeTaken
 from src.backend.app.application.ports.cart_repository import CartRepository
 from src.backend.app.application.ports.payment_gateway import (
@@ -28,6 +35,7 @@ from src.backend.app.application.ports.payment_gateway import (
     PaymentProviderUnavailable,
 )
 from src.backend.app.application.ports.product_catalog import ProductCatalog
+from src.backend.app.core.logging_config import hash_user_id, log_event
 from src.backend.app.core.request_context import current_request_id
 from src.backend.app.domain.booking import (
     Booking,
@@ -64,7 +72,7 @@ _REFERENCE_RETRIES = 5
 
 @dataclass(frozen=True)
 class ItemDetail:
-    cart_item_id: str
+    cart_item_id: str  # mã mục của nguồn đang thanh toán: mục giỏ, hoặc mục đơn nháp khi có draft_id
     guest_names: list[str] = field(default_factory=list)  # chỉ request cũ không có `travelers` (spec §7.6)
     special_request: str | None = None
     traveler_refs: list[str] | None = None  # dịch vụ tính theo người, combo
@@ -102,39 +110,39 @@ class CreateBookingHold:
     def __init__(
         self, store: BookingStore, carts: CartRepository, catalog: ProductCatalog, gateway: PaymentGateway,
         reconciler: ReconcileBookings, hold: HoldPolicy, *, public_web_url: str, provider: str,
-        clock: Callable[[], datetime],
+        clock: Callable[[], datetime], drafts: BookingDraftRepository | None = None,
     ):
         self._store, self._carts, self._catalog, self._gateway = store, carts, catalog, gateway
+        self._drafts = drafts
         self._reconciler, self._hold, self._web, self._provider, self._clock = (
             reconciler, hold, public_web_url.rstrip("/"), provider, clock)
 
     async def __call__(
         self, principal: AuthPrincipal, contact: Contact, details: list[ItemDetail],
-        travelers: list[TravelerInput] | None = None,
+        travelers: list[TravelerInput] | None = None, draft_id: str | None = None,
     ) -> dict:
         """Trình tự kiểm theo spec checkout-nhieu-buoc-hanh-khach.md §8.3. `travelers=None` là request cũ (§7.6)."""
         user = principal.cdp_user_id
         await self._release_stale_hold(user)
 
-        cart = await self._carts.get(user)
-        if not cart.lines:
-            raise CartEmpty("giỏ hàng trống")
-        products = await self._catalog.get_products([line.product_id for line in cart.lines])
-        for line in cart.lines:
+        now = self._clock()
+        lines = await self._source_lines(user, draft_id, now)
+        products = await self._catalog.get_products([line.product_id for line in lines])
+        for line in lines:
             if products.get(line.product_id) is None:
                 raise ProductNotFound("sản phẩm không tồn tại", {"productId": line.product_id})
 
-        now = self._clock()
-        party, violations = self._check_rules(contact, details, travelers, cart.lines, products, now)
+        party, violations = self._check_rules(contact, details, travelers, lines, products, now)
         if violations:
             # Mọi vi phạm trong một lần; chưa gọi Stripe, chưa ghi gì.
             raise validation_failed(violations)
 
         detail_by_id = {d.cart_item_id: d for d in details}
         items: list[BookingItem] = []
-        for line in cart.lines:
+        for line in lines:
             product = products[line.product_id]
-            issue = check_product(product, line.using_date, snapshot_price=line.unit_price_snapshot)
+            issue = check_product(
+                product, line.using_date, snapshot_price=line.unit_price_snapshot, today=now.astimezone(VN_TZ).date())
             if issue is None and line.children and product.taxonomy in CHILD_PRICED_TAXONOMIES:
                 issue = check_child_price(
                     product, snapshot_child=line.child_unit_price_snapshot, snapshot_adult=line.unit_price_snapshot)
@@ -157,9 +165,10 @@ class CreateBookingHold:
             logger.error("booking.create.total_mismatch requestId=%s", current_request_id())
             raise RuntimeError("tổng các dòng thanh toán lệch tổng đơn")
         # Chỉ ghi số lượng, không ghi họ tên, ngày sinh hay số điện thoại (NFR-SEC-01, spec §8.6).
-        logger.info("booking.create adults=%d children=%d items=%d requestId=%s",
-                    sum(1 for t in party if t.type.value == "adult"), sum(1 for t in party if t.type.value == "child"),
-                    len(items), current_request_id())
+        adults, children = (sum(1 for t in party if t.type.value == "adult"),
+                            sum(1 for t in party if t.type.value == "child"))
+        log_event(logger, "booking.checkout.start", booking_ref=booking.reference_code,
+                  amount_vnd=booking.total_amount, item_count=len(items))
 
         # Gọi Stripe TRƯỚC khi ghi database: Stripe lỗi thì chưa có gì để dọn (spec booking §6.1).
         try:
@@ -173,7 +182,8 @@ class CreateBookingHold:
                 idempotency_key=f"booking:{booking_id}",
             )
         except PaymentProviderUnavailable as exc:
-            logger.warning("booking.create.provider_unavailable requestId=%s", current_request_id())
+            log_event(logger, "booking.create_hold", "WARNING", booking_ref=booking.reference_code,
+                      message="booking.create.provider_unavailable")
             raise PaymentUnavailable("cổng thanh toán không phản hồi") from exc
         except PaymentProviderError:
             logger.exception("booking.create.provider_rejected requestId=%s", current_request_id())
@@ -182,7 +192,7 @@ class CreateBookingHold:
         payment.checkout_session_id, payment.checkout_url = session.session_id, session.url
 
         try:
-            await self._insert(booking)
+            await self._insert(booking, draft_id)
         except PendingBookingExists:
             await self._close_session(session.session_id)
             raise await self._pending_error(user)
@@ -190,6 +200,8 @@ class CreateBookingHold:
             # Commit lỗi sau khi Stripe đã tạo phiên: đóng phiên để bù trừ (spec §6.2 F12).
             await self._close_session(session.session_id)
             raise
+        log_event(logger, "booking.create_hold", booking_ref=booking.reference_code, amount_vnd=booking.total_amount,
+                  item_count=len(items), adults=adults, children=children)
         return booking_response(booking, products)
 
     def _check_rules(self, contact, details, travelers, lines, products, now):
@@ -229,11 +241,29 @@ class CreateBookingHold:
             traveler_refs=[t.ref for t in by_party_order], rooms=rooms,
         )
 
-    async def _insert(self, booking: Booking) -> None:
+    async def _source_lines(self, cdp_user_id: str, draft_id: str | None, now: datetime) -> list:
+        """Mục cần thanh toán: của đơn nháp (Đặt ngay) hoặc của giỏ. Hai nguồn không trộn (R-CHK-01)."""
+        if draft_id is None:
+            cart = await self._carts.get(cdp_user_id)
+            if not cart.lines:
+                raise CartEmpty("giỏ hàng trống")
+            return cart.lines
+        draft = await self._drafts.get(cdp_user_id, draft_id) if self._drafts is not None else None
+        if draft is None or not draft.lines:
+            raise BookingDraftNotFound("không tìm thấy đơn nháp", {"draftId": draft_id})
+        if draft.is_expired(now):
+            raise BookingDraftExpired("đơn nháp đã hết hạn", {"draftId": draft_id, "items": []})
+        return draft.lines
+
+    async def _insert(self, booking: Booking, draft_id: str | None = None) -> None:
         for attempt in range(_REFERENCE_RETRIES):
             try:
                 async with self._store.transaction() as tx:
                     await tx.insert(booking)
+                    if draft_id is not None:
+                        # Đơn nháp đã thành đơn giữ chỗ: xoá trong cùng transaction (R-CHK-05). Mục tour, tiện ích đã
+                        # chép vào giỏ vẫn ở lại giỏ cho tới khi đơn CONFIRMED.
+                        await tx.delete_draft(booking.cdp_user_id, draft_id)
                 return
             except ReferenceCodeTaken:
                 booking.reference_code = new_reference_code(booking.created_at.date())

@@ -9,7 +9,7 @@ import { ChevronUp, PenLine, Users } from 'lucide-react';
 import { FlightSummary } from '../common/FlightSummary';
 import { TaxonomyBadge } from '../common/TaxonomyBadge';
 import { formatVnd } from '../confirmation/bookingLabels';
-import type { ApiCartItem } from '../../services/booking';
+import { isCartEligible, type ApiCartItem } from '../../services/booking';
 import type { Taxonomy } from '../../types/travel';
 import { guestsOfItem, isHotel, partyText } from './allocation';
 import { formatDmy } from './checkoutRules';
@@ -34,9 +34,11 @@ const SummaryBody: React.FC<{ ctl: CheckoutController }> = ({ ctl }) => {
     <>
       <div className="flex items-center justify-between border-b border-slate-100 pb-3">
         <h3 className="text-sm font-bold text-slate-900">Đơn của bạn ({ctl.items.length} dịch vụ)</h3>
-        <button type="button" onClick={() => ctl.navigate('/cart')} className="text-xs text-blue-600 hover:underline inline-flex items-center gap-1">
-          <PenLine className="w-3 h-3" aria-hidden="true" />Sửa giỏ hàng
-        </button>
+        {ctl.sourceKind === 'cart' && (
+          <button type="button" onClick={() => ctl.navigate('/cart')} className="text-xs text-brand-600 hover:underline inline-flex items-center gap-1">
+            <PenLine className="w-3 h-3" aria-hidden="true" />Sửa giỏ hàng
+          </button>
+        )}
       </div>
       <div className="flex items-center gap-2 text-xs font-semibold text-slate-700 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2" data-testid="party-text">
         <Users className="w-4 h-4 text-slate-500" aria-hidden="true" />{partyText(ctl.drafts)}
@@ -58,8 +60,14 @@ const SummaryBody: React.FC<{ ctl: CheckoutController }> = ({ ctl }) => {
       </div>
       <div className="pt-3 border-t border-slate-200 flex justify-between items-baseline gap-3">
         <span className="text-sm font-bold text-slate-900">Tổng thanh toán</span>
-        {ctl.anyPending ? <Skeleton width={110} /> : <span className="text-lg font-extrabold text-blue-900 tabular-nums" data-testid="summary-total">{formatVnd(ctl.cart.total)}</span>}
+        {ctl.anyPending ? <Skeleton width={110} /> : <span className="text-lg font-extrabold text-brand-900 tabular-nums" data-testid="summary-total">{formatVnd(ctl.cart.total)}</span>}
       </div>
+      {/* Đặt ngay chép tour, trải nghiệm, tiện ích vào giỏ (R-CPY): nói trước để khách biết chúng còn đó nếu chưa thanh toán xong. */}
+      {ctl.sourceKind === 'draft' && ctl.items.some((item) => isCartEligible(item.product.taxonomy)) && (
+        <p className="text-[11px] leading-relaxed text-slate-500" data-testid="draft-cart-note">
+          Tour, trải nghiệm và tiện ích của lần đặt này cũng đã được lưu vào giỏ hàng. Nếu bạn chưa thanh toán xong, chúng vẫn ở đó; khách sạn và vé máy bay thì không được giữ lại.
+        </p>
+      )}
     </>
   );
 };
@@ -80,7 +88,7 @@ export const MobileBar: React.FC<{ ctl: CheckoutController }> = ({ ctl }) => {
       <div className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t border-slate-200 shadow-[0_-6px_20px_-8px_rgba(15,23,42,0.18)] px-4 pt-3 pb-3 space-y-2.5" data-testid="mobile-bar">
         <button type="button" onClick={() => setOpen(true)} aria-label="Xem tóm tắt đơn" className="w-full flex items-center justify-between gap-3 text-left">
           <span className="text-xs font-semibold text-slate-600 flex items-center gap-1.5"><Users className="w-3.5 h-3.5" aria-hidden="true" />{partyText(ctl.drafts)}</span>
-          <span className="flex items-center gap-1 text-base font-extrabold text-blue-900 tabular-nums">
+          <span className="flex items-center gap-1 text-base font-extrabold text-brand-900 tabular-nums">
             {ctl.anyPending ? <Skeleton width={100} /> : formatVnd(ctl.cart.total)}<ChevronUp className="w-4 h-4 text-slate-500" aria-hidden="true" />
           </span>
         </button>

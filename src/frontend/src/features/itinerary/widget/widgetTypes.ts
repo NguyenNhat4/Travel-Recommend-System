@@ -16,10 +16,9 @@ export interface WidgetChatMessage {
   suggestions?: string[];
 }
 
+/** Một dòng trong panel lịch sử: dựng từ `AssistantConversationSummary` hoặc từ cuộc đang chat chưa kịp vào archive. */
 export interface ConversationSession {
   id: string;
   title: string;
   timestamp: string;
-  messages: WidgetChatMessage[];
-  plan: WidgetPlan | null;
 }

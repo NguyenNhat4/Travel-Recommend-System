@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Travel Recommendation Product API
-  version: 1.13.0
+  version: 1.19.0
   description: 'Contract chung cho frontend Next.js và backend Python/FastAPI. Nguồn mô tả nghiệp vụ:
     docs/spec/hop-dong-tich-hop-backend.md (Auth, Catalog, Search, Recommendation, Booking) và docs/spec/hop-dong-tich-hop-frontend.md
     (góc nhìn Web, đề xuất ItineraryResponse hợp nhất). Khi tài liệu và file này mâu thuẫn, file này thắng.'
@@ -17,7 +17,9 @@ tags:
 - name: recommendations
   description: Gợi ý cá nhân hóa kèm because[]
 - name: booking
-  description: Giỏ hàng server-side, giữ chỗ, thanh toán Stripe (test mode), huỷ và hoàn tiền
+  description: Giỏ hàng (tour, tiện ích), đơn nháp Đặt ngay, giữ chỗ, thanh toán Stripe (test mode), huỷ và hoàn tiền
+- name: booking-internal
+  description: Gộp giỏ và đơn nháp của khách chưa đăng nhập, nội bộ — chỉ BFF gọi, Web không sinh client
 - name: payments-internal
   description: Webhook Stripe, nội bộ — Web không sinh client cho nhóm này
 - name: assistant
@@ -53,6 +55,8 @@ paths:
     $ref: ./paths/catalog.yaml#/~1destinations
   /search:
     $ref: ./paths/search.yaml#/~1search
+  /search/suggestions:
+    $ref: ./paths/search.yaml#/~1search~1suggestions
   /recommendations:
     $ref: ./paths/recommendations.yaml#/~1recommendations
   /internal/recommendations:
@@ -63,6 +67,14 @@ paths:
     $ref: ./paths/booking.yaml#/~1cart~1items
   /cart/items/{cartItemId}:
     $ref: ./paths/booking.yaml#/~1cart~1items~1{cartItemId}
+  /booking-drafts:
+    $ref: ./paths/booking.yaml#/~1booking-drafts
+  /booking-drafts/{draftId}:
+    $ref: ./paths/booking.yaml#/~1booking-drafts~1{draftId}
+  /booking-drafts/{draftId}/items/{cartItemId}:
+    $ref: ./paths/booking.yaml#/~1booking-drafts~1{draftId}~1items~1{cartItemId}
+  /guest-bookings/merge:
+    $ref: ./paths/booking.yaml#/~1guest-bookings~1merge
   /bookings:
     $ref: ./paths/booking.yaml#/~1bookings
   /bookings/{referenceCode}:
@@ -132,6 +144,22 @@ components:
       required: true
       schema:
         type: string
+    DraftId:
+      name: draftId
+      in: path
+      required: true
+      schema:
+        type: string
+    XGuestId:
+      name: X-Guest-Id
+      in: header
+      required: false
+      description: >-
+        Mã khách chưa đăng nhập, do BFF phát và chỉ BFF gửi. Backend chỉ tin khi X-Service-Token hợp lệ; có Bearer thì bị bỏ
+        qua. Trình duyệt không tự đặt được header này.
+      schema:
+        type: string
+        pattern: ^g_[A-Za-z0-9_-]{22}$
   responses:
     Error:
       description: Lỗi theo envelope chung
@@ -145,6 +173,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/CartResponse'
+    BookingDraft:
+      description: Đơn nháp với giá và tình trạng còn bán hiện tại
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BookingDraft'
   schemas:
     Taxonomy:
       $ref: ./schemas/common.yaml#/Taxonomy
@@ -158,6 +192,8 @@ components:
       $ref: ./schemas/common.yaml#/BecauseEvent
     Currency:
       $ref: ./schemas/common.yaml#/Currency
+    Pagination:
+      $ref: ./schemas/common.yaml#/Pagination
     ReferenceCode:
       $ref: ./schemas/common.yaml#/ReferenceCode
     ErrorCode:
@@ -194,6 +230,8 @@ components:
       $ref: ./schemas/auth.yaml#/LoginRequest
     AuthUser:
       $ref: ./schemas/auth.yaml#/AuthUser
+    UpdateProfileRequest:
+      $ref: ./schemas/auth.yaml#/UpdateProfileRequest
     AuthResponse:
       $ref: ./schemas/auth.yaml#/AuthResponse
     SessionState:
@@ -218,6 +256,10 @@ components:
       $ref: ./schemas/search.yaml#/SearchFacets
     SearchResponse:
       $ref: ./schemas/search.yaml#/SearchResponse
+    SearchSuggestion:
+      $ref: ./schemas/search.yaml#/SearchSuggestion
+    SearchSuggestionResponse:
+      $ref: ./schemas/search.yaml#/SearchSuggestionResponse
     TravelContext:
       $ref: ./schemas/search.yaml#/TravelContext
     AvailabilityMode:
@@ -266,6 +308,16 @@ components:
       $ref: ./schemas/booking.yaml#/CartItem
     CartResponse:
       $ref: ./schemas/booking.yaml#/CartResponse
+    CreateBookingDraftRequest:
+      $ref: ./schemas/booking.yaml#/CreateBookingDraftRequest
+    RejectedDraftItem:
+      $ref: ./schemas/booking.yaml#/RejectedDraftItem
+    BookingDraft:
+      $ref: ./schemas/booking.yaml#/BookingDraft
+    GuestMergeRequest:
+      $ref: ./schemas/booking.yaml#/GuestMergeRequest
+    GuestMergeResponse:
+      $ref: ./schemas/booking.yaml#/GuestMergeResponse
     Contact:
       $ref: ./schemas/booking.yaml#/Contact
     CheckoutItemDetail:
@@ -280,6 +332,14 @@ components:
       $ref: ./schemas/booking.yaml#/BookingResponse
     BookingStatus:
       $ref: ./schemas/booking.yaml#/BookingStatus
+    BookingTab:
+      $ref: ./schemas/booking.yaml#/BookingTab
+    BookingSummaryItem:
+      $ref: ./schemas/booking.yaml#/BookingSummaryItem
+    BookingSummary:
+      $ref: ./schemas/booking.yaml#/BookingSummary
+    BookingListResponse:
+      $ref: ./schemas/booking.yaml#/BookingListResponse
     PaymentStatus:
       $ref: ./schemas/booking.yaml#/PaymentStatus
     PaymentFailureReason:
@@ -314,6 +374,10 @@ components:
       $ref: ./schemas/itinerary-agent.yaml#/ItinerarySlot
     ItineraryStay:
       $ref: ./schemas/itinerary-agent.yaml#/ItineraryStay
+    FlightDirection:
+      $ref: ./schemas/itinerary-agent.yaml#/FlightDirection
+    ItineraryFlight:
+      $ref: ./schemas/itinerary-agent.yaml#/ItineraryFlight
     ItineraryDay:
       $ref: ./schemas/itinerary-agent.yaml#/ItineraryDay
     ItineraryPlan:

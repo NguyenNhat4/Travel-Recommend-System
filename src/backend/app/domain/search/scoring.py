@@ -41,3 +41,21 @@ def candidate_filter_score(units: Sequence[int], scores: Sequence[float], cutoff
     order = sorted(kept, key=lambda u: -kept[u])
     facets = {name: dict(Counter(str(arr[u]) for u in order)) for name, arr in facet_fields.items()}
     return SearchOutcome(order=order, scores=kept, filtered_count=filtered_count, facets=facets)
+
+
+def soft_star_order(order: Sequence[int], known_ok: np.ndarray) -> list[int]:
+    """Hạng sao mềm (Phase A, F6): unit có sao ĐÃ BIẾT và đạt ngưỡng lên trước, unit chưa biết sao xuống sau.
+
+    Phân hoạch ổn định — thứ tự tương đối trong từng nhóm giữ nguyên, nên điểm RRF vẫn quyết định bên trong nhóm.
+    `known_ok` = `UnitIndex.star_known_ok(star_min)` (bool theo index unit)."""
+    head = [i for i in order if known_ok[i]]
+    tail = [i for i in order if not known_ok[i]]
+    return head + tail
+
+
+def revalidate(order: Sequence[int], mask: np.ndarray) -> tuple[list[int], int]:
+    """Soát lại thứ tự sau khi kho vector trả về: bỏ index không còn trong `mask` (filter cứng áp sau ANN).
+
+    Trả (thứ tự còn lại, số phần tử bị bỏ) để use case ghi vào diagnostics."""
+    kept = [i for i in order if mask[i]]
+    return kept, len(order) - len(kept)

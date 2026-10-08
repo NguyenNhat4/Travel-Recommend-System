@@ -1,6 +1,6 @@
 import React from 'react';
 import dynamic from 'next/dynamic';
-import { MapPin, Calendar, Users, Loader2, ArrowRight } from 'lucide-react';
+import { MapPin, Calendar, Users } from 'lucide-react';
 import { WidgetDays } from './WidgetDays';
 import { WidgetProductDetail } from './WidgetProductDetail';
 import type { FloatingWidgetController } from './useFloatingWidget';
@@ -20,9 +20,8 @@ const ItineraryMap = dynamic(
 );
 
 export function WidgetPlanPanel({ widget }: { widget: FloatingWidgetController }) {
-  const { activePlan, activeDayTab, setActiveDayTab, isCheckingOut,
-    handleCheckoutPlan, addToCart, hoveredCoordinate, hoveredPointId,
-    selectedProduct, closeProductDetail, addSelectedToCart } = widget;
+  const { activePlan, activeDayTab, setActiveDayTab, itemActions, hoveredCoordinate, hoveredPointId,
+    selectedProduct, closeProductDetail, addSelectedToCart, selectedCanAddToCart, bookSelectedNow } = widget;
   if (!activePlan) return null;
   return (
 <div className="grid grid-cols-1 md:grid-cols-2 w-full h-full min-w-0 overflow-hidden divide-x divide-slate-200/70">
@@ -31,7 +30,7 @@ export function WidgetPlanPanel({ widget }: { widget: FloatingWidgetController }
   {selectedProduct ? (
     <div className="h-full overflow-hidden">
       <WidgetProductDetail key={selectedProduct.productId} productId={selectedProduct.productId}
-        summary={selectedProduct.summary} onClose={closeProductDetail} onAddToCart={addSelectedToCart}
+        summary={selectedProduct.summary} onClose={closeProductDetail} onAddToCart={selectedCanAddToCart ? addSelectedToCart : undefined} onBookNow={bookSelectedNow}
         cartAddState={widget.cartAddStates[selectedProduct.productId]} />
     </div>
   ) : (
@@ -67,9 +66,9 @@ export function WidgetPlanPanel({ widget }: { widget: FloatingWidgetController }
         <button
           onClick={() => setActiveDayTab(0)}
           aria-pressed={activeDayTab === 0}
-          className={`min-h-11 px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap focus-visible:outline-2 focus-visible:outline-blue-600 ${
+          className={`min-h-11 px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap focus-visible:outline-2 focus-visible:outline-brand-600 ${
             activeDayTab === 0
-              ? 'bg-blue-600 text-white shadow-xs'
+              ? 'bg-brand-600 text-white shadow-xs'
               : 'text-slate-600 hover:text-slate-900'
           }`}
         >
@@ -80,9 +79,9 @@ export function WidgetPlanPanel({ widget }: { widget: FloatingWidgetController }
             key={d.day}
             onClick={() => setActiveDayTab(d.day)}
             aria-pressed={activeDayTab === d.day}
-            className={`min-h-11 px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap focus-visible:outline-2 focus-visible:outline-blue-600 ${
+            className={`min-h-11 px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap focus-visible:outline-2 focus-visible:outline-brand-600 ${
               activeDayTab === d.day
-                ? 'bg-blue-600 text-white shadow-xs'
+                ? 'bg-brand-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -94,7 +93,7 @@ export function WidgetPlanPanel({ widget }: { widget: FloatingWidgetController }
 
     <WidgetDays widget={widget} />
 
-    {/* Footer của phần lịch trình: Tổng tiền & Nút Thanh Toán */}
+    {/* Footer của phần lịch trình: tổng tiền. Không có thanh toán gộp: mỗi mục đặt bằng nút riêng của nó. */}
     <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-slate-200/70 bg-white p-5">
       <div>
         <span className="block text-xs font-medium text-slate-500">
@@ -118,18 +117,6 @@ export function WidgetPlanPanel({ widget }: { widget: FloatingWidgetController }
           </span>
         )}
       </div>
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={handleCheckoutPlan}
-          disabled={isCheckingOut}
-          aria-busy={isCheckingOut}
-          className="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 active:bg-blue-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:cursor-wait disabled:opacity-60"
-        >
-          <span>{isCheckingOut ? 'Đang thêm vào giỏ…' : 'Thanh toán'}</span>
-          {isCheckingOut ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
-        </button>
-      </div>
     </div>
   </section>
 
@@ -148,7 +135,7 @@ export function WidgetPlanPanel({ widget }: { widget: FloatingWidgetController }
       plan={activePlan}
       activeDay={activeDayTab}
       onSelectDay={setActiveDayTab}
-      onAddToCart={(p) => addToCart(p, 2)}
+      itemActions={(p) => itemActions(p.id)}
       focusedCoordinate={hoveredCoordinate}
       focusedPointId={hoveredPointId}
       className="w-full h-full flex-1"

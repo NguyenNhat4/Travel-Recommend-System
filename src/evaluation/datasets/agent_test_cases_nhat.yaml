@@ -1,0 +1,161 @@
+# Test case agent do người dùng tái hiện (nguồn: src/evaluation/agent/agent-test-cases-nhat.md, PDF "agent case Nhat").
+# Chạy riêng, không gộp vào bộ golden rút gọn:
+#   .venv/bin/python -m src.evaluation.agent.golden --dataset src/evaluation/datasets/agent_test_cases_nhat.yaml \
+#       --report-slug agent-test-cases --trace-project <tên>
+# Khoá `judge` là tiêu chí cho LLM giám khảo, chép từ "Tiêu chí đạt đề xuất" của tài liệu nguồn; check tất định
+# (status, intent, toolCalled...) vẫn là phần chính, giám khảo chỉ chấm phần khó viết thành luật.
+# Ngày trong PDF là ngày lịch sử (hôm đó là 02/10/2026); ở đây đổi sang placeholder giữ đúng khoảng cách tới hôm nay,
+# để case không cũ đi và nằm trong cửa sổ đặt chỗ 30 ngày của catalog.
+
+# TC-01 — Cập nhật ngày qua nhiều lượt chat. Lỗi gốc: T3 đôi khi không ghi nhận ngày và hỏi lại; T4 không đổi ngày,
+# trả lời "Lịch trình đã được hoàn tất." thiếu diễn giải.
+- id: TC-01
+  category: change_date
+  fr: [FR-AGT-01, FR-AGT-05]
+  turns:
+    - message: Lên lịch trình 1 ngày tại Hà Nội, bắt đầu từ ngày {today:iso}, cho 2 người lớn, ngân sách khoảng 1 triệu.
+      expect:
+        httpStatus: 200
+        status: [COMPLETED, FALLBACK]
+        intent: {destination: Hà Nội, days: 1, startDate: "{today:iso}", party.adults: 2}
+    - message: Đổi ngày
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        toolCalled: false
+        intent: {startDate: "{today:iso}"}
+        judge:
+          - Trợ lý hỏi người dùng muốn đổi sang ngày khởi hành nào; không tự chọn ngày mới.
+    - message: Ngày {today+12:vi}
+      expect:
+        httpStatus: 200
+        status: [COMPLETED, FALLBACK]
+        intent: {destination: Hà Nội, days: 1, startDate: "{today+12:iso}", party.adults: 2}
+        forbiddenText: ["Lịch trình đã được hoàn tất"]
+        judge:
+          - Trợ lý ghi nhận ngày người dùng vừa nêu, không hỏi lại ngày.
+          - Câu trả lời cho người dùng biết ngày đi đã đổi sang ngày đó.
+          - Trợ lý trình bày lịch trình, hoặc nói rõ trạng thái xử lý thực tế; không chỉ một câu ngắn kiểu "đã hoàn tất".
+    - message: À nhầm ngày {today+13:vi}
+      expect:
+        httpStatus: 200
+        status: [COMPLETED, FALLBACK]
+        intent: {destination: Hà Nội, days: 1, startDate: "{today+13:iso}", party.adults: 2}
+        forbiddenText: ["Lịch trình đã được hoàn tất"]
+        judge:
+          - Trợ lý cập nhật sang ngày mới người dùng vừa sửa, không hỏi lại ngày.
+          - Câu trả lời cho người dùng biết ngày đi đã đổi sang ngày mới đó.
+          - Trợ lý trình bày lịch trình, hoặc nói rõ trạng thái xử lý thực tế; không chỉ một câu ngắn kiểu "đã hoàn tất".
+
+# TC-02 — Form hiển thị giá trị mặc định nhất quán. Lỗi gốc: lời trả lời gợi ý Đà Nẵng nhưng form chưa chọn Đà Nẵng.
+- id: TC-02
+  category: form_default
+  fr: [FR-AGT-01]
+  turns:
+    - message: Mình muốn một chuyến nghỉ dưỡng, ưu tiên thư giãn và nghỉ ngơi.
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        toolCalled: false
+        missingFieldsInclude: [destination, days]
+    - message: ko biết đi đâu
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        toolCalled: false
+        missingFieldsInclude: [destination]
+        formMatchesAnswer: true
+        judge:
+          - Nếu câu trả lời gợi ý một điểm đến cụ thể thì form điền sẵn (prefilledForm.destination) đúng điểm đến đó.
+          - Câu trả lời nói rõ đây là gợi ý để người dùng chọn hoặc sửa; không nói như thể người dùng đã chọn điểm đến.
+
+# TC-03 — Giải thích khi chưa tìm được lịch trình. Lỗi gốc: câu FALLBACK cố định, không nói nguyên nhân hay bước tiếp
+# theo. Giữ nguyên "1 ngày 2 đêm" của nguồn; không khoá số ngày vì câu này tự mâu thuẫn.
+- id: TC-03
+  category: no_itinerary_explained
+  fr: [FR-AGT-03, NFR-REL-01]
+  turns:
+    - message: Mình muốn một chuyến nghỉ dưỡng, ưu tiên thư giãn và nghỉ ngơi. 1 ngày 2 đêm
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        toolCalled: false
+        missingFieldsInclude: [destination]
+    - message: Đà nẵng
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        toolCalled: false
+        intent: {destination: Đà Nẵng}
+    - message: ngày {today+13:dm}, 2 người lớn
+      expect:
+        httpStatus: 200
+        status: [COMPLETED, FALLBACK, NO_RESULTS]
+        intent: {destination: Đà Nẵng, startDate: "{today+13:iso}", party.adults: 2}
+        # Câu FALLBACK cố định cũ (trước 68b8e44): không nêu lý do. Câu mới nêu lý do thật từ kết quả tool.
+        forbiddenText: ["Chưa thể dựng lịch trình đã kiểm tra", "Lịch trình đã được hoàn tất"]
+        judge:
+          - Nếu status không phải COMPLETED thì câu trả lời giải thích nguyên nhân không dựng được lịch trình, khớp với facts; không bịa nguyên nhân.
+          - Nếu status không phải COMPLETED thì câu trả lời đề xuất bước tiếp theo cụ thể (ví dụ đổi ngày, đổi điều kiện tìm kiếm).
+          - Nếu status không phải COMPLETED thì câu trả lời không tuyên bố đã hoàn tất lịch trình.
+
+# TC-04 — Hủy yêu cầu đổi điểm đến (AC-AGT-01, đề xuất 2026-10-02-hoi-tiep-khi-cau-hoi-bi-cat-ngang, bản rút gọn).
+# Lỗi gốc: "không đổi nữa" bị hiểu thành không muốn đi Hà Nội và hỏi điểm đến mới; sau đó (02/10) lập lịch ngay mà
+# chưa hỏi ngày đi, số người, ngân sách. Mong đợi: xác nhận vẫn đi Hà Nội 3 ngày và hỏi lại ba chi tiết đó (kèm form).
+- id: TC-04
+  category: cancel_change_destination
+  fr: [FR-AGT-01, FR-AGT-05]
+  turns:
+    - message: đi hà nội 3 ngày
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        toolCalled: false
+        intent: {destination: Hà Nội, days: 3}
+        missingFieldsInclude: [startDate, party, budget]
+    - message: đổi điểm đi
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        toolCalled: false
+    - message: không đổi nữa
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        toolCalled: false
+        intent: {destination: Hà Nội, days: 3}
+        missingFieldsInclude: [startDate, party, budget]
+        formMatchesAnswer: true
+        judge:
+          - Trợ lý hiểu "không đổi nữa" là hủy việc đổi điểm đến; không hỏi người dùng muốn đi nơi nào khác.
+          - Trợ lý cho biết còn thiếu ngày khởi hành, số người hoặc ngân sách và mời người dùng bổ sung trên form.
+          - Trợ lý không trình bày lịch trình ở lượt này.
+
+# TC-10 — Không trả lời được ngày đi, số người, ngân sách thì hiện form (AC-AGT-01, đề xuất 2026-10-05-classify-route-clarify:
+# câu không thêm được thông tin được `classify` gắn `vague` và đi thẳng `clarify`).
+# Lỗi gốc 05/10 (LangSmith nhat-10-1, conversation 9841548a): T3 "không biết" lập lịch ngay với ba trường trống, không có form.
+- id: TC-10
+  category: details_form
+  fr: [FR-AGT-01, FR-AGT-03]
+  turns:
+    - message: Đi Đà Nẵng 3 ngày
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        toolCalled: false
+        nodesInclude: [classify, clarify]
+        intent: {destination: Đà Nẵng, days: 3}
+        missingFieldsInclude: [startDate, party, budget]
+    - message: không biết
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        toolCalled: false
+        nodesInclude: [classify, clarify]
+        intent: {destination: Đà Nẵng, days: 3}
+        missingFieldsInclude: [startDate, party, budget]
+        formMatchesAnswer: true
+        judge:
+          - Trợ lý không hỏi lại ngày đi, số người, ngân sách bằng câu chữ y hệt lượt trước; nó mời người dùng chọn hoặc giữ giá trị gợi ý trên form.
+          - Câu trả lời không nói như thể người dùng đã chọn các giá trị gợi ý.
+   

@@ -31,6 +31,8 @@ interface WidgetProductDetailProps {
   onClose: () => void;
   /** Chỉ có khi sản phẩm là mục đặt được của lịch trình (`cartItems`). */
   onAddToCart?: () => void;
+  /** Đặt ngay mục này (đơn nháp một mục); khách sạn và vé máy bay chỉ có nút này. */
+  onBookNow?: () => void;
   cartAddState?: CartAddState;
 }
 
@@ -40,7 +42,7 @@ type LoadState = { status: 'loading' | 'error' } | { status: 'ready'; product: P
  * Panel chi tiết ở cột phải của widget khi bấm thẻ hoặc tên sản phẩm trong lời diễn giải (PRD user-flow.md §4.2).
  * Mọi nội dung lấy từ `GET /products/{productId}`; không có danh sách bình luận vì catalog không có dữ liệu đó.
  */
-export function WidgetProductDetail({ productId, summary, onClose, onAddToCart, cartAddState }: WidgetProductDetailProps) {
+export function WidgetProductDetail({ productId, summary, onClose, onAddToCart, onBookNow, cartAddState }: WidgetProductDetailProps) {
   const { currentPersona } = useTravel();
   const [state, setState] = useState<LoadState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
@@ -99,14 +101,20 @@ export function WidgetProductDetail({ productId, summary, onClose, onAddToCart, 
         <div className="flex flex-col gap-2 xl:flex-row">
           {onAddToCart && (
             <button type="button" onClick={onAddToCart} disabled={Boolean(cartAddState)} aria-busy={cartAddState === 'adding'}
-              className={`inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:cursor-default ${cartAddState === 'added' ? 'bg-emerald-600' : 'bg-blue-600 hover:bg-blue-700'}`}>
+              className={`inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 disabled:cursor-default ${cartAddState === 'added' ? 'bg-emerald-600' : 'bg-brand-600 hover:bg-brand-700'}`}>
               {cartAddState === 'adding' ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
                 : cartAddState === 'added' ? <Check className="h-4 w-4" aria-hidden="true" /> : <ShoppingCart className="h-4 w-4" aria-hidden="true" />}
               <span aria-live="polite">{cartAddState === 'adding' ? 'Đang thêm…' : cartAddState === 'added' ? 'Đã thêm vào giỏ' : 'Thêm vào giỏ'}</span>
             </button>
           )}
+          {onBookNow && (
+            <button type="button" onClick={onBookNow}
+              className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600">
+              Đặt ngay
+            </button>
+          )}
           {!freeToVisit && <a href={`/product/${encodeURIComponent(product.id)}`} target="_blank" rel="noopener noreferrer"
-            className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border-2 border-blue-600 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 transition hover:border-blue-700 hover:bg-blue-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
+            className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border-2 border-brand-600 bg-brand-50 px-4 py-2.5 text-sm font-semibold text-brand-700 transition hover:border-brand-700 hover:bg-brand-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600">
             Xem trang chi tiết<ExternalLink className="h-4 w-4 shrink-0" aria-hidden="true" />
           </a>}
         </div>
@@ -120,7 +128,7 @@ export function WidgetProductDetail({ productId, summary, onClose, onAddToCart, 
         <h2 className="font-sans break-words text-xl font-semibold leading-snug tracking-tight text-slate-900 xl:text-2xl">{product.name}</h2>
         {product.aggregateRating && (
           <p className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
-            <span className="rounded-lg bg-blue-50 px-2 py-1 font-semibold text-blue-800">{product.aggregateRating.score}/5</span>
+            <span className="rounded-lg bg-brand-50 px-2 py-1 font-semibold text-brand-800">{product.aggregateRating.score}/5</span>
             {product.aggregateRating.count > 0 && <span className="text-slate-500"> · {product.aggregateRating.count.toLocaleString('vi-VN')} đánh giá</span>}
           </p>
         )}
@@ -136,7 +144,7 @@ export function WidgetProductDetail({ productId, summary, onClose, onAddToCart, 
           <h3 className="font-sans text-sm font-semibold text-slate-900">Giới thiệu</h3>
           <p className={`whitespace-pre-line text-sm leading-relaxed text-slate-700 ${longDescription && !expanded ? 'line-clamp-6' : ''}`}>{description}</p>
           {longDescription && (
-            <button type="button" onClick={() => setExpanded((open) => !open)} aria-expanded={expanded} className="inline-flex min-h-11 items-center text-sm font-semibold text-blue-700 hover:underline focus-visible:outline-2 focus-visible:outline-blue-600">
+            <button type="button" onClick={() => setExpanded((open) => !open)} aria-expanded={expanded} className="inline-flex min-h-11 items-center text-sm font-semibold text-brand-700 hover:underline focus-visible:outline-2 focus-visible:outline-brand-600">
               {expanded ? 'Thu gọn' : 'Xem thêm'}
             </button>
           )}
@@ -145,12 +153,12 @@ export function WidgetProductDetail({ productId, summary, onClose, onAddToCart, 
 
       <div className="grid gap-5 rounded-xl border border-slate-100 bg-slate-50 p-4">
         <div className="flex items-start gap-2 text-sm">
-          <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" aria-hidden="true" />
+          <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" aria-hidden="true" />
           <div className="min-w-0 break-words">
             <p className="font-semibold text-slate-800">Địa chỉ</p>
             <p className="text-slate-600">{product.address || product.destination}</p>
             {directions && (
-              <a href={directions} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center gap-1.5 font-semibold text-blue-700 hover:underline focus-visible:outline-2 focus-visible:outline-blue-600">
+              <a href={directions} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center gap-1.5 font-semibold text-brand-700 hover:underline focus-visible:outline-2 focus-visible:outline-brand-600">
                 <Navigation className="h-3.5 w-3.5" aria-hidden="true" />Chỉ đường
               </a>
             )}
@@ -158,7 +166,7 @@ export function WidgetProductDetail({ productId, summary, onClose, onAddToCart, 
         </div>
         {openingHours && (
           <div className="flex items-start gap-2 text-sm">
-            <Clock className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" aria-hidden="true" />
+            <Clock className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" aria-hidden="true" />
             <div>
               <p className="font-semibold text-slate-800">Giờ mở cửa</p>
               <p className="text-slate-600">{openingHours}</p>
@@ -178,7 +186,7 @@ function PanelFrame({ onClose, children, footer }: { onClose: () => void; childr
       <div className="flex min-h-20 shrink-0 items-center justify-between gap-3 border-b border-slate-200/70 px-5 py-3 xl:px-6">
         <p className="text-sm font-semibold text-slate-900">Chi tiết dịch vụ</p>
         <button type="button" onClick={onClose} aria-label="Đóng chi tiết"
-          className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-50 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-blue-600">
+          className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-50 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-brand-600">
           <X className="h-5 w-5" aria-hidden="true" />
         </button>
       </div>

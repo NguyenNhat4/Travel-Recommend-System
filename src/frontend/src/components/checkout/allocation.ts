@@ -6,7 +6,8 @@
  */
 import type { ApiCartItem } from '../../services/booking';
 import {
-  MAX_PARTY, fareTypeOn, isInfantOn, isValidNamePart, normalizeName, parseDmy, splitFullName,
+  MAX_PARTY, MAX_ROOMS, fareTypeOn, isInfantOn, isValidNamePart, itemPartyCap, normalizeName, orderPartyCap, parseDmy, roomCapacity,
+  splitFullName,
   type CartFacts, type ContactInput, type DocType, type ItemInput, type Traveler, type TravelerInput, type TravelerKind,
 } from './checkoutRules';
 import { maxOccupancyFromAttributes } from './guestCounts';
@@ -154,8 +155,9 @@ export function defaultParty(items: ApiCartItem[]): { adults: number; children: 
     adults = Math.max(adults, g.adults);
     children = Math.max(children, g.children);
   }
-  adults = Math.min(adults, MAX_PARTY);
-  return { adults, children: Math.min(children, MAX_PARTY - adults) };
+  const cap = orderPartyCap(items.map((i) => ({ taxonomy: i.product.taxonomy, quantity: i.quantity })));
+  adults = Math.min(adults, cap);
+  return { adults, children: Math.min(children, cap - adults) };
 }
 
 /**
@@ -284,13 +286,16 @@ export interface CartState {
  */
 export function desiredCartState(item: ApiCartItem, alloc: Allocation, drafts: TravelerDraft[]): CartState | null {
   const guests = guestsFromAllocation(item, alloc, drafts);
-  if (guests.adults < 1 || guests.adults + guests.children > MAX_PARTY) return null;
+  const total = guests.adults + guests.children;
+  if (guests.adults < 1) return null;
   if (isHotel(item)) {
     const rooms = alloc.rooms.length;
-    const cap = maxOccupancyOf(item);
-    if (rooms < 1 || guests.adults < rooms || (cap && guests.adults + guests.children > cap * rooms)) return null;
+    // 9 khách mỗi phòng, 9 phòng mỗi mục, và không vượt sức chứa của hạng phòng (FR-BKG-08).
+    if (rooms < 1 || rooms > MAX_ROOMS || guests.adults < rooms || total > itemPartyCap('hotel', rooms)
+      || total > roomCapacity(maxOccupancyOf(item)) * rooms) return null;
     return { quantity: rooms, guests };
   }
+  if (total > MAX_PARTY) return null;
   if (PER_PERSON.includes(item.product.taxonomy)) return { quantity: guests.adults + guests.children, guests };
   return { quantity: item.quantity, guests }; // combo: số gói giữ như trong giỏ
 }

@@ -60,8 +60,8 @@ export const TicketPanel: React.FC<TicketPanelProps> = ({ legs, activeLeg, onSel
             return (
               <button key={leg.id} type="button" disabled={leg.unavailable} aria-current={active ? 'step' : undefined}
                 onClick={() => onSelectLeg(leg.id)}
-                className={`flex w-full cursor-pointer flex-col gap-2 rounded-[14px] border-2 bg-white px-4 py-3.5 text-left disabled:cursor-default ${active ? 'border-blue-600' : 'border-transparent'}`}>
-                <span className={`self-start rounded-full px-3 py-0.5 text-xs font-semibold ${active ? 'bg-gradient-to-br from-blue-600 to-blue-800 text-white' : 'bg-slate-100 text-slate-500'}`}>{leg.label}</span>
+                className={`flex w-full cursor-pointer flex-col gap-2 rounded-[14px] border-2 bg-white px-4 py-3.5 text-left disabled:cursor-default ${active ? 'border-brand-600' : 'border-transparent'}`}>
+                <span className={`self-start rounded-full px-3 py-0.5 text-xs font-semibold ${active ? 'bg-gradient-to-br from-brand-600 to-brand-800 text-white' : 'bg-slate-100 text-slate-500'}`}>{leg.label}</span>
                 <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 font-semibold text-slate-900">
                   {leg.fromCity}<ArrowRight className="h-3.5 w-3.5 text-slate-400" aria-hidden="true" />{leg.toCity}
                 </span>
@@ -69,7 +69,7 @@ export const TicketPanel: React.FC<TicketPanelProps> = ({ legs, activeLeg, onSel
                 {pick && (
                   <>
                     <span className="flex flex-wrap items-baseline gap-x-2 tabular-nums">
-                      <b className="text-[17px] font-semibold text-blue-700">{pick.option.depClock} → {pick.option.arrClock}</b>
+                      <b className="text-[17px] font-semibold text-brand-700">{pick.option.depClock} → {pick.option.arrClock}</b>
                       <em className="text-xs not-italic text-slate-500">{dayTag(pick.option.date)}</em>
                     </span>
                     <span className="flex justify-between gap-2 text-xs text-slate-500">
@@ -93,7 +93,7 @@ export const TicketPanel: React.FC<TicketPanelProps> = ({ legs, activeLeg, onSel
             {chosen.length > 0 ? `${guests} khách · giá chính thức ở bước thanh toán` : 'Giá chính thức ở bước thanh toán'}
           </p>
           <button type="button" onClick={onCheckout} disabled={!ready || submitting}
-            className="h-12 w-full cursor-pointer rounded-full bg-gradient-to-br from-blue-600 to-blue-800 font-display text-[17px] text-white shadow-[0_6px_14px_rgba(6,82,207,0.24)] enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:bg-none disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none">
+            className="h-12 w-full cursor-pointer rounded-full bg-gradient-to-br from-brand-600 to-brand-800 font-display text-[17px] text-white shadow-[0_6px_14px_rgba(6,82,207,0.24)] enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:bg-none disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none">
             {submitting ? 'Đang thêm vào giỏ…' : 'Đặt vé'}
           </button>
           <p role="status" className="mt-2.5 min-h-[18px] text-center text-xs text-slate-500">{hint}</p>

@@ -19,6 +19,7 @@ from src.backend.app.domain.booking.party_rules import (
     CartFacts, ContactInput, DocumentsInput, ItemInput, RoomInput, TravelerInput, check_checkout, check_contact,
     check_items, check_legacy, check_party, flight_dates_of, resolve_cart_guests,
 )
+from src.backend.app.domain.booking.party import order_party_cap
 
 CASES = json.loads((Path(__file__).resolve().parents[5] / "shared/contracts/tests/booking-rules-cases.json")
                    .read_text(encoding="utf-8"))
@@ -56,11 +57,14 @@ def _key(item) -> tuple:
 def test_checkout_rules_match_shared_cases(case):
     contact, inputs, cart, details = _build(case)
     earliest = min(c.using_date for c in cart)
+    cap = order_party_cap((c.taxonomy, c.quantity) for c in cart)
     if case["scope"] == "party":
-        travelers, party = check_party(inputs, earliest=earliest, today=TODAY, flight_dates=flight_dates_of(cart))
+        travelers, party = check_party(
+            inputs, earliest=earliest, today=TODAY, flight_dates=flight_dates_of(cart), max_party=cap)
         got = [*check_contact(contact), *party]
     elif case["scope"] == "items":
-        travelers, _ = check_party(inputs, earliest=earliest, today=TODAY, flight_dates=flight_dates_of(cart))
+        travelers, _ = check_party(
+            inputs, earliest=earliest, today=TODAY, flight_dates=flight_dates_of(cart), max_party=cap)
         got = check_items(travelers, details, cart)
     else:
         got = check_checkout(contact, inputs, details, cart, today=TODAY)[1]

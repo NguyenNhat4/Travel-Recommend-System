@@ -16,7 +16,8 @@ H_SHORT_DAYS, H_LONG_DAYS = 30.0, 365.0
 ACTIVE_TRIP_MAX_AGE_DAYS = 14
 DORMANT_AFTER_DAYS = 180
 MAX_REPEAT_PER_TRIP = 3
-W_SHORT, W_POP, W_LONG = 0.6, 0.25, 0.15
+#: Chốt 2026-10-07 (docs/prd/update-archive/2026-10-06-recsys-trong-so-ngan-han-pho-bien.md): 0,6/0,25/0,15 → 0,7/0,15/0,15.
+W_SHORT, W_POP, W_LONG = 0.7, 0.15, 0.15
 MMR_LAMBDA, MAX_PER_VERTICAL = 0.7, 2
 #: Phiên bản luật của engine (không phải tham số): đổi khi hành vi đổi mà không có hằng nào đổi, để bench tách hai bộ số.
 #: Từ 01/10/2026 (nhãn giữ "2026-10-02" để khớp configHash của bench): trip đang mở = chưa kết thúc theo `usingDate`

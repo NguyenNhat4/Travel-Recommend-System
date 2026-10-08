@@ -177,8 +177,10 @@ class DatabaseTests(unittest.TestCase):
             finally:
                 refs = [p['sourceRef'] for p in products]
                 with psycopg.connect(self.url) as conn:
+                    # combo_items parse trên toàn catalog: combo có sẵn trong DB cũng có thể trỏ tới tuyến vừa nạp
                     conn.execute("DELETE FROM catalog.combo_items WHERE combo_product_id IN "
-                                 "(SELECT product_id FROM cdp.products WHERE source_ref = ANY(%s))", (refs,))
+                                 "(SELECT product_id FROM cdp.products WHERE source_ref = ANY(%s)) OR item_product_id IN "
+                                 "(SELECT product_id FROM cdp.products WHERE source_ref = ANY(%s))", (refs, refs))
                     conn.execute("DELETE FROM cdp.products WHERE source_ref = ANY(%s)",
                                  (refs + ['demo:business:' + r for r in refs],))
         self.assertGreaterEqual(counts['simulatedBusinessWritten'], 1)

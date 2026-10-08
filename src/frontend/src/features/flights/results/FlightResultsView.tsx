@@ -25,7 +25,7 @@ type Chosen = { option: FlightOption; fare: FareOption } | null;
 const CARD = 'rounded-[20px] border border-slate-100 bg-white shadow-[0_8px_40px_rgba(15,28,58,0.05)]';
 
 const Notice: React.FC<{ tone?: 'info' | 'warn'; children: React.ReactNode }> = ({ tone = 'info', children }) => (
-  <p role="status" className={`flex items-start gap-2 rounded-xl px-3.5 py-2.5 text-[13px] ${tone === 'warn' ? 'bg-amber-50 text-amber-900' : 'bg-blue-50 text-blue-900'}`}>
+  <p role="status" className={`flex items-start gap-2 rounded-xl px-3.5 py-2.5 text-[13px] ${tone === 'warn' ? 'bg-amber-50 text-amber-900' : 'bg-brand-50 text-brand-900'}`}>
     <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
     <span>{children}</span>
   </p>
@@ -41,7 +41,7 @@ const Notice: React.FC<{ tone?: 'info' | 'warn'; children: React.ReactNode }> = 
  */
 export const FlightResultsView: React.FC<{ search: FlightSearch; notice?: string | null }> = ({ search, notice }) => {
   const { origin, destination, trip } = search;
-  const { addToCart, navigate, showToast, currentPersona, openLoginModal } = useTravel();
+  const { startBooking } = useTravel();
   const today = todayVN();
   const adults = trip.adults ?? 1;
   const kids = trip.children ?? 0;
@@ -127,21 +127,14 @@ export const FlightResultsView: React.FC<{ search: FlightSearch; notice?: string
   const checkout = async () => {
     const picks = [chosen.out, roundTrip ? chosen.ret : null].filter((c): c is NonNullable<Chosen> => c !== null);
     if (picks.length === 0 || submitting) return;
-    if (!currentPersona) {
-      openLoginModal(() => { void checkout(); });
-      return;
-    }
     setSubmitting(true);
-    for (const { option, fare } of picks) {
-      const added = await addToCart(productFromApi(fare.summary), adults + kids, option.date, undefined, { silent: true, guests: { adults, children: kids } });
-      if (!added) {
-        showToast(`Chưa thêm được chuyến ${option.flightNumber} vào giỏ. Vui lòng thử lại.`);
-        setSubmitting(false);
-        return;
-      }
-    }
+    // Vé máy bay đặt trực tiếp: một đơn nháp cho một hoặc hai chặng rồi mở trang thanh toán, không qua giỏ (FR-BKG-01,
+    // FR-BKG-10). Khách chưa đăng nhập được mời đăng nhập trước (startBooking), xong thì tự tạo đơn nháp.
+    await startBooking(picks.map(({ option, fare }) => ({
+      product: productFromApi(fare.summary), quantity: adults + kids, usingDate: option.date,
+      guests: { adults, children: kids },
+    })));
     setSubmitting(false);
-    navigate('/checkout');
   };
 
   const dateNote = pick && !pick.exact && wantedDate
@@ -163,7 +156,7 @@ export const FlightResultsView: React.FC<{ search: FlightSearch; notice?: string
     body = (
       <div className={`${CARD} space-y-3 p-10 text-center`}>
         <h3 className="text-base font-bold text-slate-800">Chưa tải được chuyến bay lúc này.</h3>
-        <button type="button" onClick={() => setRetry((n) => n + 1)} className="cursor-pointer rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700">Thử lại</button>
+        <button type="button" onClick={() => setRetry((n) => n + 1)} className="cursor-pointer rounded-lg bg-brand-600 px-4 py-2 text-xs font-bold text-white hover:bg-brand-700">Thử lại</button>
       </div>
     );
   } else if (outbound.status === 'no-route') {
@@ -177,7 +170,7 @@ export const FlightResultsView: React.FC<{ search: FlightSearch; notice?: string
               {outbound.choices.map((choice) => (
                 <li key={choice.city}>
                   <Link href={buildFlightResultsHref({ origin: choice.city, destination, trip })}
-                    className="inline-flex h-9 items-center rounded-full border border-slate-200 bg-slate-50 px-3.5 text-sm font-semibold text-slate-700 hover:border-blue-300 hover:text-blue-700">
+                    className="inline-flex h-9 items-center rounded-full border border-slate-200 bg-slate-50 px-3.5 text-sm font-semibold text-slate-700 hover:border-brand-300 hover:text-brand-700">
                     {choice.city}{choice.code && <span className="ml-1.5 text-xs font-normal text-slate-500">{choice.code}</span>}
                   </Link>
                 </li>
@@ -194,7 +187,7 @@ export const FlightResultsView: React.FC<{ search: FlightSearch; notice?: string
         <p className="text-sm text-slate-600">
           {step === 'ret' ? 'Không có chuyến chiều về nào cất cánh sau chuyến chiều đi đã chọn.' : 'Các chuyến đã qua hoặc hết mở bán không được hiển thị.'}
         </p>
-        {step === 'ret' && <button type="button" onClick={() => setStep('out')} className="cursor-pointer text-sm font-semibold text-blue-700 hover:underline">Đổi chuyến chiều đi</button>}
+        {step === 'ret' && <button type="button" onClick={() => setStep('out')} className="cursor-pointer text-sm font-semibold text-brand-700 hover:underline">Đổi chuyến chiều đi</button>}
       </div>
     );
   } else {
@@ -218,7 +211,7 @@ export const FlightResultsView: React.FC<{ search: FlightSearch; notice?: string
         ) : (
           <div className={`${CARD} space-y-3 p-10 text-center`}>
             <h3 className="font-display text-lg text-slate-900">Không có chuyến nào khớp bộ lọc</h3>
-            <button type="button" onClick={() => setFilters(noFilters())} className="cursor-pointer rounded-full border border-blue-600 bg-white px-5 py-2 text-sm font-semibold text-blue-700">Đặt lại bộ lọc</button>
+            <button type="button" onClick={() => setFilters(noFilters())} className="cursor-pointer rounded-full border border-brand-600 bg-white px-5 py-2 text-sm font-semibold text-brand-700">Đặt lại bộ lọc</button>
           </div>
         )}
       </>
@@ -238,7 +231,7 @@ export const FlightResultsView: React.FC<{ search: FlightSearch; notice?: string
         <div role="group" aria-label="Loại vé" className="inline-flex gap-0.5 rounded-full border border-slate-200 bg-white p-[3px]">
           {([['round', 'Khứ hồi'], ['one', 'Một chiều']] as const).map(([id, label]) => (
             <button key={id} type="button" aria-pressed={mode === id} onClick={() => setTrip(id)}
-              className={`cursor-pointer rounded-full px-[18px] py-1.5 text-sm font-semibold transition-colors ${mode === id ? 'bg-gradient-to-br from-blue-600 to-blue-800 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>{label}</button>
+              className={`cursor-pointer rounded-full px-[18px] py-1.5 text-sm font-semibold transition-colors ${mode === id ? 'bg-gradient-to-br from-brand-600 to-brand-800 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>{label}</button>
           ))}
         </div>
       </div>

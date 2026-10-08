@@ -27,7 +27,7 @@ Người dùng chốt sáu quyết định (21/09):
 2. **Khách sạn `quantity = 1`** (số phòng, khớp hợp đồng booking). P1 ở **1 đêm** vì `app.booking_items.line_total = unit_price × quantity` (GENERATED) không nhân số đêm.
 3. **Có event `search`** (30% chuyến), `product_id`/`taxonomy`/`event_group_id` NULL và không có câu truy vấn: `cdp.events` không có cột query, `app.search_logs` không seed. Hệ quả đã biết: các dòng này không replay được qua `HttpCdpClient` vì `schemas/cdp-clone.yaml` bắt buộc `searchQuery`.
 4. **Chỉ `purchase` mang `event_group_id`**, giống dữ liệu app ghi thật (`BrowseEvent` không có gid). "3% event bỏ `event_group_id`" vì vậy áp lên purchase.
-5. **Lịch phòng Vinpearl:** tỷ lệ kín = `min(40%, gốc × 1,3)` để mọi phòng nằm trong 25–40%.
+5. **Lịch phòng:** ~~kín 25–40%, Vinpearl `min(40%, gốc × 1,3)`~~ — thay ngày 02/10/2026: hạng phòng không có lịch thật mở đủ 30 đêm và cửa sổ là nguyên `[as_of, as_of + 29]`, không cắt theo ngày nguồn; ngày nguồn đã hỏi và báo hết phòng vẫn là `0`.
 6. **`lifetime_order_count` đúng chữ §4:** chỉ đếm `event_group_id` khác NULL. Vài khách có purchase mất gid (cạnh lộn xộn) nên có 0 đơn nhưng `days_since_last_booking` khác NULL — dữ liệu bẩn có chủ đích.
 
 Diễn giải cho chỗ spec mơ hồ hoặc tự mâu thuẫn:
@@ -47,7 +47,7 @@ Diễn giải cho chỗ spec mơ hồ hoặc tự mâu thuẫn:
 | Chuyến một / nhiều vertical | Một vertical: bốc loại trước (`SINGLE_VERTICAL_WEIGHTS`), rồi điểm đến. Nhiều vertical: luôn có phòng, thêm vé bay (`MULTI_FLIGHT_RATE`) và/hoặc vé (`MULTI_TICKET_RATE`); không có gì thì ép loại có sẵn |
 | Khách new | 0 hoặc 1 chuyến chỉ có product_view (không search), 1–90 ngày trước as_of |
 | Persona | Khuôn cố định: không search, 1 view mỗi chuyến, không add_to_cart ở chuyến cũ (P1 = 12 event, P3 = 6, dưới cap 15 mà `verify.sql` tính cả persona). Persona luôn opt-in, gdpr true, không bị cạnh lộn xộn. P1 lấy phòng Vinpearl Nha Trang phổ biến nhất còn trống đêm as_of + 12 |
-| Lịch phòng | Sinh trực tiếp cho cửa sổ 30 ngày theo `(product_id, as_of)`: số đêm kín mục tiêu rồi xếp cụm 1–4 đêm, giữa hai cụm có ≥ 1 đêm trống. "T6/T7 ×1,5" hiểu là theo từng đêm: cụm chứa T6/T7 được chọn với trọng số ×2 (`ROOM_WEEKEND_CLUSTER_WEIGHT`), đo trên snapshot cho ×1,48–1,49 mỗi đêm. Trạng thái một đêm có thể đổi khi cuộn cửa sổ |
+| Lịch phòng | Từ 02/10/2026: phòng không có lịch thật mở đủ 30 đêm (`"1" × 30`); chỉ ngày nguồn đã hỏi và báo hết phòng là `0`. Lịch mô phỏng kín 25–40% theo cụm (chốt 21/09) đã bỏ |
 | Ngày bay | Ngày trip.com đã liệt kê (`datesSeen`) sớm nhất trong cửa sổ — trùng `sourceAvailableFrom` khi nó nằm trong cửa sổ; không có thì `as_of + crc32(product_id) % 30`. Vé báo giá ngày cố định (`fixedDepartureDate`, gồm khứ hồi): giữ ngày đi thật khi nằm trong cửa sổ, không thì dời như trên (xem §2.1) |
 | Phễu "open 35% → click 8%" | click 8% tính trên delivered, như open |
 | Email Insider | Luôn `<cdp_user_id viết thường>@example.com`, kể cả persona (hợp đồng Insider chỉ yêu cầu khớp `cdpUserId`) |
@@ -56,7 +56,7 @@ Diễn giải cho chỗ spec mơ hồ hoặc tự mâu thuẫn:
 | campaign_id | 12 chiến dịch cách đều từ as_of − 176 tới as_of − 11, id `CMP-yyyymm-NN` với NN là thứ tự trong tháng |
 | Baseline Recall@20 trong report | Ẩn lần đặt cuối của khách có ≥ 2 `event_group_id` **khác NULL**. Đòn bẩy trong phạm vi spec: `MULTI_FLIGHT_RATE`, `MULTI_TICKET_RATE`, `SINGLE_VERTICAL_WEIGHTS` (mục bị ẩn là mục cuối checkout, vé bay / vé tham quan ít sản phẩm nên dễ trúng top-20). Không vặn `TRIPS_PER_STAGE` về phía 1 — làm recall tăng. Tập ẩn chỉ ~270 khách nên chỉ số dao động mạnh giữa các seed; vượt `RECALL_CEILING` thì report ghi **VƯỢT TRẦN** và `seed_histories` in WARNING nhưng không dừng pipeline (DoD #5 đo trên seed demo 42) |
 
-Số đo trên snapshot hiện hành 11.387 dòng, `--seed 42`: 7.145 event (purchase 3.153, product_view 2.179, add_to_cart 1.284, search 529), stage đúng 25/45/20/10, 64% chuyến ≥ 2 vertical, golf 3,2%, chuyến có search 29%, có add_to_cart 41%, Recall@20 = 59,9%. Đợt quét 62 seed trước đó trên snapshot 10.320 dòng cho Recall trung bình 54,0% (sd 3,5 điểm, cao nhất 64,2%), 4/62 seed vượt 60%; event 6.795–7.286. Chưa quét lại toàn bộ 62 seed cho snapshot mới; seed demo 42 vẫn nằm dưới trần 60%.
+Số đo trên snapshot 11.387 dòng, `--as-of 2026-10-02 --seed 42`, `MULTI_TICKET_RATE = 0.35`, lịch phòng mở đủ 30 đêm (đo 02/10/2026): 7.324 event (purchase 3.288, product_view 2.175, add_to_cart 1.332, search 529), stage đúng 25/45/20/10, 64% chuyến ≥ 2 vertical, golf 2,9%, chuyến có search 29%, có add_to_cart 41%, purchase attraction 597 / combo 246, Recall@20 = 59,9%. Quét seed 1–61 cùng snapshot: `MULTI_TICKET_RATE = 0.35` cho Recall trung bình 51,5%, cao nhất 59,9%, 0/61 seed vượt 60%; mức cũ 0.10 cho trung bình 51,4%, cao nhất 60,7%, 1/61 vượt. Đợt quét 62 seed cũ trên snapshot 10.320 dòng (0.10, lịch kín 25–40%): trung bình 54,0%, 4/62 vượt.
 
 ## 1. Đầu vào và bố cục code
 
@@ -103,10 +103,10 @@ Tổng ≈ 450 dòng. `destination` lấy từ danh sách Vinpearl: Nha Trang, P
 1. **Cửa sổ 30 ngày.** Lưu giá trị gốc: `attributes.sourceAvailableFrom/To` = `availableFrom/To` của file (nếu có). Rồi:
    `available_from = max(sourceFrom, as_of)`, `available_to = min(sourceTo, as_of + 29)`; nguồn không có → `[as_of, as_of + 29]`.
    Chuyến bay (`taxonomy = flight`, `level = flight`): `available_from = available_to = ngày bay`; ngày bay = `sourceAvailableFrom` nếu nằm trong cửa sổ, nếu không thì **dời** vào cửa sổ: `as_of + (hash(product_id) % 30)`. Tuyến (`level = route`): min/max của các chuyến con.
-   Vé báo giá ngày cố định (`fixedDepartureDate: true`, gồm khứ hồi; `docs/prd/data-model.md` §3): giữ ngày đi thật khi nằm trong cửa sổ, kể cả khi `priceValidUntil` đã qua; ngày đi ngoài cửa sổ thì dời như trên, dùng `product_id` nhỏ nhất của hành trình (các hạng vé của cùng hành trình dời cùng ngày), ngày đã có hành trình khác cùng chuyến thì lùi sang ngày kế tiếp. Hai chặng dời cùng số ngày, giữ giờ và `stayDays`; `returnDate` và ngày trong `name`/`description` đổi theo; giá và `priceValidUntil` giữ nguyên, không thêm khoá. Chỉ seed làm vậy: job cào (`fresh_catalog_db.apply_window`) giữ ngày thật và khoá vé hết hạn báo giá.
+   Vé báo giá ngày cố định (`fixedDepartureDate: true`, gồm khứ hồi; `docs/prd/data-model.md` §3): giữ ngày đi thật khi nằm trong cửa sổ, kể cả khi `priceValidUntil` đã qua; ngày đi ngoài cửa sổ thì dời như trên, dùng `product_id` nhỏ nhất của hành trình (các hạng vé của cùng hành trình dời cùng ngày), ngày đã có hành trình khác cùng chuyến thì lùi sang ngày kế tiếp. Hai chặng dời cùng số ngày, giữ giờ và `stayDays`; `returnDate` và ngày trong `name`/`description` đổi theo; giá và `priceValidUntil` giữ nguyên, không thêm khoá. Job cào (`fresh_catalog_db.apply_window`) áp cùng quy tắc mỗi lượt (chốt 06/10/2026): vé đã dời giữ ngày mới tới khi ngày đó qua; vé máy bay có giá, chưa gộp luôn `available = true`; vé Thương gia mô phỏng chép lại từ vé gốc.
    Sau khi cắt mà `available_from > available_to` → đặt `available = false`, `available_from = available_to = NULL`.
 2. **Lịch 30 ngày** `attributes.availability = {from: as_of, days: 30, calendar: "…30 ký tự…"}` chỉ cho `level = room` và `taxonomy ∈ {attraction, golf}`:
-   - room: nếu Vinpearl có `pricesByDateQueried` phủ ≥ 85% cửa sổ (ít nhất 26/30 ngày), dùng lịch thật từ `pricesByDate`; ngày đã hỏi có giá = `1`, đã hỏi không có giá = `0`. Dữ liệu hỏi thưa không được coi ngày chưa hỏi là hết phòng mà fallback sang lịch mô phỏng: kín theo cụm 1–4 đêm, tổng 25–40% đêm; thứ Sáu/Bảy xác suất kín ×1.5; `brand = Vinpearl` ×1.3. Ký tự i = ngày `as_of + i`; `1` trống, `0` kín.
+   - room: nếu Vinpearl có `pricesByDateQueried` phủ ≥ 85% cửa sổ (ít nhất 26/30 ngày), dùng lịch thật từ `pricesByDate`; ngày đã hỏi có giá = `1`, đã hỏi không có giá = `0`. Dữ liệu hỏi thưa không được coi ngày chưa hỏi là hết phòng: mở đủ 30 đêm, chỉ ngày đã hỏi mà không có giá là `0` (từ 02/10/2026; trước đó là lịch mô phỏng kín 25–40%). Cửa sổ của hạng phòng là nguyên `[as_of, as_of + 29]`, không cắt theo ngày nguồn. Ký tự i = ngày `as_of + i`; `1` trống, `0` kín.
    - attraction/golf: toàn `1`, trừ blackout: 2–3 ngày ngẫu nhiên cho 15% sản phẩm.
    - flight, property, route, combo: không có khoá này.
    - Job cào mới (`src/data_collection/fresh_catalog_db.py`) áp đúng bước 1–2 cho toàn catalog mỗi lượt, với `as_of` = ngày chạy, thêm hai điểm: phòng có dữ liệu hỏi thưa (ví dụ Trip.com 3 ngày mẫu) dùng lịch mô phỏng nhưng các ngày đã hỏi nằm trong cửa sổ ghi theo kết quả thật (có giá = `1`, hết phòng = `0`); dòng `available = false` (hết bán, giá quá hạn, ngoài cửa sổ) có lịch toàn `0`.
@@ -120,6 +120,19 @@ Idempotent: `INSERT … ON CONFLICT (product_id) DO UPDATE` toàn bộ cột.
 ## 3. Bước 2 — `parse_combos.py`
 
 Chạy sau bước 1 cho mọi `taxonomy = combo`. Thuật toán và bảng từ khoá: `docs/DATABASE_SCHEMA.md` §9. Ghi `catalog.combo_items` với `source = 'description_parse'`, `confidence`, `evidence`. Trước khi ghi: `DELETE WHERE combo_product_id = … AND source = 'description_parse'` (giữ `manual`). Map sang `item_product_id` bằng `pg_trgm` (`CREATE EXTENSION IF NOT EXISTS pg_trgm` trong script, không sửa DDL): `similarity(unaccent(label), unaccent(name)) > 0.45` trong cùng `destination`, ưu tiên `brand = Vinpearl`; hotel map về `hotel_room` con có `roomName` khớp, không có thì về property và `confidence = 0.6`.
+
+Combo có cấu trúc trong `attributes` (từ 02/10/2026) thì không tách từ tên, `source = 'api'`:
+- `comboKind = flight_hotel`: bundle Vinpearl.
+- `comboKind = trip_real_flight_hotel`: combo bay + ở của trip.com.
+  - Thành phần vé máy bay: tuyến tìm theo `fromCode`/`toCode`, số khách lấy `adult` trong `url`, nhãn là phần tên trước " + ".
+  - Thành phần khách sạn: nhãn là `<roomType> tại <hotelName>`, số đêm = `oDate − iDate` trong `url`. Chỉ map theo `hotelName` khi `similarity ≥ 0.7`. `roomType` không khớp phòng nào thì gán về property, `confidence = 0.6`.
+  - Lý do: tách theo tên thì cắt mất điểm đến ở " - " và cắt đôi tên khách sạn ở "&" hoặc ",".
+
+Với mọi combo:
+- Mảnh chỉ nêu địa điểm (tên venue, "Phá đảo 04 khu", "trọn vẹn 03 khu") thành vé vào cửa của venue, nếu combo chưa có attraction nào.
+- "N người/khách" không phải thành phần.
+
+Job cào (`fresh_catalog_db`) không lấy `catalog.combo_items` từ lô vừa cào mà parse lại **mọi combo trong `cdp.products`** (tên + mô tả đang lưu trong DB, map sang sản phẩm của toàn catalog), ở bước bảo trì đầu lượt (`maintain_catalog`, chạy cả khi mọi nguồn lỗi) và sau mỗi lần nạp (`load_into_db`). Combo không cào được vì nguồn chặn hay lượt lỗi vẫn nhận bản parse hiện hành; chỉ combo có thành phần đổi mới bị xoá + ghi lại, nên job index chỉ embed lại các combo đó. Dòng duyệt tay lấy từ `combo_items_manual.jsonl` của snapshot mặc định (ID theo `sourceRef`/`sameAs`/`mergedInto` được quy về dòng đang hiện); dòng trỏ tới sản phẩm không có hoặc sai loại thì bỏ, giữ dòng parse. Xem trước, chỉ đọc: `python src/data_collection/fresh_catalog_db.py combo-items --database-url <dsn>`.
 
 Báo cáo: số combo, số hạng mục, tỷ lệ map được theo `item_kind`, số dòng `confidence < 0.8` (hàng đợi soát tay).
 
@@ -139,6 +152,65 @@ Tất cả ngày tính từ `as_of`. RNG = `numpy.random.default_rng(seed)`.
 **Cạnh lộn xộn (sau khi sinh):** 2% event `purchase` đổi `product_id` thành UUID không tồn tại; 3% event bỏ `event_group_id`; 1% khách có `product_view` ở hai destination khác nhau cùng ngày.
 
 **Profiles suy từ event, không sinh độc lập:** `lifetime_order_count` = số `event_group_id` có purchase; `days_since_last_booking` = `as_of − max(timestamp của purchase)`; `purchased_verticals` = tập `taxonomy` đã mua; `last_destination` = destination của chuyến purchase gần nhất; `lifecycle_stage` gán lại từ số liệu: 0 purchase → new, ≤ 180 ngày → active, 181–365 → dormant, > 365 → churned (phải khớp phân bố mục tiêu ±5%, nếu lệch thì điều chỉnh số chuyến, không sửa tay stage).
+
+### 4.1. Bộ đánh giá RecSys `eval-v2` (05/10/2026, người dùng chốt) — KHÔNG phải seed demo
+
+Mục đích: đủ tín hiệu để đánh giá mọi thuật toán RecSys (CF, chuyến kế tiếp, bỏ giỏ, khách mới) — bộ demo §4 chỉ có ~270 khách quay lại và
+0 lần bỏ giỏ. Bật bằng `--profile eval-v2` (`seed_histories` hoặc CLI `python -m data_collection.seed`); không có cờ thì §4 không đổi
+một byte (kiểm 05/10: cùng sha output trước / sau thay đổi). Tham số ở `config.PROFILES["eval-v2"]`:
+
+| Tham số | Demo §4 | eval-v2 |
+|---|---|---|
+| Số khách | 2.000 | 5.000 (stage 25/45/20/10 giữ nguyên) |
+| Số chuyến / khách (active · dormant · churned) | 1–4 · 1–2 · 1–2, nghiêng mạnh về 1 | cùng khoảng, trọng số `(0,50; 0,25; 0,15; 0,10)` · `(0,70; 0,30)` → **≈ 40 % khách có mua quay lại ≥ 2 chuyến** |
+| Event tối đa / khách | 15 | 40 |
+| Chuyến một vertical | hotel 85 % · vé 10 % · bay 5 % | hotel 50 % · vé 30 % · bay 20 % |
+| product_view / chuyến (1 / 2 / 3) | 90 / 8 / 2 % | 50 / 30 / 20 % |
+| **Bỏ giỏ** | không có | trước mỗi chuyến có mua, xác suất 0,22 chèn một lần bỏ giỏ: product_view → add_to_cart mọi mục, **không purchase, không `event_group_id`** (như app thật); 50 % cùng điểm đến với chuyến mua kế sau, 3–60 ngày trước đó → ≈ 20 % số chuyến |
+
+Persona P1–P4 và 50 tài khoản test giống hệt demo. Số đo (snapshot 30/09, `as_of` 05/10, seed 42): 32.782 event, 3.722 khách có mua, 1.502
+quay lại (40 %), 2.482 add_to_cart không mua.
+
+`db/verify.sql` trên bộ này FAIL theo thiết kế đúng ba dòng quy mô: `profiles = 2000`, `events 6000-8000`, `max events per user <= 15`.
+Nạp vào **database riêng** (đánh giá) hoặc thay lịch sử bằng `--history-only` (dưới); Insider clone không sinh lại ở `--history-only`.
+
+**`--history-only`** (`database.load_history`, sửa 05/10 sau review) — thay lịch sử seed trên database đang dùng (staging) trong một transaction:
+
+| Phần | Xử lý |
+|---|---|
+| `cdp.profiles` khách seed (`VP` + 7 số) | upsert từ file; khách có event được giữ / bị bỏ event được **tính lại từ `cdp.events` trong database** theo luật §4 (số đơn, loại đã mua, điểm đến gần nhất, ngày từ lần mua cuối, vòng đời) |
+| `cdp.events` khách seed / tài khoản test | xoá lịch sử sinh cũ (`timestamp` < ngày seed cũ), **giữ event phát sinh qua web** (≥ ngày seed cũ — seed luôn sinh trước `as_of`; mặc định suy từ đơn seed P1 = `as_of` cũ, ghi đè `--keep-events-since`) và event mua của đơn thật |
+| Persona P1–P4 (người dùng chốt phương án **B1**) | **reset về kịch bản**: xoá cả event phát sinh qua web, chỉ giữ event mua của đơn đặt thật (đơn không bị xoá) — demo lặp lại được |
+| Đơn seed (`app.payments.provider = 'seed'`, P1) | xoá rồi nạp đơn mới; đơn thật giữ nguyên |
+| `app.users` | chỉ thêm persona / test còn thiếu, không đổi mật khẩu đã có |
+| Tài khoản web (`VPW…`), giỏ, hội thoại, catalog, Weaviate, Insider | không đụng (Insider không sinh lại) |
+| Sản phẩm thiếu ở catalog đích | mặc định **dừng** nếu có ≥ 1 event trỏ sản phẩm của catalog nguồn mà đích không có; `--drop-missing-products` bỏ các event đó và tính lại hồ sơ khách bị ảnh hưởng |
+| Sao lưu / khôi phục | `--history-backup FILE` lưu mọi cột của profile + event khách seed và đơn seed trước khi nạp; `--history-restore FILE` đưa về đúng bản đó (xoá 3.000 profile mới nếu không bảng nào trỏ tới). Chỉ dùng ngay sau lần nạp hỏng: event web phát sinh sau khi nạp cũng bị xoá |
+
+Diễn tập 05/10 trên bản sao giống staging (seed demo `as_of` 30/09 + hoạt động web 02–04/10 của P1, `test01`, một tài khoản `VPW…`, 3 sản phẩm bị
+xoá khỏi catalog): lần nạp không cờ dừng (88 event thiếu sản phẩm); có `--drop-missing-products` → event web `test01` + đơn thật P1 + tài khoản
+`VPW…` (event, đơn, giỏ) và mật khẩu đã đổi giữ nguyên, event web của P1 bị reset, 0 profile lệch số đơn với event; khôi phục → hash event,
+profile, đơn seed **trùng 100 %** trạng thái trước khi nạp.
+
+### 4.2. Bổ sung CDP `append-v1` (05/10/2026)
+
+Phục vụ FR-CDP-01/03, FR-REC-01/02. Theo yêu cầu người dùng, làm giàu staging bằng **khách tổng hợp mới**; không dùng
+`--history-only` để thay lịch sử. `python -m data_collection.seed.append_histories` có hai bước:
+
+- `prepare --batch <id> --as-of YYYY-MM-DD --out <thư-mục-mới>`: đọc catalog hiện hành qua `SEED_DATABASE_URL`, lưu catalog và batch có SHA256.
+- `apply --artifact <batch.json> --receipt <file-mới>`: thêm trong một transaction, giữ receipt chứa ID chính xác sau commit.
+
+Phân bố nằm ở `config.PROFILES["append-v1"]`: kế thừa eval-v2, sinh 5.000 khách ngoài bốn persona; không sinh cạnh sản phẩm giả/mất group.
+ID khách và group có tiền tố `VPX:<batch>:`. Không sửa hồ sơ/event cũ, app.users, đơn, catalog hoặc Insider. Persona sinh nội bộ được loại khỏi
+batch. Hồ sơ suy từ event như §4. Batch này không đại diện khách thật; không dùng số đo để tuyên bố chất lượng production.
+
+Cùng batch + nội dung đã nạp → no-op; thiếu sản phẩm, batch một phần hoặc dữ liệu đã đổi → dừng, rollback. Khóa theo batch ngăn hai job
+cùng batch chạy đồng thời. Không có bảng job mới; catalog/batch/receipt là artifact ngoài DB. Lệnh không tự sao lưu toàn DB vì không thay/xóa
+lịch sử cũ. Nếu cần bỏ batch, dùng danh sách ID trong receipt sau kiểm tra các tham chiếu phát sinh; không xóa theo khoảng ID hoặc reset DB.
+
+Giữ nguyên `db/verify.sql`: ba ngưỡng quy mô demo (2.000 hồ sơ, 6.000–8.000 event, ≤15 event/khách) không áp cho dữ liệu đã bổ sung;
+báo cáo vẫn ghi mọi PASS/FAIL thực tế, phân biệt lỗi sẵn có và lỗi mới. Tqanh phải đóng băng snapshot/split mới để đo sau nạp;
+không tái sử dụng split eval-v2 trên database đã gộp thêm dữ liệu.
 
 ## 5. Bước 4 — `seed_app.py`
 

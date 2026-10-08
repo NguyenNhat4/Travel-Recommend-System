@@ -42,8 +42,9 @@ from src.backend.app.application.ports.auth import (
 from src.backend.app.application.ports.cdp_client import CdpUnavailableError
 from src.backend.app.domain.auth.identifiers import new_web_cdp_user_id
 from src.backend.app.domain.auth.password import PasswordPolicy, WeakPasswordError
-from src.backend.app.domain.auth.privacy import hash_email, ip_prefix, short_sid
+from src.backend.app.domain.auth.privacy import ip_prefix, short_sid
 from src.backend.app.domain.auth.session import new_session_id
+from src.backend.app.core.logging_config import hash_user_id, log_event
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +122,7 @@ class RegisterUser:
         # ① Kiểm sớm để không tạo profile rác cho một email chắc chắn trùng.
         #    Không thay được ràng buộc UNIQUE ở bước ④ — vẫn có cuộc đua giữa hai request.
         if await self._users.email_exists(email):
+            log_event(logger, "auth.register", "WARNING", outcome="email_exists")
             raise EmailAlreadyExists(email)
 
         password_hash = self._hasher.hash(password)
@@ -154,7 +156,7 @@ class RegisterUser:
                 logger.warning("auth.orphan_profile cdpUserId=%s reason=email_race", cdp_user_id)
                 raise
 
-            logger.info("auth.register.success userId=%s cdpUserId=%s", user.user_id, user.cdp_user_id)
+            log_event(logger, "auth.register", outcome="ok", user_id_hash=hash_user_id(user.user_id))
             return await self._sessions.issue(user, with_session=with_session)
 
         raise CdpUserIdTaken("không cấp được cdp_user_id sau nhiều lần thử")
@@ -197,7 +199,7 @@ class AuthenticateUser:
             await self._limiter.check("login:email", email)
             await self._limiter.check("login:ip", client_ip)
         except RateLimited:
-            logger.info("auth.login.failure reason=locked emailHash=%s ipPrefix=%s", hash_email(email), prefix)
+            log_event(logger, "auth.login", "WARNING", outcome="locked")
             await self._attempts.record(
                 email=email, user_id=None, ip_prefix=prefix, user_agent_hash=user_agent_hash,
                 succeeded=False, failure_reason="locked",
@@ -230,15 +232,14 @@ class AuthenticateUser:
         )
 
         outcome = await self._sessions.issue(user, with_session=with_session)
-        logger.info(
-            "auth.login.success userId=%s amr=%s sid=%s", user.user_id, ",".join(outcome.amr),
-            short_sid(outcome.session_id),
-        )
+        log_event(logger, "auth.login", outcome="ok", user_id_hash=hash_user_id(user.user_id),
+                  amr=",".join(outcome.amr))
         return outcome
 
     async def _fail(self, email, user_id, client_ip, user_agent_hash, reason) -> None:
         prefix = ip_prefix(client_ip)
-        logger.info("auth.login.failure reason=%s emailHash=%s ipPrefix=%s", reason, hash_email(email), prefix)
+        log_event(logger, "auth.login", "WARNING", outcome="bad_credentials", reason=reason,
+                  user_id_hash=hash_user_id(user_id))
         await self._limiter.register_failure("login:email", email)
         await self._limiter.register_failure("login:ip", client_ip)
         await self._attempts.record(
@@ -283,7 +284,7 @@ class RevokeSession:
 
     async def __call__(self, *, refresh_token: str) -> None:
         await self._refresh.revoke(refresh_token, reason="logout")
-        logger.info("auth.logout")
+        log_event(logger, "auth.session.revoke", outcome="ok")
 
 
 class ChangePassword:
@@ -317,8 +318,34 @@ class ChangePassword:
         revoked = await self._refresh.revoke_all_for_user(
             user.user_id, reason="password_change", except_session_id=principal.session_id
         )
-        logger.info("auth.password.changed userId=%s revokedTokens=%d", user.user_id, revoked)
+        log_event(logger, "auth.password.change", outcome="ok", user_id_hash=hash_user_id(user.user_id),
+                  revoked_tokens=revoked)
         return revoked
+
+
+class UpdateProfile:
+    """Sửa họ tên và số điện thoại của chính người dùng (FR-USR-04). Email không sửa được ở đây.
+
+    Dữ liệu đã được lớp API kiểm dạng (họ tên 1–100 ký tự, số điện thoại 10 chữ số bắt đầu bằng 0). Ở đây chỉ kiểm danh tính:
+    principal phải khớp hàng app.users như `GetCurrentUser`. Số điện thoại không gửi sang CDP, Insider hay Stripe.
+    """
+
+    def __init__(self, *, users: UserRepository):
+        self._users = users
+
+    async def __call__(
+        self, principal: AuthPrincipal, *, full_name: str | None = None, phone: str | None = None, set_phone: bool = False
+    ) -> AuthenticatedUser:
+        user = await self._users.find_by_id(principal.user_id)
+        if user is None or user.cdp_user_id != principal.cdp_user_id:
+            raise TokenInvalid("principal không khớp app.users")
+        updated = await self._users.update_profile(
+            user.user_id, display_name=full_name, phone=phone, set_phone=set_phone)
+        if updated is None:
+            raise TokenInvalid("user không còn tồn tại")
+        logger.info("auth.profile.updated userId=%s name=%s phone=%s", user.user_id,
+                    full_name is not None, "set" if set_phone and phone else "cleared" if set_phone else "unchanged")
+        return updated
 
 
 class GetCurrentUser:

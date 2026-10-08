@@ -1,0 +1,801 @@
+{
+ "sha256": "49727f8568652b17887b6cc3f62a786f5757ce8142cc1278f4de84b487007cf5",
+ "frozenAt": "2026-10-01T06:28:07+00:00",
+ "dbAsOf": "2026-09-24T00:00:00+00:00",
+ "dsnLabel": "localhost:5432/vota",
+ "canonical": {
+  "kind": "temporal",
+  "params": {
+   "T": "2026-07-10T09:13:21+00:00",
+   "quantile": 0.8
+  },
+  "eventsSha256": "cccdf9d01c84e95435eacb24803ad85e6a955ef2d846cacef2fd435dc4557d57",
+  "eventsCount": 6993,
+  "targets": {
+   "VP0000001": {
+    "target": "bfc1d7fa-5a0b-5b49-aa07-78ad02fe5ac9",
+    "targetProductId": "2a5b0069-c63c-540c-a5ce-d706abb61d9d",
+    "eventGroupId": "OFF20260921001",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 9,
+    "trainPurchases": 6
+   },
+   "VP0000026": {
+    "target": "238b675e-5305-5eac-8512-144c77deeda8",
+    "targetProductId": "cdbef1e3-4f4f-5f1a-8ccb-4017ade7b81c",
+    "eventGroupId": "OFF20260815001",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 5,
+    "trainPurchases": 2
+   },
+   "VP0000052": {
+    "target": "48c72169-4e92-5242-8385-bce64debf290",
+    "targetProductId": "775b8892-5ad5-5b07-8a4d-fc76a7548dfd",
+    "eventGroupId": "OFF20260827001",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 4,
+    "trainPurchases": 2
+   },
+   "VP0000058": {
+    "target": "2af6c2c6-8afd-57cf-bde2-555d7d7ee190",
+    "targetProductId": "0b0276d6-8f34-5284-bc79-61240d89aff9",
+    "eventGroupId": "OFF20260820001",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 8,
+    "trainPurchases": 4
+   },
+   "VP0000109": {
+    "target": "41ab18f7-d28f-5970-8451-69e924e9d5cf",
+    "targetProductId": "41ab18f7-d28f-5970-8451-69e924e9d5cf",
+    "eventGroupId": "OFF20260724001",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 8,
+    "trainPurchases": 2
+   },
+   "VP0000122": {
+    "target": "7a423da1-c3b1-5a76-8a56-e22d367e9b61",
+    "targetProductId": "9c7aa728-4c8d-5062-8d7f-5105e1bed1b2",
+    "eventGroupId": "OFF20260710001",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 1,
+    "trainPurchases": 0
+   },
+   "VP0000147": {
+    "target": "5d35f39e-1671-5902-992c-cad98a9f8d6c",
+    "targetProductId": "4b51bfb4-14eb-566d-ba14-50e6c82d9e50",
+    "eventGroupId": "OFF20260815004",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 5,
+    "trainPurchases": 2
+   },
+   "VP0000154": {
+    "target": "c107ab4e-6405-5586-a959-68ea8d66a5a0",
+    "targetProductId": "590d5f10-fe72-5983-8f7e-687243665917",
+    "eventGroupId": "OFF20260711001",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 1,
+    "trainPurchases": 0
+   },
+   "VP0000189": {
+    "target": "bdff1ae8-8b10-541c-bd2e-a703dc27050f",
+    "targetProductId": "305f1a8a-2c49-5b86-83dd-de6052fc6892",
+    "eventGroupId": "OFF20260719002",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 5,
+    "trainPurchases": 2
+   },
+   "VP0000216": {
+    "target": "2cad975f-f781-5375-8da5-b9c34c92c23c",
+    "targetProductId": "2cad975f-f781-5375-8da5-b9c34c92c23c",
+    "eventGroupId": "OFF20260905001",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 5,
+    "trainPurchases": 2
+   },
+   "VP0000256": {
+    "target": "c8d4520d-21a1-562f-a0a2-9a8b7595a8fb",
+    "targetProductId": "8fa4f01b-fc0b-5515-8bfd-8f8f1be6150f",
+    "eventGroupId": "OFF20260829001",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 4,
+    "trainPurchases": 1
+   },
+   "VP0000284": {
+    "target": "6570706e-0684-552d-8123-3bfff6d2f85a",
+    "targetProductId": "51bd7385-3f92-58bd-9308-943ce4187c04",
+    "eventGroupId": "OFF20260803001",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 3,
+    "trainPurchases": 1
+   },
+   "VP0000355": {
+    "target": "cb059c09-4476-5104-9815-c15d83bbd5b5",
+    "targetProductId": "11e3f62e-4484-5003-85d0-7f57876ce5cc",
+    "eventGroupId": "OFF20260908001",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 3,
+    "trainPurchases": 2
+   },
+   "VP0000356": {
+    "target": "02314a49-c64b-5e0c-8e26-4b9f399dae60",
+    "targetProductId": "370bdba3-9040-5d4c-aca1-0cf6b4bd5215",
+    "eventGroupId": "OFF20260711002",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 8,
+    "trainPurchases": 2
+   },
+   "VP0000360": {
+    "target": "5cc9eb10-74a1-57c3-9f7d-199cf2eba641",
+    "targetProductId": "ec5fc88e-222c-5b6a-bea6-efb70dd6ba1d",
+    "eventGroupId": "OFF20260713001",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 4,
+    "trainPurchases": 2
+   },
+   "VP0000400": {
+    "target": "b507cdfd-ee0e-59c3-8175-ad7aab648b16",
+    "targetProductId": "cef1f1a9-999d-5194-b30d-680b6b630c35",
+    "eventGroupId": "OFF20260912001",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 5,
+    "trainPurchases": 2
+   },
+   "VP0000405": {
+    "target": "66cab56f-c6dd-58fc-9723-fd6eca860cdc",
+    "targetProductId": "aa89768a-0455-53ac-ae3d-5a3bd4bb7c06",
+    "eventGroupId": "OFF20260713002",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 7,
+    "trainPurchases": 3
+   },
+   "VP0000415": {
+    "target": "5cc9eb10-74a1-57c3-9f7d-199cf2eba641",
+    "targetProductId": "ec5fc88e-222c-5b6a-bea6-efb70dd6ba1d",
+    "eventGroupId": "OFF20260715001",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 5,
+    "trainPurchases": 2
+   },
+   "VP0000417": {
+    "target": "32cbf300-3521-5bf4-a436-b4f3d45ddf0c",
+    "targetProductId": "48614eec-0dbe-5cde-8c41-b6aa3d6a8265",
+    "eventGroupId": "OFF20260722003",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 4,
+    "trainPurchases": 2
+   },
+   "VP0000423": {
+    "target": "6b260409-444b-5407-bf12-ce7527a5083c",
+    "targetProductId": "45a363c5-2319-52d0-a540-a13445d02861",
+    "eventGroupId": "OFF20260718002",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 5,
+    "trainPurchases": 2
+   },
+   "VP0000427": {
+    "target": "4d9c593c-4241-52df-b7da-384dfc7cd4d0",
+    "targetProductId": "1dc74bcc-3f2d-5fad-a73b-92de7211c99e",
+    "eventGroupId": "OFF20260717001",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 1,
+    "trainPurchases": 0
+   },
+   "VP0000451": {
+    "target": "2b38393b-03bd-57ef-bc21-86ec99f31654",
+    "targetProductId": "4a63d474-67d9-5de7-97cc-3d0a0397d2d8",
+    "eventGroupId": "OFF20260719003",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 3,
+    "trainPurchases": 2
+   },
+   "VP0000479": {
+    "target": "9e114972-1754-56bd-b89c-074505ae86b0",
+    "targetProductId": "dda645cf-2bc8-5031-8f04-8be70ab19f1d",
+    "eventGroupId": "OFF20260720003",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 3,
+    "trainPurchases": 1
+   },
+   "VP0000485": {
+    "target": "abf7de84-fb0a-51a9-9a2f-8512ff214db6",
+    "targetProductId": "1187bf7a-f5fc-54d1-b7fd-01fe86575247",
+    "eventGroupId": "OFF20260717002",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 3,
+    "trainPurchases": 1
+   },
+   "VP0000510": {
+    "target": "9d34d133-ec3b-5328-8ee4-70c3769404fe",
+    "targetProductId": "cfa495ed-00f8-51ed-ae68-4277b7c997ff",
+    "eventGroupId": "OFF20260829002",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 3,
+    "trainPurchases": 2
+   },
+   "VP0000518": {
+    "target": "2908a78a-4288-56e4-b741-6076b1885c83",
+    "targetProductId": "fe80cabc-ad2b-5ffa-ac0f-16d4b77ef500",
+    "eventGroupId": "OFF20260911002",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 8,
+    "trainPurchases": 5
+   },
+   "VP0000590": {
+    "target": "9db4fcfc-476d-5e46-9ca5-253d0b20ecda",
+    "targetProductId": "5caad34d-6263-5427-9e52-e98772ace33c",
+    "eventGroupId": "OFF20260812004",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 7,
+    "trainPurchases": 2
+   },
+   "VP0000607": {
+    "target": "ba972b34-67ef-5129-a397-73c21cf90b43",
+    "targetProductId": "e60e7b2e-5160-51ff-a10c-57cc233bb46a",
+    "eventGroupId": "OFF20260830002",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 3,
+    "trainPurchases": 2
+   },
+   "VP0000613": {
+    "target": "381a4074-647d-5aff-850a-100a0f7888a4",
+    "targetProductId": "b81b472b-901c-5e37-9a7c-db987e64b921",
+    "eventGroupId": "OFF20260909002",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 10,
+    "trainPurchases": 5
+   },
+   "VP0000637": {
+    "target": "279a06fc-f3cd-5bbd-8006-f9a1731915d2",
+    "targetProductId": "be2bdad1-f90f-5740-91a1-a7b7ea543d4d",
+    "eventGroupId": "OFF20260727001",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 3,
+    "trainPurchases": 2
+   },
+   "VP0000648": {
+    "target": "eebfcc53-6149-55dd-b2ac-fbc6fd3e6878",
+    "targetProductId": "fa374e21-6453-55eb-adc5-a99c44da36c6",
+    "eventGroupId": "OFF20260722004",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 2,
+    "trainPurchases": 1
+   },
+   "VP0000656": {
+    "target": "59938b20-83f7-555f-934a-ed27f2b2fa14",
+    "targetProductId": "e60cb31e-ad84-50b7-bdbe-0d5762e47ecc",
+    "eventGroupId": "OFF20260713003",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 2,
+    "trainPurchases": 0
+   },
+   "VP0000659": {
+    "target": "ba5ddb49-7be5-5136-8c8d-83a060ed6354",
+    "targetProductId": "201786c9-86f8-56d2-b6b2-0e4ec73212ff",
+    "eventGroupId": "OFF20260724006",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 7,
+    "trainPurchases": 3
+   },
+   "VP0000665": {
+    "target": "4722c371-1636-5eb5-ad32-de08c251edb1",
+    "targetProductId": "d2a49232-45f0-52fc-b69a-be3b2885b13b",
+    "eventGroupId": "OFF20260812005",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 5,
+    "trainPurchases": 2
+   },
+   "VP0000694": {
+    "target": "a35ecb96-05a1-5ba5-9f5d-8815d5869fb4",
+    "targetProductId": "2a4ff9e7-ad3c-5954-9a64-8a6c5d634f97",
+    "eventGroupId": "OFF20260825001",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 6,
+    "trainPurchases": 2
+   },
+   "VP0000699": {
+    "target": "3e46a86d-3929-5570-a1b8-77c81b76303b",
+    "targetProductId": "47e8c2e3-1b45-576d-acd9-42bf4ecca364",
+    "eventGroupId": "OFF20260910002",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 8,
+    "trainPurchases": 3
+   },
+   "VP0000717": {
+    "target": "0f3dc8c3-86a5-594e-8740-aa4d0570f9c6",
+    "targetProductId": "c3627f8e-62fa-54b9-b869-831bf1878c21",
+    "eventGroupId": "OFF20260807002",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 3,
+    "trainPurchases": 1
+   },
+   "VP0000738": {
+    "target": "e9c731c6-667a-59ab-88b6-d3f774224479",
+    "targetProductId": "0e34ec15-6567-5eda-9d17-ab0ebd8d91bf",
+    "eventGroupId": "OFF20260730002",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 5,
+    "trainPurchases": 3
+   },
+   "VP0000744": {
+    "target": "cadf6f56-e360-5f3b-858c-87e32d251ea8",
+    "targetProductId": "413c85f7-3bdb-5395-87b2-461c564889e0",
+    "eventGroupId": "OFF20260905005",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 5,
+    "trainPurchases": 2
+   },
+   "VP0000764": {
+    "target": "6e6c6319-8148-5de9-b759-8f809f593ecd",
+    "targetProductId": "631b6755-b55c-571f-9335-19eea7e9d95c",
+    "eventGroupId": "OFF20260901003",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 2,
+    "trainPurchases": 1
+   },
+   "VP0000768": {
+    "target": "af205b6a-6ccd-5082-8a37-6ec82a77949f",
+    "targetProductId": "bf364d33-a0e4-538b-a002-60c1610f91d9",
+    "eventGroupId": "OFF20260812006",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 3,
+    "trainPurchases": 2
+   },
+   "VP0000787": {
+    "target": "622dba63-d115-5721-a632-a4b4a7063297",
+    "targetProductId": "5f201f2d-0833-51d5-91ed-009c0badb8c8",
+    "eventGroupId": "OFF20260818001",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 3,
+    "trainPurchases": 2
+   },
+   "VP0000798": {
+    "target": "c3b98361-6d9c-5cdb-b3b5-fe1a9097e3c9",
+    "targetProductId": "44f968d8-5423-5a67-95e4-d9353ec427fb",
+    "eventGroupId": "OFF20260718004",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 3,
+    "trainPurchases": 2
+   },
+   "VP0000850": {
+    "target": "04b35721-983f-56cd-b61e-d652c1150139",
+    "targetProductId": "71283c69-da9b-51d1-97ce-05aa74ee5c45",
+    "eventGroupId": "OFF20260725004",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 3,
+    "trainPurchases": 2
+   },
+   "VP0000851": {
+    "target": "0f3d86f2-9f2e-51ec-abe4-e3967c9bda5c",
+    "targetProductId": "29dcb569-15aa-525e-ad51-bdc20e871af7",
+    "eventGroupId": "OFF20260818002",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 3,
+    "trainPurchases": 2
+   },
+   "VP0000854": {
+    "target": "1dc45d98-faf1-5c6d-892d-5c5af6e3a58d",
+    "targetProductId": "17acdf9a-d450-53e1-9fac-99fa68c32bb3",
+    "eventGroupId": "OFF20260722005",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 3,
+    "trainPurchases": 2
+   },
+   "VP0000923": {
+    "target": "942c5816-527f-5498-b092-8a5a5927755f",
+    "targetProductId": "0407ec41-69fc-50d0-a586-1c0960de78fc",
+    "eventGroupId": "OFF20260827004",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 9,
+    "trainPurchases": 4
+   },
+   "VP0000935": {
+    "target": "4559d61b-213a-5547-83b4-925446faacac",
+    "targetProductId": "1f963b1c-b870-5bdc-94be-1fcf64759d18",
+    "eventGroupId": "OFF20260912003",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 3,
+    "trainPurchases": 2
+   },
+   "VP0000962": {
+    "target": "9871407c-c897-5071-ac8e-2c1c03aa6efb",
+    "targetProductId": "e21f8cee-7020-5819-a805-fff7b1bb6af1",
+    "eventGroupId": "OFF20260818004",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 2,
+    "trainPurchases": 1
+   },
+   "VP0000963": {
+    "target": "7e4494a6-c8c3-577e-85a3-addd953b6b3a",
+    "targetProductId": "a7bdaf3f-27b1-525c-830b-81f028f9a4ea",
+    "eventGroupId": "OFF20260830004",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 2,
+    "trainPurchases": 1
+   },
+   "VP0000991": {
+    "target": "2a261a28-4f92-518a-84b3-99739d765ba5",
+    "targetProductId": "8707b394-30e7-563d-a245-6037829fe8dd",
+    "eventGroupId": "OFF20260713004",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 9,
+    "trainPurchases": 5
+   },
+   "VP0001033": {
+    "target": "6d5570cb-abb1-5e42-a998-cb0554d42a10",
+    "targetProductId": "06c421ca-722d-5462-a45e-641e9767f7df",
+    "eventGroupId": "OFF20260711003",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 1,
+    "trainPurchases": 0
+   },
+   "VP0001043": {
+    "target": "ee1cd84c-743c-58fb-990c-8a0fadb743b1",
+    "targetProductId": "c8146ce6-1367-52ba-93bc-34cf200e34f9",
+    "eventGroupId": "OFF20260714002",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 12,
+    "trainPurchases": 4
+   },
+   "VP0001048": {
+    "target": "6b29aba1-b49e-5698-8796-20a87e58118c",
+    "targetProductId": "ecd1a755-97b7-5f5f-b98e-749a13248a7f",
+    "eventGroupId": "OFF20260803003",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 2,
+    "trainPurchases": 1
+   },
+   "VP0001055": {
+    "target": "3cc8b3ae-e0ee-52f9-b97e-ce1ea820dcab",
+    "targetProductId": "51d359af-afd3-5417-b8af-b6dd8dfef659",
+    "eventGroupId": "OFF20260729002",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 3,
+    "trainPurchases": 2
+   },
+   "VP0001058": {
+    "target": "61b399d9-7d21-5637-a0c8-85b3e90dd7b7",
+    "targetProductId": "95ae4308-e65a-5daa-bf1d-3ec203f7117f",
+    "eventGroupId": "OFF20260906001",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 4,
+    "trainPurchases": 1
+   },
+   "VP0001068": {
+    "target": "e8f223f9-efe7-5b57-a326-98cf86a990b2",
+    "targetProductId": "334f0ff8-e007-5601-9fbc-14eae7507f0b",
+    "eventGroupId": "OFF20260912005",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 8,
+    "trainPurchases": 5
+   },
+   "VP0001073": {
+    "target": "e546ed83-6681-56a3-b0de-07deead0686f",
+    "targetProductId": "711c23e8-0780-51f7-823f-cbbadacd619b",
+    "eventGroupId": "OFF20260814003",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 3,
+    "trainPurchases": 2
+   },
+   "VP0001113": {
+    "target": "58c09daa-e8dc-5d59-a464-fa23105d0543",
+    "targetProductId": "5fb070b3-5246-5109-a618-d26be41d338c",
+    "eventGroupId": "OFF20260907003",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 2,
+    "trainPurchases": 1
+   },
+   "VP0001114": {
+    "target": "5a4bedd2-8dc8-5f52-b639-3a67642885a7",
+    "targetProductId": "fd93ea2d-dbc5-50a5-99f8-5b8fc8f7af83",
+    "eventGroupId": "OFF20260711004",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 1,
+    "trainPurchases": 0
+   },
+   "VP0001123": {
+    "target": "37052c71-b0fe-5446-8bd1-57bfeb4dc8d7",
+    "targetProductId": "0198a0ee-1008-518c-a1cf-abf651051a56",
+    "eventGroupId": "OFF20260721002",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 3,
+    "trainPurchases": 2
+   },
+   "VP0001185": {
+    "target": "a155876d-678a-577a-a9b6-1413261bfc74",
+    "targetProductId": "030728b0-39aa-523e-b1be-d78fd5324c31",
+    "eventGroupId": "OFF20260712001",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 1,
+    "trainPurchases": 0
+   },
+   "VP0001192": {
+    "target": "e009260b-017a-55f8-8c24-d4e362610cd8",
+    "targetProductId": "98a50ee6-9c8e-5151-a71c-082772940eb4",
+    "eventGroupId": "OFF20260810003",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 6,
+    "trainPurchases": 2
+   },
+   "VP0001204": {
+    "target": "9539b7e5-3eee-570e-a55e-3671dc76fb4e",
+    "targetProductId": "d46cc0f8-82b1-5773-a2d8-1e219054cf09",
+    "eventGroupId": "OFF20260807005",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 3,
+    "trainPurchases": 1
+   },
+   "VP0001222": {
+    "target": "25a79b37-2c33-5bb9-b96d-429ff4ae8a63",
+    "targetProductId": "b47f0b7d-a78e-5506-bf6b-91ce65588463",
+    "eventGroupId": "OFF20260713005",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 2,
+    "trainPurchases": 0
+   },
+   "VP0001241": {
+    "target": "e9c731c6-667a-59ab-88b6-d3f774224479",
+    "targetProductId": "a9450a91-0b4d-5b4c-b94e-9c7206b7b0d4",
+    "eventGroupId": "OFF20260717004",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 3,
+    "trainPurchases": 1
+   },
+   "VP0001254": {
+    "target": "ec270996-3fb4-5c21-961a-2836e8a46d93",
+    "targetProductId": "8357c25c-3897-5fbc-b106-581748399cc0",
+    "eventGroupId": "OFF20260910004",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 7,
+    "trainPurchases": 3
+   },
+   "VP0001292": {
+    "target": "c4caa527-db7a-57e4-8579-f5824f3f5a1d",
+    "targetProductId": "9afd819c-4f49-5fe3-830d-d2ed86c4bff8",
+    "eventGroupId": "OFF20260906002",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 4,
+    "trainPurchases": 2
+   },
+   "VP0001392": {
+    "target": "997ce437-42e9-542b-ab6b-47f6f9e50471",
+    "targetProductId": "45a8f5a6-abd6-58e8-bb8e-39fb3a9ea77f",
+    "eventGroupId": "OFF20260913005",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 2,
+    "trainPurchases": 0
+   },
+   "VP0001425": {
+    "target": "2649696d-badf-5fef-a25d-11ee7b138b36",
+    "targetProductId": "58ee64c9-11d3-5dd6-add7-9b1cb134f9c9",
+    "eventGroupId": "OFF20260719009",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 12,
+    "trainPurchases": 5
+   },
+   "VP0001454": {
+    "target": "a6ddd168-7455-51e0-bf23-0c99f5f45dba",
+    "targetProductId": "e37d8be4-5300-5b5d-9afe-2d48c4499ab5",
+    "eventGroupId": "OFF20260807006",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 3,
+    "trainPurchases": 1
+   },
+   "VP0001466": {
+    "target": "be71fa0a-59fd-5eb0-bca8-caf48afe8fd5",
+    "targetProductId": "5dc8c99a-207e-5e87-87dd-fba1c41da89c",
+    "eventGroupId": "OFF20260908003",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 3,
+    "trainPurchases": 1
+   },
+   "VP0001481": {
+    "target": "7bfdc979-c741-5105-b767-45b2b0ca53aa",
+    "targetProductId": "7f08d5e6-f098-59f9-8c81-82df6dd8544c",
+    "eventGroupId": "OFF20260905008",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 6,
+    "trainPurchases": 2
+   },
+   "VP0001501": {
+    "target": "61cf9b81-d0fe-5c0f-bca9-9a29bfc3c942",
+    "targetProductId": "61cf9b81-d0fe-5c0f-bca9-9a29bfc3c942",
+    "eventGroupId": "OFF20260810005",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 2,
+    "trainPurchases": 0
+   },
+   "VP0001531": {
+    "target": "a3e8c852-c16c-5851-8408-317b323b753b",
+    "targetProductId": "a3e8c852-c16c-5851-8408-317b323b753b",
+    "eventGroupId": "OFF20260909003",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 10,
+    "trainPurchases": 5
+   },
+   "VP0001534": {
+    "target": "e546ed83-6681-56a3-b0de-07deead0686f",
+    "targetProductId": "711c23e8-0780-51f7-823f-cbbadacd619b",
+    "eventGroupId": "OFF20260714003",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 1,
+    "trainPurchases": 0
+   },
+   "VP0001541": {
+    "target": "a29eae98-c315-5220-8edd-753691f88d52",
+    "targetProductId": "ce893a38-1eaa-5370-9dcb-4ef45ff91b37",
+    "eventGroupId": "OFF20260802004",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 5,
+    "trainPurchases": 2
+   },
+   "VP0001542": {
+    "target": "e9c731c6-667a-59ab-88b6-d3f774224479",
+    "targetProductId": "0e34ec15-6567-5eda-9d17-ab0ebd8d91bf",
+    "eventGroupId": "OFF20260830007",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 4,
+    "trainPurchases": 2
+   },
+   "VP0001554": {
+    "target": "b3e6c45a-42ab-589f-b246-c4deecd794f9",
+    "targetProductId": "eafbb2bb-7615-5009-a8f0-30fba7361a84",
+    "eventGroupId": "OFF20260711005",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 7,
+    "trainPurchases": 2
+   },
+   "VP0001561": {
+    "target": "e2538316-77a6-537f-8132-cba65566e073",
+    "targetProductId": "e7fb0181-cb8f-5aec-bc18-983ca4966b80",
+    "eventGroupId": "OFF20260717007",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 3,
+    "trainPurchases": 2
+   },
+   "VP0001581": {
+    "target": "e09314fa-f726-5a85-a24c-0a0aad80f5c2",
+    "targetProductId": "cf543570-2589-5063-a7d5-590cfb5892df",
+    "eventGroupId": "OFF20260710004",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 2,
+    "trainPurchases": 0
+   },
+   "VP0001594": {
+    "target": "23f00093-e641-50a8-8a6e-47baafccab2a",
+    "targetProductId": "3b8598a0-9f4a-5198-ad84-7d73b576f120",
+    "eventGroupId": "OFF20260714004",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 3,
+    "trainPurchases": 1
+   },
+   "VP0001686": {
+    "target": "96292b27-f539-5615-b08e-0d8519dc2b16",
+    "targetProductId": "9079ca06-1302-5c3d-a31b-78088e9d89b2",
+    "eventGroupId": "OFF20260825004",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 3,
+    "trainPurchases": 2
+   },
+   "VP0001727": {
+    "target": "10894e25-b9f8-531b-8fe8-2b50fdeffd13",
+    "targetProductId": "1d2bb6d9-6cd1-5be1-bcc6-4f9d8f7bc043",
+    "eventGroupId": "OFF20260910006",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 3,
+    "trainPurchases": 2
+   },
+   "VP0001730": {
+    "target": "5d0ce773-3c16-57a3-8bdd-ff9256b5c37a",
+    "targetProductId": "9f8a22ef-18de-5019-8007-9086ce0c25c7",
+    "eventGroupId": "OFF20260808004",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 4,
+    "trainPurchases": 2
+   },
+   "VP0001749": {
+    "target": "57a3c4eb-8b04-51d1-b4ac-75c3cedf835d",
+    "targetProductId": "03af4497-7fd7-57e2-b123-8b4b18812d53",
+    "eventGroupId": "OFF20260729005",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 2,
+    "trainPurchases": 1
+   },
+   "VP0001752": {
+    "target": "6c3d5801-7954-5531-b42b-4c73727ce4b6",
+    "targetProductId": "a37b0e2e-b9f8-50a8-a4a1-65d010234d8c",
+    "eventGroupId": "OFF20260817008",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 5,
+    "trainPurchases": 2
+   },
+   "VP0001762": {
+    "target": "a4140c0f-0554-5ad7-8db9-3f9c02a06e55",
+    "targetProductId": "605ae44e-730a-5ada-b464-629f30261f4d",
+    "eventGroupId": "OFF20260727004",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 3,
+    "trainPurchases": 2
+   },
+   "VP0001793": {
+    "target": "bdff1ae8-8b10-541c-bd2e-a703dc27050f",
+    "targetProductId": "305f1a8a-2c49-5b86-83dd-de6052fc6892",
+    "eventGroupId": "OFF20260723004",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 2,
+    "trainPurchases": 1
+   },
+   "VP0001794": {
+    "target": "ed4b8678-c03b-538c-b116-0e8bd0193e2d",
+    "targetProductId": "e9e94294-8dae-5017-a24d-20b9d0990fcf",
+    "eventGroupId": "OFF20260820006",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 5,
+    "trainPurchases": 2
+   },
+   "VP0001839": {
+    "target": "a834fe91-6fd5-51b7-a632-f86323104e5d",
+    "targetProductId": "6411ff4a-8ab1-5ab8-ba03-92336ead974f",
+    "eventGroupId": "OFF20260806006",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 3,
+    "trainPurchases": 2
+   },
+   "VP0001867": {
+    "target": "876af1e0-27bf-56cf-877c-de64ebdb1459",
+    "targetProductId": "876af1e0-27bf-56cf-877c-de64ebdb1459",
+    "eventGroupId": "OFF20260710006",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 3,
+    "trainPurchases": 1
+   },
+   "VP0001894": {
+    "target": "e546ed83-6681-56a3-b0de-07deead0686f",
+    "targetProductId": "711c23e8-0780-51f7-823f-cbbadacd619b",
+    "eventGroupId": "OFF20260828003",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 3,
+    "trainPurchases": 2
+   },
+   "VP0001897": {
+    "target": "ee43aec9-a715-5a97-8deb-d4084adaae7b",
+    "targetProductId": "96b10d74-42c4-5ecb-be1d-8235c6e3dab6",
+    "eventGroupId": "OFF20260909004",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 4,
+    "trainPurchases": 1
+   },
+   "VP0001927": {
+    "target": "adeefbc7-22d4-57c5-b9bf-f3cea2ecf0b5",
+    "targetProductId": "3de21b87-05bb-5411-8da6-3cc7e5807fa3",
+    "eventGroupId": "OFF20260722008",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 5,
+    "trainPurchases": 2
+   },
+   "VP0001928": {
+    "target": "864cc136-3bc4-53ca-b458-c6dfa577ce31",
+    "targetProductId": "c4e0ab52-c6e9-56ff-a2ee-60f59a8ea677",
+    "eventGroupId": "OFF20260806007",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 6,
+    "trainPurchases": 4
+   },
+   "VP0001949": {
+    "target": "75ff7aa3-c979-5939-9d8d-4b581e658f5e",
+    "targetProductId": "2fec1958-8a63-5143-a36b-deb47e671f6b",
+    "eventGroupId": "OFF20260807008",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 3,
+    "trainPurchases": 2
+   },
+   "VP0001980": {
+    "target": "0e0b16a2-57f6-5d01-871b-6677fc2465c1",
+    "targetProductId": "eac43a5e-d297-58e1-8c6a-65a424ef0be6",
+    "eventGroupId": "OFF20260821005",
+    "asOf": "2026-07-10T09:13:21+00:00",
+    "trainEvents": 6,
+    "trainPurchases": 2
+   }
+  }
+ }
+}

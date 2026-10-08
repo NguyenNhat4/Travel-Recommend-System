@@ -90,7 +90,7 @@ export const SearchView: React.FC = () => {
           <h1 className="text-xl sm:text-2xl font-black text-slate-900">{headerTitle}</h1>
           {!isFlightMode && (
             <span className="text-xs font-semibold text-slate-500 flex items-center gap-1.5">
-              {overview.loading && <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />}
+              {overview.loading && <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-600" />}
               {overview.data && (
                 <span>Tìm thấy {overview.data.total}{overview.data.totalExact === false ? '+' : ''} dịch vụ phù hợp</span>
               )}
@@ -110,7 +110,7 @@ export const SearchView: React.FC = () => {
                   role="tab"
                   aria-selected={selected}
                   onClick={() => goTab(tab)}
-                  className={`px-3 py-2 text-xs font-bold whitespace-nowrap border-b-2 transition-all ${selected ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-600 hover:text-slate-900'}`}
+                  className={`px-3 py-2 text-xs font-bold whitespace-nowrap border-b-2 transition-all ${selected ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-600 hover:text-slate-900'}`}
                 >
                   {label}{count !== undefined ? ` (${count})` : ''}
                 </button>
@@ -146,7 +146,7 @@ export const SearchView: React.FC = () => {
             <h3 className="text-base font-bold text-slate-800">Chưa tìm thấy dịch vụ nào cho &ldquo;{queryParam}&rdquo;</h3>
             <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">Hãy thử thay đổi từ khóa hoặc nhờ Trợ lý AI gợi ý lịch trình.</p>
           </div>
-          <button onClick={askAssistant} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg transition-colors">
+          <button onClick={askAssistant} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-lg transition-colors">
             Nhờ Trợ lý AI gợi ý
           </button>
         </div>
@@ -155,7 +155,7 @@ export const SearchView: React.FC = () => {
           {destination && (
             <div className="flex items-center gap-1.5 text-xs">
               <span className="text-slate-400 font-medium">Đang lọc:</span>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 font-medium border border-blue-200">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-brand-50 text-brand-700 font-medium border border-brand-200">
                 {destination}
                 <button onClick={clearDestination} aria-label={`Bỏ lọc ${destination}`}>×</button>
               </span>

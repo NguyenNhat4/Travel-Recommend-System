@@ -14,7 +14,7 @@ Hai điểm bám theo quy tắc repo:
 
 `PostgresCatalogReader` là phần dùng chung cho job index Weaviate và adapter runtime. `PostgresVectorStore`
 được giữ làm fallback/test offline (quét vector trong RAM qua `NumpyVectorSearch`); composition root mặc
-định dùng Cohere + Weaviate theo PRD.
+định dùng e5-small + Weaviate theo PRD.
 """
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from src.backend.app.application.ports import EmbedderPort, UnitIndex, VectorSearchPort
-from src.backend.app.domain.catalog import Product, build_text
+from src.backend.app.domain.catalog import Product, UnitAttributes, build_text
 from src.backend.app.infrastructure.vectors.numpy_search import NumpyVectorSearch
 
 #: Đọc nguyên 13 trường CDP + ba cờ vai trò của view. `attributes` là JSONB nên psycopg trả dict sẵn.
@@ -41,12 +41,27 @@ JOIN   catalog.product_meta m USING (product_id)
 
 logger = logging.getLogger("uvicorn.error")
 
-#: Thành phần combo cho ô ROLLUP của text builder ("Gồm: vé VinWonders; buffet…"); chỉ cần thứ tự và nhãn.
+#: Thành phần combo: thứ tự + nhãn cho ô ROLLUP của text builder ("Gồm: vé VinWonders; buffet…"), `item_kind` cho cờ
+#: `includesFlight` / `includesHotel` của `UnitAttributes` (cột có sẵn trong DDL; text builder không đọc nó → text không đổi).
 _COMBO_QUERY = """
-SELECT combo_product_id, position, label
+SELECT combo_product_id, position, label, item_kind
 FROM   catalog.combo_items
 ORDER  BY combo_product_id, position
 """
+
+#: Mã băm của đúng hai câu trên, tính phía DB và trả một dòng. Lần nạp lại so mã này để bỏ qua việc kéo cả
+#: catalog (~51 MB) khi không có gì đổi; dòng nào đổi một cột backend đọc thì mã đổi.
+_FINGERPRINT_QUERY = f"""
+SELECT coalesce((SELECT md5(string_agg(md5(t::text), '' ORDER BY t.product_id)) FROM ({_QUERY}) t), '')
+       || ':' ||
+       coalesce((SELECT md5(string_agg(md5(c::text), '' ORDER BY c.combo_product_id, c.position))
+                 FROM ({_COMBO_QUERY}) c), '')
+"""
+
+
+def combo_kinds_of(combo_items: dict[str, list[dict]]) -> dict[str, list[str]]:
+    """combo product_id → `item_kind` các thành phần (theo position) — đầu vào cờ combo của `UnitAttributes.build`."""
+    return {pid: [str(it["item_kind"]) for it in items if it.get("item_kind")] for pid, items in combo_items.items()}
 
 
 @dataclass
@@ -60,6 +75,7 @@ class CatalogUnits:
     available: np.ndarray
     recommendable: np.ndarray
     parent_of: dict[str, str]
+    attrs: UnitAttributes | None = None   # thuộc tính lọc Phase A, dựng kèm phòng/chuyến con
 
     def to_index(self, model_version: str) -> UnitIndex:
         return UnitIndex(
@@ -70,6 +86,7 @@ class CatalogUnits:
             recommendable=self.recommendable,
             parent_of=self.parent_of,
             model_version=model_version,
+            attrs=self.attrs,
         )
 
 
@@ -78,6 +95,18 @@ class PostgresCatalogReader:
 
     def __init__(self, database_url: str):
         self.database_url = database_url
+        self._cached: tuple[str, CatalogUnits] | None = None  # (mã băm, catalog) của lần kéo gần nhất
+
+    def _fingerprint(self) -> str | None:
+        """Mã băm catalog hiện tại; lỗi thì trả None để lần nạp quay về kéo đầy đủ."""
+        import psycopg
+
+        try:
+            with psycopg.connect(self.database_url, connect_timeout=10) as conn:
+                return conn.execute(_FINGERPRINT_QUERY).fetchone()[0]
+        except Exception as exc:  # noqa: BLE001 — chỉ là bước tối ưu, không được làm hỏng lần nạp
+            logger.warning("recsys.catalog.fingerprint.failed error=%s; kéo đầy đủ", exc)
+            return None
 
     def _rows(self) -> list[dict]:
         import psycopg
@@ -101,6 +130,19 @@ class PostgresCatalogReader:
         return items
 
     def load(self) -> CatalogUnits:
+        """Catalog hiện tại. Mã băm trùng lần trước thì trả lại bản đang giữ, không kéo lại từ DB.
+
+        Lấy mã băm **trước** khi kéo: catalog đổi giữa hai bước thì lần sau mã khác và kéo lại, không bỏ sót.
+        """
+        fingerprint = self._fingerprint()
+        if fingerprint is not None and self._cached is not None and self._cached[0] == fingerprint:
+            logger.info("recsys.catalog.unchanged fingerprint=%s; dùng lại bản trong bộ nhớ", fingerprint[:12])
+            return self._cached[1]
+        catalog = self._load_full()
+        self._cached = (fingerprint, catalog) if fingerprint is not None else None
+        return catalog
+
+    def _load_full(self) -> CatalogUnits:
         logger.info("startup.recsys.catalog.query.start")
         rows = self._rows()
         logger.info("startup.recsys.catalog.query.ready products=%d", len(rows))
@@ -160,6 +202,7 @@ class PostgresCatalogReader:
             available=np.array([p.available for p in units]),
             recommendable=np.array([bool(meta[p.product_id]["is_recommendable"]) for p in units]),
             parent_of=parent_of,
+            attrs=UnitAttributes.build(units, children, combo_kinds_of(combo_items)),
         )
 
 

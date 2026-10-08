@@ -11,7 +11,8 @@ resource "google_monitoring_notification_channel" "staging_email" {
 resource "google_logging_metric" "staging_error_logs" {
   name        = "${var.name_prefix}_error_logs"
   description = "Error-level logs emitted by staging Compute Engine workloads."
-  filter      = "resource.type=\"gce_instance\" AND severity>=ERROR"
+  # Loại log của chính Ops Agent (lỗi TLS/ioctl của fluent-bit): chỉ đếm lỗi của app và hệ thống.
+  filter = "resource.type=\"gce_instance\" AND severity>=ERROR AND NOT logName:\"ops-agent\""
 
   metric_descriptor {
     metric_kind = "DELTA"
@@ -22,8 +23,8 @@ resource "google_logging_metric" "staging_error_logs" {
 
 resource "google_logging_metric" "staging_http_requests_total" {
   name        = "${var.name_prefix}_http_requests_total"
-  description = "Backend HTTP access requests observed in Uvicorn access logs."
-  filter      = "resource.type=\"gce_instance\" AND resource.labels.instance_id=\"${data.google_compute_instance.app.instance_id}\" AND jsonPayload.log=~\"HTTP/1.1.* [0-9][0-9][0-9]\""
+  description = "Backend HTTP requests (event http.request; health check bị loại vì backend log ở DEBUG)."
+  filter      = "resource.type=\"gce_instance\" AND resource.labels.instance_id=\"${data.google_compute_instance.app.instance_id}\" AND jsonPayload.service=\"backend\" AND jsonPayload.event=\"http.request\" AND NOT jsonPayload.route:\"/health/\""
 
   metric_descriptor {
     metric_kind = "DELTA"
@@ -34,8 +35,8 @@ resource "google_logging_metric" "staging_http_requests_total" {
 
 resource "google_logging_metric" "staging_http_requests_5xx" {
   name        = "${var.name_prefix}_http_requests_5xx"
-  description = "Backend HTTP 5xx responses observed in Uvicorn access logs."
-  filter      = "resource.type=\"gce_instance\" AND resource.labels.instance_id=\"${data.google_compute_instance.app.instance_id}\" AND jsonPayload.log=~\"HTTP/1.1.* 5[0-9][0-9]\""
+  description = "Backend HTTP 5xx responses (event http.request, status >= 500)."
+  filter      = "resource.type=\"gce_instance\" AND resource.labels.instance_id=\"${data.google_compute_instance.app.instance_id}\" AND jsonPayload.service=\"backend\" AND jsonPayload.event=\"http.request\" AND jsonPayload.status>=500 AND NOT jsonPayload.route:\"/health/\""
 
   metric_descriptor {
     metric_kind = "DELTA"
@@ -47,7 +48,8 @@ resource "google_logging_metric" "staging_http_requests_5xx" {
 resource "google_logging_metric" "staging_crawler_warning" {
   name        = "${var.name_prefix}_crawler_warning"
   description = "Crawler runs that completed with the known partial-result exit code 3."
-  filter      = "resource.type=\"gce_instance\" AND jsonPayload.message:\"fresh-catalog.exit=3\""
+  # Một lần mỗi lượt: event run.end của crawler (chỉ từ log container, không từ file job log nên không đếm đôi).
+  filter = "resource.type=\"gce_instance\" AND jsonPayload.service=\"crawler\" AND jsonPayload.event=\"run.end\" AND jsonPayload.exit_code=3"
 
   metric_descriptor {
     metric_kind = "DELTA"
@@ -270,11 +272,11 @@ resource "google_monitoring_alert_policy" "staging_vm_cpu" {
   user_labels           = local.common_labels
 
   conditions {
-    display_name = "App VM CPU above 90 percent"
+    display_name = "App VM CPU above 190 percent of one vCPU (95 percent of 2 vCPU)"
     condition_threshold {
       filter          = "resource.type=\"gce_instance\" metric.type=\"compute.googleapis.com/instance/cpu/utilization\" resource.labels.instance_id=\"${data.google_compute_instance.app.instance_id}\""
       comparison      = "COMPARISON_GT"
-      threshold_value = 0.9
+      threshold_value = 0.95
       duration        = "300s"
 
       aggregations {
@@ -289,7 +291,7 @@ resource "google_monitoring_alert_policy" "staging_vm_cpu" {
   }
 
   documentation {
-    content   = "App VM (${var.app_vm_name}) CPU has remained above 90 percent for five minutes."
+    content   = "App VM (${var.app_vm_name}) has 2 vCPU; CPU has stayed above 95 percent (190 percent of one vCPU) for five minutes."
     mime_type = "text/markdown"
   }
 }
@@ -680,399 +682,4 @@ resource "google_monitoring_alert_policy" "staging_docker_watcher_absent" {
     content   = "The Docker lifecycle watcher has not emitted a heartbeat for five minutes. Check systemd and Ops Agent on the VM."
     mime_type = "text/markdown"
   }
-}
-
-resource "google_monitoring_dashboard" "staging" {
-  dashboard_json = jsonencode({
-    displayName = "${var.name_prefix} infrastructure"
-    labels      = local.common_labels
-    gridLayout = {
-      columns = "2"
-      widgets = [
-        {
-          title = "App VM CPU utilization"
-          xyChart = {
-            dataSets = [{
-              plotType   = "LINE"
-              targetAxis = "Y1"
-              timeSeriesQuery = {
-                timeSeriesFilter = {
-                  filter = "resource.type=\"gce_instance\" metric.type=\"compute.googleapis.com/instance/cpu/utilization\" resource.labels.instance_id=\"${data.google_compute_instance.app.instance_id}\""
-                  aggregation = {
-                    alignmentPeriod    = "60s"
-                    perSeriesAligner   = "ALIGN_MEAN"
-                    crossSeriesReducer = "REDUCE_MEAN"
-                  }
-                }
-              }
-            }]
-          }
-        },
-        {
-          title = "App VM memory utilization"
-          xyChart = {
-            dataSets = [{
-              plotType   = "LINE"
-              targetAxis = "Y1"
-              timeSeriesQuery = {
-                timeSeriesFilter = {
-                  filter = "resource.type=\"gce_instance\" metric.type=\"agent.googleapis.com/memory/percent_used\" metric.labels.state=\"used\" resource.labels.instance_id=\"${data.google_compute_instance.app.instance_id}\""
-                  aggregation = {
-                    alignmentPeriod    = "60s"
-                    perSeriesAligner   = "ALIGN_MEAN"
-                    crossSeriesReducer = "REDUCE_MEAN"
-                  }
-                }
-              }
-            }]
-          }
-        },
-        {
-          title = "App VM disk utilization"
-          xyChart = {
-            dataSets = [{
-              plotType   = "LINE"
-              targetAxis = "Y1"
-              timeSeriesQuery = {
-                timeSeriesFilter = {
-                  filter = "resource.type=\"gce_instance\" metric.type=\"agent.googleapis.com/disk/percent_used\" metric.labels.state=\"used\" resource.labels.instance_id=\"${data.google_compute_instance.app.instance_id}\""
-                  aggregation = {
-                    alignmentPeriod    = "60s"
-                    perSeriesAligner   = "ALIGN_MEAN"
-                    crossSeriesReducer = "REDUCE_MAX"
-                  }
-                }
-              }
-            }]
-          }
-        },
-        {
-          title = "Backend container logs"
-          logsPanel = {
-            filter        = "resource.type=\"gce_instance\" AND resource.labels.instance_id=\"${data.google_compute_instance.app.instance_id}\" AND jsonPayload.container_name=\"vota-backend\""
-            resourceNames = ["projects/${var.project_id}"]
-          }
-        },
-        {
-          title = "Frontend container logs"
-          logsPanel = {
-            filter        = "resource.type=\"gce_instance\" AND resource.labels.instance_id=\"${data.google_compute_instance.app.instance_id}\" AND jsonPayload.container_name=\"vota-frontend\""
-            resourceNames = ["projects/${var.project_id}"]
-          }
-        },
-        {
-          title = "Crawler container logs"
-          logsPanel = {
-            filter        = "resource.type=\"gce_instance\" AND resource.labels.instance_id=\"${data.google_compute_instance.app.instance_id}\" AND (jsonPayload.container_name=\"vota-fresh-catalog\" OR jsonPayload.message:\"fresh-catalog.\")"
-            resourceNames = ["projects/${var.project_id}"]
-          }
-        },
-        {
-          title = "Redis container logs"
-          logsPanel = {
-            filter        = "resource.type=\"gce_instance\" AND resource.labels.instance_id=\"${data.google_compute_instance.app.instance_id}\" AND jsonPayload.container_name=\"vota-redis\""
-            resourceNames = ["projects/${var.project_id}"]
-          }
-        },
-        {
-          title = "Weaviate container logs"
-          logsPanel = {
-            filter        = "resource.type=\"gce_instance\" AND resource.labels.instance_id=\"${data.google_compute_instance.app.instance_id}\" AND jsonPayload.container_name=\"vota-weaviate\""
-            resourceNames = ["projects/${var.project_id}"]
-          }
-        },
-        {
-          title = "Container disk usage (writable + logs + volumes)"
-          xyChart = {
-            dataSets = [{
-              plotType   = "LINE"
-              targetAxis = "Y1"
-              timeSeriesQuery = {
-                unitOverride = "By"
-                timeSeriesFilter = {
-                  filter = "resource.type=\"gce_instance\" metric.type=\"logging.googleapis.com/user/${google_logging_metric.staging_container_disk_bytes.name}\""
-                  aggregation = {
-                    alignmentPeriod    = "300s"
-                    perSeriesAligner   = "ALIGN_PERCENTILE_99"
-                    crossSeriesReducer = "REDUCE_MAX"
-                    groupByFields      = ["metric.label.container_name"]
-                  }
-                }
-              }
-            }]
-          }
-        },
-        {
-          title = "Container disk usage (exact samples)"
-          logsPanel = {
-            filter        = "resource.type=\"gce_instance\" AND resource.labels.instance_id=\"${data.google_compute_instance.app.instance_id}\" AND jsonPayload.event=\"container_disk\""
-            resourceNames = ["projects/${var.project_id}"]
-          }
-        },
-        {
-          title = "Readiness check"
-          scorecard = {
-            timeSeriesQuery = {
-              timeSeriesFilter = {
-                filter = "metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" resource.type=\"uptime_url\""
-                aggregation = {
-                  alignmentPeriod    = "300s"
-                  perSeriesAligner   = "ALIGN_FRACTION_TRUE"
-                  crossSeriesReducer = "REDUCE_MEAN"
-                }
-              }
-            }
-            gaugeView = {
-              upperBound = 1
-            }
-          }
-        },
-        {
-          title = "Availability SLO compliance"
-          scorecard = {
-            timeSeriesQuery = {
-              timeSeriesFilter = {
-                filter = "select_slo_compliance(\"${google_monitoring_slo.staging_availability.name}\")"
-              }
-            }
-            gaugeView = {
-              lowerBound = 0
-              upperBound = 1
-            }
-          }
-        },
-        {
-          title = "Availability SLO error budget"
-          scorecard = {
-            timeSeriesQuery = {
-              timeSeriesFilter = {
-                filter = "select_slo_budget(\"${google_monitoring_slo.staging_availability.name}\")"
-              }
-            }
-            gaugeView = {
-              lowerBound = 0
-              upperBound = 1
-            }
-          }
-        },
-        {
-          title = "Error-rate SLO compliance"
-          scorecard = {
-            timeSeriesQuery = {
-              timeSeriesFilter = {
-                filter = "select_slo_compliance(\"${google_monitoring_slo.staging_error_rate.name}\")"
-              }
-            }
-            gaugeView = {
-              lowerBound = 0
-              upperBound = 1
-            }
-          }
-        },
-        {
-          title = "Error-rate SLO error budget"
-          scorecard = {
-            timeSeriesQuery = {
-              timeSeriesFilter = {
-                filter = "select_slo_budget(\"${google_monitoring_slo.staging_error_rate.name}\")"
-              }
-            }
-            gaugeView = {
-              lowerBound = 0
-              upperBound = 1
-            }
-          }
-        },
-        {
-          title = "Latency SLO compliance"
-          scorecard = {
-            timeSeriesQuery = {
-              timeSeriesFilter = {
-                filter = "select_slo_compliance(\"${google_monitoring_slo.staging_latency.name}\")"
-              }
-            }
-            gaugeView = {
-              lowerBound = 0
-              upperBound = 1
-            }
-          }
-        },
-        {
-          title = "Latency SLO error budget"
-          scorecard = {
-            timeSeriesQuery = {
-              timeSeriesFilter = {
-                filter = "select_slo_budget(\"${google_monitoring_slo.staging_latency.name}\")"
-              }
-            }
-            gaugeView = {
-              lowerBound = 0
-              upperBound = 1
-            }
-          }
-        },
-        {
-          title = "DB VM CPU utilization"
-          xyChart = {
-            dataSets = [{
-              plotType   = "LINE"
-              targetAxis = "Y1"
-              timeSeriesQuery = {
-                timeSeriesFilter = {
-                  filter = "resource.type=\"gce_instance\" metric.type=\"compute.googleapis.com/instance/cpu/utilization\" resource.labels.instance_id=\"${data.google_compute_instance.db.instance_id}\""
-                  aggregation = {
-                    alignmentPeriod    = "60s"
-                    perSeriesAligner   = "ALIGN_MEAN"
-                    crossSeriesReducer = "REDUCE_MEAN"
-                  }
-                }
-              }
-            }]
-          }
-        },
-        {
-          title = "DB VM memory utilization"
-          xyChart = {
-            dataSets = [{
-              plotType   = "LINE"
-              targetAxis = "Y1"
-              timeSeriesQuery = {
-                timeSeriesFilter = {
-                  filter = "resource.type=\"gce_instance\" metric.type=\"agent.googleapis.com/memory/percent_used\" resource.labels.instance_id=\"${data.google_compute_instance.db.instance_id}\" metric.labels.state=\"used\""
-                  aggregation = {
-                    alignmentPeriod    = "60s"
-                    perSeriesAligner   = "ALIGN_MEAN"
-                    crossSeriesReducer = "REDUCE_MEAN"
-                  }
-                }
-              }
-            }]
-          }
-        },
-        {
-          title = "DB VM disk utilization"
-          xyChart = {
-            dataSets = [{
-              plotType   = "LINE"
-              targetAxis = "Y1"
-              timeSeriesQuery = {
-                timeSeriesFilter = {
-                  filter = "resource.type=\"gce_instance\" metric.type=\"agent.googleapis.com/disk/percent_used\" resource.labels.instance_id=\"${data.google_compute_instance.db.instance_id}\""
-                  aggregation = {
-                    alignmentPeriod    = "60s"
-                    perSeriesAligner   = "ALIGN_MEAN"
-                    crossSeriesReducer = "REDUCE_MEAN"
-                  }
-                }
-              }
-            }]
-          }
-        },
-        {
-          title = "DB VM uptime heartbeat"
-          scorecard = {
-            timeSeriesQuery = {
-              timeSeriesFilter = {
-                filter = "resource.type=\"gce_instance\" metric.type=\"compute.googleapis.com/instance/uptime\" resource.labels.instance_id=\"${data.google_compute_instance.db.instance_id}\""
-                aggregation = {
-                  alignmentPeriod    = "60s"
-                  perSeriesAligner   = "ALIGN_DELTA"
-                  crossSeriesReducer = "REDUCE_SUM"
-                }
-              }
-            }
-          }
-        },
-        {
-          title = "Docker watcher heartbeat"
-          xyChart = {
-            dataSets = [{
-              plotType   = "LINE"
-              targetAxis = "Y1"
-              timeSeriesQuery = {
-                timeSeriesFilter = {
-                  filter = "resource.type=\"gce_instance\" metric.type=\"logging.googleapis.com/user/${google_logging_metric.staging_docker_watcher_heartbeat.name}\""
-                  aggregation = {
-                    alignmentPeriod    = "60s"
-                    perSeriesAligner   = "ALIGN_RATE"
-                    crossSeriesReducer = "REDUCE_SUM"
-                  }
-                }
-              }
-            }]
-          }
-        },
-        {
-          title = "Crawler warnings and failures"
-          xyChart = {
-            dataSets = [
-              {
-                plotType   = "LINE"
-                targetAxis = "Y1"
-                timeSeriesQuery = {
-                  timeSeriesFilter = {
-                    filter = "resource.type=\"gce_instance\" metric.type=\"logging.googleapis.com/user/${google_logging_metric.staging_crawler_warning.name}\""
-                    aggregation = {
-                      alignmentPeriod    = "60s"
-                      perSeriesAligner   = "ALIGN_RATE"
-                      crossSeriesReducer = "REDUCE_SUM"
-                    }
-                  }
-                }
-              },
-              {
-                plotType   = "LINE"
-                targetAxis = "Y1"
-                timeSeriesQuery = {
-                  timeSeriesFilter = {
-                    filter = "resource.type=\"gce_instance\" metric.type=\"logging.googleapis.com/user/${google_logging_metric.staging_crawler_failure.name}\""
-                    aggregation = {
-                      alignmentPeriod    = "60s"
-                      perSeriesAligner   = "ALIGN_RATE"
-                      crossSeriesReducer = "REDUCE_SUM"
-                    }
-                  }
-                }
-              }
-            ]
-          }
-        },
-        {
-          title = "Container stops and OOM"
-          xyChart = {
-            dataSets = [
-              {
-                plotType   = "LINE"
-                targetAxis = "Y1"
-                timeSeriesQuery = {
-                  timeSeriesFilter = {
-                    filter = "resource.type=\"gce_instance\" metric.type=\"logging.googleapis.com/user/${google_logging_metric.staging_container_stop.name}\""
-                    aggregation = {
-                      alignmentPeriod    = "60s"
-                      perSeriesAligner   = "ALIGN_RATE"
-                      crossSeriesReducer = "REDUCE_SUM"
-                    }
-                  }
-                }
-              },
-              {
-                plotType   = "LINE"
-                targetAxis = "Y1"
-                timeSeriesQuery = {
-                  timeSeriesFilter = {
-                    filter = "resource.type=\"gce_instance\" metric.type=\"logging.googleapis.com/user/${google_logging_metric.staging_container_oom.name}\""
-                    aggregation = {
-                      alignmentPeriod    = "60s"
-                      perSeriesAligner   = "ALIGN_RATE"
-                      crossSeriesReducer = "REDUCE_SUM"
-                    }
-                  }
-                }
-              }
-            ]
-          }
-        }
-      ]
-    }
-  })
 }

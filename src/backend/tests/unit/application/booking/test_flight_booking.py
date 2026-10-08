@@ -20,10 +20,10 @@ def test_roundtrip_cabins_remain_distinct_through_cart_payment_and_purchase():
                       attributes={**common, 'cabinClass': 'BUSINESS'})
         w = World(products=[eco, biz])
         with pytest.raises(LineRejected) as exc:
-            await w.cart.add(PRINCIPAL, product_id=HOTEL, using_date=date(2026, 10, 13), quantity=1, nights=None)
+            await w.basket.add(PRINCIPAL, product_id=HOTEL, using_date=date(2026, 10, 13), quantity=1, nights=None)
         assert exc.value.code == 'DATE_OUT_OF_RANGE'
-        await w.cart.add(PRINCIPAL, product_id=HOTEL, using_date=day, quantity=2, nights=3)
-        cart = await w.cart.add(PRINCIPAL, product_id=TICKET, using_date=day, quantity=1, nights=None)
+        await w.basket.add(PRINCIPAL, product_id=HOTEL, using_date=day, quantity=2, nights=3)
+        cart = await w.basket.add(PRINCIPAL, product_id=TICKET, using_date=day, quantity=1, nights=None)
         assert cart['itemCount'] == 2
         assert cart['total'] == 2400000 * 2 + 5200000  # no multiplication by stayDays/nights
         assert all(line['nights'] is None for line in cart['items'])

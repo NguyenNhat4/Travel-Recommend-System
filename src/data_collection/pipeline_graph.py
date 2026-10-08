@@ -46,7 +46,7 @@ SOURCES: tuple[Source, ...] = (
     Source("booking", "booking.com – khách sạn", "sources.booking", "booking",
            ("booking-hotels",), ("booking.com",), ("booking_hotels",), "booking", ("full",), timeouts=("timeout.booking",)),
     Source("agoda", "agoda.com – khách sạn", "sources.agoda", "agoda",
-           ("agoda-hotels",), ("agoda.com",), ("agoda_hotels",), "agoda", ("full",), timeouts=("timeout.agoda",)),
+           ("agoda-hotels",), ("agoda.com",), ("agoda_api",), "agoda", ("full",), timeouts=("timeout.agoda",)),
     Source("tripHotels", "trip.com – khách sạn + giá phòng", "sources.tripHotels", "trip",
            ("trip-hotels.discover", "trip-hotels.prices"), ("Trip KS: tìm ID", "Trip KS: giá phòng"), ("trip_hotels",),
            "tripHotels", ("full", "daily"), in_process=True,
@@ -58,7 +58,7 @@ SITE_ORDER = ("trip", "vinpearl", "booking", "agoda")
 # File interim một site có thể có mà không bước nào của job này ghi (lệnh crawl.py riêng): vẫn được chuẩn hoá khi cả site
 # xong.
 SITE_EXTRA_INTERIM = {"trip": ("trip_combos",), "booking": ("booking_attractions", "booking_flights"),
-                      "agoda": ("agoda_api",)}
+                      "agoda": ("agoda_hotels",)}  # bản cào bằng trình duyệt cũ (bước agoda-hotels nay chạy collector API)
 
 
 @dataclass(frozen=True)
@@ -77,7 +77,7 @@ CRAWL = "crawl"  # dep giả: mọi bước cào của lượt (và chuẩn hoá
 COLUMNS = (("prepare", "Chuẩn bị"), ("crawl", "Cào"), ("normalise", "Chuẩn hoá"), ("merge", "Gộp"),
            ("validate", "Kiểm tra"), ("db", "Nạp DB"), ("index", "Index"))
 STEPS: tuple[Step, ...] = (
-    Step("maintain", "prepare", "Bảo trì DB", "Bảo trì DB: hết hạn giá Trip cũ, cuộn cửa sổ 30 ngày", (), None),
+    Step("maintain", "prepare", "Bảo trì DB", "Bảo trì DB: hết hạn giá Trip cũ, cuộn cửa sổ 30 ngày, parse lại thành phần combo", (), None),
     # `merge`: chạy lại chỉ bước gộp từ checkpoint (không ánh xạ lại interim)
     Step("normalise", "merge", "Gộp catalog", "Chuẩn hoá 13 trường, gộp trùng", (CRAWL,), ("full", "daily"),
          resume=("normalise", "merge")),

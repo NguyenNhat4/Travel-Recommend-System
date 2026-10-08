@@ -1,12 +1,17 @@
 """Câu chữ trả về người dùng, và ba helper mọi node dùng chung: message, event, failure."""
 from __future__ import annotations
 
+import logging
 import re
+from time import perf_counter
 
 from src.backend.app.application.itinerary.contracts import bounds, error_response
 from src.backend.app.application.ports.llm import ChatModelPort
+from src.backend.app.core.logging_config import log_event
 
 from ..state import make_event
+
+logger = logging.getLogger(__name__)
 
 MESSAGES = {
     "vi": {
@@ -62,7 +67,7 @@ MESSAGES = {
         "stage_planned": "đã gửi lịch trình cho chuyến này",
         "stage_collecting": "đang hỏi thông tin chuyến đi, chưa lập lịch trình",
         "stage_start": "đầu hội thoại",
-        "note_itinerary": "gửi lịch trình {destination} {days} ngày: {products}",
+        "note_itinerary": "gửi lịch trình {destination} {days} ngày",
         "note_no_results": "không tìm thấy sản phẩm phù hợp ở {destination}",
         "note_fallback": "gửi vài sản phẩm tham khảo ở {destination}, chưa dựng được lịch trình",
         "fallback_title": "Chưa dựng được lịch trình hoàn chỉnh",
@@ -150,6 +155,25 @@ MESSAGES = {
         "unmet_ask_other": "Bạn muốn lập lịch không kèm {noun}, hay chọn điểm đến khác?",
         "dropped_date": "Chỉ mở bán từ {start} đến {end}, không khớp ngày khởi hành.",
         "section_no_stay": "Chưa có khách sạn",
+        "change_field_origin": "nơi đi",
+        "change_to_origin": "nơi đi thành {value}",
+        "detail_origin": "nơi bạn khởi hành (để mình thêm vé máy bay)",
+        "trip_origin": "đi từ {origin}",
+        "section_flights": "Vé máy bay",
+        "flight_OUTBOUND": "Chặng đi",
+        "flight_RETURN": "Chặng về",
+        "flight_ROUND_TRIP": "Khứ hồi",
+        "flight_nonstop": "bay thẳng",
+        "flight_passengers": "{price}/khách × {count} khách",
+        "flight_warn_NO_ORIGIN": "Lịch trình chưa gồm vé máy bay vì mình chưa biết bạn đi từ đâu. Bạn cho mình biết "
+                                 "nơi khởi hành, mình thêm vé ngay.",
+        "flight_warn_NO_ROUTE": "Chưa có chuyến bay từ {origin} đến {destination} trong dữ liệu, nên lịch trình chưa "
+                                "gồm vé máy bay.",
+        "flight_warn_NO_FLIGHT_ON_DATES": "Chưa có chuyến bay từ {origin} đến {destination} còn bán đúng ngày đi {out} "
+                                          "và ngày về {back}. Bạn thử đổi ngày khởi hành nhé.",
+        "flight_warn_MISSING_RETURN": "Mới có chặng đi; chưa có chuyến từ {destination} về {origin} đúng ngày {back}.",
+        "flight_warn_MISSING_OUTBOUND": "Mới có chặng về; chưa có chuyến từ {origin} đến {destination} đúng ngày {out}.",
+        "flight_warn_UNAVAILABLE": "Chưa tra được vé máy bay lúc này, nên lịch trình chưa gồm vé.",
         "no_stay_DATE": "Khách sạn ở {destination} trong dữ liệu hiện chỉ nhận đặt từ {open_from} đến {open_to}, nên "
                         "lịch này chưa kèm chỗ ở cho chuyến từ {start}.",
         "no_stay_other": "Chưa có khách sạn ở {destination} phù hợp với chuyến này, nên lịch chưa kèm chỗ ở.",
@@ -255,7 +279,7 @@ MESSAGES = {
         "stage_planned": "an itinerary has been sent for this trip",
         "stage_collecting": "still collecting trip details, no itinerary yet",
         "stage_start": "start of the conversation",
-        "note_itinerary": "sent a {days}-day itinerary for {destination}: {products}",
+        "note_itinerary": "sent a {days}-day itinerary for {destination}",
         "note_no_results": "found no matching products in {destination}",
         "note_fallback": "sent a few candidate products in {destination}, no itinerary built",
         "fallback_title": "Could not build a complete itinerary",
@@ -331,6 +355,26 @@ MESSAGES = {
         "unmet_ask_other": "Would you like to plan without a {noun}, or pick another destination?",
         "dropped_date": "Only on sale from {start} to {end}, which does not match the departure date.",
         "section_no_stay": "No hotel yet",
+        "change_field_origin": "the departure city",
+        "change_to_origin": "departure city changed to {value}",
+        "detail_origin": "where you are travelling from (so I can add flights)",
+        "trip_origin": "from {origin}",
+        "section_flights": "Flights",
+        "flight_OUTBOUND": "Outbound",
+        "flight_RETURN": "Return",
+        "flight_ROUND_TRIP": "Round trip",
+        "flight_nonstop": "nonstop",
+        "flight_passengers": "{price} per passenger × {count}",
+        "flight_warn_NO_ORIGIN": "Flights are not included yet because I do not know where you are travelling from. "
+                                 "Tell me your departure city and I will add them.",
+        "flight_warn_NO_ROUTE": "There are no flights from {origin} to {destination} in our data, so the itinerary has "
+                                "no flights.",
+        "flight_warn_NO_FLIGHT_ON_DATES": "No flights from {origin} to {destination} are on sale for {out} out and {back} "
+                                          "back. Try another departure date.",
+        "flight_warn_MISSING_RETURN": "Only the outbound flight was found; nothing from {destination} back to {origin} "
+                                      "on {back}.",
+        "flight_warn_MISSING_OUTBOUND": "Only the return flight was found; nothing from {origin} to {destination} on {out}.",
+        "flight_warn_UNAVAILABLE": "Flights could not be looked up right now, so the itinerary has none.",
         "no_stay_DATE": "Hotels in {destination} can currently only be booked from {open_from} to {open_to}, so this "
                         "plan has no stay for a trip starting {start}.",
         "no_stay_other": "No hotel in {destination} fits this trip yet, so the plan has no stay.",
@@ -467,8 +511,56 @@ def failure(state: dict, code: str, text: str, status: int = 503, retryable: boo
             "http_status": status, "decision": "error"}
 
 
+class _LoggedStructured:
+    """Bọc `with_structured_output(X)`: ghi `assistant.llm.call` (schema, thời gian, kết quả), không ghi prompt hay
+    câu trả lời thô (docs/spec/logging-schema.md §4). Mọi thuộc tính khác chuyển thẳng cho runnable gốc."""
+
+    def __init__(self, inner, schema):
+        self._inner, self._schema = inner, getattr(schema, "__name__", str(schema))
+
+    def _log(self, started: float, outcome: str) -> None:
+        log_event(logger, "assistant.llm.call", "INFO" if outcome == "ok" else "WARNING", schema=self._schema,
+                  duration_ms=round((perf_counter() - started) * 1000, 1), outcome=outcome)
+
+    def invoke(self, *args, **kwargs):
+        started = perf_counter()
+        try:
+            result = self._inner.invoke(*args, **kwargs)
+        except BaseException as exc:
+            self._log(started, type(exc).__name__)
+            raise
+        self._log(started, "ok")
+        return result
+
+    async def ainvoke(self, *args, **kwargs):
+        started = perf_counter()
+        try:
+            result = await self._inner.ainvoke(*args, **kwargs)
+        except BaseException as exc:  # gồm CancelledError khi quá hạn `asyncio.wait_for`
+            self._log(started, type(exc).__name__)
+            raise
+        self._log(started, "ok")
+        return result
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+class _LoggedModel:
+    __slots__ = ("_llm",)
+
+    def __init__(self, llm):
+        self._llm = llm
+
+    def with_structured_output(self, schema, *args, **kwargs):
+        return _LoggedStructured(self._llm.with_structured_output(schema, *args, **kwargs), schema)
+
+    def __getattr__(self, name):
+        return getattr(self._llm, name)
+
+
 def chat_model(llm: ChatModelPort | None) -> ChatModelPort:
     """Model do composition root truyền vào; thiếu thì node ghi LLM_UNAVAILABLE như khi provider lỗi."""
     if llm is None:
         raise RuntimeError("LLM chưa được cấu hình cho graph")
-    return llm
+    return _LoggedModel(llm)

@@ -11,6 +11,7 @@ import logging
 import os
 import random
 import re
+import shutil
 import sqlite3
 import time
 from dataclasses import dataclass, field, replace
@@ -601,6 +602,26 @@ class FetchResult:
     extra: dict = field(default_factory=dict)
 
 
+def clean_browser_cache(profile_dir: Path) -> None:
+    """Xóa các thư mục cache tạm của Chromium (Cache, Code Cache, GPUCache...) để tránh đầy ổ đĩa VM."""
+    if not profile_dir.is_dir():
+        return
+    cache_subs = (
+        "Default/Cache",
+        "Default/Code Cache",
+        "Default/GPUCache",
+        "Default/DawnGraphiteCache",
+        "Default/DawnWebGPUCache",
+        "GrShaderCache",
+        "ShaderCache",
+        "GPUCache",
+    )
+    for sub in cache_subs:
+        target = profile_dir / sub
+        if target.exists():
+            shutil.rmtree(target, ignore_errors=True)
+
+
 class BrowserSession:
     """Chromium thật qua Playwright, profile bền vững theo từng site.
 
@@ -635,8 +656,9 @@ class BrowserSession:
         )
         if self.opts.channel:
             launch["channel"] = self.opts.channel
+        self._launch = launch
         try:
-            self.context = await self._pw.chromium.launch_persistent_context(**launch)
+            await self._open_context()
         except Exception as e:
             await self._pw.stop()
             if "Executable doesn't exist" in str(e):
@@ -644,9 +666,21 @@ class BrowserSession:
             if "headed browser without having a XServer" in str(e) or "Missing X server" in str(e):
                 raise SystemExit("Không có màn hình để mở trình duyệt. Chạy lại với --headless") from e
             raise
+        return self
+
+    async def _open_context(self) -> None:
+        self.context = await self._pw.chromium.launch_persistent_context(**self._launch)
         if self.opts.block_resources:
             await self.context.route("**/*", _block_fast if self.opts.fast else _block_heavy)
-        return self
+
+    async def restart(self) -> None:
+        """Đóng rồi mở lại Chromium (cùng profile, cùng chế độ chặn tài nguyên) khi trình duyệt không mở được tab mới
+        nữa (vd. "Target.createTarget: Failed to open a new tab"); tab cũ của context trước đều không dùng được nữa."""
+        try:
+            await self.context.close()
+        except Exception as e:
+            log.debug("Đóng trình duyệt trước khi mở lại: %s", e)
+        await self._open_context()
 
     async def set_fast(self, fast: bool) -> None:
         """Đổi chế độ chặn tài nguyên giữa chừng. Trang tìm kiếm Booking chỉ tải thêm kết quả khi có CSS (cuộn không
@@ -666,6 +700,7 @@ class BrowserSession:
         finally:
             if self._pw:
                 await self._pw.stop()
+            clean_browser_cache(self.paths.profiles / self.name)
 
     async def new_page(self):
         pages = self.context.pages

@@ -20,7 +20,9 @@ from src.backend.app.application.auth.use_cases import (
     ChangePassword,
     RegisterUser,
     RotateSession,
+    UpdateProfile,
 )
+from src.backend.app.application.auth.principal import AuthPrincipal
 from src.backend.app.domain.auth.privacy import hash_email
 from src.backend.app.infrastructure.auth.argon2_hasher import Argon2Hasher
 from src.backend.app.infrastructure.auth.postgres_login_attempts import PostgresLoginAttemptLog
@@ -131,3 +133,29 @@ def test_change_password_revokes_other_sessions_only(email):
     run(rotate(refresh_token=current.refresh_token))
     with pytest.raises(RefreshTokenInvalid):
         run(rotate(refresh_token=other.refresh_token))
+
+
+def test_update_profile_persists_name_and_phone_and_never_touches_email_or_hash(email):
+    outcome = run(register()(email=email, password="ngua o chay tren de", full_name="IT", client_ip="127.0.0.1"))
+    principal = AuthPrincipal(user_id=outcome.user.user_id, cdp_user_id=outcome.user.cdp_user_id, email=email)
+    update = UpdateProfile(users=USERS)
+
+    updated = run(update(principal, full_name="Tên Mới", phone="0345484496", set_phone=True))
+    assert (updated.display_name, updated.phone) == ("Tên Mới", "0345484496")
+    reloaded = run(USERS.find_by_id(outcome.user.user_id))
+    assert (reloaded.display_name, reloaded.phone, reloaded.email) == ("Tên Mới", "0345484496", email)
+    assert reloaded.password_hash == outcome.user.password_hash
+
+    run(update(principal, full_name="Chỉ đổi tên"))                       # không động tới số
+    assert run(USERS.find_by_id(outcome.user.user_id)).phone == "0345484496"
+    cleared = run(update(principal, phone=None, set_phone=True))
+    assert cleared.phone is None and cleared.display_name == "Chỉ đổi tên"
+
+
+def test_database_rejects_a_malformed_phone_even_if_the_api_layer_were_bypassed(email):
+    outcome = run(register()(email=email, password="ngua o chay tren de", full_name="IT", client_ip="127.0.0.1"))
+    for bad in ("034548", "1345484496", "03454844961", "0345 484 496"):
+        with psycopg.connect(APP_URL) as app:
+            with pytest.raises(psycopg.errors.CheckViolation):
+                app.execute("UPDATE app.users SET phone = %s WHERE user_id = %s::uuid", (bad, outcome.user.user_id))
+

@@ -9,6 +9,9 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+import catalog_run_lock
+import log
+
 from fresh_run_log import (HISTORY_FILE, LIVE_FILE, RUNNING_FILE, STOP_FILE, descendants,
                            read_json, write_json, _terminate)
 
@@ -46,7 +49,9 @@ def finish_interrupted(state: Path, runs: Path, pid: int, reason: str, *, stoppe
     if not lock_held:
         # After an unexpected exit another worker may already own the state directory.
         state.mkdir(parents=True, exist_ok=True)
-        with (state / 'fresh_catalog.lock').open('a') as lock:
+        lock_path = catalog_run_lock.lock_file(state)
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with lock_path.open('a') as lock:
             try:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
@@ -106,7 +111,7 @@ def supervise(command: list[str], state: Path, runs: Path, *, max_seconds: float
             if reason:
                 kill_worker(proc, before_release=lambda: finish_interrupted(
                     state, runs, proc.pid, reason, stopped=requested, lock_held=True))
-                print(f'catalog.supervisor: {reason}', flush=True)
+                log.emit('catalog.supervisor', f'catalog.supervisor: {reason}', 'ERROR', reason=reason)
                 return 5 if requested else 3
             time.sleep(poll)
         if proc.returncode:

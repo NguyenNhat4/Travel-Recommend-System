@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date
 from enum import Enum
@@ -15,7 +16,27 @@ from .fares import FareType
 
 ADULT_MIN_AGE = 12
 INFANT_MAX_AGE = 2  # dưới 2 tuổi
-MAX_PARTY = 9
+MAX_PARTY = 9  # tối đa mỗi mục (vé, golf, combo, chuyến bay) và mỗi phòng khách sạn (FR-BKG-08)
+MAX_ROOMS = 9  # số phòng tối đa của một mục khách sạn
+
+
+def room_capacity(max_occupancy: int | None) -> int:
+    """Số khách tối đa của một phòng: sức chứa của hạng phòng nếu có, và không quá `MAX_PARTY`."""
+    return min(max_occupancy, MAX_PARTY) if max_occupancy else MAX_PARTY
+
+
+def item_party_cap(taxonomy: str, quantity: int) -> int:
+    """Số khách tối đa của một mục: khách sạn 9 khách mỗi phòng, loại khác 9 khách."""
+    return MAX_PARTY * max(quantity, 1) if taxonomy == "hotel" else MAX_PARTY
+
+
+def order_party_cap(items: Iterable[tuple[str, int]]) -> int:
+    """Trần của đoàn khai ở checkout, từ các cặp `(taxonomy, quantity)` của đơn: đơn chỉ có khách sạn thì theo mục lớn nhất,
+    đơn có mục khác thì `MAX_PARTY`."""
+    pairs = list(items)
+    if not pairs or any(taxonomy != "hotel" for taxonomy, _ in pairs):
+        return MAX_PARTY
+    return max(item_party_cap(taxonomy, quantity) for taxonomy, quantity in pairs)
 
 
 class TravelerType(str, Enum):

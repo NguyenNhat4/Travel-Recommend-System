@@ -50,6 +50,12 @@ class UserRepository(Protocol):
     async def update_password_hash(self, user_id: str, password_hash: str) -> None:
         ...
 
+    async def update_profile(
+        self, user_id: str, *, display_name: str | None, phone: str | None, set_phone: bool
+    ) -> AuthenticatedUser | None:
+        """Đổi họ tên (khi `display_name` khác None) và số điện thoại (khi `set_phone`; `phone=None` là xoá). Trả hồ sơ mới."""
+        ...
+
     async def touch_last_login(self, user_id: str) -> None:
         ...
 

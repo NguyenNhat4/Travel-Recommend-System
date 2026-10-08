@@ -89,9 +89,23 @@ negative += [
     ('BookingTravelerDocuments', {'title': 'MS', 'nationality': 'VN', 'docNumber': '079188001234'} | {'title': 'XX'}),
     ('AddCartItemRequest', {'productId': 'p', 'usingDate': '2026-10-15'}),
     ('GuestCounts', {'adults': 0, 'children': 0}),
-    ('GuestCounts', {'adults': 1, 'children': 9}),
+    ('GuestCounts', {'adults': 1, 'children': 81}),
+    ('GuestCounts', {'adults': 82, 'children': 0}),
     ('FareLine', {'fareType': 'BAG', 'unitPrice': 1, 'count': 1, 'nights': None, 'amount': 1}),
     ('BookingTraveler', {'fullName': 'A', 'type': 'INFANT', 'roomNo': None, 'isLead': False}),
+]
+# Đặt trực tiếp qua đơn nháp (1.13.0, docs/spec/booking/dat-truc-tiep-theo-don-nhap.md §10): đúng một trong items / fromBooking.
+validator('CreateBookingDraftRequest').validate({'items': [{'productId': 'p', 'usingDate': '2026-10-15', 'quantity': 1, 'nights': 2}], 'allowPartial': True})
+validator('CreateBookingDraftRequest').validate({'fromBooking': 'VOTA-20261001-AB12'})
+validator('GuestMergeRequest').validate({'guestId': 'g_' + 'a' * 22})
+validator('CheckoutRequest').validate({'draftId': 'd-1', 'contact': {'fullName': 'A B', 'email': 'a@example.vn', 'phone': '0912345678'}, 'itemDetails': []})
+negative += [
+    ('CreateBookingDraftRequest', {}),
+    ('CreateBookingDraftRequest', {'items': []}),
+    ('CreateBookingDraftRequest', {'items': [{'productId': 'p', 'usingDate': '2026-10-15', 'quantity': 1}], 'fromBooking': 'VOTA-20261001-AB12'}),
+    ('CreateBookingDraftRequest', {'fromBooking': 'not-a-code'}),
+    ('GuestMergeRequest', {'guestId': 'a_123'}),
+    ('BookingDraft', {'draftId': 'd', 'items': []}),
 ]
 for schema, payload in negative:
     assert not validator(schema).is_valid(payload), (schema, payload)

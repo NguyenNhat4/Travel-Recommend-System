@@ -124,8 +124,60 @@ class ComposePlanTests(unittest.TestCase):
         self.assertEqual(validate_plan(plan, candidates, sources, trip, {'require_hotel': True}), [])
 
 
+#: Cửa sổ giờ của chuyến 3 ngày có chặng đi hạ cánh 21:05 ngày 1 và chặng về cất cánh 19:45 ngày 3 (AC-AGT-02).
+LATE_ARRIVAL = {1: {'times': [], 'full_day': False, 'transfers': [('EVENING', 'ARRIVAL')]},
+                3: {'times': ['MORNING', 'AFTERNOON'], 'full_day': False, 'transfers': [('EVENING', 'DEPARTURE')]}}
+
+
+class FlightWindowComposeTests(unittest.TestCase):
+    """Xếp lịch theo giờ bay: `compose_plan` nhận cửa sổ từ `day_windows` (AC-AGT-02, chốt 2026-10-07)."""
+
+    def slots(self, proposal):
+        return [(s['day'], s['time'], s['product_id'] or s['activity_type']) for s in proposal['slots']]
+
+    def test_nothing_is_scheduled_before_a_late_landing_and_the_day_gets_a_transfer(self):
+        candidates = catalog(product('a'), product('b'))
+        proposal = compose_plan(candidates, sources_for(candidates), intent(days=3), LATE_ARRIVAL)
+        self.assertEqual(self.slots(proposal), [(1, 'EVENING', 'TRANSFER'), (2, 'MORNING', 'a'), (3, 'MORNING', 'b'),
+                                                (3, 'EVENING', 'TRANSFER')])
+        self.assertEqual([s['note_kind'] for s in proposal['slots'] if s['product_id'] is None], ['ARRIVAL', 'DEPARTURE'])
+
+    def test_a_full_day_visit_never_lands_on_a_limited_day(self):
+        candidates = catalog(product('ba-na', attributes={'durationMinutes': 480}), product('short'))
+        proposal = compose_plan(candidates, sources_for(candidates), intent(days=3), LATE_ARRIVAL)
+        self.assertIn((2, 'MORNING', 'ba-na'), self.slots(proposal))
+        self.assertIn((3, 'MORNING', 'short'), self.slots(proposal))
+
+    def test_a_full_day_visit_without_a_free_day_is_left_out(self):
+        windows = {1: LATE_ARRIVAL[1], 2: LATE_ARRIVAL[3]}
+        candidates = catalog(product('ba-na', attributes={'durationMinutes': 480}))
+        proposal = compose_plan(candidates, sources_for(candidates), intent(days=2), windows)
+        self.assertEqual([s for s in proposal['slots'] if s['product_id']], [])
+
+    def test_a_day_with_one_open_period_holds_one_activity_at_that_period(self):
+        windows = {1: {'times': ['AFTERNOON'], 'full_day': False, 'transfers': [('MORNING', 'ARRIVAL')]}}
+        candidates = catalog(product('a'), product('b'), product('c'))
+        proposal = compose_plan(candidates, sources_for(candidates), intent(days=2), windows)
+        self.assertEqual(self.slots(proposal), [(1, 'MORNING', 'TRANSFER'), (1, 'AFTERNOON', 'a'),
+                                                (2, 'MORNING', 'b'), (2, 'AFTERNOON', 'c')])
+
+    def test_the_transfer_comes_after_an_activity_of_the_same_period(self):
+        windows = {1: {'times': ['MORNING', 'AFTERNOON'], 'full_day': False, 'transfers': [('AFTERNOON', 'DEPARTURE')]}}
+        candidates = catalog(product('a'), product('b'))
+        proposal = compose_plan(candidates, sources_for(candidates), intent(days=1), windows)
+        self.assertEqual(self.slots(proposal), [(1, 'MORNING', 'a'), (1, 'AFTERNOON', 'b'), (1, 'AFTERNOON', 'TRANSFER')])
+
+    def test_the_windowed_proposal_survives_the_renderer_and_the_validator(self):
+        candidates = catalog(product('a'), product('b'), product('long', attributes={'durationMinutes': 480}))
+        trip, sources = intent(days=3), sources_for(candidates)
+        plan = render_proposal(compose_plan(candidates, sources, trip, LATE_ARRIVAL), candidates, sources, trip)
+        transfer = plan['days'][0]['slots']
+        self.assertEqual([(s['time'], s['activityType'], s['product']) for s in transfer], [('EVENING', 'TRANSFER', None)])
+        self.assertEqual(validate_plan(plan, candidates, sources, trip, {}), [])
+
+
 class SummaryTests(unittest.TestCase):
-    """docs/spec/agent/field-review.md §2.1: ProductSummary trong lịch trình bỏ `description`,
+    """history/2026-09-28-ap-dung-de-xuat-field-review-agent.md: ProductSummary trong lịch trình bỏ `description`,
     `attributes` chỉ giữ khoá FE đọc."""
 
     def test_description_is_dropped(self):

@@ -16,6 +16,7 @@ import argparse
 import asyncio
 import contextlib
 import fcntl
+import functools
 import json
 import os
 import re
@@ -32,8 +33,10 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import alerts
+import catalog_run_lock
 import fresh_settings
 import index_backlog
+import log
 import pipeline_errors as perr
 import pipeline_graph as graph
 from collectors import live_control
@@ -108,10 +111,10 @@ def trip_cities(values: dict):
 _print_lock = threading.Lock()
 
 
-def say(line: str) -> None:
-    """Một dòng log nguyên vẹn khi nhiều nhóm cùng in."""
+def say(line: str, **fields) -> None:
+    """Một dòng log nguyên vẹn khi nhiều nhóm cùng in: JSON ra stdout container, text nguyên chữ vào job.log (log.py)."""
     with _print_lock:
-        print(line, flush=True)
+        log.say(line, **fields)
 
 
 def _num(value: float) -> str:
@@ -120,10 +123,13 @@ def _num(value: float) -> str:
 
 def source_command(run_dir: Path, source: str, destinations: str, values: dict) -> list[str]:
     """Lệnh crawl.py của một nguồn theo cấu hình."""
+    # Giữ id bước agoda-hotels để tương thích run.json/monitor cũ, nhưng dùng collector HTTP đã có khả năng
+    # xuất hotel_room + giá thật. Collector trình duyệt cũ chỉ tạo property nên FE không có phòng để bán.
+    cli_source = 'agoda-api' if source == 'agoda-hotels' else source
     command = [sys.executable, str(ROOT / 'crawl.py')]
     if values['log.verbose']:
         command.append('-v')
-    command += ['--data-dir', str(run_dir), source, '--max-blocks', str(values['crawl.maxBlocks'])]
+    command += ['--data-dir', str(run_dir), cli_source, '--max-blocks', str(values['crawl.maxBlocks'])]
     if source == 'vinpearl':
         command += ['--refresh', '--delay', _num(values['vinpearl.delay']),
                     '--price-dates', ','.join(str(d) for d in values['vinpearl.priceOffsets'])]
@@ -148,9 +154,10 @@ def source_command(run_dir: Path, source: str, destinations: str, values: dict) 
         if not values['booking.vinpearlBrand']:
             command.append('--no-brand-sitemap')
     elif source == 'agoda-hotels':
-        command += ['--delay', _num(values['agoda.delay']), '--concurrency', str(values['agoda.tabs']),
-                    '--checkin-offset-days', str(values['agoda.checkinOffsetDays']),
-                    '--budget', f"agoda_hotels={values['agoda.hotelsPerDestination']}"]
+        # Một ngày giá thật đủ để xác nhận phòng bán được; fresh_catalog_db mở rộng availability thành cửa sổ 30 ngày.
+        # State SQLite của collector giúp lượt sau tiếp tục thay vì cào lại từ đầu.
+        command += ['--delay', _num(values['agoda.delay']),
+                    '--per-city', str(values['agoda.hotelsPerDestination']), '--days', '1']
     return command
 
 
@@ -161,8 +168,8 @@ def run_source(run_dir: Path, source: str, destinations: str, group: str, deadli
     """Chạy `crawl.py <source>`. `deadline` (time.monotonic): quá hạn thì dừng cả cây tiến trình của nguồn này (crawl.py,
     Chromium) và trả perr.EXIT_TIMEOUT (P4); các nguồn khác không bị đụng."""
     command = source_command(run_dir, source, destinations, settings_values())
-    say(f'[{group}] $ ' + ' '.join(command))
-    env = dict(os.environ, CRAWL_LIVE_KEY=LIVE_KEYS.get(source, ''), PYTHONUNBUFFERED='1')
+    say(f'[{group}] $ ' + ' '.join(command), source=source)
+    env = dict(os.environ, CRAWL_LIVE_KEY=LIVE_KEYS.get(source, ''), PYTHONUNBUFFERED='1', CRAWL_LOG_PLAIN='1')
     tail = SOURCE_TAIL[source] = deque(maxlen=80)
     timed_out = threading.Event()
     with subprocess.Popen(command, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -172,14 +179,15 @@ def run_source(run_dir: Path, source: str, destinations: str, group: str, deadli
                 while proc.poll() is None:
                     if time.monotonic() >= deadline:
                         timed_out.set()
-                        say(f'[{group}] catalog.source.timeout name={source}: quá hạn giờ, dừng nguồn này')
+                        say(f'[{group}] catalog.source.timeout name={source}: quá hạn giờ, dừng nguồn này',
+                            source=source, step=source, severity='ERROR')
                         terminate_tree(proc.pid)
                         return
                     time.sleep(0.5)
             threading.Thread(target=watch, name=f'timeout-{source}', daemon=True).start()
         for line in proc.stdout:
             tail.append(line.rstrip())
-            say(f'[{group}] {line.rstrip()}')
+            say(f'[{group}] {line.rstrip()}', event='source.output', source=source, step=source)
     return perr.EXIT_TIMEOUT if timed_out.is_set() else proc.returncode
 
 
@@ -263,7 +271,12 @@ def notify_finished(data: dict, run_dir: Path, state_dir: Path, values: dict) ->
     try:
         alerts.on_run_finished(data, run_dir, state_dir, values)
     except Exception as exc:
-        print(f'alert.failed {type(exc).__name__}: {exc}', file=sys.stderr, flush=True)
+        log.emit('alert.failed', f'alert.failed {type(exc).__name__}: {exc}', 'ERROR', error=exc)
+
+
+def acquire_run_lock(stack: contextlib.ExitStack, url: str) -> bool:
+    """Khoá một-lượt-chạy ở mức DB (catalog_run_lock.py). Tách hàm để test thay thế được."""
+    return catalog_run_lock.acquire(stack, url)
 
 
 def check_sla(state_dir: Path, run_root: Path, values: dict) -> None:
@@ -271,7 +284,23 @@ def check_sla(state_dir: Path, run_root: Path, values: dict) -> None:
     try:
         alerts.check_sla(state_dir, run_root, values)
     except Exception as exc:
-        print(f'alert.sla.failed {type(exc).__name__}: {exc}', file=sys.stderr, flush=True)
+        log.emit('alert.sla.failed', f'alert.sla.failed {type(exc).__name__}: {exc}', 'WARNING', error=exc)
+    emit_freshness(state_dir, run_root, values)
+
+
+def emit_freshness(state_dir: Path, run_root: Path, values: dict) -> None:
+    """Một dòng `catalog.freshness` mỗi tick (15 phút), cho cảnh báo ngoài job (infra/terraform/environments/staging-ha/
+    crawler_monitoring.tf): dòng vắng mặt = job không còn chạy; `state=late` = catalog không đổi quá
+    `sla.maxCatalogAgeHours`. Cảnh báo SLA trong monitor chỉ ghi file nên không ai thấy khi VM/job đã chết."""
+    try:
+        rules = {r['rule']: r for r in alerts.sla_status(state_dir, run_root, values).get('rules', [])}
+        age = rules.get('catalogAge', {})
+        state = age.get('state', 'none')
+        log.emit('catalog.freshness', f'catalog.freshness state={state} age_hours={age.get("hours")}',
+                 'ERROR' if state == 'late' else 'INFO', state=state, age_hours=age.get('hours'),
+                 max_age_hours=values.get('sla.maxCatalogAgeHours'))
+    except Exception as exc:  # không được làm đổi kết quả tick
+        log.emit('catalog.freshness.failed', f'catalog.freshness.failed {type(exc).__name__}: {exc}', 'WARNING', error=exc)
 
 
 def save_run() -> None:
@@ -319,7 +348,7 @@ class Previewer:
     lỗi đúng chỗ) ở bước normalize chính thức.
     """
 
-    SOURCE_WORKERS = 2
+    SOURCE_WORKERS = 1 if (os.cpu_count() or 2) <= 2 else 2
 
     STREAM_LABELS = {stream.name: stream.title for stream in graph.STREAMS}
 
@@ -349,7 +378,8 @@ class Previewer:
             self.tickers.append(Ticker('merge', DraftMerger(run_dir / 'normalised', self._request_merge),
                                        values['stream.mergeSeconds'], lambda: live_control.current('stream.merge'), say))
             if values['stream.db'] and db_url:
-                self.db_feeder = DbFeeder(run_dir, db_url, ROOT, load_into_db,
+                self.db_feeder = DbFeeder(run_dir, db_url, ROOT, functools.partial(
+                    load_into_db, trip_max_age_days=values['tripHotels.priceMaxAgeDays']),
                                           lambda rows: validate_catalog(rows, allow_external_parents=True),
                                           min_records=values['stream.minRecords'],
                                           max_error_percent=values['normalise.maxErrorPercent'], log=say)
@@ -453,7 +483,7 @@ class Previewer:
 
     def _run(self, command: list[str], prefix: str, track: bool = False) -> int:
         proc = subprocess.Popen(command, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-                                errors='replace', env=dict(os.environ, PYTHONUNBUFFERED='1'))
+                                errors='replace', env=dict(os.environ, PYTHONUNBUFFERED='1', CRAWL_LOG_PLAIN='1'))
         if track:
             with self.lock:
                 self.proc = proc
@@ -560,6 +590,18 @@ class Previewer:
             say(f'catalog.preview.done groups={",".join(names)} sources={",".join(stems)} rows={rows} exit={code}')
 
 
+# VM 2 vCPU / 4 GB: mỗi Chromium ~0,8–1 GB, hai cái cùng lúc dễ bị OOM-killer. Các bước dùng trình duyệt chạy lần lượt
+# (khoá giữ trong lúc chạy, không giữ khi chờ retry); nguồn HTTP (Vinpearl, Trip vé/điểm tham quan, Agoda API) vẫn song song.
+# Bước có mở Chromium: Vinpearl (vé/tour qua trang có Cloudflare), Trip vé máy bay (báo giá thương gia), booking.com,
+# Trip KS tìm ID (hàm find_hotels, không gắn .step) và giá phòng (price_rooms.step). Agoda dùng API nên không cần khoá.
+BROWSER_STEPS = {'vinpearl', 'trip-flights', 'booking-hotels', 'find_hotels', 'trip-hotels.prices'}
+_browser_lock = threading.Lock()
+
+
+def browser_slot(key: str):
+    return _browser_lock if key in BROWSER_STEPS else contextlib.nullcontext()
+
+
 def crawl_sites(run_dir: Path, destinations: str, groups, parallel: int,
                 previewer: Previewer | None = None, deadline: float | None = None) -> dict[str, int]:
     """Isolate failures per source; only dependent steps are skipped, not an entire site or run."""
@@ -593,7 +635,8 @@ def crawl_sites(run_dir: Path, destinations: str, groups, parallel: int,
                     continue
                 if callable(item):
                     try:
-                        item()
+                        with browser_slot(key):
+                            item()
                         if key in graph.SOURCE_BY_STEP:
                             statuses[key] = 0
                     except StopRequested:
@@ -607,8 +650,11 @@ def crawl_sites(run_dir: Path, destinations: str, groups, parallel: int,
                     with step(key, group=name) as detail:
                         attempt = 0
                         while True:
-                            code = (perr.EXIT_TIMEOUT if limit is not None and time.monotonic() >= limit else
-                                    run_source(run_dir, key, destinations, name, deadline=limit))
+                            with browser_slot(key):
+                                if attempt == 0:  # ngân sách giờ tính từ lúc có slot trình duyệt, không tính lúc chờ
+                                    limit = step_deadline(key, deadline)
+                                code = (perr.EXIT_TIMEOUT if limit is not None and time.monotonic() >= limit else
+                                        run_source(run_dir, key, destinations, name, deadline=limit))
                             kind = perr.classify_exit(code, list(SOURCE_TAIL.get(key, ())))
                             statuses[key] = code
                             detail['exitCode'] = code
@@ -795,7 +841,7 @@ def index_settings(db_target: str):
         values = {'database_url': os.environ.get('DATABASE_URL') or os.environ['SEED_DATABASE_URL']}
         required = {}
     settings = Settings(**values)
-    required['COHERE_API_KEY'] = settings.cohere_api_key
+    # e5-small chạy trong image (PRD FR-SRC-02): bước index không cần khoá embedding nào.
     missing = [name for name, value in required.items() if not value]
     if missing:
         raise ValueError(f'Thiếu biến cho bước index: {", ".join(missing)}')
@@ -805,11 +851,12 @@ def index_settings(db_target: str):
 
 def index_catalog(settings, detail_path: Path | None = None) -> dict:
     # Đọc lại đúng DB vừa ghi, ghi vào Weaviate của cùng đích; runtime API vẫn dùng role chỉ đọc của nó.
-    # detail_path: text gửi Cohere, hash, hành động và vài chiều đầu của vector từng sản phẩm, cho monitor.
+    # detail_path: text đem embed, hash, hành động và vài chiều đầu của vector từng sản phẩm, cho monitor.
     from src.backend.jobs.embed_products import run
-    print("catalog.index.start", flush=True)
+    log.emit('catalog.index.start', 'catalog.index.start')
     report = run(settings=settings, detail_path=detail_path)
-    print("catalog.index.complete " + json.dumps(report, ensure_ascii=False), flush=True)
+    log.emit('catalog.index.complete', 'catalog.index.complete ' + json.dumps(report, ensure_ascii=False),
+             report=report if isinstance(report, dict) else None)
     return report
 
 
@@ -830,14 +877,17 @@ def check_local_only(db_target: str, db_url: str, index_config) -> None:
             problems.append(f'{name} trỏ tới {parsed.hostname or "?"} (không phải localhost)')
         if name != 'WEAVIATE_URL' and parsed.path.lstrip('/') in ('', 'vota'):
             problems.append(f'{name} dùng database "{parsed.path.lstrip("/") or "mặc định"}" của backend local')
-    if index_config is not None and index_config.weaviate_collection == 'Product':
-        problems.append('WEAVIATE_COLLECTION=Product là collection của backend local')
+    if index_config is not None and index_config.vector_collection in ('Product', 'ProductE5Small'):
+        problems.append(f'VECTOR_COLLECTION={index_config.vector_collection} là collection của backend local')
     if problems:
         raise ValueError('Chế độ local chặn lượt này: ' + '; '.join(problems))
 
 
+lock_file = catalog_run_lock.lock_file
+
+
 def lock_busy(state_dir: Path) -> bool:
-    path = state_dir / 'fresh_catalog.lock'
+    path = lock_file(state_dir)
     if not path.exists():
         return False
     with path.open('a') as handle:
@@ -866,6 +916,20 @@ def print_status(values: dict, state_dir: Path) -> None:
         print(f'Running: {running.get("runId")} since {running.get("startedAt")} steps={running.get("steps")}')
 
 
+def emit_run_end(rec: RunRecorder, status: str, code: int) -> None:
+    """`run.end` (status, duration_ms, exit_code, records theo nguồn). Phát trước `recorder.finish` để dòng còn vào job.log.
+    Chuỗi `fresh-catalog.exit=N` nằm trong message cho metric đang khớp nó."""
+    try:
+        counts = rec.data.get('counts') or {}
+        records = {key: value for key, value in (rec.data.get('sourceStatuses') or {}).items()} or None
+        log.emit('run.end', f'run.end status={status} fresh-catalog.exit={code}',
+                 'ERROR' if status == 'failed' else 'WARNING' if status in ('partial', 'stopped') else 'INFO',
+                 status=status, exit_code=code, duration_ms=round((time.monotonic() - rec._t0) * 1000),
+                 records=counts, source_statuses=records)
+    except Exception:  # log không được làm đổi kết quả lượt
+        pass
+
+
 def run_job(mode: str, trigger: str | None = None, run_id: str | None = None, from_step: str | None = None,
             source: str | None = None) -> int:
     global CFG, REC
@@ -874,7 +938,7 @@ def run_job(mode: str, trigger: str | None = None, run_id: str | None = None, fr
     run_root.mkdir(parents=True, exist_ok=True)
     values = fresh_settings.load(state_dir)
     if mode == 'status':
-        print_status(values, state_dir)
+        print_status(values, state_dir)  # stdout = báo cáo cho người đọc; không phát log JSON
         return 0
     def scheduled():
         selected, reason = fresh_settings.scheduled_mode(values, state_dir)
@@ -884,8 +948,9 @@ def run_job(mode: str, trigger: str | None = None, run_id: str | None = None, fr
 
     if mode == 'due':
         chosen, reason = (None, 'đang có lượt chạy') if lock_busy(state_dir) else scheduled()
-        print(chosen or '', flush=True)
-        print(f'catalog.due {chosen or "-"}: {reason}', file=sys.stderr, flush=True)
+        print(chosen or '', flush=True)  # stdout = tên chế độ cho run_fresh_catalog_container.sh; log chỉ đi stderr
+        with log.use_stream(sys.stderr):
+            log.emit('catalog.due', f'catalog.due {chosen or "-"}: {reason}', mode=chosen or '-', reason=reason)
         return 0
     # An idle cron tick needs neither DB credentials nor an index connection.
     if mode == 'tick' and (lock_busy(state_dir) or scheduled()[0] is None):
@@ -902,18 +967,28 @@ def run_job(mode: str, trigger: str | None = None, run_id: str | None = None, fr
         index_config = None
         say(f'catalog.index.deferred: {exc}; cào và nạp DB vẫn tiếp tục')
     check_local_only(db_target, os.environ[key], index_config)
-    lock_path = state_dir / 'fresh_catalog.lock'
-    with lock_path.open('w') as lock:
+    lock_path = lock_file(state_dir)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open('w') as lock, contextlib.ExitStack() as held:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
+            log.emit('catalog.lock.busy', 'catalog.lock.busy: đã có job catalog khác đang chạy', 'WARNING', mode=mode,
+                     scope='host')
             if mode == 'tick':
                 return 0
             raise RuntimeError('Đã có job catalog khác đang chạy') from None
+        # Khoá tệp chỉ thấy tiến trình cùng máy; lượt ở container/VM khác (chạy tay trên máy khác lúc cron chạy) cần khoá DB.
+        if os.environ.get('CATALOG_DB_RUN_LOCK', 'on') != 'off' and not acquire_run_lock(held, os.environ[key]):
+            log.emit('catalog.lock.busy', 'catalog.lock.busy: một lượt catalog khác đang chạy ở máy khác (khoá DB)',
+                     'WARNING', mode=mode, scope='database')
+            if mode == 'tick':
+                return 0
+            raise RuntimeError('Đã có job catalog khác đang chạy (khoá DB)')
         if mode == 'tick':
             selected, reason = scheduled()
             if selected is None:
-                print(f'catalog.schedule.skip: {reason}', flush=True)
+                log.emit('catalog.schedule.skip', f'catalog.schedule.skip: {reason}', 'WARNING', reason=reason)
                 return 0
             trigger = 'schedule'
         elif mode != 'resume':
@@ -940,13 +1015,15 @@ def run_job(mode: str, trigger: str | None = None, run_id: str | None = None, fr
         status, code, error = 'failed', EXIT_PARTIAL, None
         try:
             if mode == 'resume':
-                print(f'Resume {run_id} from {from_step}' + (f' source={source}' if source else '') + f': {run_dir}',
-                      flush=True)
+                log.emit('resume.plan', f'Resume {run_id} from {from_step}' + (f' source={source}' if source else '')
+                         + f': {run_dir}', from_step=from_step, source=source)
                 code = resume_run(recorder, values, state_dir, run_dir, from_step, os.environ[key], index_config,
                                   source=source)
             else:
                 removed = prune_runs(run_root, values['runs.keep'], protect=run_dir)
-                print(f'Run {selected}: {run_dir}' + (f' (xoá lượt cũ: {", ".join(removed)})' if removed else ''), flush=True)
+                log.emit('run.start', f'Run {selected}: {run_dir}'
+                         + (f' (xoá lượt cũ: {", ".join(removed)})' if removed else ''), trigger=trigger,
+                         pruned=len(removed))
                 code = execute(selected, recorder, values, state_dir, run_dir, os.environ[key], index_config)
             recorder.check_stop()
             incomplete = recorder.data.get('incompleteSources') or recorder.data['counts'].get('index', {}).get('deferred')
@@ -957,13 +1034,14 @@ def run_job(mode: str, trigger: str | None = None, run_id: str | None = None, fr
             if not isinstance(exc, (StopRequested, KeyboardInterrupt)):
                 recorder.data['errorKind'] = perr.classify_exception(exc)
                 # vào job.log: sau recorder.finish() stdout/stderr đã trả về luồng gốc nên traceback ở ngoài sẽ mất
-                print('catalog.failed traceback:\n' + traceback.format_exc(), file=sys.stderr, flush=True)
+                log.emit('catalog.failed', 'catalog.failed traceback:\n' + traceback.format_exc(), 'ERROR', error=exc)
             if isinstance(exc, StopRequested) or recorder.stop_event.is_set():
                 status, code = 'stopped', EXIT_STOPPED
                 if not isinstance(exc, StopRequested):
                     raise StopRequested(str(exc)) from exc
             raise
         finally:
+            emit_run_end(recorder, status, code)
             recorder.finish(status, code, error)
             CFG = REC = None
             notify_finished(recorder.data, run_dir, state_dir, values)
@@ -976,7 +1054,8 @@ def execute(selected: str, rec: RunRecorder, values: dict, state_dir: Path, run_
     maintenance_error = False
     try:
         with step('maintain', label=graph.BY_ID['maintain'].title) as detail:
-            maintenance = with_retry('maintain', lambda: maintain_catalog(db_url), detail)
+            maintenance = with_retry('maintain', lambda: maintain_catalog(
+                db_url, trip_max_age_days=values['tripHotels.priceMaxAgeDays']), detail)
             detail.update(maintenance)
         rec.set_counts(maintain=maintenance)
     except StopRequested:
@@ -996,7 +1075,8 @@ def execute(selected: str, rec: RunRecorder, values: dict, state_dir: Path, run_
             try:
                 run_index(rec, index_config)
             except Exception as exc:
-                print(f"catalog.index.failed {type(exc).__name__}: {exc}; retry mode=index", file=sys.stderr, flush=True)
+                log.emit('catalog.index.failed', f"catalog.index.failed {type(exc).__name__}: {exc}; retry mode=index",
+                         'ERROR', error=exc)
                 if not failed:
                     raise RuntimeError("Index thất bại; DB đã giữ dữ liệu mới. Chạy lại mode=index") from exc
 
@@ -1038,6 +1118,10 @@ def crawl_trip_prices(run_dir: Path, targets: list[dict], values: dict, deadline
                                                         step_deadline('trip-hotels.prices', deadline)))
         detail.update(requested=len(targets), completed=len(records),
                       unpricedHotelDates=len((coverage or {}).get('unpricedHotelDates') or []))
+        if targets and not records:
+            raise RuntimeError('Không có khách sạn Trip đủ dữ liệu giá; xem HTTP trong log/raw của bước giá phòng')
+        if len(records) < len(targets) or (coverage or {}).get('unpricedHotelDates'):
+            detail['_status'] = 'partial'
     return records, coverage
 
 
@@ -1107,12 +1191,14 @@ def crawl_and_load(selected: str, rec: RunRecorder, values: dict, state_dir: Pat
             save_run_targets(run_dir, trip['targets'])
             price_rooms()
         else:
-            print('Khách sạn Trip đang tắt: lượt hằng ngày chỉ bảo trì DB và index.', flush=True)
+            log.emit('catalog.trip.disabled', 'Khách sạn Trip đang tắt: lượt hằng ngày chỉ bảo trì DB và index.',
+                     'WARNING')
             return 0
     rec.check_stop()
     records, coverage = trip['records'], trip['coverage']
     if trip_used:
-        print(f'Trip complete: {len(records)}/{len(trip["targets"])}', flush=True)
+        log.emit('catalog.trip.complete', f'Trip complete: {len(records)}/{len(trip["targets"])}',
+                 records=len(records), requested=len(trip['targets']))
         rec.set_counts(trip={'requested': len(trip['targets']), 'completed': len(records),
                              'unpricedHotelDates': len((coverage or {}).get('unpricedHotelDates') or [])})
         if not records:
@@ -1136,8 +1222,9 @@ def crawl_and_load(selected: str, rec: RunRecorder, values: dict, state_dir: Pat
     if trip_used:
         write_state(schedule_file, record_batch(trip['targets'], coverage, read_state(schedule_file),
                                                 datetime.now(timezone.utc).isoformat()))
-    print(json.dumps({'mode': selected, 'discovery': trip['discovery'], 'sources': statuses,
-                      'catalog': summary, 'database': counts}, ensure_ascii=False, default=str), flush=True)
+    final = {'mode': selected, 'discovery': trip['discovery'], 'sources': statuses, 'catalog': summary,
+             'database': counts}
+    log.emit('run.summary', json.dumps(final, ensure_ascii=False, default=str), summary=final)
     unpriced = (coverage or {}).get('unpricedHotelDates') if trip_used else None
     # A committed partial catalog is usable. Keep warnings in run.json, not a fatal process exit.
     rec.data['incompleteSources'] = incomplete_sources(rec, run_dir)
@@ -1194,8 +1281,9 @@ def validate_step(rec: RunRecorder, values: dict, selected: str, run_dir: Path, 
 
 def db_step(rec: RunRecorder, run_dir: Path, products: Path, coverage: Path | None, db_url: str) -> dict:
     with step('db', label=graph.BY_ID['db'].title) as detail:
-        counts = with_retry('db', lambda: load_into_db(products, coverage, db_url, ROOT,
-                                                       report_path=run_dir / 'db_load.jsonl'), detail)
+        counts = with_retry('db', lambda: load_into_db(
+            products, coverage, db_url, ROOT, report_path=run_dir / 'db_load.jsonl',
+            trip_max_age_days=settings_values()['tripHotels.priceMaxAgeDays']), detail)
         detail.update(counts or {})
     rec.set_counts(database=counts)
     return counts
@@ -1276,7 +1364,15 @@ def resume_run(rec: RunRecorder, values: dict, state_dir: Path, run_dir: Path, f
     finally:
         if not rec.stop_event.is_set():
             run_index(rec, index_config)
-    return EXIT_PARTIAL if incomplete_sources(rec, run_dir) else 0
+    # Ghi lại theo kết quả mới: cào lại một nguồn thành công phải xoá dấu "chưa đủ" của lượt gốc (run_job đọc dấu đã lưu;
+    # trước đây lượt cào lại khách sạn Trip đủ giá 73/73 vẫn kết thúc `partial` vì 'unpriced dates' của lần chạy đầu).
+    incomplete = incomplete_sources(rec, run_dir)
+    coverage_file = run_dir / 'trip_price_coverage.json'
+    if coverage_file.is_file() and (read_json(coverage_file, {}) or {}).get('unpricedHotelDates'):
+        incomplete['trip-hotels.prices'] = 'unpriced dates'
+    rec.data['incompleteSources'] = incomplete
+    rec.save()
+    return EXIT_PARTIAL if incomplete else 0
 
 
 def main(argv=None) -> int:
@@ -1312,10 +1408,10 @@ def main(argv=None) -> int:
             return run_job('resume', args.trigger, run_id=args.run_id, from_step=args.from_step, source=args.source)
         return run_job(args.mode, args.trigger)
     except StopRequested as exc:
-        print(f'Fresh catalog stopped: {exc}', file=sys.stderr)
+        log.emit('run.stopped', f'Fresh catalog stopped: {exc}', 'WARNING')
         return EXIT_STOPPED
     except (RuntimeError, ValueError, OSError) as exc:
-        print(f'Fresh catalog failed: {exc}', file=sys.stderr)
+        log.emit('run.failed', f'Fresh catalog failed: {exc}', 'ERROR', error=exc)
         return EXIT_PARTIAL
 
 

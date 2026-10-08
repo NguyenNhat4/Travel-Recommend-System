@@ -22,7 +22,7 @@ trên 15 điểm đến Việt Nam, mô tả tiếng Việt, xuất theo schema 
 |---|---|
 | vinpearl.com trước: khách sạn, VinWonders, golf, combo | `crawl.py vinpearl`: API của booking.vinpearl.com (vinpearl.com có Cloudflare) |
 | booking.com: độ phủ chỗ ở, thuộc tính có cấu trúc | `crawl.py booking-hotels`: N khách sạn phổ biến mỗi điểm đến + hạng phòng + giá |
-| agoda.com: phủ tốt chỗ ở nội địa | `crawl.py agoda-hotels`: N khách sạn phổ biến mỗi điểm đến + giá |
+| agoda.com: phủ tốt chỗ ở nội địa | Fresh pipeline gọi `crawl.py agoda-api`: N khách sạn mỗi điểm đến, hạng phòng và một ngày giá thật; loader dựng availability 30 ngày |
 | trip.com: vé máy bay, điểm tham quan (gợi ý chéo tuần 3) | `crawl.py trip-flights`, `crawl.py trip-attractions` |
 | 2.000–5.000 sản phẩm, 10–15 điểm đến | `collectors/plan.py`: 15 điểm đến, ngân sách mỗi điểm đến |
 | Gộp trùng: vinpearl.com thắng tên/mô tả, OTA thắng giá/tình trạng | `normalise.py` |
@@ -139,11 +139,13 @@ Image [Dockerfile.fresh-catalog](../../Dockerfile.fresh-catalog) chứa collecto
 
 - Lượt đầu và mỗi 7 ngày: cào mới các nguồn, tìm ID Trip.com ở 7 thành phố có cityId trong `@deep`; lần đầu chọn tối đa 30 ID/thành phố, các lượt tuần chọn tối đa 10 ID mới/thành phố từ tối đa 300 ID đã quét/thành phố để hỏi giá tại mốc 14/30/60 ngày; chuẩn hóa 13 trường rồi upsert `cdp.products`/`catalog.combo_items`. Tăng `TRIP_DISCOVERY_SCAN_PER_CITY` khi vùng quét đã hết ID mới. Không dùng `data/products.jsonl`, interim hoặc snapshot cũ làm dữ liệu nguồn.
 - Lượt full chạy song song theo site: Vinpearl, Trip.com (vé máy bay → điểm tham quan → tìm ID khách sạn → giá phòng), Booking, Agoda; tối đa `CRAWL_PARALLEL` site cùng lúc (mặc định 2, vì Vinpearl, Booking, Agoda và giá phòng Trip đều mở Chromium trên VM 4 GB). Trong một site các bước vẫn tuần tự như trước. Một nguồn lỗi thì các nguồn độc lập vẫn tiếp tục; chỉ bước phụ thuộc nguồn lỗi bị bỏ. Nguồn lỗi chuẩn hoá hoặc không đạt ngưỡng theo nguồn bị loại khỏi bản mới; dữ liệu tốt vẫn được nạp và lượt báo `partial`. Không coi bản ghi thiếu do lỗi nguồn là hết bán. Log mỗi dòng của nguồn có tiền tố `[trip]`, `[vinpearl]`…; mốc `catalog.group.start/done` cho biết site nào đang chạy. Lượt daily chỉ cào Trip nên không đổi.
-- Hằng ngày còn lại: xoay vòng tối đa 180 ID đã biết, ưu tiên ID chưa thử/lâu chưa thử, hỏi JSON phòng/giá mới cho cả phòng cũ và phòng mới. Chỉ file ID/thành phố và thời điểm thử/thành công được giữ cho lịch chạy; marker full chỉ ghi sau khi nạp DB thành công. Giá Trip.com gốc quá 7 ngày chưa làm mới sẽ được đặt chưa khả dụng để không quảng bá giá cũ.
+- Hằng ngày còn lại: xoay vòng tối đa 180 ID đã biết, ưu tiên ID chưa thử/lâu chưa thử, hỏi JSON phòng/giá mới cho cả phòng cũ và phòng mới. Chỉ file ID/thành phố và thời điểm thử/thành công được giữ cho lịch chạy; marker full chỉ ghi sau khi nạp DB thành công. Giá Trip.com gốc quá `tripHotels.priceMaxAgeDays` ngày (mặc định 7; `0` = tạm không tắt, chỉnh trên monitor) chưa làm mới sẽ được đặt chưa khả dụng để không quảng bá giá cũ.
+- Hai dòng DB chưa gộp cùng nhận một `sourceRef`/`sameAs` (vd. dòng agoda nạp riêng trong khi dòng booking đã ghi ref agoda vào `sameAs`) không còn làm dừng lượt nạp: dòng ghi ref trong `sameAs` được giữ, dòng kia nhận `mergedInto` và `available = false`, phòng con chuyển sang dòng giữ; số cặp ghi ở `refConflicts`.
 - DB giữ các trường mô tả đã có, cập nhật giá/trạng thái, thêm phòng mới, đánh dấu phòng Trip.com không còn xuất hiện trong phản hồi hợp lệ là hết bán. Một phản hồi lỗi/chặn **không** được coi là hết phòng. Không xóa `cdp.products` đã được đơn hàng tham chiếu.
-- Đầu mỗi lượt (kể cả khi mọi nguồn lỗi sau đó) job chạy một transaction riêng: đặt chưa khả dụng các giá Trip.com quá 7 ngày, và cuộn cửa sổ đặt chỗ 30 ngày cho toàn catalog đúng như seed (`docs/spec/DATABASE_SCHEMA.md` #13): `available_from/to` = khoảng nguồn `attributes.sourceAvailableFrom/To` cắt vào `[hôm nay, +29]`, thiếu thì lấy cả cửa sổ; chuyến bay `from = to` = ngày bay; giao rỗng → `available = false`. Dòng mới/làm mới trong lượt ghi lại khoảng nguồn của lượt đó. Lịch `attributes.availability` của hạng phòng, điểm tham quan, golf được sinh lại theo cửa sổ mới như seed (`docs/spec/MOCK_DATA_SPEC.md` §2 bước 2); ngày Trip.com đã hỏi ghi theo kết quả thật, dòng chưa khả dụng có lịch toàn `0`.
+- Đầu mỗi lượt (kể cả khi mọi nguồn lỗi sau đó) job chạy một transaction riêng: đặt chưa khả dụng các giá Trip.com quá `tripHotels.priceMaxAgeDays` ngày (mặc định 7, `0` = bỏ qua), và cuộn cửa sổ đặt chỗ 30 ngày cho toàn catalog đúng như seed (`docs/spec/DATABASE_SCHEMA.md` #13): `available_from/to` = khoảng nguồn `attributes.sourceAvailableFrom/To` cắt vào `[hôm nay, +29]`, thiếu thì lấy cả cửa sổ; chuyến bay `from = to` = ngày bay; vé ngày cố định ngoài cửa sổ (đã bay, sau cửa sổ, hết hạn báo giá) được dời cả hai chặng vào cửa sổ như seed, ngày trong tên/mô tả đổi theo, và vé có giá luôn đặt được (`docs/prd/data-model.md` §3.1, chốt 06/10/2026); giao rỗng → `available = false` kèm `attributes.windowClosed`, và dòng mang dấu này được bật lại khi cửa sổ cuộn tới khoảng của nó (còn giá, chưa gộp, không có `priceFreshness`). Dòng tắt vì lý do khác (hết bán, giá quá hạn) không bị bật lại. Khách sạn tổng quan không có hạng phòng con nào đặt được thì `available = false` kèm `attributes.noBookableRoom`, tự bật lại khi có phòng (PRD FR-CAT-02, chốt 06/10/2026). Dòng mới/làm mới trong lượt ghi lại khoảng nguồn của lượt đó. Lịch `attributes.availability` của hạng phòng, điểm tham quan, golf được sinh lại theo cửa sổ mới như seed (`docs/spec/MOCK_DATA_SPEC.md` §2 bước 2); ngày Trip.com đã hỏi ghi theo kết quả thật, dòng chưa khả dụng có lịch toàn `0`.
+- Cũng trong transaction đầu lượt đó và sau mỗi lần nạp DB, `catalog.combo_items` của **mọi combo trong DB** được parse lại từ tên + mô tả đang lưu (`fresh_catalog_db.sync_combo_items`), không chỉ combo lượt này cào được: sửa code parse thì combo đang bị chặn cào cũng nhận bản mới, và thành phần map sang sản phẩm của toàn catalog thay vì chỉ lô đang nạp. Chỉ combo có thành phần đổi mới được ghi lại (`combosChanged`). Xem trước, chỉ đọc: `python src/data_collection/fresh_catalog_db.py combo-items --database-url <dsn>`.
 - Sau khi nạp DB (và cả khi lượt cào lỗi), job gọi bước index `embed_products` vào Weaviate của **cùng đích**: chỉ embed search unit mới hoặc đổi text, xoá vector mồ côi. Cohere 429 sau khi DB đã nạp: giữ DB, ghi index pending vào `state/index_pending.json`, lượt báo `partial` nhưng trả mã 0; cron bật sẽ thử lại riêng index sau cooldown (1 giờ, tăng dần tối đa 24 giờ; ưu tiên Retry-After). Các lỗi index khác vẫn trả mã 3. `fresh-run index` cũng tuân thủ cooldown. Backend tự nạp lại giá/trạng thái mỗi `CATALOG_REFRESH_SECONDS` (mặc định 15 phút), không cần restart.
-- Raw/JSON đã bỏ review/tên người, interim, `products.jsonl`, log và báo cáo giữ theo từng lượt; mặc định giữ 7 lượt (`runs.keep` trong monitor). Tóm tắt lịch sử, ID và lịch xoay vòng được giữ lâu dài. Giá/input vẫn chỉ lấy từ phản hồi mới của lượt hiện tại. `KEEP_FAILED_RUNS` cũ không còn dùng; browser profile Trip được dọn sau bước hỏi giá.
+- Raw/JSON đã bỏ review/tên người, interim, `products.jsonl`, log và báo cáo giữ theo từng lượt; mặc định giữ 2 lượt (`runs.keep` trong monitor, hoặc biến môi trường `RUNS_KEEP`). Tóm tắt lịch sử, ID và lịch xoay vòng được giữ lâu dài. Giá/input vẫn chỉ lấy từ phản hồi mới của lượt hiện tại. `KEEP_FAILED_RUNS` cũ không còn dùng; browser profile Trip được dọn sau bước hỏi giá.
 
 ### Hạn giờ và phục hồi khi nghẽn
 
@@ -234,15 +236,23 @@ Theo dõi trên console của VM (chỉ cần Docker, `curl` cho lệnh backend)
 
 ### Monitor của cron mới
 
+**Dung lượng (tab "Dung lượng" của monitor, 06/10/2026):** hiện đĩa VM (đã dùng / còn trống của filesystem chứa thư mục dữ
+liệu), dung lượng từng thư mục con và từng lượt cào còn giữ; nút "Xoá các lượt cũ hơn" giữ N lượt mới nhất (lượt đang chạy
+luôn được giữ; state và dữ liệu đã nạp DB không bị đụng). API: `GET /api/storage`, `POST /api/storage/cleanup {"keepRuns": N}`.
+Monitor không xoá được image Docker (container không có quyền Docker): bước deploy job cào gọi
+`run_daily_docker.sh prune-images <image vừa deploy>`, giữ image đó và một bản trước, xoá image cũ hơn của cùng repository.
+Dọn tay trên VM: `run_daily_docker.sh cleanup` (container dừng, image không dùng, lượt cũ, log cũ).
+
 Phục vụ FR-CAT-01/03 và NFR-SEC-01. Dùng cùng **image/tag, env file và volume** với `fresh-run`:
 
 ```bash
 FRESH_IMAGE=<AR>/vota-fresh-catalog:<tag> /opt/vota/bin/run_daily_docker.sh fresh-monitor
 # Tab DB của monitor đọc DB đích bằng SEED_DATABASE_URL (DB_TARGET=local) hoặc CLOUD_SEED_DATABASE_URL, chỉ đọc.
 # Tab Realtime đọc GET $BACKEND_URL/internal/calls (mặc định http://127.0.0.1:8000).
-# `fresh-monitor` chạy nền với --restart unless-stopped và --memory 1g (Docker tự bật lại khi bị tắt vì hết RAM hay VM
-# khởi động lại; log: docker logs -f vota-fresh-catalog-monitor). MONITOR_RESTART=no chạy tiền cảnh như trước,
-# MONITOR_MEMORY đổi giới hạn. `monitor` (không có `fresh-`) chạy cùng UI trong image daily, đọc <DATA_DIR>/state, /fresh_runs.
+# `fresh-monitor` chạy nền với --restart unless-stopped (Docker tự bật lại khi bị tắt vì hết RAM hay VM khởi động lại;
+# log: docker logs -f vota-fresh-catalog-monitor). MONITOR_RESTART=no chạy tiền cảnh như trước. Không giới hạn RAM mặc
+# định vì lượt bấm trên monitor chạy trong container này; MONITOR_MEMORY đặt giới hạn nếu cần.
+# `monitor` (không có `fresh-`) chạy cùng UI trong image daily, đọc <DATA_DIR>/state, /fresh_runs.
 # Trên máy cá nhân:
 ssh -L 8765:127.0.0.1:8765 <user>@<vm>
 # Mở http://127.0.0.1:8765/ ; /daily và /pipeline tự chuyển về đây.
@@ -316,6 +326,12 @@ khách sạn Trip tắt vì trang danh sách Trip đang trả "Tìm thấy 0 nơ
 Trình duyệt chạy trong Xvfb; `SHOW_BROWSER=1 ./local_crawl.sh monitor` để thấy cửa sổ Chromium (tự bấm xác minh nếu nguồn hỏi).
 Dữ liệu các lượt ở `data/local_crawl/` (Git ignore). Bước index gọi Cohere cho search unit mới hoặc đổi text; ô thử truy
 vấn gọi Cohere một lần mỗi lần bấm.
+
+### Nối DB nội bộ và chống chồng lượt (HA)
+
+Job `fresh_catalog.py` nối DB bằng `db.vota.internal:5432` (không tunnel SSH, không qua pgbouncer), giữ **khoá tệp** (một
+container) và **khoá DB** `pg_try_advisory_lock(7791025)` (giữa các container; `catalog_run_lock.py`, tắt chỉ để chạy thử bằng
+`CATALOG_DB_RUN_LOCK=off`) nên tick chồng nhau thoát với `catalog.lock.busy`. `CATALOG_LOCK_DIR` đặt khoá tệp ra thư mục khác state. Mỗi tick phát `catalog.freshness` (`state`, `age_hours`) cho cảnh báo ngoài job. Hướng dẫn: `docs/guide/van-hanh-crawler-db-noi-bo.md`.
 
 ## Chạy
 

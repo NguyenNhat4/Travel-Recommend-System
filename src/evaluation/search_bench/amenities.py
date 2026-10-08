@@ -4,10 +4,16 @@ Dùng lại `vector_bench/dataset/amenities.py` (alias exact → cụm từ dài
 và chèn thêm một bước giữa: similarity trigram kiểu pg_trgm (Jaccard trên tập trigram của từng từ đã fold, đệm "  w ")
 với alias seed, khớp khi > amenity_fuzzy_min. Không dùng rapidfuzz ratio: trên snapshot 2026-09-21 nó map sai ~141 chuỗi
 (`ban cong` → breakfast, `phong tam rieng` → family_room…). Mọi lần khớp trigram được ghi lại để Người A soát.
+
+Chuỗi không phải tiện ích của sản phẩm bị bỏ trước khi khớp (05/10, gold_v4 — D11): chuỗi phủ định "Không có …" / "… : no"
+(cơ sở KHÔNG có tiện ích đó; trước đây "Không có Thang máy" thành `elevator`), chuỗi khoảng cách tới địa điểm lân cận
+"… 570 m" / "… 1,6 km" (trước đây "Sân Golf Đà Lạt 570 m" thành `golf`, "Story Beach & Pool 190 m" thành `pool`) và tiện
+ích "(Tạm thời ngừng hoạt động)".
 """
 from __future__ import annotations
 
 import csv
+import re
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,7 +21,19 @@ from pathlib import Path
 from evaluation.vector_bench.dataset.amenities import AmenityMatcher, AmenityVocab, SeedAmenity, build_vocab, load_seed
 from evaluation.vector_bench.lexical import fold
 
-__all__ = ["AmenityVocab", "TrigramAmenityMatcher", "build_vocab", "load_seed", "similarity", "trigrams"]
+__all__ = ["AmenityVocab", "TrigramAmenityMatcher", "build_vocab", "is_not_amenity", "load_seed", "similarity", "trigrams"]
+
+_NEGATED = "khong co "                                          # fold("Không có …")
+_NO_FLAG = re.compile(r":\s*(?:no|không)\s*$", re.IGNORECASE)       # "Phòng / tầng không hút thuốc : no"
+_CLOSED = "tam thoi ngung hoat dong"                             # fold("(Tạm thời ngừng hoạt động)")
+_DISTANCE = re.compile(r"\d+(?:[.,]\d+)?\s*(?:m|km)\s*$", re.IGNORECASE)   # "Chợ Đà Lạt 1,6 km", "… : 1km", "… 570 m"
+
+
+def is_not_amenity(raw: str) -> bool:
+    """Chuỗi trong `attributes.amenities` mà không phải tiện ích sản phẩm đang có: phủ định ("Không có …", "… : no"),
+    khoảng cách tới nơi khác, hoặc tiện ích tạm ngừng hoạt động."""
+    f, s = fold(raw), raw.strip()
+    return f.startswith(_NEGATED) or _CLOSED in f or bool(_NO_FLAG.search(s) or _DISTANCE.search(s))
 
 
 def trigrams(s: str) -> frozenset[str]:
@@ -53,6 +71,8 @@ class TrigramAmenityMatcher:
         self.hit_counts: Counter[str] = Counter()          # folded → số lần gặp (theo chuỗi thô, không theo unit)
 
     def match(self, raw: str) -> tuple[str, str]:
+        if is_not_amenity(raw):
+            return "raw", ""                                        # build_vocab bỏ qua giá trị rỗng
         kind, val = self._base.match(raw)
         if kind == "seed" or not val:
             return kind, val

@@ -16,6 +16,9 @@ cron_data_dir='/srv/vota/daily-data'
 cron_env_file='/etc/vota/daily.env'
 backend_env_file='/etc/vota/backend.env'
 jwt_secrets_dir='/etc/vota/backend-secrets'
+migrate_dsn_stdin=0
+migrate_dsn=''
+skip_migrate=0
 cron_schedule='0 2 * * *'
 cron_crontab_file=''
 health_timeout_seconds='900'
@@ -29,6 +32,7 @@ Usage:
                        --compose-file /absolute/path/compose.yml
                        [--backend-service backend]
                        [--backend-health-url http://127.0.0.1:8000/health/ready]
+                       (--migrate-dsn-stdin | --skip-migrate)
                        [--db-tunnel-host 127.0.0.1] [--db-tunnel-port 15432]
                        [--cron-runner /opt/vota/bin/run_daily_docker.sh]
                        [--cron-data-dir /srv/vota/daily-data]
@@ -61,6 +65,8 @@ while [ "$#" -gt 0 ]; do
     --cron-crontab-file) [ "$#" -ge 2 ] || die '--cron-crontab-file requires a value'; cron_crontab_file="$2"; shift 2 ;;
     --health-timeout) [ "$#" -ge 2 ] || die '--health-timeout requires a value'; health_timeout_seconds="$2"; shift 2 ;;
     --health-interval) [ "$#" -ge 2 ] || die '--health-interval requires a value'; health_interval_seconds="$2"; shift 2 ;;
+    --migrate-dsn-stdin) migrate_dsn_stdin=1; shift ;;
+    --skip-migrate) skip_migrate=1; shift ;;
     --dry-run) dry_run=1; shift ;;
     --help|-h) usage; exit 0 ;;
     *) die "unknown option: $1" ;;
@@ -78,6 +84,10 @@ fi
 [[ "$cron_runner" == /* ]] || die '--cron-runner must be an absolute path'
 [[ "$cron_data_dir" == /* ]] || die '--cron-data-dir must be an absolute path'
 [[ "$cron_env_file" == /* ]] || die '--cron-env-file must be an absolute path'
+if [ "$skip_migrate" -eq 0 ] && [ "$migrate_dsn_stdin" -eq 0 ] && [ "$dry_run" -eq 0 ]; then
+  die 'pass --migrate-dsn-stdin (DSN on stdin) or --skip-migrate'
+fi
+[ "$skip_migrate" -eq 0 ] || [ "$migrate_dsn_stdin" -eq 0 ] || die '--skip-migrate and --migrate-dsn-stdin are mutually exclusive'
 [[ "$backend_service" =~ ^[a-zA-Z0-9_.-]+$ ]] || die 'invalid Backend service name'
 [[ "$db_tunnel_host" == 127.0.0.1 || "$db_tunnel_host" == localhost ]] || die 'DB tunnel host must be loopback'
 [[ "$db_tunnel_port" =~ ^[0-9]+$ ]] || die 'DB tunnel port must be numeric'
@@ -88,6 +98,13 @@ command -v docker >/dev/null 2>&1 || die 'docker is required'
 command -v curl >/dev/null 2>&1 || die 'curl is required'
 [ -x "$script_dir/check-db-tunnel.sh" ] || die 'check-db-tunnel.sh is missing or not executable'
 [ -x "$script_dir/install-vota-cron.sh" ] || die 'install-vota-cron.sh is missing or not executable'
+
+# DSN của role có quyền tạo bảng đến từ Secret Manager qua stdin: không nằm trong argv, env file hay log. Đọc sớm, một lần,
+# trước mọi lệnh docker để chúng không nuốt stdin.
+if [ "$migrate_dsn_stdin" -eq 1 ] && [ "$dry_run" -eq 0 ]; then
+  IFS= read -r migrate_dsn || true
+  [[ "$migrate_dsn" =~ ^postgres(ql)?://[^[:space:]]+$ ]] || die 'stdin did not provide a postgresql:// DSN for migrations'
+fi
 
 if [ "$dry_run" -eq 0 ]; then
   [ "$(id -u)" -ne 0 ] || die 'deploy must run as the SSH user, not root (cron is per-user)'
@@ -131,6 +148,7 @@ trap cleanup EXIT
 
 if [ "$dry_run" -eq 1 ]; then
   printf 'DRY-RUN: docker compose -f %s -f backend-override.yml pull %s\n' "$compose_file" "$backend_service"
+  [ "$skip_migrate" -eq 1 ] || printf 'DRY-RUN: docker run --rm --network host -e SEED_DATABASE_URL %s python db/migrations/run.py\n' "$backend_image"
   printf 'DRY-RUN: docker compose -f %s -f backend-override.yml up -d --no-deps %s\n' "$compose_file" "$backend_service"
   printf 'DRY-RUN: curl --fail %s for up to %ss\n' "$backend_health_url" "$health_timeout_seconds"
   exit 0
@@ -153,6 +171,16 @@ previous_image="$(docker image inspect --format '{{range .RepoDigests}}{{println
 [[ "$previous_image" != *$'\n'* ]] || die 'previous Backend image contains a newline'
 
 docker compose -f "$compose_file" -f "$override_file" pull "$backend_service"
+
+# Migration chạy bằng chính image sắp deploy, TRƯỚC khi đụng tới container đang chạy. Lỗi ở đây dừng deploy; backend cũ vẫn
+# chạy nguyên vẹn nên không cần rollback. Migration idempotent và chỉ thêm (backward-compatible) nên rollback image sau đó
+# vẫn chạy được với schema mới.
+if [ "$skip_migrate" -eq 0 ]; then
+  printf 'Applying database migrations.\n'
+  # `-e NAME` không kèm giá trị: Docker lấy từ môi trường của tiến trình này, DSN không xuất hiện trong `ps`.
+  SEED_DATABASE_URL="$migrate_dsn" docker run --rm --network host -e SEED_DATABASE_URL "$backend_image" python db/migrations/run.py \
+    || die 'Database migration failed; Backend was not changed'
+fi
 
 wait_for_health() {
   local deadline=$((SECONDS + health_timeout_seconds))
