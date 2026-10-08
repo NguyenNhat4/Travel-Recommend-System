@@ -92,8 +92,13 @@ test tag == `f"{embed_model}:{TEXT_BUILDER_VERSION}"`; engine thật phải tái
 
 - [x] B0 sửa 2 commit (`7b0fcde`, `4dd271e`; tree không đổi; force-with-lease 08/10)
 - [x] B1 merge `origin/release-mvp-v2` (`d8a86ac`) vào feat — sạch, không trùng file
-- [ ] B2 ba đề xuất viết xong, `chờ chốt`
-- [ ] A1 latency TRƯỚC · [ ] A2 coldstart + AC + ô B ulong · [ ] A3 split prodcopy + baseline_v2
-- [ ] B1 profile g6-pref-v1 · [ ] B2 DB G6 + đo lại + report
+- [x] B2 ba đề xuất viết xong, `chờ chốt` (`1b5af92`)
+- [x] A1 latency TRƯỚC (`eval-2026-10-08-recsys-latency-dau-cuoi-truoc.md`: strata p95 87 ms, users60 86 ms, parity 60/60)
+      · [x] A2 coldstart + AC-REC-01/02 + ô B ulong (`eval-2026-10-09-recsys-coldstart-ac-rec-baseline-v2.md`)
+      · [x] A3 split prodcopy `asof20261008` 4 kind + `baseline_v2` 4 kind, regress exit 0
+- [x] B1 profile `g6-pref-v1` (`47f1710`; demo / eval-v2 / append-v1 byte-identical theo sha; 40 test)
+      · [x] B2 DB `vota_g6pref_v1` + đo lại 4 cấu hình + 2 tune + CI + split `-g6pref-v1-` đóng băng
+      (`eval-2026-10-09-recsys-g6-so-thich-do-lai.md`): destHit@20 +0,043 **đạt D2**, nexttrip hit@20 −0,032 **không đạt D1**
+      (bộ sinh chọn món trong điểm đến theo pop), hit@4 CI chứa 0 → ba lựa chọn chốt lại G2 ở `quyet-dinh.md` §7.6
 - [ ] G5a · [ ] PR-A · [ ] latency SAU · [ ] deploy PR-A
-- [ ] G2 chốt lại · [ ] G5b · [ ] PR-B · [ ] deploy PR-B
+- [ ] **G2 chốt lại** (ba lựa chọn (a)/(b)/(c) ở `quyet-dinh.md` §7.6 — chờ người dùng) · [ ] G5b · [ ] PR-B · [ ] deploy PR-B

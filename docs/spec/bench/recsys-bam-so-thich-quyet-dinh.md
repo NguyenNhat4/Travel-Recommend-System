@@ -233,6 +233,35 @@ coldstart + AC-REC-01/02 phải đo; PR đích `release-mvp-v2`. Kế hoạch ch
 `docs/plan/2026-10-08-recsys-trien-khai-theo-giai-doan.md`. Ba đề xuất PRD: [C] loại sản phẩm đã mua + combo, [A] ô khám phá,
 [B] F14c + destCap2 (chờ G6/G2) — xem §2 của plan đó.
 
+### 7.6 Kết quả G6 — đầu vào để chốt lại G2 (09/10)
+
+Dữ liệu event có sở thích chủ đề (profile seed `g6-pref-v1`, 5.000 khách, 70 % có chủ đề ẩn; chuyến liên tiếp cùng chủ đề
+0,63–0,82 so với 0,38 ở khách không sở thích). Số đầy đủ: `src/evaluation/reports/eval-2026-10-09-recsys-g6-so-thich-do-lai.md`.
+
+| C3 = P2 + F14c + destCap2 so với production | Kết quả | Luật đề nghị §7.4 / 7.5 |
+|---|---|---|
+| nexttrip **destHit@20** (đúng điểm đến chuyến sau) | **+0,0425** [+0,0213, +0,0631]; khách có chủ đề +0,0494 | D2 **đạt** |
+| nexttrip hit@20 (đúng món, list 20) | **−0,0322** [−0,0425, −0,0219] — y hệt prodcopy | D1 **không đạt** (cận dưới ≤ −0,01) |
+| nexttrip hit@4 (list 4 như trang chủ) | −0,0039 [−0,0097, +0,0019] | chưa phân biệt được |
+| temporal h@20 / h@4 | −0,0227 [−0,0364, −0,0091] / −0,0061 (CI chứa 0) | D4 đạt |
+| LLBO h@4 · coldstart h@4 | −0,0020 [−0,0040, −0,0003] · −0,0008 (CI chứa 0) | D3 đạt trong dung sai 0,01 |
+| theme `between` / `noisy_paired` | +0,309 / +0,363 | đạt |
+| tgtHit@20 / nextDestHit@20 giả lập | +0,0083 [+0,0014, +0,0167] / +0,017 (CI chứa 0) | D5 nửa đạt |
+
+**Vì sao hit@20 món không hồi phục dù dữ liệu có sở thích:** G6 chỉ gắn sở thích ở mức *điểm đến*; *khách sạn nào* trong điểm
+đến vẫn bốc theo độ phổ biến (Zipf). Công thức nào hạ pop cũng thua ở bước chọn món trong điểm đến — và thua *nhiều hơn* ở
+khách có chủ đề (−0,040) dù đúng điểm đến hơn. Tune: T2 (pop 0,45 + destCap2) destHit +0,070, temporal trong nhiễu, nhưng
+theme chỉ +0,135 / +0,200 (không đạt ≥ 0,15 ở `between`); T1 (F7 + destCap2) ≈ C3. **Không điểm nào trên đường đánh đổi đạt
+cả D1 lẫn theme.**
+
+**Cần người dùng chốt lại G2 với ba lựa chọn (không tự chọn):**
+
+| | Nội dung | Căn cứ |
+|---|---|---|
+| **(a)** | Chấp nhận C3 với D1 định nghĩa lại trên **hit@4** (list khách thật nhìn thấy): −0,0039, CI chứa 0; bám sở thích hiện ở mức điểm đến (+0,043) và theme (+0,31 / +0,36) | Chi phí món ở list 20 là −0,032 nhưng bộ sinh chọn món theo pop nên chưa biết dữ liệu thật có vậy không |
+| **(b)** | Chọn T2 (P2 + F14d pop 0,45 + destCap2): destHit +0,070, temporal không phân biệt được, nexttrip hit@20 −0,024; đổi lại theme chỉ +0,135 / +0,200 | Thận trọng hơn; phải nới tiêu chí theme ≥ 0,15 xuống ≈ 0,13 |
+| **(c)** | Giữ production ở nhánh không chuyến mở; chỉ ship PR-A (P2 + ô B + loại combo); mở nghiên cứu G6 phiên bản 2 (sở thích ở mức thuộc tính sản phẩm) rồi quay lại | Đúng phương pháp nhất, chậm nhất |
+
 ## 6. Nếu chốt: những gì phải sửa trong engine (WP5.3, chưa làm)
 
 Chỉ ghi để lượng hoá công việc; **không sửa trước khi có G5**.

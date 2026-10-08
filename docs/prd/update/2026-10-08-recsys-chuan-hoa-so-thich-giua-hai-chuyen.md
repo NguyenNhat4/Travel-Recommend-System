@@ -64,10 +64,15 @@ ngưỡng calibrate trên 120 request khách giả lập (seed 99), bền qua se
 | temporal h@20 | ≥ −0,04 (điểm ước lượng) | −0,0310 ✅ |
 | `open` | không đổi | lệch đúng 0 ✅ |
 | latency p95 `/recommendations` | Δ ≤ 50 ms đầu-cuối | ranking-only +0,63 ms; đầu-cuối đo ở lane A1 |
-| nexttrip h@20 | **G2 — chốt lại sau G6** | −0,0316 (dữ liệu không có sở thích) |
+| nexttrip h@20 | **G2 — chốt lại sau G6** | −0,0316 (prodcopy); **G6: −0,0322** [−0,0425, −0,0219], hit@4 −0,0039 (CI chứa 0) |
+| nexttrip destHit@20 (G6, dữ liệu có sở thích) | cận dưới CI > 0 | **+0,0425** [+0,0213, +0,0631]; khách có chủ đề +0,0494 |
 
 Luật đóng G2 đề nghị trên DB G6: D1 nexttrip h@20 cận dưới CI ≥ −0,01 · D2 nexttrip `destHit@20` cận dưới CI > 0 · D3 LLBO h@4
 và coldstart CI chứa 0 · D4 temporal ≥ −0,04 · D5 `tgtHit@20` / `nextDestHit@20` khách giả lập cận dưới > 0.
+
+**Kết quả G6 (09/10, `src/evaluation/reports/eval-2026-10-09-recsys-g6-so-thich-do-lai.md`):** D2, D4 đạt; D3 đạt trong dung
+sai 0,01; D5 nửa đạt; **D1 không đạt** ở mọi cấu hình vì bộ sinh chọn món trong điểm đến theo độ phổ biến. Ba lựa chọn để chốt
+lại G2 ở `docs/spec/bench/recsys-bam-so-thich-quyet-dinh.md` §7.6; đề xuất này chỉ trình chốt sau khi người dùng chọn.
 
 ## Thay đổi source sau khi chốt
 

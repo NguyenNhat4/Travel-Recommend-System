@@ -1,0 +1,25 @@
+{
+ "parity_mismatch_llbo200": 0,
+ "parity_mismatch_by_field": {},
+ "P0_prod/stats": {
+  "trips_p50": 4.0,
+  "share_trips_without_purchase": 0.635,
+  "share_open": 1.0
+ },
+ "P0_prod+F0_prod": {
+  "temporal": {
+   "n": 775,
+   "hit@20": 0.1587,
+   "ndcg@10": 0.0954,
+   "hit@4": 0.1135,
+   "destHit@20": 0.6374
+  },
+  "nexttrip": {
+   "n": 1835,
+   "hit@20": 0.0785,
+   "ndcg@10": 0.0239,
+   "hit@4": 0.0256,
+   "destHit@20": 0.673
+  }
+ }
+}
