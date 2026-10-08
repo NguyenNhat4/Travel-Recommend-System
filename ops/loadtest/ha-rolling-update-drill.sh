@@ -16,7 +16,7 @@ REGION=${REGION:?set REGION}
 MIG=${MIG:?set MIG}
 BACKEND_SERVICE=${BACKEND_SERVICE:?set BACKEND_SERVICE}
 MIN_READY_SECONDS=${MIN_READY_SECONDS:-360}  # = boot_to_ready_seconds trong Terraform
-MIN_HEALTHY=${MIN_HEALTHY:-3}            # = min_replicas: surge thêm VM nên không bao giờ được thấp hơn
+MIN_HEALTHY=${MIN_HEALTHY:-1}            # = min_replicas: surge thêm VM nên không bao giờ được thấp hơn
 WARMUP_SECONDS=${WARMUP_SECONDS:-300}    # k6-ha.js lên 150 VU sau ~2 phút; đợi tới đoạn bằng phẳng
 SAMPLE_SECONDS=${SAMPLE_SECONDS:-10}
 MAX_DRILL_SECONDS=${MAX_DRILL_SECONDS:-1500}

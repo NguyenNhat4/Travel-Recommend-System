@@ -54,15 +54,16 @@ class Autoscaler(unittest.TestCase):
         scaler = block(MAIN, "google_compute_region_autoscaler", "app")
         self.assertRegex(scaler, r"cooldown_period\s*=\s*var\.boot_to_ready_seconds")
 
-    def test_defaults_survive_losing_one_vm(self):
-        n, cpu, mem = default("min_replicas"), default("cpu_target"), default("memory_target_percent")
-        self.assertGreaterEqual(n, 3)
-        self.assertLessEqual(cpu, (n - 1) / n)          # N=3: mất 1 VM, CPU còn lại <= 100%
-        self.assertLessEqual(mem, 100 * (n - 1) / n)
+    def test_defaults_match_the_agreed_capacity_rule(self):
+        # Quy tắc chốt 2026-10-08: nhóm app từ 1 đến 2 VM.
+        self.assertEqual(default("min_replicas"), 1)
+        self.assertEqual(default("max_replicas"), 2)
+        self.assertGreater(default("cpu_target"), 0)
+        self.assertLessEqual(default("cpu_target"), 1)
 
-    def test_validations_enforce_the_formula(self):
-        self.assertIn("var.cpu_target <= (var.min_replicas - 1) / var.min_replicas", VARS)
-        self.assertIn("var.memory_target_percent <= 100 * (var.min_replicas - 1) / var.min_replicas", VARS)
+    def test_validations_no_longer_block_min_one(self):
+        self.assertIn("var.min_replicas >= 1", VARS)
+        self.assertNotIn("(var.min_replicas - 1) / var.min_replicas", VARS)
 
 
 class GracefulShutdown(unittest.TestCase):
