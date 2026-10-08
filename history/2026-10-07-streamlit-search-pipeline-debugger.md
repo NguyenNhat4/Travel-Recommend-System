@@ -41,6 +41,8 @@ Mỗi quy trình và giai đoạn đều biểu diễn tường minh:
   - Sửa lỗi `AttributeError: 'NormalizedQuery' object has no attribute 'is_unaccented'` bằng cách gọi hàm `is_unaccented(nq.text)` và `detect_style([q])` độc lập thay vì đọc thuộc tính không tồn tại trên dataclass `NormalizedQuery`.
   - Sửa lỗi `AttributeError: 'DestinationDecision' object has no attribute 'confidence'` bằng cách đọc các trường thực tế của `DestinationDecision`: `value`, `source`, `skipped`, `candidates`.
   - Loại bỏ phép gán `outcome.total = len(order)` vì `SearchOutcome.total` là `@property` tự động tính từ `len(self.order)`.
+  - Bổ sung cấu hình mặc định đọc từ `settings`: Chốt Bật cờ F4 (`SEARCH_TAXONOMY_FILTER`), bật 2 cờ an toàn 1.18.0 F7 (`SEARCH_DURATION_FILTER`) và `SEARCH_POI_RESOLVE`; bổ sung trường hiển thị `duration (F7)`, `poi_location`, và `destination_via_poi` vào `plan_dict` trên UI.
+- `.env` — sửa: thêm `SEARCH_TAXONOMY_FILTER=true`, `SEARCH_DURATION_FILTER=true`, `SEARCH_POI_RESOLVE=true`, và `VECTOR_COLLECTION=ProductE5Small`.
 
 ## Kiểm tra
 

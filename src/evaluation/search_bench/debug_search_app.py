@@ -37,6 +37,14 @@ if "sklearn.metrics" not in sys.modules:
     _m_met.roc_curve = lambda *args, **kwargs: (None, None, None)
     sys.modules["sklearn.metrics"] = _m_met
 
+# Windows WDAC compatibility stub for scipy.optimize (avoids scipy.fft -> _uarray.pyd block)
+if "scipy.optimize" not in sys.modules:
+    _m_opt = types.ModuleType("scipy.optimize")
+    _m_opt.__spec__ = importlib.machinery.ModuleSpec("scipy.optimize", None)
+    _m_opt.linear_sum_assignment = lambda *args, **kwargs: ([], [])
+    sys.modules["scipy.optimize"] = _m_opt
+
+
 # Ensure repository root is on sys.path
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 if REPO_ROOT not in sys.path:
@@ -261,20 +269,20 @@ def main():
             fuzzy_candidate_k = st.number_input("Fuzzy Candidate K", min_value=10, max_value=500, value=200)
             fuzzy_min_sim = st.slider("Fuzzy Min Similarity", min_value=0.1, max_value=1.0, value=0.6, step=0.05)
 
-        # Section 4: Query Plan Hard Filters (F1 - F6)
-        with st.expander("🛡️ Hard Filters (Phase A F1-F6)", expanded=True):
-            dest_filter = st.checkbox("F1: Lọc cứng Điểm đến suy ra", value=False)
-            dest_filter_fallback = st.checkbox("FR-SRC-04: Fallback khi điểm đến làm F rỗng", value=True)
-            negation_filter = st.checkbox("F3: Phủ định tiện ích / sản phẩm ('không có X')", value=False)
-            taxonomy_filter = st.checkbox("F4: Lọc loại sản phẩm ('khách sạn', 'golf')", value=False)
-            taxonomy_strong_only = st.checkbox("F4: Chỉ lọc cue mạnh (bỏ cue yếu như 'phòng')", value=False)
-            route_filter = st.checkbox("F5: Lọc tuyến bay ('từ A đến B')", value=False)
-            numeric_filter = st.checkbox("F6: Lọc giá / sao suy từ câu", value=False)
-            party_filter = st.checkbox("F6: Lọc sức chứa đoàn khách ('4 người')", value=False)
-            # 07/10 (contract 1.18.0): ba họ mới, mặc định tắt như production — chỉ parse khi bật
-            duration_filter = st.checkbox("F7: Thời lượng ('3 ngày 2 đêm', 3N2Đ) — bỏ cụm khỏi BM25, chưa lọc", value=False)
-            poi_resolve = st.checkbox("POI: Địa danh gazetteer ('Hồ Hoàn Kiếm', 'Cầu Rồng') → điểm đến vào F1", value=False)
-            entity_filter = st.checkbox("Entity gate: 'VinWonders' / 'Safari' → chỉ attraction/combo có tên chứa entity", value=False)
+        # Section 4: Query Plan Hard Filters (F1 - F7, POI, Entity)
+        with st.expander("🛡️ Hard Filters (F1-F7, POI, Entity)", expanded=True):
+            dest_filter = st.checkbox("F1: Lọc cứng Điểm đến suy ra", value=settings.search_dest_filter)
+            dest_filter_fallback = st.checkbox("FR-SRC-04: Fallback khi điểm đến làm F rỗng", value=settings.search_dest_filter_fallback)
+            negation_filter = st.checkbox("F3: Phủ định tiện ích / sản phẩm ('không có X')", value=settings.search_negation_filter)
+            taxonomy_filter = st.checkbox("F4: Lọc loại sản phẩm ('khách sạn', 'golf') [ĐÃ CHỐT BẬT]", value=settings.search_taxonomy_filter)
+            taxonomy_strong_only = st.checkbox("F4: Chỉ lọc cue mạnh (bỏ cue yếu như 'phòng')", value=settings.search_taxonomy_strong_only)
+            route_filter = st.checkbox("F5: Lọc tuyến bay ('từ A đến B')", value=settings.search_route_filter)
+            numeric_filter = st.checkbox("F6: Lọc giá / sao suy từ câu", value=settings.search_numeric_filter)
+            party_filter = st.checkbox("F6: Lọc sức chứa đoàn khách ('4 người')", value=settings.search_party_filter)
+            # 07/10 (contract 1.18.0): F7 duration & POI resolve an toàn
+            duration_filter = st.checkbox("F7: Thời lượng ('3 ngày 2 đêm', 3N2Đ) [BẬT - Tiêu cụm khỏi BM25]", value=settings.search_duration_filter)
+            poi_resolve = st.checkbox("POI: Địa danh gazetteer ('Hồ Hoàn Kiếm', 'Cầu Rồng') [BẬT - Ánh xạ vào F1]", value=settings.search_poi_resolve)
+            entity_filter = st.checkbox("Entity gate: 'VinWonders' / 'Safari' → chỉ attraction/combo có tên chứa entity", value=settings.search_entity_filter)
 
         # Section 5: Câu không dấu
         with st.expander("🔤 Câu Không Dấu (No Diacritics)", expanded=False):
@@ -300,13 +308,62 @@ def main():
             override_adults = st.number_input("Người lớn (Adults)", min_value=0, value=0)
             override_children = st.number_input("Trẻ em (Children)", min_value=0, value=0)
 
-    # Main Input Area: Query bar
+    # Main Input Area: Quick Presets & Query bar
+    if "search_query_input" not in st.session_state:
+        st.session_state["search_query_input"] = "khách sạn gần Hồ Hoàn Kiếm 3 ngày 2 đêm"
+
+    def apply_query_preset(preset_text: str):
+        st.session_state["search_query_input"] = preset_text
+
+    st.markdown("##### 💡 Câu truy vấn mẫu (Presets thử nghiệm nhanh F4, F7 & POI):")
+    col_pre1, col_pre2, col_pre3, col_pre4, col_pre5 = st.columns(5)
+    with col_pre1:
+        st.button(
+            "🏨 F4+F7+POI (Hà Nội)\n'khách sạn gần Hồ Hoàn Kiếm 3 ngày 2 đêm'",
+            on_click=apply_query_preset,
+            args=("khách sạn gần Hồ Hoàn Kiếm 3 ngày 2 đêm",),
+            use_container_width=True,
+            help="Test: F4=hotel, F7=3 ngày 2 đêm (cắt khỏi BM25), POI='Hồ Hoàn Kiếm' ➔ Hà Nội",
+        )
+    with col_pre2:
+        st.button(
+            "🏖️ F4+F7+POI (Nha Trang)\n'resort gần Bãi Dài Nha Trang 3N2Đ'",
+            on_click=apply_query_preset,
+            args=("resort gần Bãi Dài Nha Trang 3N2Đ",),
+            use_container_width=True,
+            help="Test: F4=hotel, F7=3N2Đ, POI='Bãi Dài' ➔ Nha Trang",
+        )
+    with col_pre3:
+        st.button(
+            "🎢 F7+Entity (Phú Quốc)\n'vé VinWonders Phú Quốc 4 ngày 3 đêm'",
+            on_click=apply_query_preset,
+            args=("vé VinWonders Phú Quốc 4 ngày 3 đêm",),
+            use_container_width=True,
+            help="Test: F7=4N3Đ, Entity gate 'vinwonders', Destination='Phú Quốc'",
+        )
+    with col_pre4:
+        st.button(
+            "🌉 F4+POI (Đà Nẵng)\n'khách sạn Đà Nẵng gần Cầu Rồng'",
+            on_click=apply_query_preset,
+            args=("khách sạn Đà Nẵng gần Cầu Rồng",),
+            use_container_width=True,
+            help="Test: F4=hotel, POI='Cầu Rồng' ➔ Đà Nẵng",
+        )
+    with col_pre5:
+        st.button(
+            "✈️ F4+F5 (Tuyến bay)\n'vé máy bay Sài Gòn đi Hà Nội'",
+            on_click=apply_query_preset,
+            args=("vé máy bay Sài Gòn đi Hà Nội",),
+            use_container_width=True,
+            help="Test: F4=flight, F5 Route SGN ➔ HAN",
+        )
+
     col_q, col_btn = st.columns([5, 1])
     with col_q:
         q = st.text_input(
             "Nhập câu truy vấn tìm kiếm (Đơn lẻ, 1 lần gọi duy nhất với taxonomy=None):",
-            value="resort Nha Trang cho gia đình có hồ bơi",
-            placeholder="Gõ từ khóa, ví dụ: 'Vinpearl Phú Quốc', 'khách sạn 5 sao dưới 2 triệu', 'voucher golf Hội An'...",
+            key="search_query_input",
+            placeholder="Gõ từ khóa, ví dụ: 'khách sạn gần Hồ Hoàn Kiếm 3 ngày 2 đêm', 'resort gần Bãi Dài 3N2Đ'...",
         )
     with col_btn:
         st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
@@ -382,8 +439,8 @@ def main():
     render_step_card(
         step_num="Giai đoạn 2",
         title="Query understanding & Router (Hiểu ý định & Kế hoạch truy vấn)",
-        purpose="Phân tích ngữ nghĩa để bóc tách ý định (intent), thực thể (entities), và các ràng buộc cứng (hard constraints: F1 điểm đến, F3 phủ định, F4 phân loại, F5 tuyến bay, F6 giá/sao/khách) thành một cấu trúc Query Plan rõ ràng; tách riêng lexical text cho BM25.",
-        principle="Phân tích cú pháp rule-based kết hợp từ điển thực thể (Gazetteer) từ catalog: nhận diện cue từ vựng mạnh/yếu, cấu trúc phủ định ('không có X'), cụm từ chỉ hướng bay ('từ A đến B'), biểu thức số lượng và tính điểm độ tin cậy của router (confidence score)."
+        purpose="Phân tích ngữ nghĩa để bóc tách ý định (intent), thực thể (entities), và các ràng buộc cứng: F4 loại sản phẩm ('khách sạn', 'golf'), F7 thời lượng chuyến đi ('3 ngày 2 đêm', '3N2Đ'), Search POI Resolve (địa danh gazetteer con về Điểm đến chính thức), F1 điểm đến, F3 phủ định, F5 tuyến bay, F6 giá/sao/khách; đồng thời làm sạch chuỗi lexical text cho BM25.",
+        principle="Phân tích cú pháp rule-based kết hợp Gazetteer (PLACES 52 địa danh & ENTITIES từ catalog): nhận diện cue từ vựng mạnh/yếu cho F4 taxonomy; bóc tách thời lượng F7 (1-30 ngày/đêm) và cắt bỏ hoàn toàn cụm này khỏi lexical_text của BM25 để chống nhiễu (an toàn 100% không làm rỗng F); tra cứu địa danh gazetteer (longest-match-first) để ánh xạ về Điểm đến chính thức (destination_via_poi=True) đưa vào bộ lọc cứng F1; nhận diện cấu trúc phủ định, tuyến bay và biểu thức số lượng."
     )
 
     # 07/10 (1.18.0): như SearchProducts.__post_init__ — bảng entity chỉ giữ khoá có unit trong catalog, bảng địa danh bỏ entry
@@ -418,18 +475,123 @@ def main():
     decision = plan.destination
     t_plan_ms = (time.perf_counter() - t0_plan) * 1000
 
+    # Trực quan hóa nổi bật F4, F7, POI Resolve bằng 3 Callout Cards
+    st.markdown("##### 📌 Phân Tích Ý Định Cốt Lõi (F4 Taxonomy, F7 Duration & POI Resolve):")
+    col_k1, col_k2, col_k3 = st.columns(3)
+    with col_k1:
+        if plan.taxonomy:
+            st.markdown(
+                f"""
+                <div style="background-color: #f3e8ff; border: 1px solid #d8b4fe; border-radius: 8px; padding: 12px; height: 100%;">
+                    <div style="font-weight: 700; color: #6b21a8; font-size: 14px; margin-bottom: 6px;">🏷️ F4: Taxonomy Filter [ĐÃ BẬT]</div>
+                    <div style="font-size: 13px; color: #3b0764; margin-bottom: 4px;"><b>Taxonomy nhận diện:</b> <code style="color: #6b21a8; background: #fff; padding: 2px 6px; border-radius: 4px;">{plan.taxonomy}</code></div>
+                    <div style="font-size: 12px; color: #581c87;"><b>Độ mạnh cue:</b> <code>{plan.taxonomy_strength}</code></div>
+                    <div style="font-size: 12px; color: #4c1d95; margin-top: 6px;">➔ <i>Lọc cứng <code>mask(taxonomy='{plan.taxonomy}')</code> ở Giai đoạn 3</i></div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                """
+                <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; height: 100%;">
+                    <div style="font-weight: 700; color: #475569; font-size: 14px; margin-bottom: 6px;">🏷️ F4: Taxonomy Filter</div>
+                    <div style="font-size: 13px; color: #64748b;"><b>Taxonomy:</b> <code>None</code> (Toàn bộ catalog)</div>
+                    <div style="font-size: 12px; color: #64748b; margin-top: 6px;"><i>Không phát hiện cue loại hình sản phẩm đặc thù</i></div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+    with col_k2:
+        if plan.duration_source:
+            st.markdown(
+                f"""
+                <div style="background-color: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 8px; padding: 12px; height: 100%;">
+                    <div style="font-weight: 700; color: #065f46; font-size: 14px; margin-bottom: 6px;">⏱️ F7: Duration Filter [BẬT]</div>
+                    <div style="font-size: 13px; color: #064e3b; margin-bottom: 4px;"><b>Thời lượng:</b> <code style="color: #065f46; background: #fff; padding: 2px 6px; border-radius: 4px;">{plan.duration_days} ngày, {plan.duration_nights} đêm</code> ({plan.duration_days}N{plan.duration_nights}Đ)</div>
+                    <div style="font-size: 12px; color: #047857;"><b>Nguồn bóc tách:</b> <code>{plan.duration_source}</code></div>
+                    <div style="font-size: 12px; color: #064e3b; margin-top: 6px;">➔ <i>Đã <b>tiêu span khỏi BM25</b> để chống nhiễu từ khoá. Không lọc cứng vào F (an toàn 100%)</i></div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                """
+                <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; height: 100%;">
+                    <div style="font-weight: 700; color: #475569; font-size: 14px; margin-bottom: 6px;">⏱️ F7: Duration Filter</div>
+                    <div style="font-size: 13px; color: #64748b;"><b>Thời lượng:</b> <code>None</code></div>
+                    <div style="font-size: 12px; color: #64748b; margin-top: 6px;"><i>Không phát hiện cụm thời lượng (3N2Đ, N ngày M đêm...)</i></div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+    with col_k3:
+        if plan.location:
+            st.markdown(
+                f"""
+                <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 12px; height: 100%;">
+                    <div style="font-weight: 700; color: #1e40af; font-size: 14px; margin-bottom: 6px;">📍 Search POI Resolve [BẬT]</div>
+                    <div style="font-size: 13px; color: #1e3a8a; margin-bottom: 4px;"><b>Địa danh POI:</b> <code style="color: #1e40af; background: #fff; padding: 2px 6px; border-radius: 4px;">{plan.location.name}</code> (<code>{plan.location.kind}</code>)</div>
+                    <div style="font-size: 13px; color: #1e3a8a; margin-bottom: 4px;"><b>Ánh xạ Điểm đến:</b> <b><code style="color: #1e3a8a; background: #dbeafe; padding: 2px 6px; border-radius: 4px;">{plan.location.destination}</code></b></div>
+                    <div style="font-size: 12px; color: #1d4ed8;"><b>destination_via_poi:</b> <code>{plan.destination_via_poi}</code></div>
+                    <div style="font-size: 12px; color: #1e3a8a; margin-top: 6px;">➔ <i>Đưa '{plan.location.destination}' vào F1 lọc cứng không gian F</i></div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        elif decision.value:
+            st.markdown(
+                f"""
+                <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 12px; height: 100%;">
+                    <div style="font-weight: 700; color: #1e40af; font-size: 14px; margin-bottom: 6px;">📍 Điểm đến Trực tiếp (F1)</div>
+                    <div style="font-size: 13px; color: #1e3a8a; margin-bottom: 4px;"><b>Điểm đến:</b> <code style="color: #1e40af; background: #fff; padding: 2px 6px; border-radius: 4px;">{decision.value}</code></div>
+                    <div style="font-size: 12px; color: #1d4ed8;"><b>Nguồn:</b> <code>{decision.source}</code></div>
+                    <div style="font-size: 12px; color: #1e3a8a; margin-top: 6px;"><i>Nhận diện trực tiếp từ câu truy vấn (không qua POI)</i></div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                """
+                <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; height: 100%;">
+                    <div style="font-weight: 700; color: #475569; font-size: 14px; margin-bottom: 6px;">📍 Địa danh & Điểm đến</div>
+                    <div style="font-size: 13px; color: #64748b;"><b>Điểm đến:</b> <code>None</code></div>
+                    <div style="font-size: 12px; color: #64748b; margin-top: 6px;"><i>Không phát hiện POI hay điểm đến cụ thể</i></div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+    # Bảng biến đổi chuỗi truy vấn (Text Transformation Pipeline)
+    st.markdown("##### 🔀 Biến Đổi Chuỗi Truy Vấn Qua Từng Bước:")
+    trans_col1, trans_col2, trans_col3 = st.columns(3)
+    with trans_col1:
+        st.caption("1. Chuỗi người dùng nhập (Raw):")
+        st.code(q, language="text")
+    with trans_col2:
+        st.caption("2. Sau Chuẩn hóa Unicode/Dấu (Normalized):")
+        st.code(nq.text if nq else q, language="text")
+    with trans_col3:
+        st.caption("3. Sau khi F7 Tiêu cụm thời lượng (BM25 Lexical Text):")
+        st.code(plan.lexical_text, language="text")
+
+    if plan.duration_source:
+        st.caption("💡 *Ghi chú F7*: Cụm thời lượng đã được cắt bỏ khỏi chuỗi BM25 Lexical Text, giúp BM25 chỉ tập trung khớp tên sản phẩm, tiện ích và thương hiệu mà không bị nhiễu bởi các con số ngày/đêm.")
+
     col2_in, col2_out = st.columns(2)
     with col2_in:
-        st.markdown("**📥 Input**")
+        st.markdown("**📥 Input (Stage 2)**")
         st.code(
-            f"text: {canonical_text}\n"
+            f"canonical_text: {canonical_text}\n"
             f"params: taxonomy={override_taxonomy}, dest={override_destination or None}\n"
             f"flags: F1(dest)={dest_filter}, F3(neg)={negation_filter}, F4(tax)={taxonomy_filter}, F5(route)={route_filter}, F6(num)={numeric_filter}, party={party_filter}\n"
             f"flags 1.18.0: F7(duration)={duration_filter}, poi={poi_resolve}, entity={entity_filter}",
             language="yaml",
         )
     with col2_out:
-        st.markdown("**📤 Output (Query Plan)**")
+        st.markdown("**📤 Output Chi Tiết (Query Plan Object)**")
         plan_diag = plan.as_diagnostics(extended=True)
         plan_dict = {
             "confidence": plan.confidence,
@@ -447,6 +609,18 @@ def main():
             "price_range": f"{plan.price_min} -> {plan.price_max}" if plan.price_source else None,
             "star_min": plan.star_min,
             "party_total": plan.party_total if plan.party_source else None,
+            "duration (F7)": {
+                "days": plan.duration_days,
+                "nights": plan.duration_nights,
+                "source": plan.duration_source,
+            } if plan.duration_source else None,
+            "poi_location": {
+                "key": plan.location.key,
+                "name": plan.location.name,
+                "kind": plan.location.kind,
+                "destination": plan.location.destination,
+            } if plan.location else None,
+            "destination_via_poi": plan.destination_via_poi,
             "lexical_text_for_bm25": plan.lexical_text,
             "diagnostics": plan_diag,
             "latency": f"{t_plan_ms:.2f} ms",
@@ -460,8 +634,8 @@ def main():
     render_step_card(
         step_num="Giai đoạn 3",
         title="Filter first & Candidate Universe F (Lọc cứng không gian ứng viên)",
-        purpose="Loại bỏ triệt để các sản phẩm vi phạm ràng buộc cứng (địa danh, loại hình, giá, số khách, sản phẩm bị loại trừ) ngay từ đầu để tạo ra không gian ứng viên hợp lệ F, ngăn chặn việc sản phẩm sai địa điểm/sai loại bị kéo lên do tương đồng ngữ nghĩa.",
-        principle="Thực hiện phép toán bitwise AND trên các vector boolean thuộc tính tiền tính toán (Pre-computed NumPy attribute masks), đồng thời kiểm tra tính khả thi của các sản phẩm con (hạng phòng/chuyến bay) thuộc sản phẩm cha."
+        purpose="Loại bỏ triệt để các sản phẩm vi phạm ràng buộc cứng (địa danh - bao gồm điểm đến suy ra từ Search POI Resolve, loại hình từ F4 Taxonomy, tuyến bay F5, giá/sao/khách F6, thực thể) ngay từ đầu để tạo ra không gian ứng viên hợp lệ F, ngăn chặn việc sản phẩm sai địa điểm/sai loại bị kéo lên do tương đồng ngữ nghĩa. (Lưu ý: F7 hiện tại an toàn 100% không lọc cứng vào F).",
+        principle="Thực hiện phép toán bitwise AND trên các vector boolean thuộc tính tiền tính toán (Pre-computed NumPy attribute masks: mask_taxonomy, mask_destination, mask_price, mask_star, require_entities...), đồng thời kiểm tra tính khả thi của các sản phẩm con (hạng phòng/chuyến bay) thuộc sản phẩm cha."
     )
 
     # Measure mask breakdown
@@ -477,13 +651,26 @@ def main():
 
     col3_in, col3_out = st.columns(2)
     with col3_in:
-        st.markdown("**📥 Input**")
+        st.markdown("**📥 Input (Điều kiện tạo Mask)**")
         st.markdown(f"- **Tổng số Search Units ban đầu**: `{total_catalog}`")
-        st.code(f"mask_kwargs:\n" + "\n".join(f"  {k}: {v}" for k, v in mask_kwargs.items()), language="yaml")
+        mask_desc_lines = []
+        for k, v in mask_kwargs.items():
+            extra = ""
+            if k == "destination" and plan.destination_via_poi and plan.location:
+                extra = f"  # 📍 Suy ra từ POI: '{plan.location.name}'"
+            elif k == "taxonomy" and plan.taxonomy:
+                extra = f"  # 🏷️ Suy ra từ F4 ({plan.taxonomy_strength})"
+            mask_desc_lines.append(f"  {k}: {v}{extra}")
+        st.code("mask_kwargs:\n" + "\n".join(mask_desc_lines), language="yaml")
+        st.caption("🛡️ *Nguyên lý an toàn F7*: Do catalog chưa có thuộc tính duration, F7 không áp vào mask để bảo vệ không gian F không bị rỗng.")
     with col3_out:
         st.markdown("**📤 Output (Candidate Universe F)**")
         st.markdown(f"- **Số lượng ứng viên hợp lệ |F|**: `{f_count}` / `{total_catalog}` (**{f_ratio:.1f}%**)")
         st.markdown(f"- **Thời gian tính toán mask**: `{t_mask_ms:.2f} ms`")
+        if plan.destination_via_poi and plan.location:
+            st.success(f"📍 Điểm đến `{decision.value}` được suy ra từ POI `{plan.location.name}` đã thu hẹp F về đúng địa bàn!")
+        if plan.taxonomy:
+            st.info(f"🏷️ F4 đã lọc cứng chỉ giữ lại các sản phẩm có taxonomy `{plan.taxonomy}`.")
         if f_count == 0:
             st.error("⚠️ Candidate Universe F = ∅ (Rỗng)! Không có sản phẩm nào thỏa mãn toàn bộ bộ lọc cứng.")
 
@@ -558,8 +745,8 @@ def main():
     render_step_card(
         step_num="Giai đoạn 4B",
         title="Lexical Retrieval (BM25 Keyword Search)",
-        purpose="Bắt chính xác các từ khóa đặc thù, tên thương hiệu (Vinpearl, VinWonders), mã hiệu hoặc từ hiếm mà dense vector dễ bỏ sót.",
-        principle="Sử dụng thuật toán xếp hạng Okapi BM25 trên inverted index của Weaviate: tính điểm dựa trên tần suất từ (Term Frequency - TF) và nghịch đảo tần suất tài liệu (Inverse Document Frequency - IDF) kết hợp chuẩn hóa độ dài tài liệu."
+        purpose="Bắt chính xác các từ khóa đặc thù, tên thương hiệu (Vinpearl, VinWonders), địa danh hoặc từ hiếm mà dense vector dễ bỏ sót. Đặc biệt, nhờ F7 cắt cụm thời lượng ('3 ngày 2 đêm', '3N2Đ'), chuỗi BM25 không còn bị ô nhiễm bởi các từ 'ngày', 'đêm', loại bỏ triệt để false-positive như khách sạn 'Chợ Đêm'.",
+        principle="Sử dụng thuật toán xếp hạng Okapi BM25 trên inverted index của Weaviate: tính điểm dựa trên tần suất từ (Term Frequency - TF) và nghịch đảo tần suất tài liệu (Inverse Document Frequency - IDF) kết hợp chuẩn hóa độ dài tài liệu. Đầu vào là chuỗi plan.lexical_text đã được F7 làm sạch span thời lượng."
     )
 
     lex_text = canonical_query(plan.lexical_text)
@@ -578,7 +765,9 @@ def main():
     col4b_in, col4b_out = st.columns(2)
     with col4b_in:
         st.markdown("**📥 Input (Lexical BM25)**")
-        st.markdown(f"- **Lexical Text**: `{lex_text}`")
+        st.markdown(f"- **Lexical Text (Đã qua xử lý F7)**: `{lex_text}`")
+        if plan.duration_source:
+            st.markdown(f"- **Span thời lượng đã loại bỏ (F7)**: `{plan.duration_days} ngày {plan.duration_nights} đêm` ({plan.duration_days}N{plan.duration_nights}Đ)")
         st.markdown(f"- **Candidate K**: `{lexical_candidate_k}`")
         st.markdown(f"- **Trạng thái Hybrid**: `{hybrid_on}`")
     with col4b_out:
