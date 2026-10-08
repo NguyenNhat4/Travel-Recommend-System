@@ -1,0 +1,9 @@
+[
+ {"baseline": "B1p", "config": "B1p+orig:pen:0.15+sess", "stratum": "llbo|tgtInCart=False", "metric": "hit@4"},
+ {"baseline": "B1p", "config": "B1p+orig:pen:0.15+sess", "stratum": "llbo", "metric": "hit@20"},
+ {"baseline": "B1p", "config": "B1p+orig:pen:0.15+sess", "stratum": "nexttrip", "metric": "hit@20"},
+ {"baseline": "B0", "config": "B0+orig:pen:0.15+sess", "stratum": "llbo|tgtInCart=False", "metric": "hit@4"},
+ {"baseline": "B0", "config": "B0+orig:pen:0.15+sess", "stratum": "nexttrip", "metric": "hit@20"},
+ {"baseline": "B2", "config": "B2+orig:pen:0.15+sess", "stratum": "llbo|tgtInCart=False", "metric": "hit@4"},
+ {"baseline": "B2", "config": "B2+orig:pen:0.15+sess", "stratum": "nexttrip", "metric": "hit@20"}
+]
