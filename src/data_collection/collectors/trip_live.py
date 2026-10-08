@@ -393,7 +393,7 @@ def assemble(targets: list[dict], date_pairs: list[tuple[str, str]], metadata: d
         prices = [room['minPrice'] for room in record['rooms'] if room.get('minPrice')]
         record['minPrice'] = min(prices) if prices else None
         record['currency'] = 'VND'
-        record['plan'] = {'destination': target['destination']}
+        record['plan'] = {'destination': target['destination'], **({'via': 'refresh'} if target.get('refresh') else {})}
         record['crawledAt'] = now_iso()
         records.append(record)
     report = {'stays': [{'checkin': a, 'checkout': b} for a, b in date_pairs],

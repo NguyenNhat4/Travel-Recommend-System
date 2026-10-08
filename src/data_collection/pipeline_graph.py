@@ -53,8 +53,9 @@ SOURCES: tuple[Source, ...] = (
            step_titles=("Khách sạn Trip: tìm ID mới", "Khách sạn Trip: thông tin + giá phòng"),
            timeouts=("timeout.tripHotelsDiscover", "timeout.tripHotelsPrices")),
 )
-# Thứ tự các site được giao cho pool cào (crawl.parallelSites site cùng lúc): site đứng trước bắt đầu trước.
-SITE_ORDER = ("trip", "vinpearl", "booking", "agoda")
+# Thứ tự các site được giao cho pool cào (crawl.parallelSites site cùng lúc): site đứng trước bắt đầu trước. Booking cuối:
+# làm mới ~1.800 khách sạn mất nhiều giờ nhất, nếu đứng trước sẽ ăn hết `crawl.maxHours` của Agoda khi chạy tuần tự.
+SITE_ORDER = ("trip", "vinpearl", "agoda", "booking")
 # File interim một site có thể có mà không bước nào của job này ghi (lệnh crawl.py riêng): vẫn được chuẩn hoá khi cả site
 # xong.
 SITE_EXTRA_INTERIM = {"trip": ("trip_combos",), "booking": ("booking_attractions", "booking_flights"),

@@ -76,9 +76,10 @@ class GraphDeclarationTests(unittest.TestCase):
                           'vinpearl': ('crawl',)})
 
     def test_derived_tables_keep_the_job_behaviour(self):
-        # giá trị trước P3 (khai báo tay trong fresh_catalog.py); đổi ở đây là đổi hành vi của job
+        # giá trị trước P3 (khai báo tay trong fresh_catalog.py); đổi ở đây là đổi hành vi của job. Booking đứng cuối từ
+        # 08/10/2026 (làm mới cả catalog: Booking nhiều giờ nhất, không được ăn giờ của Agoda)
         self.assertEqual(graph.SITE_GROUPS, (('trip', ('trip-flights', 'trip-attractions')), ('vinpearl', ('vinpearl',)),
-                                             ('booking', ('booking-hotels',)), ('agoda', ('agoda-hotels',))))
+                                             ('agoda', ('agoda-hotels',)), ('booking', ('booking-hotels',))))
         self.assertEqual(graph.SITE_INTERIM, {'trip': ('trip_flights', 'trip_attractions', 'trip_hotels', 'trip_combos'),
                                               'vinpearl': ('vinpearl', 'vinpearl_bundles'),
                                               'booking': ('booking_hotels', 'booking_attractions', 'booking_flights'),

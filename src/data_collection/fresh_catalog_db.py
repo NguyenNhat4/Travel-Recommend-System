@@ -16,6 +16,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from collectors.common import read_jsonl
+from stage_log import Stages
 from normalise import PRODUCT_FIELDS as FIELDS, product_id
 
 
@@ -140,11 +141,14 @@ def trip_price_reference(row: dict):
 
 def prepare_rows(fresh: list[dict], existing: list[dict], checked_hotels: set[str],
                  seen_at: str, *, trip_max_age_days: int = 7,
-                 now: datetime | None = None) -> tuple[list[dict], dict[str, int]]:
+                 now: datetime | None = None, quarantine: list[dict] | None = None) -> tuple[list[dict], dict[str, int]]:
     """Preserve DB static columns, update live fields, insert newly seen rooms.
 
     `trip_max_age_days`: giá Trip gốc chưa làm mới quá số ngày này thì xoá giá và tắt bán; 0 = không tắt (setting
-    `tripHotels.priceMaxAgeDays`)."""
+    `tripHotels.priceMaxAgeDays`).
+    `quarantine`: có danh sách thì dòng mới không ghép được với DB (ID trùng nhưng ref khác, trùng sourceRef chuẩn) được bỏ
+    ra, ghi vào danh sách kèm lý do, các dòng khác vẫn nạp — trước đây một dòng như vậy làm hỏng cả
+    lượt nạp (03–05/10/2026). Không có danh sách thì vẫn ném lỗi như cũ."""
     if trip_max_age_days < 0:
         raise ValueError("trip_max_age_days phải >= 0")
     now = now or datetime.now(timezone.utc)
@@ -166,11 +170,18 @@ def prepare_rows(fresh: list[dict], existing: list[dict], checked_hotels: set[st
                 hits.append(row)
         matches[item["productId"]] = hits
     mapped_ids = {pid: str(hits[0]["product_id"]) for pid, hits in matches.items() if hits}
+    skipped = _quarantine_plan(fresh, matches, mapped_ids, old) if quarantine is not None else {}
+    for item in fresh:
+        if item["productId"] in skipped:
+            quarantine.append({"productId": item["productId"], "sourceRef": item["sourceRef"], "name": item["name"],
+                               "reason": skipped[item["productId"]]})
     canonical_refs = set()
     result = []
     counts = {"new": 0, "newRooms": 0, "refreshed": 0, "missingRooms": 0, "missingProperties": 0, "staleTrip": 0,
-              "mergedAway": 0, "refConflicts": len(merged_away)}
+              "mergedAway": 0, "refConflicts": len(merged_away), "quarantined": len(skipped)}
     for item in fresh:
+        if item["productId"] in skipped:
+            continue
         original_ref = item["sourceRef"]
         hits = matches[item["productId"]]
         previous = hits[0] if hits else None
@@ -279,6 +290,26 @@ def prepare_rows(fresh: list[dict], existing: list[dict], checked_hotels: set[st
         if parent in hidden:
             result[index] = dict(row, attributes=dict(row["attributes"], parentProductId=hidden[parent]))
     return result, counts
+
+
+def _quarantine_plan(fresh: list[dict], matches: dict[str, list[dict]], mapped_ids: dict[str, str],
+                     old: dict[str, dict]) -> dict[str, str]:
+    """productId của dòng mới phải bỏ ra → lý do, theo đúng hai điều kiện prepare_rows sẽ ném lỗi. Cả hai trường hợp đều ghép
+    vào một dòng đã có trong DB, nên hạng phòng của dòng bị bỏ vẫn có cha trong DB và được nạp."""
+    skipped: dict[str, str] = {}
+    refs: set[str] = set()
+    for item in fresh:
+        previous = (matches.get(item["productId"]) or [None])[0]
+        pid = mapped_ids.get(item["productId"], item["productId"])
+        if pid in old and not previous:
+            skipped[item["productId"]] = f"ID {pid} đã có trong DB với sourceRef khác ({old[pid]['source_ref']})"
+            continue
+        ref = previous["source_ref"] if previous else item["sourceRef"]
+        if ref in refs:
+            skipped[item["productId"]] = f"trùng sourceRef chuẩn {ref} với một dòng khác của lượt"
+            continue
+        refs.add(ref)
+    return skipped
 
 
 def resolve_ref_conflicts(existing: list[dict]) -> tuple[dict[str, dict], list[tuple[dict, str]]]:
@@ -490,23 +521,39 @@ def pipeline_connection(url: str, **kwargs):
 
 
 def maintain_catalog(url: str, *, today: date | None = None, now: datetime | None = None,
-                     trip_max_age_days: int = 7) -> dict[str, int]:
+                     trip_max_age_days: int = 7, refresh_out: dict | None = None,
+                     stages: Stages | None = None) -> dict[str, int]:
     """Transaction riêng ở đầu mỗi lượt, chạy cả khi mọi nguồn lỗi: hết hạn giá Trip quá hạn, cuộn cửa sổ 30 ngày và
-    parse lại thành phần combo (sync_combo_items)."""
+    parse lại thành phần combo (sync_combo_items). `refresh_out`: nhận danh sách khách sạn đang có để lượt cào lớn làm mới
+    (refresh_targets_from_rows), lấy từ chính lần đọc catalog này thay vì đọc DB thêm một lần. `stages`: bước con cho monitor."""
     import psycopg
     from psycopg.types.json import Jsonb
+    stages = stages or Stages()
     today = today or date.today()
     with pipeline_connection(url, row_factory=psycopg.rows.dict_row) as conn:
         conn.execute("SELECT pg_advisory_xact_lock(7791024)")
-        existing = conn.execute("SELECT * FROM cdp.products").fetchall()
-        expired, counts = prepare_rows([], existing, set(), today.isoformat(), now=now,
-                                       trip_max_age_days=trip_max_age_days)
+        with stages.stage("đọc catalog") as stage:
+            existing = conn.execute("SELECT * FROM cdp.products").fetchall()
+            stage["out"] = len(existing)
+        if refresh_out is not None:
+            with stages.stage("danh sách làm mới") as stage:  # chọn khách sạn từ catalog, không phải lọc bớt dòng
+                refresh_out.update(refresh_targets_from_rows(existing))
+                stage["out"] = sum(len(items) for items in refresh_out.values())
+                stage["note"] = ", ".join(f"{key} {len(items)}" for key, items in refresh_out.items())
+        with stages.stage("hết hạn giá Trip", inp=len(existing)) as stage:
+            expired, counts = prepare_rows([], existing, set(), today.isoformat(), now=now,
+                                           trip_max_age_days=trip_max_age_days)
+            stage["changed"] = counts["staleTrip"]
+            stage["note"] = "dòng giá Trip quá hạn bị tắt" if trip_max_age_days else "tắt (tripHotels.priceMaxAgeDays = 0)"
         state = {str(row["product_id"]): row for row in existing}
         state.update((str(row["product_id"]), row) for row in expired)
-        windowed = apply_window(list(state.values()), today)
+        with stages.stage("cuộn cửa sổ 30 ngày", inp=len(state)) as stage:
+            windowed = apply_window(list(state.values()), today)
+            stage["changed"] = len(windowed)
+            stage["note"] = "dòng đổi cửa sổ / lịch trống"
         writes = {str(row["product_id"]): row for row in expired}
         writes.update(windowed)
-        with conn.cursor() as cursor:
+        with stages.stage("ghi DB", inp=len(writes)) as stage, conn.cursor() as cursor:
             cursor.executemany(
                 """UPDATE cdp.products SET attributes = %s, unit_price = %s, available = %s,
                        available_from = %s, available_to = %s, name = COALESCE(%s, name), description = COALESCE(%s, description)
@@ -514,11 +561,16 @@ def maintain_catalog(url: str, *, today: date | None = None, now: datetime | Non
                 [(Jsonb(row["attributes"]), row["unit_price"], row["available"], row["available_from"],
                   row["available_to"], row.get("name"), row.get("description"), row["product_id"])
                  for row in writes.values()])
+            stage["out"] = len(writes)
         from data_collection.seed import simulated_business  # _seed_rules() đã đưa src/ vào sys.path
-        simulated = simulated_business.sync(conn)
+        with stages.stage("vé thương gia mô phỏng") as stage:
+            simulated = simulated_business.sync(conn)
+            stage.update({"in": simulated.get("simulatedBusiness"), "changed": simulated.get("simulatedBusinessWritten")})
         # Thành phần combo theo code parse hiện hành cho mọi combo, kể cả combo lượt này không cào được.
         state.update(writes)
-        combos = sync_combo_items(conn, rows=list(state.values()))
+        with stages.stage("parse thành phần combo") as stage:
+            combos = sync_combo_items(conn, rows=list(state.values()))
+            stage.update({"in": combos.get("combos"), "changed": combos.get("combosChanged")})
     return {"staleTrip": counts["staleTrip"], "windowRows": len(windowed), **simulated, **combos}
 
 
@@ -685,7 +737,7 @@ def sync_combo_items(conn, *, manual_path: Path | None = None, rows: list[dict] 
 
 def load_into_db(products_path: Path, coverage_path: Path | None, url: str,
                  collection_root: Path, report_path: Path | None = None, *,
-                 trip_max_age_days: int = 7) -> dict[str, int]:
+                 trip_max_age_days: int = 7, stages: Stages | None = None) -> dict[str, int]:
     """COPY into a temporary table then upsert in one transaction, as V-OTA does.
 
     `coverage_path` None = lượt không cào khách sạn Trip (không dòng Trip nào được nạp).
@@ -697,69 +749,147 @@ def load_into_db(products_path: Path, coverage_path: Path | None, url: str,
     from data_collection.seed.database import copy_rows
     from data_collection.seed import parse_combos
 
+    stages = stages or Stages()
     fresh = list(read_jsonl(products_path))
     checked = checked_trip_hotels(coverage_path) if coverage_path is not None else set()
-    for item in fresh:
-        match = re.match(r"^trip:hotel:(\d+)(?::room:.*)?$", item["sourceRef"])
-        if match and match.group(1) not in checked:
-            raise ValueError(f"Trip hotel chưa đủ coverage: {item['sourceRef']}")
+    quarantine: list[dict] = []  # dòng không nạp được, ghi ra db_quarantine.jsonl; các dòng khác vẫn nạp
+    kept = []
+    with stages.stage("đọc catalog lượt này") as stage:
+        for item in fresh:
+            match = re.match(r"^trip:hotel:(\d+)(?::room:.*)?$", item["sourceRef"])
+            if match and match.group(1) not in checked:
+                quarantine.append({"productId": item["productId"], "sourceRef": item["sourceRef"], "name": item["name"],
+                                   "reason": "khách sạn Trip chưa đủ mọi mốc ngày giá"})
+            else:
+                kept.append(item)
+        stage.update({"in": len(fresh), "out": len(kept), "ok": len(kept), "total": len(fresh)})
+        if quarantine:
+            stage["note"] = f"{len(quarantine)} dòng khách sạn Trip chưa đủ ngày giá bị tách ra"
+    fresh = kept
     # priceBasis / nights / minPax của combo mới, cùng file soát tay của lượt. `catalog.combo_items` không lấy từ đây mà
     # parse lại trên toàn catalog trong DB sau upsert (sync_combo_items).
-    bring_manual_combo_mapping(products_path.parent)
-    parse_combos.main(["--data-dir", str(products_path.parent)])
-    combo_attrs = json.loads((products_path.parent / "combo_attributes.json").read_text(encoding="utf-8"))
-    for item in fresh:
-        if item["taxonomy"] == "combo" and item["productId"] in combo_attrs:
-            item["attributes"].update(combo_attrs[item["productId"]]["attributes"])
+    with stages.stage("thuộc tính combo", inp=sum(item["taxonomy"] == "combo" for item in fresh)) as stage:
+        bring_manual_combo_mapping(products_path.parent)
+        parse_combos.main(["--data-dir", str(products_path.parent)])
+        combo_attrs = json.loads((products_path.parent / "combo_attributes.json").read_text(encoding="utf-8"))
+        applied = 0
+        for item in fresh:
+            if item["taxonomy"] == "combo" and item["productId"] in combo_attrs:
+                item["attributes"].update(combo_attrs[item["productId"]]["attributes"])
+                applied += 1
+        stage["out"] = applied
     seen_at = date.today().isoformat()
     with pipeline_connection(url) as conn:
         conn.execute("SELECT pg_advisory_xact_lock(7791024)")
-        with conn.cursor(row_factory=psycopg.rows.dict_row) as cursor:
+        with stages.stage("đọc DB") as stage, conn.cursor(row_factory=psycopg.rows.dict_row) as cursor:
             cursor.execute("SELECT * FROM cdp.products")
             existing = cursor.fetchall()
-        prepared, counts = prepare_rows(fresh, existing, checked, seen_at, trip_max_age_days=trip_max_age_days)
+            stage["out"] = len(existing)
+        with stages.stage("ghép với DB", inp=len(fresh)) as stage:
+            before = len(quarantine)
+            prepared, counts = prepare_rows(fresh, existing, checked, seen_at, trip_max_age_days=trip_max_age_days,
+                                            quarantine=quarantine)
+            dropped = {entry["productId"] for entry in quarantine}
+            fresh = [item for item in fresh if item["productId"] not in dropped]  # prepared[i] ứng với fresh[i]
+            counts["quarantined"] = len(quarantine)
+            merged = stage["in"] - (len(quarantine) - before)
+            stage.update({"out": len(prepared), "ok": merged, "total": stage["in"],
+                          "note": f"mới {counts['new']} · làm mới {counts['refreshed']} · tách riêng "
+                                  f"{len(quarantine) - before} · gộp đi {counts['mergedAway']}"})
         # Cửa sổ 30 ngày tính trên trạng thái sau lượt này: dòng mới/làm mới, và tuyến có chuyến con đổi ngày.
-        state = {str(row["product_id"]): row for row in existing}
-        state.update((str(row["product_id"]), row) for row in prepared)
-        windowed = apply_window(list(state.values()), date.fromisoformat(seen_at))
+        with stages.stage("cửa sổ 30 ngày") as stage:
+            state = {str(row["product_id"]): row for row in existing}
+            state.update((str(row["product_id"]), row) for row in prepared)
+            stage["in"] = len(state)
+            windowed = apply_window(list(state.values()), date.fromisoformat(seen_at))
+            stage["changed"] = len(windowed)
+            stage["note"] = "dòng đổi cửa sổ / lịch trống"
         # Giữ thứ tự: canonical_ids bên dưới ánh xạ fresh[i] với prepared[i].
         prepared = [windowed.pop(str(row["product_id"]), row) for row in prepared]
         prepared.extend(windowed.values())
         canonical_ids = {item["productId"]: prepared[index]["product_id"]
                          for index, item in enumerate(fresh)}
-        conn.execute("CREATE TEMP TABLE incoming_products (LIKE cdp.products INCLUDING DEFAULTS) ON COMMIT DROP")
-        copy_rows(conn, "incoming_products", list(COLUMNS), prepared)
-        cols = ", ".join(COLUMNS)
-        changed = " OR ".join(f"p.{c} IS DISTINCT FROM EXCLUDED.{c}" for c in
-                              ("attributes", "unit_price", "available", "available_from", "available_to"))
-        changed += " OR (p.taxonomy = 'flight' AND (p.name, p.description) IS DISTINCT FROM (EXCLUDED.name, EXCLUDED.description))"
-        written = conn.execute(f"""
-            INSERT INTO cdp.products AS p ({cols}) SELECT {cols} FROM incoming_products WHERE true
-            ON CONFLICT (product_id) DO UPDATE SET
-                attributes = EXCLUDED.attributes,
-                unit_price = EXCLUDED.unit_price,
-                available = EXCLUDED.available,
-                available_from = EXCLUDED.available_from,
-                available_to = EXCLUDED.available_to,
-                -- Chỉ vé máy bay: ngày trong tên/mô tả đổi khi dời ngày (data-model §3.1). Loại khác giữ text đã có trong DB.
-                name = CASE WHEN p.taxonomy = 'flight' THEN EXCLUDED.name ELSE p.name END,
-                description = CASE WHEN p.taxonomy = 'flight' THEN EXCLUDED.description ELSE p.description END
-            WHERE {changed}
-            RETURNING product_id
-        """).fetchall()
-        counts["dbRowsWritten"] = len(written)
+        with stages.stage("ghi cdp.products", inp=len(prepared)) as entry:
+            conn.execute("CREATE TEMP TABLE incoming_products (LIKE cdp.products INCLUDING DEFAULTS) ON COMMIT DROP")
+            copy_rows(conn, "incoming_products", list(COLUMNS), prepared)
+            cols = ", ".join(COLUMNS)
+            changed = " OR ".join(f"p.{c} IS DISTINCT FROM EXCLUDED.{c}" for c in
+                                  ("attributes", "unit_price", "available", "available_from", "available_to"))
+            changed += " OR (p.taxonomy = 'flight' AND (p.name, p.description) IS DISTINCT FROM (EXCLUDED.name, EXCLUDED.description))"
+            written = conn.execute(f"""
+                INSERT INTO cdp.products AS p ({cols}) SELECT {cols} FROM incoming_products WHERE true
+                ON CONFLICT (product_id) DO UPDATE SET
+                    attributes = EXCLUDED.attributes,
+                    unit_price = EXCLUDED.unit_price,
+                    available = EXCLUDED.available,
+                    available_from = EXCLUDED.available_from,
+                    available_to = EXCLUDED.available_to,
+                    -- Chỉ vé máy bay: ngày trong tên/mô tả đổi khi dời ngày (data-model §3.1). Loại khác giữ text đã có trong DB.
+                    name = CASE WHEN p.taxonomy = 'flight' THEN EXCLUDED.name ELSE p.name END,
+                    description = CASE WHEN p.taxonomy = 'flight' THEN EXCLUDED.description ELSE p.description END
+                WHERE {changed}
+                RETURNING product_id
+            """).fetchall()
+            counts["dbRowsWritten"] = len(written)
+            entry.update(changed=len(written), note="dòng giống hệt DB không ghi lại")
         # Đọc lại cdp.products sau upsert (tên/mô tả không phải vé máy bay giữ bản trong DB) rồi parse mọi combo trên toàn
         # catalog: lô nạp theo phần chỉ chứa một phần sản phẩm, parse riêng lô thì thành phần không map được.
-        counts.update(sync_combo_items(conn))
+        with stages.stage("parse thành phần combo") as stage:
+            combos = sync_combo_items(conn)
+            counts.update(combos)
+            stage.update({"in": combos.get("combos"), "changed": combos.get("combosChanged")})
         from data_collection.seed import simulated_business
-        counts.update(simulated_business.sync(conn))  # sau upsert + cửa sổ, cùng transaction (data-model.md §3)
+        with stages.stage("vé thương gia mô phỏng") as stage:
+            simulated = simulated_business.sync(conn)  # sau upsert + cửa sổ, cùng transaction (data-model.md §3)
+            counts.update(simulated)
+            stage.update({"in": simulated.get("simulatedBusiness"), "changed": simulated.get("simulatedBusinessWritten")})
     # Publish the report only after the connection context has committed successfully.
+    if report_path is not None and quarantine:
+        (report_path.parent / "db_quarantine.jsonl").write_text(
+            "".join(json.dumps(entry, ensure_ascii=False) + "\n" for entry in quarantine), encoding="utf-8")
     if report_path is not None:
         temporary = report_path.with_suffix(".jsonl.tmp")
         write_load_report(temporary, prepared, existing, {str(pid) for pid in canonical_ids.values()},
                           {str(row[0]) for row in written})
         temporary.replace(report_path)
     return counts
+
+
+# Slug có thể chứa '_' (Agoda đánh số bản trùng: `the-anam_4`, `somerset-west-point-hanoi_3`; ~43 khách sạn ở production 08/10)
+BOOKING_HOTEL_URL = re.compile(r"^(https://www\.booking\.com/hotel/vn/[a-z0-9_-]+)(?:\.[a-z-]+)?\.html")
+AGODA_HOTEL_URL = re.compile(r"^https://www\.agoda\.com/vi-vn/([a-z0-9_-]+)/hotel/([a-z0-9_-]+)-vn\.html")
+
+
+def refresh_targets_from_rows(rows: list[dict]) -> dict[str, list[dict]]:
+    """Khách sạn Booking/Agoda đang có trong DB để lượt cào lớn mở lại (setting `refresh.existing`).
+
+    Lấy từ dòng `hotel_property` chưa gộp: dòng của chính nguồn (`url`) và dòng nguồn khác đã gộp ref của nguồn đó vào
+    `sameAs` (`bookingUrl`/`agodaUrl`). Không xét `available`: khách sạn đang tắt cũng được hỏi lại để bật khi còn bán.
+    Dòng lâu chưa thấy (`lastSeenAt` nhỏ, thiếu = snapshot cũ) đứng trước, để lượt hết giờ giữa chừng thì lượt sau tiếp
+    phần còn lại thay vì làm lại cùng một đầu danh sách."""
+    out: dict[str, dict[str, dict]] = {"booking": {}, "agoda": {}}
+    for row in rows:
+        attrs = row.get("attributes") or {}
+        if attrs.get("level") != "property" or row.get("taxonomy") != "hotel" or attrs.get("mergedInto"):
+            continue
+        refs = [row["source_ref"], *(attrs.get("sameAs") or [])]
+        own = row["source_ref"].split(":", 1)[0]
+        seen = attrs.get("lastSeenAt") or ""
+        if any(ref.startswith("booking:hotel:") for ref in refs):
+            match = BOOKING_HOTEL_URL.match((attrs.get("url") if own == "booking" else attrs.get("bookingUrl")) or "")
+            if match:
+                url = match.group(1) + ".vi.html"
+                out["booking"].setdefault(url, {"url": url, "destination": row["destination"], "lastSeenAt": seen})
+        if any(ref.startswith("agoda:hotel:") for ref in refs):
+            match = AGODA_HOTEL_URL.match((attrs.get("url") if own == "agoda" else attrs.get("agodaUrl")) or "")
+            if match:
+                url = match.group(0)
+                hotel_id = attrs.get("agodaHotelId") if own == "agoda" else None
+                out["agoda"].setdefault(url, {"url": url, "slug": match.group(1), "city": match.group(2),
+                                              "hotelId": int(hotel_id) if str(hotel_id or "").isdigit() else None,
+                                              "destination": row["destination"], "lastSeenAt": seen})
+    return {source: sorted(items.values(), key=lambda item: (item["lastSeenAt"], item["url"]))
+            for source, items in out.items()}
 
 
 def main(argv: list[str] | None = None) -> int:

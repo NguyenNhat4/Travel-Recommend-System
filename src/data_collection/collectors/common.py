@@ -590,6 +590,10 @@ class BrowserOptions:
     challenge_timeout: float = 45.0
     manual_wait: float = 300.0
     pages_before_recycle: int = 150
+    # Mở lại hẳn Chromium sau ngần này trang (0 = không): RAM của trình duyệt tăng dần theo số trang dù đã thay tab (lượt VM
+    # 08/10/2026: Booking từ ~1 lên ~2 GB sau 24 trang; đo local cây tiến trình Booking 125 trang: đỉnh PSS 2.485 MB, thường
+    # 1,9–2,3 GB); làm mới ~1.800 khách sạn trên VM 4 GB (job giới hạn FRESH_MEMORY 2500m) cần chặn mức này.
+    pages_before_restart: int = 100
     channel: str | None = None
 
 
