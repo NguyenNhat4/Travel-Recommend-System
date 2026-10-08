@@ -22,7 +22,7 @@ from collections import Counter
 import numpy as np
 
 from src.backend.app.domain.recommendation import mmr_select as prod_mmr
-from src.backend.app.domain.recommendation.profile import MMR_LAMBDA
+from src.backend.app.domain.recommendation import profile as _profile
 
 
 def install(build_profile, cap: int = 1):
@@ -58,7 +58,8 @@ def install(build_profile, cap: int = 1):
                 if per_dest[str(dest[i])] >= cap:
                     continue
                 div = max((float(E[i] @ E[j]) for j in chosen), default=0.0)
-                val = MMR_LAMBDA * float(score[i]) - (1 - MMR_LAMBDA) * div
+                lam = _profile.MMR_LAMBDA                 # đọc lúc gọi (plan 2026-10-09 §3.3): grid λ phải tới được nhánh này
+                val = lam * float(score[i]) - (1 - lam) * div
                 if val > best_val:
                     best, best_val = i, val
             if best is None:

@@ -29,6 +29,7 @@ import numpy as np
 from src.backend.app.domain.recommendation.profile import local_today
 from src.evaluation.recsys_bench import splits as SP
 from src.evaluation.recsys_bench.events import filter_events
+from src.evaluation.recsys_bench.theme_study import oph_scenarios as OS
 from src.evaluation.recsys_bench.theme_study import theme_exp as TE
 from src.evaluation.recsys_bench.theme_study.registry import Installed, expand, parse
 
@@ -41,7 +42,7 @@ def user_part(uid: str) -> str:
     return "tune" if int(hashlib.sha1(uid.encode("utf-8")).hexdigest(), 16) % 10 < TUNE_MOD else "test"
 
 
-def build_splits(kinds, events, idx, source: str):
+def build_splits(kinds, events, idx, source: str, frozen_dir: Path = FROZEN, tag: str = FROZEN_TAG):
     """(splits, info). `frozen`: lọc event theo mốc của file đóng băng, dựng lại với đúng tham số, kiểm sha."""
     out, info = {}, {"source": source}
     if source == "theme":
@@ -50,7 +51,7 @@ def build_splits(kinds, events, idx, source: str):
         return {k: make[k]() for k in kinds}, info
     kept = None
     for k in kinds:
-        path = FROZEN / f"split-{k}-{FROZEN_TAG}.json"
+        path = Path(frozen_dir) / f"split-{k}-{tag}.json"
         frozen = json.loads(path.read_text(encoding="utf-8"))
         p = frozen["canonical"]["params"]
         if kept is None:
@@ -71,12 +72,15 @@ def build_splits(kinds, events, idx, source: str):
 
 
 def make_syn(w, scenarios, seeds, n_syn):
-    """Khách giả lập — đúng luồng rng của `eval_profile.main` (seed 7 = bộ đã đo 08/10)."""
+    """Khách giả lập — đúng luồng rng của `eval_profile.main` (seed 7 = bộ đã đo 08/10); kịch bản mới của `oph_scenarios`
+    dùng luồng rng riêng nên không xê dịch bộ cũ."""
     syn = []
     for seed in seeds:
         rng = random.Random(seed)
         base = {}
-        for sc in [s for s in scenarios if s != "noisy_paired"]:
+        for sc in [s for s in scenarios if s in OS.NEW_SCENARIOS]:
+            syn += OS.make_users(w, sc, seed, n_syn)
+        for sc in [s for s in scenarios if s != "noisy_paired" and s not in OS.NEW_SCENARIOS]:
             for th in ("beach", "mountain", "city"):
                 for n in range(n_syn):
                     u = TE.make_user(w, rng, f"SYN{seed}-{sc[0]}{th[0]}{n:04d}", th, sc)
@@ -153,6 +157,14 @@ def eval_syn(inst, w, syn, scenarios, eng20, eng4, as_of, sink, syn_target):
             row = {"stratum": f"syn_{sc}", "seed": u["seed"], "uid": u["uid"], "theme": u["theme"], "baseUid": u.get("base_uid"),
                    "themePrec": v, "strategy": resp.get("strategy"), "list4": [x["productId"] for x in rec],
                    "dests4": [x["destination"] for x in rec], **_state_fields(inst, as_of)}
+            if "majIsNewest" in u:
+                row["majIsNewest"] = u["majIsNewest"]
+            if sc == "booked_browse":
+                # tỷ lệ món ở X có taxonomy chưa mua (đúng hành vi FR-REC-02 khi chuyến đã đặt được ưu tiên)
+                row["xvAtX@4"] = (sum(x["destination"] == u["next"] and x.get("taxonomy") not in u["boughtTax"] for x in rec)
+                                  / len(rec)) if rec else 0.0
+                tgt["xvAtX@4"].append(row["xvAtX@4"])
+                tgt["crossVertical"].append(float(resp.get("strategy") == "cross_vertical"))
             if syn_target:
                 r20 = inst.recommend(eng20, u["uid"], as_of, 20, u["events"])["recommendations"]
                 ids20 = [w.i_of[x["productId"]] for x in r20 if x["productId"] in w.i_of]
@@ -197,6 +209,8 @@ def main():
     ap.add_argument("--configs", required=True, help="tên cấu hình registry, phân tách bằng dấu phẩy")
     ap.add_argument("--splits", default="llbo,temporal,nexttrip")
     ap.add_argument("--split-source", default="frozen", choices=["frozen", "theme"])
+    ap.add_argument("--frozen-dir", default=str(FROZEN), help="thư mục file split đóng băng (DB G6: split của lane B2)")
+    ap.add_argument("--frozen-tag", default=FROZEN_TAG, help="vd g6pref-v1-asof20261008 cho DB vota_g6pref_v1")
     ap.add_argument("--user-part", default="all", choices=["tune", "test", "all"])
     ap.add_argument("--max-users", type=int, default=0, help="0 = mọi khách của phần đã chọn")
     ap.add_argument("--scenarios", default="between,open,noisy_paired")
@@ -220,7 +234,7 @@ def main():
     eng20 = TE.OfflineEngine(idx, vec, purchases, mode="eval", popularity_cache=64)
     eng4 = TE.OfflineEngine(idx, vec, purchases, mode="prod", popularity_cache=64)
     kinds = [s for s in a.splits.split(",") if s]
-    splits, split_info = build_splits(kinds, events, idx, a.split_source)
+    splits, split_info = build_splits(kinds, events, idx, a.split_source, Path(a.frozen_dir), a.frozen_tag)
     users = {k: [u for u in sorted(sp.targets) if a.user_part == "all" or user_part(u) == a.user_part][: a.max_users or None]
              for k, sp in splits.items()}
     scenarios = [s for s in a.scenarios.split(",") if s]

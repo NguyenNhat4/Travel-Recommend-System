@@ -24,7 +24,7 @@ import numpy as np
 #: Chỉ số đo theo loại stratum. Split thật có target nên đo hit / nDCG; khách giả lập đo tỷ lệ đúng chủ đề.
 SPLIT_METRICS = ("hit@20", "ndcg@10", "hit@4", "destHit@20", "mrr@20")   # destHit@20: eval_split có idx (lane A2); mrr@20: eval_oph
 #: `tgtHit` / `nextDestHit` chỉ có khi chạy `eval_profile --syn-target`; `index()` tự bỏ chỉ số không có trong dòng.
-SYN_METRICS = ("themePrec", "tgtHit@20", "tgtHit@4", "nextDestHit@20", "nextDestHit@4")
+SYN_METRICS = ("themePrec", "tgtHit@20", "tgtHit@4", "nextDestHit@20", "nextDestHit@4", "xvAtX@4")
 BOOT = 2000
 #: Seed của bootstrap: cố định để hai lần chạy cùng dữ liệu cho cùng CI (số trong report phải tái sinh được).
 BOOT_SEED = 20261008
