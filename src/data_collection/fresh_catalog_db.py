@@ -16,8 +16,9 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from collectors.common import read_jsonl
-from stage_log import Stages
+from collectors.textutil import fold
 from normalise import PRODUCT_FIELDS as FIELDS, product_id
+from stage_log import Stages
 
 
 def validate_catalog(products: list[dict], *, allow_external_parents: bool = False) -> None:
@@ -170,6 +171,7 @@ def prepare_rows(fresh: list[dict], existing: list[dict], checked_hotels: set[st
                 hits.append(row)
         matches[item["productId"]] = hits
     mapped_ids = {pid: str(hits[0]["product_id"]) for pid, hits in matches.items() if hits}
+    db_matched = match_existing_hotels(fresh, existing, matches)
     skipped = _quarantine_plan(fresh, matches, mapped_ids, old) if quarantine is not None else {}
     for item in fresh:
         if item["productId"] in skipped:
@@ -178,7 +180,11 @@ def prepare_rows(fresh: list[dict], existing: list[dict], checked_hotels: set[st
     canonical_refs = set()
     result = []
     counts = {"new": 0, "newRooms": 0, "refreshed": 0, "missingRooms": 0, "missingProperties": 0, "staleTrip": 0,
-              "mergedAway": 0, "refConflicts": len(merged_away), "quarantined": len(skipped)}
+              "mergedAway": 0, "refConflicts": len(merged_away), "quarantined": len(skipped), "dbMatched": 0,
+              "keptMerged": 0}
+    hidden: dict[str, str] = {}      # product_id ẩn đi → dòng giữ (phòng con của nó chuyển sang dòng giữ)
+    stay_merged: dict[str, str] = {}  # dòng đã gộp vẫn được nguồn đăng (tin trùng cùng nguồn) → dòng giữ
+    links: list[tuple[str, str]] = []  # (dòng giữ trong DB, ref của khách sạn mới gộp vào nó)
     for item in fresh:
         if item["productId"] in skipped:
             continue
@@ -209,6 +215,23 @@ def prepare_rows(fresh: list[dict], existing: list[dict], checked_hotels: set[st
         row["product_id"] = pid
         row["source_ref"] = previous["source_ref"] if previous else original_ref
         row["attributes"] = attrs
+        keeper = db_matched.get(item["productId"])
+        if keeper is not None:
+            # Khách sạn mới trùng một khách sạn nguồn khác đã có trong DB (bước gộp trùng không thấy vì nguồn kia không cào
+            # được ở lượt này): ghi nhưng ẩn, gộp vào dòng đã có — như dòng "gộp đi" — thay vì thêm một dòng trùng đang bán.
+            attrs["mergedInto"] = str(keeper["product_id"])
+            attrs.pop("availability", None)
+            row["available"] = False
+            hidden[pid] = str(keeper["product_id"])
+            links.append((str(keeper["product_id"]), original_ref))
+            counts["dbMatched"] += 1
+        elif previous and attrs.get("mergedInto") and str(attrs["mergedInto"]) in old:
+            # Dòng đã gộp vào một dòng còn trong DB nhưng nguồn vẫn đăng nó riêng (vd. hai tin Booking cùng khách sạn): giữ ẩn,
+            # không để lượt cào bật lại.
+            attrs.pop("availability", None)
+            row["available"] = False
+            stay_merged[pid] = str(attrs["mergedInto"])
+            counts["keptMerged"] += 1
         if row["source_ref"] in canonical_refs:
             raise ValueError(f"Trùng canonical sourceRef: {row['source_ref']}")
         canonical_refs.add(row["source_ref"])
@@ -219,8 +242,14 @@ def prepare_rows(fresh: list[dict], existing: list[dict], checked_hotels: set[st
             counts["new"] += 1
             counts["newRooms"] += item["taxonomy"] == "hotel" and item["attributes"].get("level") == "room"
         result.append(row)
+    _link_db_matches(result, links, existing)
+    for index, row in enumerate(result):  # phòng cùng nguồn của dòng giữ ẩn: ẩn theo (dòng giữ đã có hạng phòng của nó)
+        parent = (row["attributes"] or {}).get("parentProductId")
+        if parent in stay_merged and row.get("available"):
+            attrs = dict(row["attributes"], mergedInto=stay_merged[parent])
+            attrs.pop("availability", None)
+            result[index] = dict(row, attributes=attrs, available=False)
     represented = {str(row["product_id"]) for row in result}
-    hidden: dict[str, str] = {}
     for previous, keeper in merged_away:
         pid = str(previous["product_id"])
         if pid in represented:
@@ -290,6 +319,84 @@ def prepare_rows(fresh: list[dict], existing: list[dict], checked_hotels: set[st
         if parent in hidden:
             result[index] = dict(row, attributes=dict(row["attributes"], parentProductId=hidden[parent]))
     return result, counts
+
+
+SHARED_BUILDING = re.compile(r"\b(apartment|apartments|can ho|condotel|homestay|vinhomes|flc sea tower|apec|studio)\b")
+
+
+def _float(value) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def match_existing_hotels(fresh: list[dict], existing: list[dict], matches: dict[str, list[dict]]) -> dict[str, dict]:
+    """productId của khách sạn mới (không khớp ref nào trong DB) → dòng khách sạn NGUỒN KHÁC đã có trong DB là cùng một nơi.
+
+    Bước gộp trùng của normalise chỉ ghép các nguồn có mặt trong cùng lượt; dòng Booking của snapshot 23/09 không được cào lại
+    nên 20 khách sạn có thêm dòng Agoda/Trip trùng (production 08/10). Điều kiện chặt hơn normalise.cluster_hotels: cùng điểm
+    đến, tên gần như trùng (≥ 97), cách ≤ 1 km (hoặc một bên thiếu toạ độ), dòng kia chưa có bản của nguồn này, không phải
+    căn hộ/homestay (cùng toà nhà nhưng khác chủ); mỗi dòng DB chỉ nhận một khách sạn mới mỗi lượt và phải là ứng viên duy nhất."""
+    from normalise import haversine_m, name_keys, name_score
+
+    def is_property(taxonomy, attrs) -> bool:
+        return taxonomy == "hotel" and (attrs or {}).get("level") == "property"
+
+    def coords(attrs) -> dict:
+        return {"latitude": _float((attrs or {}).get("latitude")), "longitude": _float((attrs or {}).get("longitude"))}
+
+    by_dest: dict[str, list[dict]] = defaultdict(list)
+    for row in existing:
+        attrs = row["attributes"] or {}
+        if is_property(row.get("taxonomy"), attrs) and not attrs.get("mergedInto"):
+            by_dest[row.get("destination")].append(row)
+    taken = {str(hits[0]["product_id"]) for hits in matches.values() if hits}
+    out: dict[str, dict] = {}
+    for item in fresh:
+        attrs = item.get("attributes") or {}
+        if matches.get(item["productId"]) or not is_property(item.get("taxonomy"), attrs):
+            continue
+        if SHARED_BUILDING.search(fold(item["name"])):
+            continue
+        source = item["sourceRef"].split(":", 1)[0]
+        keys = name_keys(item["name"], attrs.get("nameEn"))
+        found = []
+        for row in by_dest.get(item["destination"], ()):
+            row_attrs = row["attributes"] or {}
+            refs = [row["source_ref"], *(row_attrs.get("sameAs") or [])]
+            if str(row["product_id"]) in taken or any(ref.split(":", 1)[0] == source for ref in refs):
+                continue
+            if name_score(keys, name_keys(row.get("name"), row_attrs.get("nameEn"))) < 97:
+                continue
+            dist = haversine_m(coords(attrs), coords(row_attrs)) if None not in (*coords(attrs).values(),
+                                                                                  *coords(row_attrs).values()) else None
+            if dist is None or dist <= 1000:
+                found.append(row)
+        if len(found) == 1:
+            out[item["productId"]] = found[0]
+            taken.add(str(found[0]["product_id"]))
+    return out
+
+
+def _link_db_matches(result: list[dict], links: list[tuple[str, str]], existing: list[dict]) -> None:
+    """Ref của khách sạn mới vừa gộp vào dòng DB (match_existing_hotels) vào sameAs của dòng giữ, để lượt sau khớp thẳng theo
+    ref. Dòng giữ không được làm mới ở lượt này thì thêm vào lô ghi chỉ với sameAs mới."""
+    written = {str(row["product_id"]): index for index, row in enumerate(result)}
+    by_pid = {str(row["product_id"]): row for row in existing}
+    for keeper, ref in links:
+        index = written.get(keeper)
+        base = result[index] if index is not None else by_pid[keeper]
+        attrs = copy.deepcopy(base["attributes"] or {})
+        same = list(attrs.get("sameAs") or [])
+        if ref in same:
+            continue
+        attrs["sameAs"] = same + [ref]
+        if index is None:
+            written[keeper] = len(result)
+            result.append(dict(base, attributes=attrs))
+        else:
+            result[index] = dict(base, attributes=attrs)
 
 
 def _quarantine_plan(fresh: list[dict], matches: dict[str, list[dict]], mapped_ids: dict[str, str],
