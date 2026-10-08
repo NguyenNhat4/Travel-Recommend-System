@@ -57,6 +57,12 @@ Hệ quả cho bench:
 - Seed sinh nhóm `churned` có lần mua cuối 366–730 ngày (`seed/config.py:54`), nên P3 có mặt chủ yếu ở LLBO; temporal/nexttrip gần như không có. Phase 0 đếm số khách P3 theo split. Nhánh 180 ngày cũ giữ làm arm đối chiếu `N0-180`.
 - Track OPH-prod (G7) chạy song song với track F14c ở Phase 2.
 
+### 0.1 Kết quả bench (09/10)
+
+S1–S5 xong: report `src/evaluation/reports/eval-2026-10-09-recsys-cong-thuc-oph.md`, quyết định
+`docs/spec/bench/recsys-bam-so-thich-quyet-dinh.md` §8. Giữ O1 (w = 0,15), O3, O4; bỏ O5 và toàn bộ track N (`pop_h`, dormant).
+Còn S6 (trình gate) và S7 (Pha B).
+
 ---
 
 ## 1. Bối cảnh

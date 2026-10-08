@@ -251,3 +251,20 @@ Chỉ ghi để lượng hoá công việc; **không sửa trước khi có G5**
 - `explain()`: cân nhắc đồng bộ `because[]` với điểm thật (báo cáo gốc §3.D).
 - `docs/spec/hop-dong-tich-hop-search-recommendation.md` §4.4 / §4.7; contract OpenAPI không đổi field.
 - Unit test `domain` / `application` ≥ 80 % (DoD `docs/prd/implementation-plan.md` §4).
+
+## 8. Công thức OPH-L (09/10) — kết quả và gate chờ chốt
+
+Plan `docs/plan/2026-10-09-recsys-cong-thuc-oph.md`; số: `src/evaluation/reports/eval-2026-10-09-recsys-cong-thuc-oph.md`.
+
+- **Giữ (đã qua TUNE, xác nhận trên TEST một lần):** O1 phạt route bay sai điểm xuất phát (w = 0,15, mask khi không có chuyến mở) ·
+  O3 chuyến đã đặt được ưu tiên hơn lượt xem lẻ (sửa I-3, đề xuất [D] đã chốt) · O4 gộp các chuyến chỉ-xem đang mở thành chuyến ảo.
+- **Bỏ:** O5 cộng điểm món trong giỏ (lợi chỉ do cách dựng LLBO) · `pop_h` (DB G6: theme −0,04, không split thật nào tăng — [C7]
+  đóng với kết luận "không áp dụng") · dormant `H_L × 3`, `w_pop` dormant 0,5, `w_pop` first-time 0,45.
+- **TEST (Holm):** llbo h@20 và nexttrip h@20 tăng có ý nghĩa ở cả ba chuỗi (B1′ → F_O, B2 → F, B0 → OPH-prod). OPH-prod so với
+  production: llbo h@4 +0,0272 · temporal h@20 +0,0163 · nexttrip h@20 +0,0064 · coldstart h@4 +0,0895 · theme không đổi ·
+  latency xếp hạng +≤ 0,12 ms. Phần lớn lợi ích ở khách mà món đích đã có trong lịch sử của họ (caveat §6 của report).
+- **Gate chờ người dùng chốt:**
+  1. Đưa chuỗi O lên production theo bản nào: OPH-prod (độc lập G2, đạt G7) hay gộp vào PR-A / PR-B.
+  2. O1 và O4 có cần đề xuất PRD không: O1 là chi tiết xếp hạng (FR-REC-04), O4 đổi điểm đến được khoá khi khách chỉ đang xem
+     (FR-REC-02 không mô tả chuyến chỉ-xem) — plan §8.2 đề nghị gộp vào một đề xuất nếu người dùng muốn ghi PRD.
+  3. G2 (F14c) vẫn theo lộ trình lane B; chuỗi O không đổi câu trả lời G2 (F so với B2 nexttrip +0,0064).
