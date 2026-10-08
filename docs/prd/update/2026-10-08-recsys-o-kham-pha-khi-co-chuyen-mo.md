@@ -1,67 +1,78 @@
-# RecSys bám sở thích giữa hai chuyến và ô khám phá khi đang có chuyến
+# Ô khám phá: lấp ô trống bằng món ở điểm đến khác khi khách đang có chuyến mở
 
-- Ngày: 2026-10-08
-- Người đề xuất: Pham Nguyen Dang Khoi / Claude Code soạn
+- Ngày: 2026-10-08 (viết lại từ `2026-10-08-recsys-bam-so-thich-va-o-kham-pha.md`; phần công thức tách sang
+  `2026-10-08-recsys-chuan-hoa-so-thich-giua-hai-chuyen.md`)
+- Người đề xuất: Pham Nguyen Dang Khoi, tqanh123 / Claude Code soạn
 - Trạng thái: chờ chốt
 - Chốt bởi / ngày:
-- PRD bị ảnh hưởng: `docs/prd/requirements.md` §1.4 FR-REC-02, FR-REC-04
-- Mã FR/NFR: FR-REC-01, FR-REC-02, FR-REC-04
+- PRD bị ảnh hưởng: `docs/prd/requirements.md` §1.3 FR-REC-02 (phần chuyến đang mở)
+- Mã FR/NFR: FR-REC-02, FR-REC-01
 
 ## Lý do
 
-Test production tối 07/10 (tài khoản thật, xem 8 sản phẩm biển Nha Trang + Vũng Tàu) và đo offline 08/10 trên bản sao catalog +
-event production (`src/evaluation/reports/eval-2026-10-08-recsys-so-thich-chu-de.md`) cho thấy hai vấn đề:
+1. Khi khách đang có chuyến mở tại X, engine khoá điểm đến X và giới hạn 2 món mỗi loại (FR-REC-02, spec §4.7), nên danh
+   sách trang chủ trung bình chỉ **3,44 / 4 món** và **0 %** món ở điểm đến khác. Khách đang xem biển Vũng Tàu không bao giờ
+   thấy biển Đà Nẵng / Phú Quốc, kể cả khi còn ô trống.
+2. Đo trên bản sao production 08/10 với đúng tổ hợp sẽ triển khai (profile P2 + F14c), xếp hạng món khám phá theo
+   `cos(u_long, v)` như engine sẽ làm (`src/evaluation/reports/eval-2026-10-08-recsys-g2-va-wp4.md` §4; lượt đo lại
+   `eval_slots --how ulong` 08/10):
 
-1. **Khi không có chuyến mở, gợi ý gần như không theo sở thích.** Cosine của e5-small dồn sát nhau (mọi món 0,88–0,93), nên thành
-   phần phổ biến `0,15 · pop` (thang 0–1) lấn át phần sở thích dù trọng số danh nghĩa là 0,7 / 0,15 / 0,15. Khách thích núi chỉ 17 %
-   món đúng chủ đề, thích thành phố 23 % (ngẫu nhiên 33 %); ai cũng nhận Phan Thiết / Nha Trang / Hội An.
-2. **Khi đang có chuyến mở, 0 % món ở điểm đến khác.** Khách đang xem biển Vũng Tàu không bao giờ thấy biển Đà Nẵng / Phú Quốc,
-   kể cả khi list chưa đủ 4 món (trung bình 3,44 món vì giới hạn 2 món mỗi loại).
+   | Biến thể | LLBO h@4 (4.072) | temporal h@4 (775) | thêm điểm đến khác / list (chuyến mở) | theme `open` |
+   |---|---:|---:|---:|---:|
+   | không có ô B | 0.5324 | 0.1045 | 0.000 | 0.833 |
+   | **chỉ lấp ô trống (đề xuất)** | **0.5324** | **0.1045** | **0.292** | 0.823 |
+   | thay hẳn ô 4 | 0.4998 | 0.1019 | 1.000 | 0.817 |
 
-Số đo (bản sao production, chi tiết ở report):
-
-| | Đúng chủ đề giữa 2 chuyến | LLBO hit@4 | temporal hit@20 | nexttrip hit@20 |
-|---|---:|---:|---:|---:|
-| hiện tại | 0,438 | 0,574 | 0,159 | 0,074 |
-| A (pop 0,30) | **0,776** | 0,574 | 0,129 | 0,039 |
-| A thận trọng (pop 0,45) | 0,556 | 0,574 | 0,138 | 0,046 |
-
-Ô khám phá B: món ở điểm đến khác đúng chủ đề 79 % (ngẫu nhiên 33 %), LLBO / temporal hit@4 **không đổi** (chỉ lấp ô trống).
-Lưu ý: event là dữ liệu giả lập chọn điểm đến theo độ phổ biến (không có sở thích), nên temporal / nexttrip thưởng món bán chạy và
-không thể hiện được lợi ích bám sở thích — mức giảm ở hai cột này là cận trên của chi phí.
+   Chỉ lấp ô trống **không đổi** độ chính xác (giống đến bốn chữ số) và thêm một điểm đến khác cho 29,2 % khách có chuyến
+   mở; thay hẳn ô 4 mất 0,033 LLBO h@4 → luật là *lấp*, không *thay*.
+3. **P2 (dựng profile):** `u_long` nhân độ tin cậy chuyến `min(1, Σ W_TYPE)` và không bỏ purchase / add_to_cart khỏi vector
+   chuyến khi cap lặp. Không có chi phí nào phân biệt được trên split thật (mọi CI chứa 0, trừ LLBO nDCG@10 −0,0031) và giữ
+   theme khi khách có lịch sử lướt xem (+0,175). PRD chỉ nói "dùng lịch sử dài hạn", không quy định cách gộp chuyến → P2 là
+   chi tiết triển khai, **không phải lệch PRD**; ghi ở đây cho minh bạch vì ô B dùng `u_long` của P2.
 
 ## Nội dung đề xuất
 
-### `docs/prd/requirements.md` §1.4 — FR-REC-02
+### `docs/prd/requirements.md` §1.3 — FR-REC-02
 
-Hiện tại (câu cuối):
+Hiện tại (phần chuyến đang mở):
 
-> **Sau khi chuyến đã diễn ra xong**, hệ thống gợi ý cho chuyến kế tiếp: không loại loại sản phẩm đã mua, không khoá điểm đến X; dùng lịch sử dài hạn và mức phổ biến.
+> …hệ thống phải ưu tiên gợi ý vé máy bay đến X và các hoạt động trải nghiệm tại X (loại các loại sản phẩm đã mua trong chuyến).
 
-Thay bằng:
+Thêm ngay sau câu trên:
 
-> **Sau khi chuyến đã diễn ra xong**, hệ thống gợi ý cho chuyến kế tiếp: không loại loại sản phẩm đã mua, không khoá điểm đến X; dùng lịch sử dài hạn và mức phổ biến, trong đó **mức liên quan với sở thích được chuẩn hoá trong từng lần gợi ý** để sở thích dài hạn (ví dụ khách hay đi biển, hay đi núi) quyết định thứ tự chứ không chỉ độ phổ biến. **Khi chuyến đang mở mà danh sách gợi ý tại X chưa đủ số món yêu cầu**, phần còn trống được lấp bằng sản phẩm ở điểm đến khác hợp với sở thích dài hạn của khách (mỗi điểm đến tối đa 1 món), xếp sau các món tại X.
+> Nếu danh sách tại X chưa đủ số món yêu cầu, **các ô còn trống** được lấp bằng sản phẩm ở điểm đến khác hợp với sở thích
+> dài hạn của khách (khách sạn, hoạt động trải nghiệm hoặc combo; mỗi điểm đến tối đa một món; không gồm sản phẩm đã mua),
+> xếp **sau** các món tại X; các món tại X không bị thay thế. Chiến lược gợi ý (`strategy`) và loại sản phẩm kế tiếp
+> (`nextVertical`) vẫn tính trên các món tại X.
 
-### `docs/prd/requirements.md` §1.4 — FR-REC-04
+### Luật chi tiết (ghi ở spec §4.7)
 
-Hiện tại:
+- Chỉ khi có chuyến mở và `len(list) < k`; ứng viên: điểm đến ≠ X, `is_recommendable`, taxonomy ∈ {hotel, attraction, combo}
+  (bản đã đo), loại mọi sản phẩm đã mua kể cả combo liên quan (đề xuất `2026-10-08-recsys-loai-san-pham-da-mua-va-combo.md`);
+  **không** loại taxonomy đã mua trong chuyến (khách sạn ở điểm đến khác là gợi ý cho chuyến sau — đúng bản đã đo).
+- Xếp theo `cos(u_long, v)`; tối đa 1 món / điểm đến; nối sau món X; `because[]` phân rã từ `u_long`.
+- Cần **một** lượt truy vấn vector bổ sung (`near_vector(u_long)` không khoá điểm đến) chỉ cho khách có chuyến mở mà list
+  ngắn (≈ 29 % khách có chuyến mở). Điều kiện triển khai: latency đầu-cuối p95 `/recommendations` tăng ≤ 50 ms (G1), đo theo
+  từng `strategy`; có công tắc cấu hình để tắt mà không cần deploy lại. Caveat: đo local không chứng minh được chi phí trên
+  Weaviate Cloud khác region — nếu vỡ ngưỡng trên production thì tắt bằng công tắc.
+- Giữ việc hiện lại món đã xem (ẩn món đã xem làm LLBO h@4 0,5324 → 0,3986).
 
-> Sắp xếp thứ tự danh sách sản phẩm dựa trên trọng số kết hợp giữa độ liên quan ngữ nghĩa, mức độ ưa chuộng của cộng đồng và tính khả dụng của sản phẩm.
+### Tiêu chí nghiệm thu bổ sung (§3, thêm vào hàng AC-REC-02 hoặc ghi chú dưới bảng)
 
-Thêm sau câu trên:
-
-> Độ liên quan ngữ nghĩa được đưa về cùng thang với mức độ ưa chuộng trước khi kết hợp khi khách không có chuyến đang mở, để trọng số phản ánh đúng tỷ lệ đóng góp. Món khách đã xem vẫn được gợi ý lại (là tín hiệu mua mạnh).
+> Khi khối gợi ý tại điểm đến của chuyến đang mở có ít hơn số món yêu cầu, các ô còn lại hiển thị sản phẩm ở điểm đến khác
+> phù hợp sở thích, xếp sau các món tại điểm đến đó.
 
 ## Thay đổi source sau khi chốt
 
-- `src/backend/app/domain/recommendation/profile.py` — `score_candidates`: khi `profile.active_trip is None`, chuẩn hoá min-max
-  `E @ u_short`, `E @ u_long` trên không gian ứng viên của request; hằng mới `W_SHORT_BETWEEN, W_POP_BETWEEN, W_LONG_BETWEEN =
-  0.55, 0.30, 0.15` (hoặc 0.40 / 0.45 / 0.15 nếu chọn bản thận trọng); giữ nguyên nhánh có chuyến mở. Tăng `ENGINE_RULES_VERSION`.
-- `src/backend/app/application/recommendation/use_cases.py` — sau `mmr_select`, nếu có chuyến mở và `len(chosen) < k`: lấp bằng món
-  ngoài điểm đến X, ngoài loại đã mua trong chuyến, xếp theo `cos(profile.u_long, v)`, mỗi điểm đến 1 món; `because` theo `explain`.
-  Không thêm lượt gọi Weaviate (chấm trên ứng viên / vector đã có, hoặc thêm 1 `near_vector(u_long)` không mask điểm đến — cần đo latency).
-- `docs/spec/hop-dong-tich-hop-search-recommendation.md` §4.4 / §4.7 — công thức + luật lấp ô; contract không đổi field.
-- Test: unit `profile` (chuẩn hoá, nhánh có / không chuyến mở), `use_cases` (lấp ô, mỗi điểm đến 1 món, không trùng loại đã mua);
-  bench `recsys_bench` thêm arm; đo lại LLBO / temporal / nexttrip / coldstart và AC-REC-01/02 trên bản sao production.
-- (Khuyến nghị, tách riêng) thêm sở thích chủ đề vào bộ sinh event (`seed_histories.py`, `docs/spec/MOCK_DATA_SPEC.md`) để đo được
-  lợi ích bám sở thích offline — cần chốt riêng.
+- `docs/prd/requirements.md` §1.3 FR-REC-02 (trước), rồi:
+- `src/backend/app/domain/recommendation/profile.py`: P2 (`CAP_EXEMPT_EVENTS`, `Trip.confidence`, `u_long` nhân confidence,
+  `explain()` theo), hằng `EXPLORE_TAXONOMIES`, `EXPLORE_MAX_PER_DESTINATION = 1`, `explain(..., long_term=True)`; tăng
+  `ENGINE_RULES_VERSION`.
+- `src/backend/app/application/recommendation/use_cases.py`: sau `mmr_select`, nếu có chuyến mở và `len(chosen) < k` →
+  `_explore_fill()` (mask điểm đến ≠ X, whitelist taxonomy, loại closure đã mua, một `near_vector(u_long)`, 1 món / điểm đến,
+  nối sau, `because[]`); `strategy` / `nextVertical` tính trên món X. `core/config.py` + `main.py`: `recommend_explore_fill`.
+- Spec `docs/spec/hop-dong-tich-hop-search-recommendation.md` §4.3 (P2), §4.4 (ghi chú strategy không đổi), §4.7 (luật ô B).
+  Contract OpenAPI **không đổi** (`RecommendationDiagnostics` giữ nguyên).
+- Test unit domain (P2) + application (lấp ô, 1 món / điểm đến, không gọi vector khi đủ k, tắt công tắc = output cũ, không
+  chuyến mở → không lấp); bỏ xfail `test_strong_events_weight_trip_vector` ở `src/evaluation/recsys_bench/tests`.
+- Gate: baseline mới; **latency đầu-cuối trước / sau** (plan lane A1 và PR-A); deploy theo `docs/prd/deployment-plan.md`.
