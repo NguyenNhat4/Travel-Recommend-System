@@ -30,7 +30,9 @@
 | Mốc mới trên engine production | **Xong** 08/10 (WP0) — bảng cũ đúng, trừ hai cột nexttrip |
 | Tách test mất purchase | **Xong** 08/10 (WP1) — production pass phần nghiệp vụ, xfail chỉ còn ở phần vector |
 | Bảng quyết định có CI | **Xong** 08/10 (WP3) — `docs/spec/bench/recsys-bam-so-thich-quyet-dinh.md` |
-| Chọn cấu hình | **Chưa — chờ G3.** Ứng viên: P2 + F14c (pop 0,35) chắc nhất, P2 + F13a nếu ưu tiên bền với nhiễu, P2 + F7 nếu không muốn nuôi hằng nào |
+| Chọn cấu hình | **Xong** 08/10 — người dùng chốt G3 = **P2 + F14c** (pop 0,35), G4 = **có** ô khám phá B, G1 = ngưỡng điểm ước lượng **0,04** |
+| G2 (mức giảm nexttrip) | **Bị từ chối** 08/10 → đã điều tra, có bằng chứng mới và ứng viên `destCap2`; **chờ chốt lại** (`docs/spec/bench/recsys-bam-so-thich-quyet-dinh.md` §7.4) |
+| WP4: ô B + latency trên tổ hợp đã chọn | **Xong** 08/10 — `eval-2026-10-08-recsys-g2-va-wp4.md` |
 | Đề xuất PRD đúng nội dung mới, người dùng chốt | **Chưa** |
 | Sửa engine backend, spec, unit test, deploy | **Chưa** |
 | Commit / push | **Xong** 08/10 trên `origin/feat/recSys_update` (base `release-mvp-v2` @ `6f77e80`) |
@@ -80,7 +82,7 @@ không có trên `feat/recSys_update`. Người nhận không cần quan tâm.
 | Gate | Câu hỏi | Trước WP |
 |---|---|---|
 | G1 | Tiêu chí nghiệm thu (báo cáo cuối §6): ngưỡng LLBO, theme, temporal, latency | WP3 |
-| G2 | Mức giảm nexttrip có chấp nhận được không (đo được −0,035 đến −0,046, là cận trên do dữ liệu giả lập) | WP3 |
+| G2 | Mức giảm nexttrip có chấp nhận được không | WP3 — **từ chối 08/10; chờ chốt lại** sau điều tra (§7 của tài liệu quyết định). Phát hiện quan trọng: `seed_histories.plan_trip` bốc điểm đến **không phụ thuộc khách**, nên temporal / nexttrip **không thể** đo được lợi ích bám sở thích → **G6 là điều kiện tiên quyết của G2**, không phải việc làm sau |
 | G3 | Chọn công thức: F14 / F7 / khác | WP4 |
 | G4 | Có làm ô khám phá B không (đổi hành vi FR-REC-02) | WP4 |
 | G5 | Chốt đề xuất PRD viết lại | cài engine (WP5.3) |
@@ -190,7 +192,7 @@ theme (+0,035) mà không có chi phí nào phân biệt được.**
 2b. (Tuỳ chọn, chưa làm) F13 centering **toàn phần**: center cả vector truy vấn Weaviate, profile và MMR. Giờ đáng làm hơn
     trước, vì F13a bản chấm-điểm-thôi đã ngang F14 ở split thật và tốt nhất ở độ bền với nhiễu.
 
-### WP4 — Đo đúng tổ hợp sẽ triển khai
+### WP4 — Đo đúng tổ hợp sẽ triển khai · **đã làm 08/10** (`eval-2026-10-08-recsys-g2-va-wp4.md`)
 
 Cấu hình: P2 + phần còn lại của P1 (purchase / cart luôn vào vector) + công thức đã chọn + ô khám phá B (nếu G4 đồng ý).
 
@@ -203,10 +205,16 @@ Cấu hình: P2 + phần còn lại của P1 (purchase / cart luôn vào vector)
 4. Kiểm `because[]` vẫn hợp lệ theo contract (không thêm field).
 
 Checklist:
-- [ ] Ô B chạy cùng P2 + công thức
-- [ ] Đủ split + coldstart + AC-REC-01/02
-- [ ] Latency trước / sau
-- [ ] Report + history
+- [x] Ô B chạy cùng P2 + F14c: hit@4 **giống base đến bốn chữ số** ở LLBO (0,5324) và temporal (0,1045); thêm món ở điểm
+      đến khác cho 29,2 % khách có chuyến mở. Thay hẳn ô 4 mất 0,033 LLBO h@4 → giữ luật chỉ lấp ô trống
+- [x] Đủ ba split (toàn bộ khách) + khách giả lập 3 seed; thêm bộ đo mới `tgtHit` / `nextDestHit` trên dữ liệu **có** sở
+      thích (`--syn-target`) — bộ đo duy nhất phản ánh được lợi ích
+- [ ] Coldstart + AC-REC-01/02 — **còn lại**
+- [x] Latency **ranking-only**: p95 38,63 → 38,54 (F14c) → 39,26 ms (destCap2), Δp95 +0,63 ms. Tiêu chí latency đầu-cuối
+      của G1 vẫn trống, cần `http_latency` hoặc API local
+- [x] Report + history
+- [x] (ngoài plan) Ứng viên mới **destCap2** — giới hạn 2 món / điểm đến khi không có chuyến mở: nextDestHit@20 +0,2472 so
+      với F14c, trả 0,013 theme; đưa khoảng cách độ phủ điểm đến so với production từ −0,296 về −0,049
 
 ### WP5 — Đề xuất PRD → chốt → cài engine
 
@@ -283,11 +291,12 @@ WP6, WP7: độc lập, làm song song
 - [x] WP0 môi trường + mốc mới trên engine production
 - [x] WP1 tách test purchase
 - [x] WP2 CI ghép cặp, 3 seed, `noisy` cùng khách
-- [ ] G1, G2 chốt — **chờ người dùng**
+- [x] G1 chốt 08/10: ngưỡng điểm ước lượng 0,04
+- [ ] **G2 chờ chốt lại** — từ chối 08/10; đã điều tra, ba lựa chọn ở §7.4 tài liệu quyết định
 - [x] WP3 bảng quyết định → trình G3
-- [ ] G3 chọn công thức — **chờ người dùng**
-- [ ] G4 ô khám phá — **chờ người dùng** (tooling đã sẵn)
-- [ ] WP4 đo tổ hợp + latency
+- [x] G3 chốt 08/10: P2 + F14c (pop 0,35)
+- [x] G4 chốt 08/10: có làm ô khám phá B — đã đo lại trên đúng tổ hợp, miễn phí về độ chính xác
+- [x] WP4 đo tổ hợp + latency (ranking-only); coldstart + AC-REC-01/02 còn lại
 - [ ] WP5.1 đề xuất viết lại → G5
 - [ ] WP5.2–5.8 PRD, engine, spec, test, gate, archive, deploy
 - [ ] WP7.1 xử lý `askpass.cmd` (của chủ nhánh `fix/search-production`, không tự làm)
@@ -297,3 +306,9 @@ Tài liệu sinh ra ở lượt WP0–WP3 (08/10): `src/evaluation/reports/eval-
 `eval-2026-10-08-recsys-so-thich-ci.md`, `docs/spec/bench/recsys-bam-so-thich-quyet-dinh.md`,
 `src/evaluation/recsys_bench/theme_study/results/2026-10-08-wp0-wp3/`,
 `history/2026-10-08-wp0-wp3-recsys-bam-so-thich.md`.
+
+Lượt điều tra G2 + WP4 (08/10, sau khi chốt gate): `src/evaluation/reports/eval-2026-10-08-recsys-g2-va-wp4.md`,
+`docs/spec/bench/recsys-bam-so-thich-quyet-dinh.md` §7,
+`src/evaluation/recsys_bench/theme_study/results/2026-10-08-g2-wp4/`,
+`history/2026-10-08-g2-wp4-recsys-bam-so-thich.md`. Script mới: `loss_analysis.py`, `dest_diversity.py`,
+`rank_latency.py`.

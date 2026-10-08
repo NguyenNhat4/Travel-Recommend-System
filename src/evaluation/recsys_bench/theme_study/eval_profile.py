@@ -21,6 +21,10 @@ from src.backend.app.domain.recommendation import score_candidates as prod_score
 from src.evaluation.recsys_bench import splits as SP
 from src.evaluation.recsys_bench.theme_study import eval_formula as EF
 from src.evaluation.recsys_bench.theme_study import theme_exp as TE
+from src.backend.app.domain.recommendation import mmr_select as prod_mmr
+
+prod_space = UC._LocalSpace
+from src.evaluation.recsys_bench.theme_study.dest_diversity import install as install_dest_cap
 from src.evaluation.recsys_bench.theme_study.profile_variants import PROFILES, make_build_profile
 from src.evaluation.recsys_bench.theme_study.step2_scorers import calibrate_quantile, make_centered, make_quantile
 
@@ -113,6 +117,12 @@ def main():
     ap.add_argument("--f14-cal-seed", type=int, default=99,
                     help="seed của tập calibration F14 (WP3.1: đổi seed để xem q có bền không). 99 = bản đã đo 08/10")
     ap.add_argument("--per-user-out", default=None, help="file JSONL ghi kết quả từng khách (plan WP2.1)")
+    ap.add_argument("--dest-cap", type=int, default=0,
+                    help="tối đa N món mỗi điểm đến khi KHÔNG có chuyến mở (0 = tắt, như production). Ứng viên giảm "
+                         "thiệt hại độ phủ điểm đến cho gate G2 — xem theme_study/dest_diversity.py")
+    ap.add_argument("--syn-target", action="store_true",
+                    help="đo thêm dự đoán chuyến kế tiếp của khách giả lập (tgtHit, nextDestHit) — bộ đo duy nhất có sở "
+                         "thích thật, dùng cho gate G2. Thêm 1 lượt gọi engine k=20 / khách")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     TE.AS_OF = datetime.fromisoformat(a.as_of)
@@ -167,15 +177,18 @@ def main():
         print("calibration", res["F14_calibration"], flush=True)
     print(f"loaded {time.time()-t0:.0f}s; parity mismatches = {res['parity_mismatch_llbo200']} {by_field or ''}",
           flush=True)
+    syn_target = a.syn_target
     pu = open(a.per_user_out, "w", encoding="utf-8") if a.per_user_out else None
     try:
         for pname in a.profiles.split(","):
             bp = make_build_profile(**PROFILES[pname])
             res[f"{pname}/stats"] = profile_stats(bp, splits["llbo"], eng4)
             for sname in a.scorers.split(","):
-                cfg = f"{pname}+{sname}"
+                cfg = f"{pname}+{sname}" + (f"+destCap{a.dest_cap}" if a.dest_cap else "")
                 UC.build_profile = bp
                 EF.set_variant(sname)
+                if a.dest_cap:
+                    UC.build_profile, UC.mmr_select, UC._LocalSpace = install_dest_cap(bp, a.dest_cap)
 
                 def sink(row, _cfg=cfg):
                     if pu is not None:
@@ -186,6 +199,7 @@ def main():
                      for s, sp in splits.items() if s in a.splits.split(",")}
                 for sc in scenarios:
                     tp, by, dests = [], collections.defaultdict(list), collections.Counter()
+                    tgt = collections.defaultdict(list)
                     for u in [x for x in syn if x["events"] and x["scenario"] == sc]:
                         rec = eng4.recommend(u["uid"], TE.AS_OF, 4, u["events"])["recommendations"]
                         dests.update(x["destination"] for x in rec)
@@ -193,15 +207,30 @@ def main():
                         v = TE.theme_prec(w, ids4, u["theme"])
                         if v is not None:
                             tp.append(v); by[u["theme"]].append(v)
-                        sink({"stratum": f"syn_{sc}", "seed": u["seed"], "uid": u["uid"], "theme": u["theme"],
-                              "baseUid": u.get("base_uid"), "themePrec": v,
-                              "list4": [x["productId"] for x in rec], "dests4": [x["destination"] for x in rec]})
+                        # Dự đoán chuyến kế tiếp trên dữ liệu CÓ sở thích (plan WP3 / gate G2): `target` là khách sạn của
+                        # chuyến kế tiếp và `next` là điểm đến của nó, do `theme_exp.make_user` sinh ra. Split thật không
+                        # đo được việc này vì `seed_histories.plan_trip` bốc điểm đến độc lập với khách.
+                        row = {"stratum": f"syn_{sc}", "seed": u["seed"], "uid": u["uid"], "theme": u["theme"],
+                               "baseUid": u.get("base_uid"), "themePrec": v,
+                               "list4": [x["productId"] for x in rec], "dests4": [x["destination"] for x in rec]}
+                        if syn_target:
+                            r20 = eng20.recommend(u["uid"], TE.AS_OF, 20, u["events"])["recommendations"]
+                            ids20 = [w.i_of[x["productId"]] for x in r20 if x["productId"] in w.i_of]
+                            row["tgtHit@20"] = float(u["target"] in ids20)
+                            row["tgtHit@4"] = float(u["target"] in ids4)
+                            row["nextDestHit@20"] = float(any(w.dest[i] == u["next"] for i in ids20))
+                            row["nextDestHit@4"] = float(any(w.dest[i] == u["next"] for i in ids4))
+                            for k2 in ("tgtHit@20", "tgtHit@4", "nextDestHit@20", "nextDestHit@4"):
+                                tgt[k2].append(row[k2])
+                        sink(row)
                     r[f"syn_{sc}"] = {"themePrec": round(float(np.mean(tp)), 3),
                                       **{f"themePrec_{k}": round(float(np.mean(v)), 3) for k, v in by.items()},
+                                      **{k2: round(float(np.mean(v)), 4) for k2, v in sorted(tgt.items())},
                                       "distinctDestsTotal": len(dests), "top5Dests": dests.most_common(5)}
                 res[cfg] = r
-                print(pname, sname, json.dumps(r, ensure_ascii=False), flush=True)
+                print(cfg, json.dumps(r, ensure_ascii=False), flush=True)
                 UC.build_profile, UC.score_candidates = prod_build, prod_score
+                UC.mmr_select, UC._LocalSpace = prod_mmr, prod_space
                 json.dump(res, open(a.out, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
                 if pu is not None:
                     pu.flush()

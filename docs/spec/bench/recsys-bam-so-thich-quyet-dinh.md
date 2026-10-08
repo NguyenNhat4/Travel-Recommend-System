@@ -6,7 +6,8 @@
 - Nghiên cứu gốc: `docs/spec/bench/recsys-bam-so-thich-tong-hop.md`
 - Số của tài liệu này: `src/evaluation/reports/eval-2026-10-08-recsys-so-thich-ci.md` (CI ghép cặp, toàn bộ khách mỗi
   split, 3 seed khách giả lập) và `eval-2026-10-08-recsys-so-thich-moc-moi.md` (mốc engine)
-- **Trạng thái: chờ người dùng chốt G1–G4. Chưa chốt thì không sửa engine (AGENTS.md §8).**
+- **Trạng thái: G1, G3, G4 đã chốt 08/10. G2 bị từ chối → có bằng chứng mới, cần chốt lại (§7). Chưa xong G2 thì không
+  sửa engine (AGENTS.md §8).**
 
 ## 1. Hai câu hỏi tách rời nhau
 
@@ -141,6 +142,88 @@ Sau khi chốt G1–G4: WP4 (đo đúng tổ hợp + latency) → WP5.1 viết l
 `docs/prd/update/2026-10-08-recsys-bam-so-thich-va-o-kham-pha.md` (hiện vẫn `chờ chốt` với **nội dung cũ**: chỉ có F7 và
 ô B, chưa có P2, chưa có F13a/F14, chưa có tiêu chí) → G5 → PRD → engine.
 
+## 7. Chốt của người dùng 08/10 và điều tra G2
+
+| Gate | Chốt | Hệ quả |
+|---|---|---|
+| **G1** | Giữ ngưỡng **điểm ước lượng 0,04** (cách (b) ở §4) | Cả bốn ứng viên đạt tiêu chí temporal: F7 −0,0284 · F14c −0,0335 · F14 −0,0348 · F13a −0,0374 |
+| **G2** | **Chưa chấp nhận được** | Xung đột với G3: F14c có nexttrip h@20 −0,0381. Đã điều tra, xem dưới |
+| **G3** | **P2 + F14c** (pop 0,35) | Khớp khuyến nghị "chắc nhất" của §5 |
+| **G4** | **Có làm ô khám phá B** | Đã đo lại trên đúng tổ hợp P2 + F14c: ô B **miễn phí** (§7.3) |
+
+Số và chi tiết: `src/evaluation/reports/eval-2026-10-08-recsys-g2-va-wp4.md`.
+
+### 7.1 Mức giảm nexttrip không nhắm được vào nhóm nào — nhưng split thật cũng không đo được lợi ích
+
+Ba giả thuyết "chỉ mất ở nhóm X nên bật / tắt công thức theo X" đều **sai**:
+
+| Giả thuyết | Kết quả |
+|---|---|
+| Chỉ mất ở target bán chạy (artefact độ phổ biến) | **Sai.** 84 % mức mất ở target thuộc nửa dưới độ phổ biến; tỷ lệ mất tương đối gần như nhau (−48 % so với −52 %) |
+| Mất tập trung ở khách ít lịch sử | **Sai.** Mức mất *tăng* theo lịch sử: −0,016 (<3 event) → −0,042 (≥12 event) |
+| Mất tập trung ở khách có lịch sử tản mát | **Sai.** Đều khắp −0,032 … −0,046 theo `coherence` (phải tính trong không gian đã center; trong không gian thô của e5-small cả 1.835 khách đều ≥ 0,8 nên vô dụng) |
+
+Đúng một điều: **100 % khách bị lật hit → miss đều không có chuyến mở**, đúng thiết kế.
+
+**Nhưng** đọc bộ sinh event (`src/data_collection/seed/seed_histories.py` dòng 344–346 và 160–161): điểm đến mỗi chuyến
+được bốc từ phân phối **toàn cục** theo cỡ điểm đến, `plan_trip(w, rng, home)` chỉ dùng `home` để kiểm tra tuyến bay —
+**không có tham số khách nào khác**. Điểm đến chuyến sau của một khách **độc lập thống kê** với lịch sử của họ. Do đó:
+
+- Bộ dự đoán tối ưu của nexttrip / temporal trên dữ liệu này **chính là** độ phổ biến toàn cục.
+- Mọi dịch chuyến trọng số về phía sở thích **bắt buộc** làm hai chỉ số đó giảm, bất kể thuật toán tốt đến đâu.
+- Lợi ích của việc bám sở thích **không thể xuất hiện** ở hai split này.
+
+Nói cách khác: −0,0381 không phải giá của việc bám sở thích; nó là hình phạt cho việc rời khỏi bộ dự đoán tối ưu **trên dữ
+liệu mà sở thích được định nghĩa là nhiễu**. Vì vậy **gate G6 (đổi bộ sinh event) là điều kiện tiên quyết của G2**, không
+phải việc làm sau — khác với thứ tự trong plan.
+
+### 7.2 Đo trên dữ liệu **có** sở thích: cơ chế là độ phủ điểm đến
+
+Khách giả lập có sở thích thật và đã ghi sẵn chuyến kế tiếp (`target`, `next`). Thêm `eval_profile --syn-target`:
+
+| | đoán đúng **món** chuyến sau (tgtHit@20) | đoán đúng **điểm đến** chuyến sau (nextDestHit@20) | themePrec |
+|---|---|---|---:|
+| production | 0.0000 | 0.4667 | 0.439 |
+| P2+F14c | **+0,0125** [+0,0056, +0,0222] | **−0,2958** [−0,3306, −0,2583] | 0.769 |
+
+Production **chưa bao giờ** đoán đúng món sẽ mua (0 / 720 khách); mọi ứng viên đạt 1,1–1,25 %. Nhưng ứng viên mất rất
+nhiều độ phủ điểm đến, vì các món gần `u_long` nhất dồn vào ít điểm đến. **Đây là vấn đề của bước chọn danh sách, không
+phải của trọng số** — vặn `W_POP` không sửa được (§3.4 report CI: pop 0,45 lấy lại temporal nhưng theme tụt còn 0,583).
+
+### 7.3 Giải pháp: giới hạn 2 món / điểm đến khi không có chuyến mở
+
+Giữ nguyên F14c, thêm giới hạn cứng vào bước MMR, chỉ ở nhánh không có chuyến mở
+(`src/evaluation/recsys_bench/theme_study/dest_diversity.py`):
+
+| Cấu hình | LLBO h@4 | temp h@20 | next h@20 | next h@4 | theme between | theme noisy_paired | nextDestHit@20 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| production | 0.5329 | 0.1587 | 0.0785 | 0.0256 | 0.439 | 0.376 | 0.4667 |
+| P2+F14c | 0.5324 | 0.1252 | 0.0403 | 0.0185 | 0.769 | 0.703 | 0.1708 |
+| P2+F14c + destCap1 | 0.5324 | 0.1226 | 0.0403 | 0.0185 | 0.717 | 0.670 | 0.5333 |
+| **P2+F14c + destCap2** | 0.5324 | **0.1277** | **0.0469** | **0.0202** | 0.756 | 0.698 | **0.4181** |
+
+destCap2 so với F14c: nextDestHit@20 **+0,2472** [+0,2153, +0,2792] (`between`) và **+0,1833** (`noisy_paired`), trả lại
+0,013 theme; nexttrip +0,0065 [+0,0000, +0,0136] và temporal +0,0026 [−0,0065, +0,0129] — **hai cái sau chưa đạt ý nghĩa
+thống kê**, đừng quảng cáo. So với production, khoảng cách độ phủ điểm đến còn **−0,0486** [−0,0889, −0,0056] thay vì
+−0,2958.
+
+Ô khám phá B (G4) trên đúng tổ hợp này: hit@4 **giống base đến bốn chữ số** ở cả LLBO (0,5324) và temporal (0,1045), thêm
+món ở điểm đến khác cho 29,2 % khách có chuyến mở. Thay hẳn ô 4 thì mất 0,033 LLBO h@4 → giữ luật chỉ lấp ô trống. Ẩn món
+đã xem vẫn rất tệ (0,5324 → 0,3986).
+
+Thời gian xếp hạng (ranking-only, không phải API đầu-cuối): p95 38,63 ms → 38,54 ms (F14c) → 39,26 ms (destCap2), tức
+**+0,63 ms**. Tiêu chí latency của G1 vẫn cần đo đầu-cuối trước deploy.
+
+### 7.4 G2 cần chốt lại — ba lựa chọn
+
+| | Nội dung | Đánh đổi |
+|---|---|---|
+| **(1)** | Chấp nhận **P2 + F14c + destCap2 + ô B** với nexttrip h@20 −0,0316 [−0,0409, −0,0218], temporal −0,0310, hiểu rằng hai chỉ số đó **không đo được lợi ích** trên dữ liệu seed hiện tại | Đi tiếp WP5 ngay. Rủi ro: con số thật chỉ biết khi có A/B hoặc sau khi sửa bộ sinh event |
+| **(2)** | Làm **G6 / WP6 trước** (bộ sinh event có sở thích chủ đề: `seed_histories.py`, `docs/spec/MOCK_DATA_SPEC.md`), rồi đo lại và chốt G2 trên số mới | Đúng về phương pháp nhất. Chậm hơn; và đây là thay đổi lệch PRD nên cần đề xuất riêng |
+| **(3)** | Giữ nguyên production ở nhánh không có chuyến mở, chỉ triển khai phần **miễn phí**: P2 (không có chi phí nào phân biệt được) + ô khám phá B (hit@4 không đổi) | Không có rủi ro đo được, nhưng chỉ được +0,022 theme — gần như không giải quyết vấn đề gốc |
+
+Không tự chọn thay người dùng (AGENTS.md §2, §8).
+
 ## 6. Nếu chốt: những gì phải sửa trong engine (WP5.3, chưa làm)
 
 Chỉ ghi để lượng hoá công việc; **không sửa trước khi có G5**.
@@ -151,7 +234,11 @@ Chỉ ghi để lượng hoá công việc; **không sửa trước khi có G5**
   - `score_candidates`: nhánh `profile.active_trip is None` theo công thức đã chọn; hằng mới (`W_*_BETWEEN`, và `Q_LOW` /
     `Q_HIGH` nếu chọn F14, hoặc vector trung bình catalog nếu chọn F13a) — cả hai gắn với model + `TEXT_BUILDER_VERSION`.
   - Tăng `ENGINE_RULES_VERSION`.
-- `src/backend/app/application/recommendation/use_cases.py`: ô khám phá B sau `mmr_select`, nếu G4 đồng ý.
+- `src/backend/app/application/recommendation/use_cases.py`: ô khám phá B sau `mmr_select` (G4 **đã chốt**).
+- `mmr_select` cần nhận thêm mảng điểm đến để áp giới hạn `MAX_PER_DESTINATION` khi `profile.active_trip is None`
+  (bản đo hiện monkeypatch `mmr_select` + `_LocalSpace`; production phải truyền `space.destination` vào hàm domain).
+  Lưu ý `_LocalSpace` **lớn dần trong một request**: `build_profile` chạy khi không gian chỉ có unit của event, ứng viên
+  được thêm sau — nên phải lấy mảng điểm đến ở thời điểm MMR, không phải lúc dựng profile.
 - `explain()`: cân nhắc đồng bộ `because[]` với điểm thật (báo cáo gốc §3.D).
 - `docs/spec/hop-dong-tich-hop-search-recommendation.md` §4.4 / §4.7; contract OpenAPI không đổi field.
 - Unit test `domain` / `application` ≥ 80 % (DoD `docs/prd/implementation-plan.md` §4).
