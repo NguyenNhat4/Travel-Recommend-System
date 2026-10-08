@@ -41,7 +41,9 @@ def variants(eng, w, uid, as_of, events, how="destsim"):
     if len(no_seen) < 4:
         no_seen += [p for p in ids if p not in no_seen][: 4 - len(no_seen)]
     cur = {full.get("destination")} if full.get("destination") else set()
-    bought = {w.i_of[e["productId"]] for e in events if e["eventName"] == "purchase" and e["productId"] in w.i_of}
+    # đã mua theo search unit + closure combo (như `use_cases.bought_units`; w.i_of trùng chỉ số UnitIndex)
+    bought = w.idx.purchase_closure({u for u in (w.idx.resolve(e["productId"]) for e in events if e["eventName"] == "purchase")
+                                     if u is not None})
     user = {"events": events}
     u = TE.user_vectors(w, events, as_of)
     excl = cur if cur else {r["destination"] for r in recs[:3]}

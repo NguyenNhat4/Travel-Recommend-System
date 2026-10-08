@@ -558,6 +558,15 @@ tripFactor = 1.0  nếu trip chưa kết thúc (max(usingDate) >= hôm nay)
 
 Không có nó thì hệ thống gợi ý Nha Trang mãi cho người đã đi xong từ tháng trước.
 
+**Bổ sung 2026-10-09 (PR-A, `ENGINE_RULES_VERSION = "2026-10-09-p2-combo-explore"`) — vector dài hạn có độ tin cậy chuyến.**
+Engine hiện hành (`domain/recommendation/profile.py`) dựng vector mỗi chuyến `vec_t` (chuẩn hoá) rồi
+`u_long = Σ_t 2^(−tuổi_t / H_LONG) · confidence_t · vec_t`, với `confidence_t = min(1, Σ W_TYPE của event trong chuyến sau cap)`:
+một lượt xem lẻ nặng 0,2, một lần mua 1,0, ba lượt xem 0,6. Trước đó mọi chuyến nặng như nhau sau chuẩn hoá nên một lượt xem
+vu vơ kéo `u_long` mạnh bằng cả chuyến đã mua (P2 trong `docs/spec/bench/recsys-bam-so-thich-tong-hop.md` §3.A; số đo
+`src/evaluation/reports/eval-2026-10-09-recsys-g6-so-thich-do-lai.md`). Vector chuyến đang mở (`u_short`) không nhân hệ số này.
+Cap lặp `MAX_REPEAT_PER_TRIP = 3` chỉ đếm event yếu (view / search); `purchase` và `add_to_cart` luôn vào vector chuyến
+(`CAP_EXEMPT_EVENTS`). `because[]` ở nhánh không chuyến mở phân rã đúng theo trọng số này (§4.6).
+
 ### 4.4. Quy tắc chọn `strategy`
 
 ```
@@ -617,11 +626,27 @@ trước** — client map từng giá trị sang một tiêu đề section riên
 
 ```
 bookedThisTrip = { taxonomy của mọi purchase trong eventGroupId đang mở }
-excluded       = bookedThisTrip, mở rộng: combo kéo theo hotel
+excluded       = bookedThisTrip
 ```
 
 Áp làm **hard filter trong câu truy vấn**, không phải phép trừ vector. Ngoài ra
-loại mọi `productId` khách đã từng mua.
+loại mọi `productId` khách đã từng mua (luật dưới).
+
+**Không gợi lại sản phẩm đã mua + combo ↔ thành phần (FR-REC-02, chốt 2026-10-09, đề xuất
+`docs/prd/update-archive/2026-10-08-recsys-loai-san-pham-da-mua-va-combo.md`).** Trong **mọi** nhánh (chuyến mở, chuyến kế
+tiếp, request khoá `destination`), engine loại khỏi ứng viên:
+
+- mọi search unit khách đã mua trên **toàn bộ lịch sử** (`purchase`, kể cả sản phẩm chưa có vector), theo search unit: mua một
+  hạng phòng là đã mua khách sạn đó, mua một chuyến bay là đã mua tuyến đó;
+- **đóng một bậc qua combo**: mua một sản phẩm → mọi combo chứa nó; mua một combo → mọi thành phần của combo đó. Không bắc
+  cầu: mua combo A không loại combo B chỉ vì B chung thành phần với A.
+
+Quan hệ combo → thành phần lấy từ `catalog.combo_items` và chỉ tin dòng **đã map** (`item_product_id NOT NULL`) với
+`confidence ≥ 0,8` **hoặc** `source = 'manual'` (`infrastructure/vectors/postgres_store.combo_members_of`,
+`COMBO_MEMBER_MIN_CONFIDENCE`); dòng chỉ khớp theo địa điểm (0,60) không dùng. Tập đã mua tính ở
+`application/recommendation/use_cases.bought_units` → `UnitIndex.purchase_closure`; harness bench dùng cùng hàm. Luật cũ "combo
+kéo theo hotel" (loại *taxonomy* hotel khi mua combo) **không** nằm trong luật này và chưa cài — ngoài phạm vi. Cold start
+(`popular`) không có lịch sử nên không đổi.
 
 **Chỉ áp cho trip đang mở** theo định nghĩa §4.4 (bổ sung 2026-10-01): chuyến đã kết thúc (`usingDate` đã qua) thì không
 loại taxonomy đã mua và không khoá điểm đến — đó là gợi ý cho chuyến kế tiếp (PRD FR-REC-02). Lý do: trên split temporal
@@ -674,6 +699,24 @@ Sau đó MMR re-rank với `λ = 0.7`, cộng giới hạn cứng tối đa 2 k�
 
 Lấy trung bình vector kéo kết quả về cùng một cụm; không có bước này thì top-5
 hay là 5 biến thể của một resort.
+
+**Ô khám phá khi có chuyến mở (FR-REC-02, chốt 2026-10-09, đề xuất
+`docs/prd/update-archive/2026-10-08-recsys-o-kham-pha-khi-co-chuyen-mo.md`).** Khi khách có chuyến mở tại X và sau MMR danh
+sách tại X còn **ít hơn `k` món** (hết món hợp lệ tại X), engine lấp các ô còn trống bằng món ở điểm đến khác:
+
+```
+mask_B = recommendable ∧ destination ≠ X ∧ taxonomy ∈ {hotel, attraction, combo} ∧ ∉ đã mua (kể cả closure combo)
+xếp theo cos(u_long, v) qua một lượt near_vector(u_long, mask_B, EXPLORE_CANDIDATE_K = 50)
+tối đa EXPLORE_MAX_PER_DESTINATION = 1 món mỗi điểm đến; lấy đúng k − |món tại X| món
+```
+
+Món tại X **không bị thay** và đứng trước; món khám phá nối sau với `rank` liên tục, `score = cos(u_long, v)`, `because[]` phân
+rã theo `u_long` (mọi chuyến, không chỉ chuyến mở). `strategy`, `destination`, `nextVertical`, `excludedVerticals` vẫn tính trên
+món tại X. Request khoá `destination = X` cũng lấp (trang xác nhận: khách thấy cả hai nhóm). Không chuyến mở → không lấp
+(nhánh chuyến kế tiếp vốn không khoá điểm đến). `diagnostics.exploreFilled` = số ô đã lấp (0 khi không lấp; trường chỉ có ở
+nhánh có lịch sử). Công tắc `RECOMMEND_EXPLORE_FILL=false` (Settings) tắt luật mà không redeploy → list y hệt trước 09/10. Chi
+phí: thêm một lượt `near_vector` chỉ khi còn ô trống — đo đầu-cuối ở `src/evaluation/reports/` (latency TRƯỚC / SAU PR-A).
+Số nghiên cứu (`eval-2026-10-08-recsys-g2-va-wp4.md`, `--how ulong`): hit@4 không đổi, +1 điểm đến ở 29 % khách có chuyến mở.
 
 ### 4.8. Cold start, dormant, ẩn danh
 
@@ -863,6 +906,13 @@ Team Search cung cấp:
 24. Tắt CDP clone → `200` `strategy: "popular"`, không phải `500`.
 25. Ngay sau checkout → `strategy` hoặc `nextVertical` đã đổi (**K1**).
 26. p95 dưới 300 ms khi cache hit.
+27. Khách đã mua phòng của khách sạn H (bất kỳ lúc nào) → không có H lẫn combo chứa phòng/khách sạn H trong list; khách đã
+    mua combo C → không có C lẫn các thành phần đã map tin cậy của C; combo khác chung thành phần với C vẫn có thể xuất hiện
+    (§4.5, AC-REC-02/03; unit test `test_recommendation_combo_exclusion.py`).
+28. Khách có chuyến mở tại X mà X còn ít hơn `k` món hợp lệ → list = món tại X trước, rồi món ở điểm đến khác (mỗi điểm đến
+    ≤ 1, chỉ hotel / attraction / combo), `rank` liên tục, `strategy` / `nextVertical` không đổi so với khi không lấp,
+    `diagnostics.exploreFilled` = số ô lấp; `RECOMMEND_EXPLORE_FILL=false` → không lấp (§4.7; unit test
+    `test_recommendation_explore_fill.py`).
 
 Bốn tiêu chí **20, 21, 22, 23** là quan trọng nhất trong cả danh sách. Chúng bắt
 đúng bốn lỗi chạy được nhưng sai — sai đơn vị thời gian, quên normalize,

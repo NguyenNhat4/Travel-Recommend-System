@@ -235,7 +235,8 @@ def run(args):
                 r20 = eng_eval.recommend(user["uid"], AS_OF, 20, user["events"])
                 ids4 = [w.i_of[x["productId"]] for x in r4["recommendations"] if x["productId"] in w.i_of]
                 ids20 = [w.i_of[x["productId"]] for x in r20["recommendations"] if x["productId"] in w.i_of]
-                bought = {w.i_of[e["productId"]] for e in user["events"] if e["eventName"] == "purchase" and e["productId"] in w.i_of}
+                bought = w.idx.purchase_closure({u for u in (w.idx.resolve(e["productId"]) for e in user["events"]
+                                                      if e["eventName"] == "purchase") if u is not None})
                 u = user_vectors(w, user["events"], AS_OF)
                 cur = {r4.get("destination")} if r4.get("destination") else set()
                 row = {"scen": scen, "theme": theme, "next": user["next"], "strategy": r4["strategy"],

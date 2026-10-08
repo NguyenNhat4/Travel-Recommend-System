@@ -1,12 +1,14 @@
 """Tên cấu hình bench OPH-L → cài vào engine production trong tiến trình đo (plan `docs/plan/2026-10-09-recsys-cong-thuc-oph.md`
 §4, §5.1). Engine không sửa: mọi thứ là monkeypatch trên `use_cases` / `Popularity` + bọc `VectorSearchPort` và hậu xử lý ô B.
 
+Từ 09/10 engine production đã gồm PR-A (P2 + loại combo + ô khám phá B), nên `P0` / `B0` = production hiện hành.
+
 Tên cấu hình = các token nối bằng `+` (bí danh mở rộng đệ quy):
 
-    P0 | P2          profile nền: production | P2 của PR-A (confidence + CAP_EXEMPT_EVENTS)
+    P0 | P2 | P0legacy   profile nền: production (= P2 từ PR-A) | như P0 (giữ để tên cũ chạy) | trước 09/10 (không confidence)
     F0 | F14c        công thức nhánh không chuyến mở: production | F14c (cal(cos) 0,65 + pop 0,35, Q ghim)
     destCap<N>       tối đa N món / điểm đến khi không có chuyến mở (`dest_diversity`)
-    slotB            ô khám phá B của PR-A: lấp ô trống bằng món ở điểm đến khác theo cos(u_long), 1 món / điểm đến
+    slotB | noExplore  ô khám phá B của engine bật (mặc định, như production) | tắt (`OfflineEngine.explore_fill`)
     book | sess      ưu tiên chuyến đã đặt (I-3, O3) | + chuyến ảo T_S từ các chuyến chỉ-xem (O4); `sessH:<ngày>`
     orig:pen:<w>     phạt route sai điểm xuất phát ở nhánh mở (O1); nhánh không chuyến luôn mask
     orig:mask        mask ở mọi nhánh (O2)
@@ -39,8 +41,8 @@ from src.evaluation.recsys_bench.theme_study.profile_variants import make_build_
 
 ALIASES = {
     "B0": "P0+F0",
-    "B1p": "P2+F0+slotB",
-    "B2": "P2+F14c+destCap2+slotB",
+    "B1p": "B0",                          # B1′ = PR-A, nay chính là engine production (09/10)
+    "B2": "B0+F14c+destCap2",
     "V0p": "B0+oph",
     "V1p": "B1p+oph",
     "V2p": "B2+oph",
@@ -55,17 +57,15 @@ ALIASES = {
     "N3": "N2+dormPop:0.5",
     "N4": "N3+p2Pop:0.45",
 }
-EXPLORE_TAX = ("hotel", "attraction", "combo")
 
 
 @dataclass(frozen=True)
 class Config:
     name: str
-    confidence: bool = False
-    cap_exempt: bool = False
+    confidence: bool = True
     none_scorer: str = "F0"
     dest_cap: int = 0
-    slot_b: bool = False
+    explore_fill: bool = True
     booked_first: bool = False
     session_agg: bool = False
     h_session: float = 7.0
@@ -103,16 +103,18 @@ def parse(name: str) -> Config:
     c = Config(name=name)
     for tok in expand(name):
         head, *rest = tok.split(":")
-        if tok == "P0":
-            pass
-        elif tok == "P2":
-            c = replace(c, confidence=True, cap_exempt=True)
+        if tok in ("P0", "P2"):
+            c = replace(c, confidence=True)
+        elif tok == "P0legacy":
+            c = replace(c, confidence=False)
         elif tok in ("F0", "F14c"):
             c = replace(c, none_scorer=tok)
         elif tok.startswith("destCap"):
             c = replace(c, dest_cap=int(tok[len("destCap"):]))
         elif tok == "slotB":
-            c = replace(c, slot_b=True)
+            c = replace(c, explore_fill=True)
+        elif tok == "noExplore":
+            c = replace(c, explore_fill=False)
         elif tok == "book":
             c = replace(c, booked_first=True)
         elif tok == "sess":
@@ -164,7 +166,7 @@ class Installed:
         #: Thông tin của người đo (đích bị giấu) — chỉ cấu hình trần đọc; `eval_oph` đặt trước mỗi khách.
         self.hint: dict = {}
         self._restore = []
-        base = make_build_profile(confidence=cfg.confidence, cap_exempt=cfg.cap_exempt)
+        base = make_build_profile(confidence=cfg.confidence)
         # Lớp luôn cài: mọi công tắc tắt thì trả đúng đối tượng của bản nền (không đổi kết quả), nhưng ghi `segment` / `ctx0`
         # cho mọi cấu hình kể cả B0 — để phân tầng ghép cặp có cùng nhãn ở hai phía.
         bp = make_layered_build_profile(base, self.state, booked_first=cfg.booked_first, session_agg=cfg.session_agg,
@@ -190,6 +192,10 @@ class Installed:
         if cfg.pop_h is not None or cfg.pop_box is not None:
             self._restore.append(pop_smooth.install(index, state, cfg.pop_h, cfg.pop_alpha, box=cfg.pop_box,
                                                     scope=cfg.pop_scope))
+        for eng in engines:
+            old = eng.explore_fill
+            eng.explore_fill = cfg.explore_fill
+            self._restore.append(lambda e=eng, v=old: setattr(e, "explore_fill", v))
         if cfg.cart_pool:
             for eng in engines:
                 inner = eng.vectors
@@ -197,10 +203,7 @@ class Installed:
                 self._restore.append(lambda e=eng, v=inner: setattr(e, "vectors", v))
 
     def recommend(self, eng, uid, as_of, k, events) -> dict:
-        resp = eng.recommend(uid, as_of, k, events)
-        if self.cfg.slot_b:
-            resp = explore_fill(resp, k, self.state, self.index, eng.vectors, events)
-        return resp
+        return eng.recommend(uid, as_of, k, events)
 
     def restore(self):
         for f in reversed(self._restore):
@@ -210,37 +213,3 @@ class Installed:
 
 
 _PROD_SPACE = UC._LocalSpace
-
-
-def explore_fill(resp: dict, k: int, state: dict, index, vectors, events) -> dict:
-    """Gương ô B của PR-A (`_explore_fill` sau `mmr_select`): chỉ khi có chuyến mở và list < k; một `near_vector(u_long)` trên
-    điểm đến ≠ X, recommendable, taxonomy hotel/attraction/combo, chưa mua; mỗi điểm đến tối đa 1 món, xếp **sau** list."""
-    recs = resp.get("recommendations") or []
-    prof = state.get("profile")
-    if len(recs) >= k or prof is None or prof.active_trip is None or not recs:
-        return resp
-    x = resp.get("destination")
-    m = index.mask(only_recommendable=True) & np.isin(index.taxonomy, EXPLORE_TAX)
-    if x:
-        m &= index.destination != x
-    for e in events:
-        if e.get("eventName") == "purchase":
-            g = index.resolve(str(e.get("productId") or ""))
-            if g is not None:
-                m[g] = False
-    have = {r["productId"] for r in recs}
-    used = {r.get("destination") for r in recs}
-    extra = []
-    for h in vectors.near_vector(prof.u_long, index.allowed_ids(m), 50):
-        g = index.idx.get(h.product_id)
-        if g is None or h.product_id in have:
-            continue
-        d = str(index.destination[g])
-        if d in used:
-            continue
-        used.add(d)
-        extra.append({"productId": h.product_id, "destination": d, "taxonomy": str(index.taxonomy[g]), "explore": True,
-                      "because": []})
-        if len(recs) + len(extra) >= k:
-            break
-    return {**resp, "recommendations": recs + extra}

@@ -5,7 +5,7 @@
 - Phục vụ: FR-REC-01, FR-REC-02, FR-REC-04, AC-REC-01/02 (`docs/prd/requirements.md` §1.3, §3), NFR-PERF-01
 - Tiếp theo: `docs/plan/2026-10-08-ban-giao-recsys-bam-so-thich.md` (WP0–WP4 đã xong) và
   `docs/spec/bench/recsys-bam-so-thich-quyet-dinh.md` §7 (điều tra G2)
-- Trạng thái: đang làm. Gate còn mở: G5a (đề xuất [A], [C]), G6-tham-số, G2 chốt lại, G5b (đề xuất [B])
+- Trạng thái: đang làm. 09/10: G5a chốt ([A], [C] → PRD, PR-A đang làm), G2 chốt lại = (a). Gate còn mở: G6-tham-số, G5b (đề xuất [B])
 
 ## 1. Những gì đã chốt (08/10)
 
@@ -22,9 +22,9 @@
 
 | Mã | File `docs/prd/update/` | Lệch gì | Chốt |
 |---|---|---|---|
-| [C] | `2026-10-08-recsys-loai-san-pham-da-mua-va-combo.md` | FR-REC-02: không gợi lại món đã mua; combo ↔ thành phần cùng lần mua; AC-REC-03 mới; sửa câu AC-REC-02 (bỏ "Hội An") | G5a |
-| [A] | `2026-10-08-recsys-o-kham-pha-khi-co-chuyen-mo.md` (đổi tên từ `...bam-so-thich-va-o-kham-pha.md`) | FR-REC-02: ô khám phá khi có chuyến mở | G5a |
-| [B] | `2026-10-08-recsys-chuan-hoa-so-thich-giua-hai-chuyen.md` | FR-REC-04 + FR-REC-02: F14c + destCap2 khi không có chuyến mở | **sau G6 + G2** → G5b |
+| [C] | `update-archive/2026-10-08-recsys-loai-san-pham-da-mua-va-combo.md` | FR-REC-02: không gợi lại món đã mua; combo ↔ thành phần cùng lần mua; AC-REC-03 mới; sửa câu AC-REC-02 (bỏ "Hội An") | **chốt 09/10** (G5a), PRD đã cập nhật |
+| [A] | `update-archive/2026-10-08-recsys-o-kham-pha-khi-co-chuyen-mo.md` (đổi tên từ `...bam-so-thich-va-o-kham-pha.md`) | FR-REC-02: ô khám phá khi có chuyến mở | **chốt 09/10** (G5a), PRD đã cập nhật |
+| [B] | `2026-10-08-recsys-chuan-hoa-so-thich-giua-hai-chuyen.md` | FR-REC-04 + FR-REC-02: F14c + destCap2 khi không có chuyến mở | G2 = (a) chốt 09/10 → **trình chốt G5b** (D1 trên hit@4) |
 
 Không phải lệch PRD (không cần đề xuất): P2 (PRD chỉ nói "dùng lịch sử dài hạn"), G6 (PRD không mô tả bộ sinh event; tiền lệ
 eval-v2 / append-v1 là profile opt-in + `MOCK_DATA_SPEC` §4.x + history, demo không đổi byte), đo latency, coldstart, AC,
@@ -92,8 +92,16 @@ test tag == `f"{embed_model}:{TEXT_BUILDER_VERSION}"`; engine thật phải tái
 
 - [x] B0 sửa 2 commit (`7b0fcde`, `4dd271e`; tree không đổi; force-with-lease 08/10)
 - [x] B1 merge `origin/release-mvp-v2` (`d8a86ac`) vào feat — sạch, không trùng file
-- [ ] B2 ba đề xuất viết xong, `chờ chốt`
-- [ ] A1 latency TRƯỚC · [ ] A2 coldstart + AC + ô B ulong · [ ] A3 split prodcopy + baseline_v2
-- [ ] B1 profile g6-pref-v1 · [ ] B2 DB G6 + đo lại + report
-- [ ] G5a · [ ] PR-A · [ ] latency SAU · [ ] deploy PR-A
-- [ ] G2 chốt lại · [ ] G5b · [ ] PR-B · [ ] deploy PR-B
+- [x] B2 ba đề xuất viết xong, `chờ chốt` (`1b5af92`)
+- [x] A1 latency TRƯỚC (`eval-2026-10-08-recsys-latency-dau-cuoi-truoc.md`: strata p95 87 ms, users60 86 ms, parity 60/60)
+      · [x] A2 coldstart + AC-REC-01/02 + ô B ulong (`eval-2026-10-09-recsys-coldstart-ac-rec-baseline-v2.md`)
+      · [x] A3 split prodcopy `asof20261008` 4 kind + `baseline_v2` 4 kind, regress exit 0
+- [x] B1 profile `g6-pref-v1` (`47f1710`; demo / eval-v2 / append-v1 byte-identical theo sha; 40 test)
+      · [x] B2 DB `vota_g6pref_v1` + đo lại 4 cấu hình + 2 tune + CI + split `-g6pref-v1-` đóng băng
+      (`eval-2026-10-09-recsys-g6-so-thich-do-lai.md`): destHit@20 +0,043 **đạt D2**, nexttrip hit@20 −0,032 **không đạt D1**
+      (bộ sinh chọn món trong điểm đến theo pop), hit@4 CI chứa 0 → ba lựa chọn chốt lại G2 ở `quyet-dinh.md` §7.6
+- [x] G5a (09/10: chốt cả [A] và [C]; PRD FR-REC-02 / AC-REC-02 / AC-REC-03 cập nhật; hai đề xuất → `update-archive/`)
+      · [x] PR-A code (`history/2026-10-09-recsys-pr-a-p2-loai-combo-o-kham-pha.md`: combo plumbing + loại combo + P2 + ô B,
+      ENGINE_RULES_VERSION `2026-10-09-p2-combo-explore`, 1.934 test) · [x] gate `baseline_v3` (4 kind, chênh ≤ 0,004) · [x] latency SAU
+      (Δp95 ≤ +6,5 ms, `eval-2026-10-09-recsys-pr-a-gate-v3-latency-sau.md`) · [ ] PR → `release-mvp-v2` · [ ] deploy PR-A
+- [x] **G2 chốt lại** = **(a)** (09/10, `quyet-dinh.md` §7.7: C3 với D1 trên hit@4) · [ ] G5b ([B] đã viết lại, chờ chốt) · [ ] PR-B · [ ] deploy PR-B

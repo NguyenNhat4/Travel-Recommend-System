@@ -9,8 +9,8 @@ bundled two different expectations and therefore stayed xfail on an engine that 
 
 - `test_purchase_state_survives_repeat_cap`  — trip state (bought units, taxonomies, `ends_on`, open trip, strategy).
   Production **passes**; this is a regression guard for `9b703ba`.
-- `test_strong_events_weight_trip_vector`    — the purchase also carries weight in the trip vector. Production still fails
-  (strict xfail): the 4th+ repeat of a unit is dropped from `trip.events` even when it is a purchase. Fixing it is plan WP5.3.
+- `test_strong_events_weight_trip_vector`    — the purchase also carries weight in the trip vector. Production passes since
+  2026-10-09 (PR-A, `CAP_EXEMPT_EVENTS`: purchase / add_to_cart never hit the repeat cap); P2 is production now.
 
 P1/P4 are experimental implementations in `theme_study/profile_variants.py`; passing them does not mean production is fixed.
 """
@@ -69,15 +69,9 @@ def test_purchase_state_survives_repeat_cap(builder, reverse_input):
     assert profile.strategy == "cross_vertical"
 
 
-#: Only the `cap_fix` variants claim to keep strong events in the vector. Production and P2 share the production cap, so
-#: both drop the purchase — P2 is listed as xfail too, to document that P2 alone does not fix this half.
-CAP_XFAIL = pytest.mark.xfail(
-    strict=True, reason="plan WP5.3: the repeat cap still drops the 4th+ event from trip.events even for a purchase")
-
-
 @pytest.mark.parametrize("builder", [
-    pytest.param(build_profile, id="production", marks=CAP_XFAIL),
-    pytest.param(make_build_profile(confidence=True), id="P2", marks=CAP_XFAIL),
+    pytest.param(build_profile, id="production"),
+    pytest.param(make_build_profile(confidence=True), id="P2"),
     pytest.param(make_build_profile(cap_fix=True), id="P1"),
     pytest.param(make_build_profile(cap_fix=True, confidence=True, session=True), id="P4"),
 ])

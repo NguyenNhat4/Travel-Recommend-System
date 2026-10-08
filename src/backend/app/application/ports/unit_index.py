@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 import numpy as np
@@ -23,15 +23,44 @@ class UnitIndex:
     parent_of: dict[str, str]          # child product_id → parent product_id
     model_version: str
     attrs: UnitAttributes | None = None  # thuộc tính lọc Phase A (F3/F5/F6); None → dựng từ unit, không có con
+    #: combo product_id → product_id thành phần đã map tin cậy (`catalog.combo_items`, xem `postgres_store.combo_members_of`).
+    #: Chỉ để loại trừ sản phẩm đã mua (FR-REC-02, chốt 09/10); {} → combo không kéo theo gì.
+    combo_members: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
     def __post_init__(self):
         self.idx = {p.product_id: i for i, p in enumerate(self.units)}
         if self.attrs is None:
             self.attrs = UnitAttributes.build(self.units)
+        # Quan hệ combo ↔ thành phần theo chỉ số search unit (phòng → khách sạn, chuyến → tuyến qua `resolve`); bỏ thành phần
+        # ngoài catalog và tự tham chiếu.
+        components: dict[int, set[int]] = {}
+        combos: dict[int, set[int]] = {}
+        for combo_id, members in self.combo_members.items():
+            c = self.resolve(combo_id)
+            if c is None:
+                continue
+            for member_id in members:
+                m = self.resolve(member_id)
+                if m is None or m == c:
+                    continue
+                components.setdefault(c, set()).add(m)
+                combos.setdefault(m, set()).add(c)
+        self.components_of = {c: frozenset(v) for c, v in components.items()}
+        self.combos_with = {m: frozenset(v) for m, v in combos.items()}
 
     def resolve(self, product_id: str) -> int | None:
         """Phòng/chuyến → index của cha."""
         return self.idx.get(self.parent_of.get(product_id, product_id))
+
+    def purchase_closure(self, units: Iterable[int]) -> set[int]:
+        """Tập unit coi là "đã mua" sau luật combo của FR-REC-02 (chốt 2026-10-09): mua một sản phẩm → mọi combo chứa nó;
+        mua một combo → mọi thành phần của nó. Chỉ một bậc: mua combo A không kéo theo combo B chỉ vì chung thành phần."""
+        bought = set(units)
+        out = set(bought)
+        for u in bought:
+            out |= self.combos_with.get(u, frozenset())
+            out |= self.components_of.get(u, frozenset())
+        return out
 
     def mask(self, taxonomy=None, destination=None, only_available=True, only_recommendable=False, *,
              origin_city: str | None = None, destination_city: str | None = None,

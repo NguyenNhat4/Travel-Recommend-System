@@ -21,7 +21,7 @@ from collections import defaultdict
 
 import numpy as np
 
-from src.backend.app.domain.recommendation.profile import H_LONG_DAYS, W_TYPE, Profile, Trip, trip_is_open
+from src.backend.app.domain.recommendation.profile import H_LONG_DAYS, Profile, Trip, trip_is_open
 
 #: Ngưỡng dormant đã chốt 09/10/2026 (đề xuất `docs/prd/update/2026-10-09-persona-trang-thai-cold-start-va-phong-cach-du-lich.md`).
 DORMANT_DAYS = 365.0
@@ -29,8 +29,8 @@ SESSION_TRIP_ID = "_session_"
 
 
 def trip_confidence(t: Trip) -> float:
-    """Độ tin cậy P2 của chuyến: `min(1, Σ W_TYPE)` trên event sau cap (như `profile_variants`)."""
-    return min(1.0, sum(W_TYPE.get(e.event_name, 0.1) for e in t.events))
+    """Độ tin cậy P2 của chuyến (`Trip.confidence` của production từ PR-A 09/10; = `min(1, Σ W_TYPE)` trên event sau cap)."""
+    return t.confidence
 
 
 def _unit(v: np.ndarray) -> np.ndarray:
@@ -69,13 +69,14 @@ def session_trip(trips: list[Trip], h_session: float, confidence: bool) -> Trip:
     dest = youngest.destination if dest_w[youngest.destination] == top else sorted(d for d, v in dest_w.items() if v == top)[0]
     ends = [t.ends_on for t in trips if t.ends_on is not None]
     events = sorted((e for t in trips for e in t.events), key=lambda e: -e.days_ago)
+    conf = min(1.0, sum(t.confidence for t in trips))
     return Trip(trip_id=SESSION_TRIP_ID, events=events, vec=vec, age_days=youngest.age_days, purchased_taxonomies=set(),
-                destination=dest, ends_on=max(ends) if ends else None, ended=False)
+                destination=dest, ends_on=max(ends) if ends else None, ended=False, confidence=conf)
 
 
 def make_layered_build_profile(base, state: dict, *, booked_first: bool = False, session_agg: bool = False,
                                h_session: float = 7.0, dormant_hl_mult: float = 1.0, dormant_days: float = DORMANT_DAYS,
-                               confidence: bool = False):
+                               confidence: bool = True):
     """`base`: build_profile nền. `confidence`: bản nền có nhân độ tin cậy vào `u_long` không (để N2 dựng lại cho khớp)."""
 
     def bp(events, E, taxonomy, destination, today=None) -> Profile:

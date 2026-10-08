@@ -219,11 +219,12 @@ def test_install_only_changes_the_no_trip_branch():
 # ---------------------------------------------------------------- registry
 
 def test_aliases_expand_to_the_plan_ladder():
-    assert expand("O5") == ["P2", "F0", "slotB", "orig:pen:0.3", "book", "sess", "cart:0.05"]
-    assert expand("V2p") == ["P2", "F14c", "destCap2", "slotB", "oph"]
+    assert expand("O5") == ["P0", "F0", "orig:pen:0.3", "book", "sess", "cart:0.05"]
+    assert expand("V2p") == ["P0", "F0", "F14c", "destCap2", "oph"]
     c = parse("N3")
-    assert (c.confidence, c.cap_exempt, c.none_scorer, c.dest_cap, c.pop_h, c.pop_alpha, c.dormant_hl_mult) == \
+    assert (c.confidence, c.explore_fill, c.none_scorer, c.dest_cap, c.pop_h, c.pop_alpha, c.dormant_hl_mult) == \
            (True, True, "F14c", 2, 90.0, 1.0, 3.0)
+    assert parse("B0+noExplore").explore_fill is False and parse("P0legacy+F0").confidence is False
     assert c.w_pop_by_segment == {"P3_dormant": 0.5}
     assert parse("B0").needs_scorer is False and parse("V0p").needs_scorer is True
 

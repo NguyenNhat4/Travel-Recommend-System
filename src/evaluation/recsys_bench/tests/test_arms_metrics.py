@@ -179,7 +179,8 @@ def test_engine_nommr_returns_score_ordered_pool_containing_engine_top_k(world, 
         pool = nommr.recommend(u, split.as_of_by_user[u], 20, split.train_by_user[u])
         top = EngineArm(engine).recommend(u, split.as_of_by_user[u], 20, split.train_by_user[u])
         assert pool.meta["poolK"] == 50 and pool.meta["strategy"] == top.meta["strategy"]
-        assert set(top.product_ids) <= set(pool.product_ids) and len(set(pool.product_ids)) == len(pool.product_ids)
+        at_x = top.product_ids[: len(top.product_ids) - top.meta["exploreFilled"]]   # ô khám phá (09/10) không thuộc pool
+        assert set(at_x) <= set(pool.product_ids) and len(set(pool.product_ids)) == len(pool.product_ids)
         if top.meta["strategy"] != "popular":
             assert pool.product_ids[0] == top.product_ids[0]           # món điểm cao nhất luôn được MMR chọn trước
     # patch không rò rỉ: engine thường vẫn qua mmr_select thật

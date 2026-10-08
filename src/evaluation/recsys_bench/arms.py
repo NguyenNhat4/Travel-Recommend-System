@@ -128,6 +128,8 @@ class EngineArm:
     """Engine production (`RecommendForUser`) qua `OfflineEngine`: `engine` = mode eval (đủ k món), `engine_prod` = đúng
     list production (cap 2 mỗi taxonomy) — báo cả hai để biết khách thật sự thấy gì."""
 
+    mean_meta = ("exploreFilled",)    # số ô khám phá trung bình mỗi khách (FR-REC-02, 09/10) → `explore_filled` trong summary
+
     def __init__(self, engine: OfflineEngine):
         self.engine = engine
         self.family = self.key = "engine" if engine.mode == "eval" else "engine_prod"
@@ -138,7 +140,8 @@ class EngineArm:
         return Ranked([r["productId"] for r in response.get("recommendations", [])], latency, {
             "strategy": response.get("strategy"), "destination": response.get("destination"),
             "nextVertical": response.get("nextVertical"), "eventsUsed": diagnostics.get("eventsUsed"),
-            "coldStart": diagnostics.get("coldStart"), "excludedVerticals": diagnostics.get("excludedVerticals"), **extra,
+            "coldStart": diagnostics.get("coldStart"), "excludedVerticals": diagnostics.get("excludedVerticals"),
+            "exploreFilled": int(diagnostics.get("exploreFilled") or 0), **extra,
         })
 
     def recommend(self, cdp_user_id: str, as_of: datetime, k: int, events: list[dict]) -> Ranked:
@@ -151,7 +154,7 @@ class EngineNoMmrArm(EngineArm):
     """`engine_nommr` (B5 / B8, 01/10): cùng engine mode eval nhưng `mmr_select` thay bằng "lấy theo score" và k = `pool_k`
     (mặc định 200 = `candidate_k`) → list = **toàn bộ pool ứng viên** xếp theo score. `rank` của target trong list này
     (poolRank) tách "không vào pool" (lọc / ngoài top-K vector / không đủ phổ biến) khỏi "vào pool nhưng MMR đẩy xuống".
-    Không phải số báo cáo; dùng cho 20 ca (B8) và ablation MMR (M7)."""
+    Ô khám phá (09/10) không phải pool nên tắt ở arm này. Không phải số báo cáo; dùng cho 20 ca (B8) và ablation MMR (M7)."""
 
     family = key = "engine_nommr"
 
@@ -165,6 +168,6 @@ class EngineNoMmrArm(EngineArm):
     def recommend(self, cdp_user_id: str, as_of: datetime, k: int, events: list[dict]) -> Ranked:
         from unittest.mock import patch
         started = perf_counter()
-        with patch("src.backend.app.application.recommendation.use_cases.mmr_select", self._by_score):
+        with patch("src.backend.app.application.recommendation.use_cases.mmr_select", self._by_score),                 patch("src.backend.app.application.recommendation.use_cases.explore_fill", lambda *a, **kw: []):
             response = self.engine.recommend(cdp_user_id, as_of, self.pool_k, events)
         return self._ranked(response, (perf_counter() - started) * 1000, poolK=self.pool_k)

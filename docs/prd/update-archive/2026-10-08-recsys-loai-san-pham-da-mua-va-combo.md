@@ -2,8 +2,8 @@
 
 - Ngày: 2026-10-08
 - Người đề xuất: tqanh123 / Claude Code soạn
-- Trạng thái: chờ chốt
-- Chốt bởi / ngày:
+- Trạng thái: đã áp dụng
+- Chốt bởi / ngày: tqanh123, 2026-10-09 (G5a — "chốt cả [A] và [C] như đề nghị"); PRD cập nhật 2026-10-09
 - PRD bị ảnh hưởng: `docs/prd/requirements.md` §1.3 FR-REC-02; §3 AC-REC-02 (sửa câu), AC-REC-03 (mới)
 - Mã FR/NFR: FR-REC-02
 

@@ -2,8 +2,9 @@
 
 - Ngày: 2026-10-08
 - Người đề xuất: tqanh123 / Claude Code soạn
-- Trạng thái: chờ chốt — **chưa trình chốt**: người dùng 08/10 chưa chấp nhận mức giảm nexttrip (G2); đề xuất này chỉ được
-  trình sau khi đo lại trên dữ liệu có sở thích (gate G6, plan `docs/plan/2026-10-08-recsys-trien-khai-theo-giai-doan.md` lane B)
+- Trạng thái: chờ chốt — **trình chốt G5b** (09/10): người dùng đã chốt lại G2 theo lựa chọn (a) — chấp nhận C3 với tiêu chí
+  nexttrip định nghĩa lại trên **hit@4** (`docs/spec/bench/recsys-bam-so-thich-quyet-dinh.md` §7.7). Phần P2 trong "P2 + F14c"
+  đã ship ở PR-A (09/10); đề xuất này chỉ còn F14c + destCap2 (PR-B)
 - Chốt bởi / ngày:
 - PRD bị ảnh hưởng: `docs/prd/requirements.md` §1.3 FR-REC-04, FR-REC-02 (câu cuối)
 - Mã FR/NFR: FR-REC-01, FR-REC-02, FR-REC-04
@@ -64,14 +65,22 @@ ngưỡng calibrate trên 120 request khách giả lập (seed 99), bền qua se
 | temporal h@20 | ≥ −0,04 (điểm ước lượng) | −0,0310 ✅ |
 | `open` | không đổi | lệch đúng 0 ✅ |
 | latency p95 `/recommendations` | Δ ≤ 50 ms đầu-cuối | ranking-only +0,63 ms; đầu-cuối đo ở lane A1 |
-| nexttrip h@20 | **G2 — chốt lại sau G6** | −0,0316 (dữ liệu không có sở thích) |
+| nexttrip **hit@4** (G2 chốt lại 09/10, lựa chọn (a): list khách thật nhìn thấy) | CI chứa 0 | **G6: −0,0039** [−0,0097, +0,0019] ✅ |
+| nexttrip h@20 (list 20, chỉ để theo dõi) | không còn là tiêu chí | −0,0316 (prodcopy); G6 −0,0322 [−0,0425, −0,0219] |
+| nexttrip destHit@20 (G6, dữ liệu có sở thích) | cận dưới CI > 0 | **+0,0425** [+0,0213, +0,0631]; khách có chủ đề +0,0494 |
 
 Luật đóng G2 đề nghị trên DB G6: D1 nexttrip h@20 cận dưới CI ≥ −0,01 · D2 nexttrip `destHit@20` cận dưới CI > 0 · D3 LLBO h@4
 và coldstart CI chứa 0 · D4 temporal ≥ −0,04 · D5 `tgtHit@20` / `nextDestHit@20` khách giả lập cận dưới > 0.
 
+**Kết quả G6 (09/10, `src/evaluation/reports/eval-2026-10-09-recsys-g6-so-thich-do-lai.md`):** D2, D4 đạt; D3 đạt trong dung
+sai 0,01; D5 nửa đạt; D1 trên hit@20 không đạt ở mọi cấu hình vì bộ sinh chọn món trong điểm đến theo độ phổ biến.
+**Người dùng chốt lại G2 ngày 09/10 theo lựa chọn (a)** (`quyet-dinh.md` §7.7): D1 định nghĩa lại trên nexttrip **hit@4**
+(−0,0039, CI chứa 0 → đạt); chi phí hit@20 món được theo dõi sau deploy. Với định nghĩa này mọi dòng trong bảng đạt → trình
+chốt G5b.
+
 ## Thay đổi source sau khi chốt
 
-- `docs/prd/requirements.md` FR-REC-04, FR-REC-02 (trước), rồi:
+- `docs/prd/requirements.md` FR-REC-04, FR-REC-02 (trước), rồi (P2, `Trip.confidence`, đã ship PR-A 09/10 — không còn trong danh sách này):
 - `src/backend/app/domain/recommendation/profile.py`: hằng `SEMANTIC_Q_LOW`, `SEMANTIC_Q_HIGH`, `SEMANTIC_CALIBRATION_MODEL_VERSION`,
   `W_NEXT_SHORT / W_NEXT_POP / W_NEXT_LONG = 0,50 / 0,35 / 0,15`, `MAX_PER_DESTINATION = 2`; `calibrated_similarity()`,
   `calibration_applies()`; `score_candidates(..., next_trip_scoring)`; `mmr_select(..., destination, max_per_destination)`;
