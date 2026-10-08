@@ -94,6 +94,7 @@ flowchart TD
 >
 > - **Phương thức thanh toán.** Trang hiển thị danh sách phương thức. Hiện chỉ hỗ trợ **Stripe** (thẻ, test mode); phương thức này được chọn sẵn. Các phương thức khác (ví điện tử, chuyển khoản, cổng ngân hàng nội địa…) nếu có hiển thị thì ở dạng vô hiệu hoá kèm nhãn "Sắp có", không chọn được. Danh sách để mở rộng về sau mà không đổi luồng.
 > - **Chưa rời trang khi chưa bấm Thanh toán.** Điền thông tin và chọn phương thức chỉ là thao tác trên `/checkout`, không gọi Stripe và không tạo đơn. Nút **Thanh toán** ở bước (3) bị vô hiệu hoá cho tới khi đã chọn phương thức và đồng ý điều khoản; thông tin ở bước (1) và (2) đã được kiểm khi bấm Tiếp tục.
+> - **Rời trang khi chưa thanh toán.** Khách bấm logo, nút quay lại, một liên kết khác trên trang, hoặc Back của trình duyệt khi đang ở bước Hành khách thì hộp "Rời trang thanh toán?" hiện lên (trên điện thoại trượt lên từ đáy màn hình), nêu thứ sẽ mất và thứ còn trong giỏ. "Ở lại thanh toán" đóng hộp và giữ nguyên dữ liệu đang nhập; "Rời trang" mới rời đi. Back giữa ba bước vẫn chỉ lùi một bước. Đóng tab hoặc tải lại trang thì trình duyệt hỏi bằng hộp mặc định của nó.
 > - **Bấm Thanh toán mới sang Stripe.** Khi bấm, Web gọi Backend; Backend kiểm giỏ hoặc đơn nháp, tạo đơn giữ chỗ 30 phút và Stripe Checkout Session, rồi Web chuyển trình duyệt sang trang Stripe để nhập thẻ. Nút hiện trạng thái đang xử lý và chặn bấm lặp. Nếu Backend hoặc Stripe lỗi thì khách ở lại `/checkout` với thông báo lỗi và bấm lại được.
 > - **Đăng nhập.** Khách chưa đăng nhập vẫn thêm giỏ. Bấm Đặt ngay hoặc Thanh toán thì hộp đăng nhập mở ngay trên trang; đăng nhập xong, giỏ của phiên khách chuyển sang tài khoản và Web tự tiếp tục: vào `/checkout` với đơn nháp của lần Đặt ngay đó (hoặc với giỏ) để khách hoàn tất. Mở thẳng `/checkout` khi chưa đăng nhập vẫn bị chặn ở nút Thanh toán như cũ (lớp bảo vệ dự phòng).
 > - **Quay về.** Xong trên Stripe (thành công, thất bại hoặc khách bấm quay lại), trình duyệt về `/booking/:referenceCode`; trạng thái đơn do Backend quyết định, không do việc quay về.
@@ -103,7 +104,9 @@ flowchart TD
     A[Khách chọn sản phẩm & nhấn 'Đặt ngay'] --> A1[Backend tạo đơn nháp: kiểm còn bán, lấy giá hiện tại, chép tour và tiện ích vào giỏ]
     A1 --> B[Mở trang /checkout]
     A2[Khách mở giỏ tour, trải nghiệm, tiện ích khác & bấm Thanh toán] --> B
-    B -->|Rời trang, chưa thanh toán| X0[Tour, trải nghiệm, tiện ích nằm lại trong giỏ, khách sạn và vé máy bay không giữ]
+    B -->|Khách chủ động rời trang| W{Hộp cảnh báo rời trang}
+    W -->|Ở lại thanh toán| B
+    W -->|Rời trang| X0[Tour, trải nghiệm, tiện ích nằm lại trong giỏ, khách sạn và vé máy bay không giữ]
     B --> C1[Bước 1: Hành khách] --> C2[Bước 2: Dịch vụ] --> C3[Bước 3: Xem lại]
     C3 --> M[Chọn phương thức thanh toán: hiện chỉ có Stripe]
     M --> P[Bấm 'Thanh toán']

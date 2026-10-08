@@ -62,6 +62,9 @@ def main():
     ap.add_argument("--as-of", default=None)
     ap.add_argument("--out", required=True)
     ap.add_argument("--max-users", type=int, default=0)
+    ap.add_argument("--how", default="destsim", choices=["ulong", "ushort", "blend", "destsim", "destsim_pop"],
+                    help="cách xếp hạng món khám phá (theme_exp.explore). Mặc định destsim = đúng lượt đo 08/10; "
+                         "production sẽ xếp theo cos(u_long, v) qua near_vector → dùng `ulong` khi trích số cho đề xuất")
     a = ap.parse_args()
     if a.as_of:
         from datetime import datetime
@@ -72,7 +75,7 @@ def main():
     purchases = [e for e in events if e["eventName"] == "purchase"]
     eng = TE.OfflineEngine(idx, vec, purchases, mode="prod")
     w = TE.World(idx, vec, [e for e in purchases if TE.parse_ts(e["timestamp"]) < TE.AS_OF])
-    out = {"scorer": a.scorer, "profile": a.profile}
+    out = {"scorer": a.scorer, "profile": a.profile, "how": a.how}
     bp = make_build_profile(**PROFILES[a.profile])
     # F13 / F14 không nằm sẵn trong EF.VARIANTS: F13 cần vector trung bình catalog, F14 cần tập calibration riêng.
     if a.scorer.startswith("F13"):
@@ -92,7 +95,7 @@ def main():
         hits = collections.Counter(); n = 0; tgt_seen = 0
         for uid in sorted(sp.targets)[:a.max_users or None]:
             tr = sp.train_by_user[uid]
-            v, seen = variants(eng, w, uid, sp.as_of_by_user[uid], tr)
+            v, seen = variants(eng, w, uid, sp.as_of_by_user[uid], tr, how=a.how)
             tgt = sp.targets[uid]; n += 1; tgt_seen += tgt in seen
             for k, ids in v.items():
                 hits[k] += tgt in ids
@@ -104,7 +107,7 @@ def main():
         for th in ("beach", "mountain", "city"):
             for i in range(a.n_syn):
                 u = TE.make_user(w, rng, f"SYS-{sc[0]}{th[0]}{i:04d}", th, sc)
-                v, seen = variants(eng, w, u["uid"], TE.AS_OF, u["events"])
+                v, seen = variants(eng, w, u["uid"], TE.AS_OF, u["events"], how=a.how)
                 for k, ids in v.items():
                     ix = [w.i_of[p] for p in ids if p in w.i_of]
                     tp = TE.theme_prec(w, ix, th)

@@ -107,13 +107,16 @@ def main():
     ap.add_argument("--max-users", type=int, default=800)
     ap.add_argument("--profiles", default=",".join(PROFILES))
     ap.add_argument("--scorers", default="F0_prod")
-    ap.add_argument("--splits", default="llbo,temporal,nexttrip", help="rỗng = chỉ đo khách giả lập")
+    ap.add_argument("--splits", default="llbo,temporal,nexttrip", help="llbo,temporal,nexttrip,coldstart; rỗng = chỉ đo khách giả lập")
     ap.add_argument("--scenarios", default="between,open,noisy",
                     help="kịch bản khách giả lập; `noisy_paired` = cùng khách với `between` + lượt xem nhiễu (WP2.3)")
     ap.add_argument("--syn-seeds", default="7", help="một hoặc nhiều seed khách giả lập, vd 42,7,2026 (WP2.4). "
                                                     "Mặc định 7 = đúng bộ khách đã đo 08/10")
     ap.add_argument("--f14-cal-profile", default=None,
                     help="profile dùng để calibrate F14; mặc định profile đầu tiên của --profiles")
+    ap.add_argument("--f14-q", default=None,
+                    help="ghim ngưỡng F14 'q_low,q_high' (vd 0.8529,0.9387 = hằng sẽ ship) thay vì dùng q calibrate trên DB đang đo; "
+                         "calibration vẫn chạy và được ghi vào JSON để đối chiếu (lane B2)")
     ap.add_argument("--f14-cal-seed", type=int, default=99,
                     help="seed của tập calibration F14 (WP3.1: đổi seed để xem q có bền không). 99 = bản đã đo 08/10")
     ap.add_argument("--per-user-out", default=None, help="file JSONL ghi kết quả từng khách (plan WP2.1)")
@@ -133,7 +136,10 @@ def main():
     eng20 = TE.OfflineEngine(idx, vec, purchases, mode="eval")
     eng4 = TE.OfflineEngine(idx, vec, purchases, mode="prod")
     splits = {"llbo": SP.leave_last_booking_out(events, idx), "temporal": SP.temporal_split(events, idx),
-              "nexttrip": SP.next_trip_split(events, idx)}
+              "nexttrip": SP.next_trip_split(events, idx),
+              # coldstart (plan lane A2): target = lần mua hợp lệ đầu tiên; trên prodcopy gần như mọi khách có chuyến chỉ-xem
+              # đang mở (N = 14) nên nhánh không-chuyến-mở hiếm khi chạy — là kiểm KHÔNG-hồi-quy, không phải lợi ích.
+              "coldstart": SP.cold_start_split(events, idx)}
     w = TE.World(idx, vec, [e for e in purchases if TE.parse_ts(e["timestamp"]) < TE.AS_OF])
     scenarios = [s for s in a.scenarios.split(",") if s]
     seeds = [int(s) for s in a.syn_seeds.split(",") if s]
@@ -170,10 +176,14 @@ def main():
         cal_profile = a.f14_cal_profile or a.profiles.split(",")[0]
         cal = calibrate_quantile(eng4, w, make_build_profile(**PROFILES[cal_profile]), TE.AS_OF, seed=a.f14_cal_seed)
         res["F14_calibration"] = {"profile": cal_profile, **cal}
+        q_low, q_high = cal["q_low_p10"], cal["q_high_p99"]
+        if a.f14_q:
+            q_low, q_high = (float(x) for x in a.f14_q.split(","))
+            res["F14_calibration"]["pinned"] = [q_low, q_high]
         for name in [x for x in need if x.startswith("F14")]:
             if name not in F14_WEIGHTS:
                 raise SystemExit(f"scorer {name!r} chưa có trọng số trong F14_WEIGHTS: {sorted(F14_WEIGHTS)}")
-            EF.VARIANTS[name] = make_quantile(cal["q_low_p10"], cal["q_high_p99"], *F14_WEIGHTS[name])
+            EF.VARIANTS[name] = make_quantile(q_low, q_high, *F14_WEIGHTS[name])
         print("calibration", res["F14_calibration"], flush=True)
     print(f"loaded {time.time()-t0:.0f}s; parity mismatches = {res['parity_mismatch_llbo200']} {by_field or ''}",
           flush=True)
@@ -194,7 +204,7 @@ def main():
                     if pu is not None:
                         pu.write(json.dumps({"config": _cfg, **row}, ensure_ascii=False) + "\n")
 
-                r = {s: EF.eval_split(sp, eng20, eng4, None, a.max_users, sink=sink if pu else None,
+                r = {s: EF.eval_split(sp, eng20, eng4, idx, a.max_users, sink=sink if pu else None,
                                       row_base={"stratum": s, "seed": None})
                      for s, sp in splits.items() if s in a.splits.split(",")}
                 for sc in scenarios:

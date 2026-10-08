@@ -6,6 +6,7 @@
 - Trạng thái: hoàn thành (chưa chạy trọn luồng đặt vé bằng tài khoản đăng nhập; xem Còn lại)
 - Phạm vi: frontend, docs
 - Bị thay thế một phần bởi: 2026-09-30-flights-tim-tai-cho-bo-khoi-pho-bien-va-gia-tot.md
+- Bị thay thế một phần bởi: 2026-10-08-ve-may-bay-ngay-khong-co-chuyen.md
 
 ## Mục tiêu
 

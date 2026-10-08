@@ -219,10 +219,19 @@ Thời gian xếp hạng (ranking-only, không phải API đầu-cuối): p95 38
 | | Nội dung | Đánh đổi |
 |---|---|---|
 | **(1)** | Chấp nhận **P2 + F14c + destCap2 + ô B** với nexttrip h@20 −0,0316 [−0,0409, −0,0218], temporal −0,0310, hiểu rằng hai chỉ số đó **không đo được lợi ích** trên dữ liệu seed hiện tại | Đi tiếp WP5 ngay. Rủi ro: con số thật chỉ biết khi có A/B hoặc sau khi sửa bộ sinh event |
-| **(2)** | Làm **G6 / WP6 trước** (bộ sinh event có sở thích chủ đề: `seed_histories.py`, `docs/spec/MOCK_DATA_SPEC.md`), rồi đo lại và chốt G2 trên số mới | Đúng về phương pháp nhất. Chậm hơn; và đây là thay đổi lệch PRD nên cần đề xuất riêng |
+| **(2)** | Làm **G6 / WP6 trước** (bộ sinh event có sở thích chủ đề: `seed_histories.py`, `docs/spec/MOCK_DATA_SPEC.md`), rồi đo lại và chốt G2 trên số mới | Đúng về phương pháp nhất. Chậm hơn. *(Đính chính 08/10: PRD không mô tả bộ sinh event; tiền lệ eval-v2 / append-v1 là profile opt-in + `MOCK_DATA_SPEC` §4.x + history, demo không đổi byte — **không** cần đề xuất PRD riêng.)* |
 | **(3)** | Giữ nguyên production ở nhánh không có chuyến mở, chỉ triển khai phần **miễn phí**: P2 (không có chi phí nào phân biệt được) + ô khám phá B (hit@4 không đổi) | Không có rủi ro đo được, nhưng chỉ được +0,022 theme — gần như không giải quyết vấn đề gốc |
 
 Không tự chọn thay người dùng (AGENTS.md §2, §8).
+
+### 7.5 Lộ trình đã chọn (người dùng chốt 08/10)
+
+**Làm theo giai đoạn — gộp cả ba lựa chọn:** (3) ship phần miễn phí trước (P2 + ô B + loại combo hai chiều, phạm vi mọi lần mua)
+→ (2) G6 đổi bộ sinh event cho có sở thích, đo lại → (1) chốt lại G2 cho F14c + destCap2 trên số mới. Kèm: latency đầu-cuối là
+điều kiện trước deploy ở mọi giai đoạn (tiêu chí: Δp95 `diagnostics.latencyMs` ≤ 50 ms, local, tổng và theo `strategy`);
+coldstart + AC-REC-01/02 phải đo; PR đích `release-mvp-v2`. Kế hoạch chi tiết, gate và PR:
+`docs/plan/2026-10-08-recsys-trien-khai-theo-giai-doan.md`. Ba đề xuất PRD: [C] loại sản phẩm đã mua + combo, [A] ô khám phá,
+[B] F14c + destCap2 (chờ G6/G2) — xem §2 của plan đó.
 
 ## 6. Nếu chốt: những gì phải sửa trong engine (WP5.3, chưa làm)
 

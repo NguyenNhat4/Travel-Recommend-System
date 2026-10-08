@@ -189,6 +189,19 @@ cơ sở vững là ở độ phủ điểm đến.
 
 Kết luận: G4 xác nhận được trên đúng tổ hợp P2 + F14c, không chỉ trên production + F0 như lượt 08/10 đầu.
 
+**Đo lại theo đúng luật production (08/10, tối):** bảng trên xếp hạng món khám phá bằng `how="destsim"` (mặc định cũ của
+`eval_slots.py`), còn engine sẽ xếp theo `cos(u_long, v)` qua `near_vector`. Chạy lại với cờ mới `--how ulong` (158 s,
+`wp4_slots_p2_f14c_ulong.json`):
+
+| Biến thể (`ulong`) | LLBO h@4 | temporal h@4 | theme `open` | số món / list `open` | điểm đến khác / list `open` |
+|---|---:|---:|---:|---:|---:|
+| base | 0.5324 | 0.1045 | 0.833 | 3.438 | 0.000 |
+| **fillExplore** | **0.5324** | **0.1045** | 0.823 | 3.729 | **0.292** |
+| explore1 | 0.4998 | 0.1019 | 0.817 | 3.729 | 1.000 |
+
+Giống hệt `destsim` ở hit@4 và tỷ lệ thêm điểm đến; theme `open` 0,823 (so 0,816). Số trích trong đề xuất
+`docs/prd/update/2026-10-08-recsys-o-kham-pha-khi-co-chuyen-mo.md` là bảng này.
+
 ## 5. Thời gian xếp hạng (WP4.3, một phần)
 
 `theme_study/rank_latency.py`, split nexttrip (91 % khách không có chuyến mở — nhánh duy nhất bị đổi), k = 4, 400 khách,
@@ -251,6 +264,9 @@ python -m src.evaluation.recsys_bench.theme_study.loss_analysis --vec $VEC --as-
 # §4 ô khám phá B trên P2 + F14c
 python -m src.evaluation.recsys_bench.theme_study.eval_slots --vec $VEC --as-of $AS_OF \
   --scorer F14c_betweenQuantilePop35 --profile P2_confidence --n-syn 80 --out slots_p2f14c.json
+# cùng lệnh với --how ulong (xếp món khám phá theo cos(u_long, v) như production sẽ làm)
+python -m src.evaluation.recsys_bench.theme_study.eval_slots --vec $VEC --as-of $AS_OF \
+  --scorer F14c_betweenQuantilePop35 --profile P2_confidence --n-syn 80 --how ulong --out slots_p2f14c_ulong.json
 
 # §5 thời gian xếp hạng (chạy khi máy không có job nào khác)
 python -m src.evaluation.recsys_bench.theme_study.rank_latency --vec $VEC --as-of $AS_OF \

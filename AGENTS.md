@@ -152,7 +152,7 @@ Thứ tự, mỗi bước là một module trong `src/data_collection/seed/`, ch
 2. Ưu tiên `data/products.jsonl` khi Data đang phát triển local; bản clone sạch tự dùng snapshot nén có version trong `src/data_collection/snapshots/`. Snapshot được kiểm checksum, bung vào `data/` ignored và kèm mapping combo đã duyệt. Chỉ sinh `products.synthetic.jsonl` khi cả runtime catalog lẫn snapshot đều không có.
 3. `load_products.py` — `products.jsonl` → `cdp.products`; cửa sổ 30 ngày theo `as_of`, `attributes.availability`, combo attrs.
 4. `parse_combos.py` — description → `catalog.combo_items` (source/confidence/evidence).
-5. `seed_histories.py` — 2.000 `cdp.profiles`, ~7.000 `cdp.events` theo chuyến, power-law, cạnh lộn xộn; profiles suy từ event.
+5. `seed_histories.py` — 2.000 `cdp.profiles`, ~7.000 `cdp.events` theo chuyến, power-law, cạnh lộn xộn; profiles suy từ event. Profile `g6-pref-v1` (`MOCK_DATA_SPEC.md` §4.3, sở thích chủ đề ẩn) chỉ dành cho database nghiên cứu RecSys qua `append_histories prepare --profile`; seed demo không đổi.
 6. `seed_app.py` — 4 persona + 50 user test; `app.bookings` chỉ cho P1.
 7. `seed_insider.py` — database `insider`: partners, profiles, identifiers, events (TTL), channel_events.
 8. `db/verify.sql` và `db/verify_insider.sql` phải toàn PASS, chạy bằng `SEED_DATABASE_URL` (superuser — `DATABASE_URL` không đọc được `cdp.events`/`profiles`). Kết quả tóm tắt ghi vào khối `<!-- seed-report:start -->`…`<!-- seed-report:end -->` trong `src/data_collection/README.md`, không ghi DB.

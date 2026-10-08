@@ -80,7 +80,9 @@ def test_index_splits_metrics_by_stratum_kind_and_drops_nulls():
             {"config": "A", "stratum": "syn_between", "seed": 42, "uid": "s2", "themePrec": None}]
     idx = PC.index(rows)
     assert idx[("A", "llbo", None, "hit@20")] == {"u1": 1.0}
-    assert set(k[3] for k in idx if k[1] == "llbo") == set(PC.SPLIT_METRICS)
+    # Chỉ số không có trong dòng (ở đây destHit@20 — chỉ có khi eval_split nhận idx) thì không tạo khoá, không thành 0.
+    assert set(k[3] for k in idx if k[1] == "llbo") == {"hit@20", "ndcg@10", "hit@4"}
+    assert "destHit@20" in PC.SPLIT_METRICS and ("A", "llbo", None, "destHit@20") not in idx
     # themePrec None (khách không có điểm đến chấm được) bị bỏ, không thành 0.
     assert idx[("A", "syn_between", 42, "themePrec")] == {"s1": 0.75}
     assert ("A", "syn_between", 42, "hit@20") not in idx
