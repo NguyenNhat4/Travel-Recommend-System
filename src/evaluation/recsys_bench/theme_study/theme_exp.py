@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 
 import numpy as np
 
+from src.data_collection.seed import config as seed_config
 from src.evaluation.recsys_bench.data_source import load_events, load_index
 from src.evaluation.recsys_bench.engine import OfflineEngine
 from src.evaluation.recsys_bench.events import parse_ts
@@ -24,13 +25,10 @@ from src.evaluation.recsys_bench.events import parse_ts
 AS_OF = datetime(2026, 9, 24, tzinfo=timezone.utc)
 
 # Nhãn chủ đề theo hiểu biết phổ thông về điểm đến (duyệt tay); "mixed" = không rõ, bỏ khỏi sinh dữ liệu và chấm điểm.
+# beach / mountain / city lấy từ `data_collection/seed/config.DEST_THEMES` (một nguồn, dùng chung với profile seed `g6-pref-v1`,
+# MOCK_DATA_SPEC §4.3); "mixed" chỉ dùng ở thí nghiệm này nên giữ tại đây.
 THEME = {
-    "beach": ["Phú Quốc", "Nha Trang", "Đà Nẵng", "Quy Nhơn", "Phan Thiết", "Côn Đảo", "Cát Bà", "Tuy Hòa", "Hạ Long",
-              "Sầm Sơn", "Vũng Tàu", "Phan Rang", "Lý Sơn", "Hà Tiên", "Vân Đồn"],
-    "mountain": ["Đà Lạt", "Sa Pa", "Điện Biên", "Mai Châu", "Pleiku", "Buôn Ma Thuột", "Phong Nha",
-                 "Kon Tum", "Tam Đảo", "Mù Cang Chải", "Sơn La", "Mộc Châu", "Hà Giang", "Bảo Lộc", "Cao Bằng", "Lạng Sơn"],
-    "city": ["Hà Nội", "TP. Hồ Chí Minh", "Huế", "Hội An", "Hải Phòng", "Cần Thơ", "Ninh Bình",
-             "Mỹ Tho", "Vĩnh Long", "Đồng Tháp"],
+    **{t: list(ds) for t, ds in seed_config.DEST_THEMES.items()},
     "mixed": ["Nghệ An", "Hà Tĩnh", "Rạch Giá", "Quảng Bình", "Thanh Hóa", "Châu Đốc", "Bến Tre", "Bắc Ninh", "Biên Hòa",
               "Tây Ninh"],
 }
