@@ -6,6 +6,8 @@ Dựa trên `domain.recommendation.profile.build_profile` (production) với ba 
                  bất kể loại).
 - `confidence` : u_long cộng hướng của từng chuyến × độ tin cậy của chuyến `min(1, Σ W_TYPE × suy giảm)` thay vì mọi chuyến
                  nặng như nhau sau chuẩn hoá (một lượt xem lẻ 0,2; một lần mua 1,0; năm lượt xem 1,0).
+- `cap_exempt` : như production (giữ event CŨ nhất) nhưng purchase / add_to_cart không bị cap và không tính vào cap —
+                 `CAP_EXEMPT_EVENTS` của PR-A (plan `docs/plan/2026-10-08-recsys-trien-khai-theo-giai-doan.md` PR-A bước 3).
 - `session`    : gom các event không có eventGroupId (`_solo_<sản phẩm>`, mỗi sản phẩm xem là một "chuyến") thành phiên theo
                  điểm đến, cách nhau ≤ ACTIVE_TRIP_MAX_AGE_DAYS.
 
@@ -45,12 +47,12 @@ def _sessionize(events, destination):
     return out
 
 
-def _cap(events, cap_fix: bool):
+def _cap(events, cap_fix: bool, cap_exempt: bool = False):
     seen: Counter = Counter()
     kept = []
     order = sorted(events, key=lambda x: x.days_ago) if cap_fix else sorted(events, key=lambda x: -x.days_ago)
     for e in order:                                              # cap_fix: mới → cũ; production: cũ → mới
-        if cap_fix and e.event_name in STRONG:
+        if (cap_fix or cap_exempt) and e.event_name in STRONG:
             kept.append(e)
             continue
         seen[(e.trip_id, e.unit)] += 1
@@ -60,9 +62,9 @@ def _cap(events, cap_fix: bool):
     return sorted(kept, key=lambda x: -x.days_ago)
 
 
-def make_build_profile(cap_fix=False, confidence=False, session=False, force=False):
+def make_build_profile(cap_fix=False, confidence=False, session=False, force=False, cap_exempt=False):
     """force=True: dùng bản viết lại kể cả khi mọi công tắc tắt (để kiểm tra khớp production)."""
-    if not (cap_fix or confidence or session or force):
+    if not (cap_fix or confidence or session or force or cap_exempt):
         return build_profile
 
     def bp(events, E, taxonomy, destination, today: date | None = None) -> Profile:
@@ -71,7 +73,7 @@ def make_build_profile(cap_fix=False, confidence=False, session=False, force=Fal
         every: dict[str, list] = defaultdict(list)         # mọi event: tuổi, ngày kết thúc, món đã mua (như build_profile)
         for e in sorted(evs, key=lambda x: -x.days_ago):
             every[e.trip_id].append(e)
-        for e in _cap(evs, cap_fix):
+        for e in _cap(evs, cap_fix, cap_exempt):
             by_trip[e.trip_id].append(e)
         trips: dict[str, Trip] = {}
         conf: dict[str, float] = {}
@@ -109,6 +111,8 @@ PROFILES = {
     "P0_prod": {},
     "P1_capFix": {"cap_fix": True},
     "P2_confidence": {"confidence": True},
+    #: P2 đúng như PR-A sẽ ship: confidence + CAP_EXEMPT_EVENTS (plan 2026-10-09 §4.1, mốc B1′).
+    "P2x_prA": {"confidence": True, "cap_exempt": True},
     "P3_session": {"session": True},
     "P4_all": {"cap_fix": True, "confidence": True, "session": True},
 }

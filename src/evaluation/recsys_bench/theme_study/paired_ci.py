@@ -22,7 +22,7 @@ import json
 import numpy as np
 
 #: Chỉ số đo theo loại stratum. Split thật có target nên đo hit / nDCG; khách giả lập đo tỷ lệ đúng chủ đề.
-SPLIT_METRICS = ("hit@20", "ndcg@10", "hit@4", "destHit@20")   # destHit@20 chỉ có khi eval_split nhận idx (lane A2)
+SPLIT_METRICS = ("hit@20", "ndcg@10", "hit@4", "destHit@20", "mrr@20")   # destHit@20: eval_split có idx (lane A2); mrr@20: eval_oph
 #: `tgtHit` / `nextDestHit` chỉ có khi chạy `eval_profile --syn-target`; `index()` tự bỏ chỉ số không có trong dòng.
 SYN_METRICS = ("themePrec", "tgtHit@20", "tgtHit@4", "nextDestHit@20", "nextDestHit@4")
 BOOT = 2000
@@ -66,9 +66,14 @@ def paired_ci(a: dict, b: dict, boot: int = BOOT, seed: int = BOOT_SEED, alpha: 
     rng = np.random.default_rng(seed)
     means = d[rng.integers(0, n, size=(boot, n))].mean(axis=1)
     lo, hi = np.percentile(means, [100 * alpha / 2, 100 * (1 - alpha / 2)])
+    n_disc = int(np.count_nonzero(d))
+    # p hai phía bootstrap (plan 2026-10-09 §7.4): 2·min(P(mean ≤ 0), P(mean ≥ 0)); hai cấu hình giống hệt → p = 1
+    p = 1.0 if n_disc == 0 else min(1.0, 2 * min(float((means <= 0).mean()), float((means >= 0).mean())))
     return {"n": n, "meanA": round(float(xa.mean()), 4), "meanB": round(float(xb.mean()), 4),
             "diff": round(float(d.mean()), 4), "ci_lo": round(float(lo), 4), "ci_hi": round(float(hi), 4),
-            "nDiscordant": int(np.count_nonzero(d)), "shareBootGt0": round(float((means > 0).mean()), 4),
+            # cận dưới CI 90 % một phía — luật giữ bậc superiority (plan §7.5)
+            "lo90_1s": round(float(np.percentile(means, 10)), 4),
+            "nDiscordant": n_disc, "shareBootGt0": round(float((means > 0).mean()), 4), "p": round(p, 5),
             "significant": bool(lo > 0 or hi < 0)}
 
 
@@ -144,6 +149,32 @@ def seed_spread(idx: dict) -> list[dict]:
     return out
 
 
+def split_rows(rows: list[dict], fields: list[str]) -> list[dict]:
+    """Thêm bản sao của mỗi dòng với stratum `<stratum>|<field>=<value>` (vd `temporal|ctx0=booked`) để có CI theo tầng."""
+    out = list(rows)
+    for f in fields:
+        out += [{**r, "stratum": f"{r['stratum']}|{f}={r.get(f)}"} for r in rows if f in r]
+    return out
+
+
+def holm(rows: list[dict], family: list[dict], alpha: float = 0.05) -> list[dict]:
+    """Holm–Bonferroni trên họ chỉ số chính (khai trước, plan §7.4). `family`: danh sách {baseline, config, stratum, metric}."""
+    keys = [(f["baseline"], f["config"], f["stratum"], f["metric"]) for f in family]
+    found = {(r["baseline"], r["config"], r["stratum"], r["metric"]): r for r in rows if r.get("seed") == "all"}
+    fam = [(k, found[k]["p"]) for k in keys if k in found]
+    missing = [k for k in keys if k not in found]
+    m = len(fam)
+    out, running, stop = [], 0.0, False
+    for rank, (k, p) in enumerate(sorted(fam, key=lambda kp: kp[1])):
+        adj = min(1.0, (m - rank) * p)
+        running = max(running, adj)
+        reject = not stop and p <= alpha / (m - rank)
+        stop = stop or not reject
+        out.append({"baseline": k[0], "config": k[1], "stratum": k[2], "metric": k[3], "p": p, "pHolm": round(running, 5),
+                    "reject": reject})
+    return out + [{"baseline": k[0], "config": k[1], "stratum": k[2], "metric": k[3], "missing": True} for k in missing]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--per-user", nargs="+", required=True, help="một hoặc nhiều file JSONL của --per-user-out")
@@ -152,9 +183,13 @@ def main():
     ap.add_argument("--boot", type=int, default=BOOT)
     ap.add_argument("--seed", type=int, default=BOOT_SEED)
     ap.add_argument("--by-seed", action="store_true", help="thêm dòng CI riêng cho từng seed khách giả lập")
+    ap.add_argument("--split-by", default="", help="trường per-user để tách tầng, vd 'ctx0,segment' (dòng eval_oph)")
+    ap.add_argument("--family", default=None, help="file JSON danh sách {baseline, config, stratum, metric} → Holm")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     rows = load(a.per_user)
+    if a.split_by:
+        rows = split_rows(rows, [f for f in a.split_by.split(",") if f])
     idx = index(rows)
     configs = list(dict.fromkeys(r["config"] for r in rows))
     if a.compare:
@@ -167,6 +202,8 @@ def main():
     out = {"boot": a.boot, "bootSeed": a.seed, "configs": configs,
            "rows": compare(idx, pairs, a.boot, a.seed, a.by_seed), "seedSpread": seed_spread(idx),
            "noiseEffect": noise_effect(rows, a.boot, a.seed)}
+    if a.family:
+        out["holm"] = holm(out["rows"], json.load(open(a.family, encoding="utf-8")))
     json.dump(out, open(a.out, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     for r in out["rows"]:
         flag = "*" if r["significant"] else " "
