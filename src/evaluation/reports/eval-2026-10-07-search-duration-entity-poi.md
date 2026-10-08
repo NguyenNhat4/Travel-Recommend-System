@@ -7,6 +7,7 @@
   - `2026-10-07-identity`: kiểm định tính bất biến (identity topids-diff) so với `2026-10-06-gold-v4-r2`.
   - `2026-10-07-v6a-probe`: kiểm thử probe fixture (21 câu probe v6a) trên 5 arms.
   - `2026-10-07-dur-poi-ent`: benchmark 5 arms trên `gold_v5` (154 câu active).
+  - `2026-10-08-gold-v6`: benchmark 5 arms trực tiếp trên `gold_v6` toàn diện (175 câu active, split 88 Dev / 87 Test).
 - Bộ dữ liệu vàng mới: **`gold_v6`** (tổng 176 câu = 175 câu active + 1 câu retired, 8.136 nhãn, +21 câu mới c0736–c0756, 546 nhãn gán theo Rubric v4).
 
 ---
@@ -156,6 +157,58 @@ Nguyên tắc áp dụng theo `docs/spec/bench/gold-v4-bo-sung-va-quy-trinh-gan-
   - Tổng số câu active: **175 câu**.
   - Chia tách: **88 câu dev / 87 câu test** (seed 42, thuật toán stratified-by-slice).
   - Tệp phân chia lưu tại `src/evaluation/search_bench/gold/splits/devtest@gold_v6.json`.
+
+### 4.2 Benchmark 5 arms trên Gold Set v6 (`2026-10-08-gold-v6`)
+
+Sau khi hoàn tất chia tách tập `gold_v6` (175 câu active), toàn bộ 5 arms được đo trực tiếp trong run `2026-10-08-gold-v6`:
+
+1. `APP.e5s.prod_f12356` (Production baseline: F1–F6)
+2. `APP.e5s.prod_f12356_dur` (+ F7 thời lượng)
+3. `APP.e5s.prod_f12356_poi` (+ POI gazetteer)
+4. `APP.e5s.prod_f12356_ent` (+ Entity gate)
+5. `APP.e5s.prod_f12356_dur_poi_ent` (Tổng hợp cả 3 tính năng mới)
+
+#### A. Tổng quan toàn bộ 175 câu active (`overall`)
+
+| Arm | Recall@10 | nDCG@10 | MRR@10 | Judged@10 | Constraint Precision | So với baseline |
+|---|---:|---:|---:|---:|---:|---|
+| `APP.e5s.prod_f12356` (Baseline) | 0.374 | 0.764 | 0.826 | 0.945 | 0.775 | Mốc chuẩn |
+| `APP.e5s.prod_f12356_dur` | 0.375 | 0.766 | 0.827 | 0.947 | 0.775 | TIE (\|Δndcg\| = 0.19) |
+| `APP.e5s.prod_f12356_poi` | 0.381 | 0.775 | 0.838 | 0.965 | 0.897 | TIE (\|Δndcg\| = 1.19) |
+| `APP.e5s.prod_f12356_ent` | 0.376 | 0.766 | 0.827 | 0.946 | 0.775 | TIE (\|Δndcg\| = 0.18) |
+| `APP.e5s.prod_f12356_dur_poi_ent` | **0.382** | **0.777** | **0.839** | **0.966** | **0.899** | **TIE (\|Δndcg\| = 1.34)** |
+
+#### B. So sánh theo khối Rubric: v3 (cũ) vs v4 (mới)
+
+| Khối Rubric | Số câu (cặp) | Baseline nDCG@10 Full | Mới nDCG@10 Full | **Δ nDCG Full** | Baseline nDCG Cond | Mới nDCG Cond | **Δ nDCG Cond** |
+|---|---|---:|---:|:---:|---:|---:|:---:|
+| **v3** (câu `gold_v3`) | 131 (128) | 0.799 | 0.799 | **0.00%** | 0.799 | 0.799 | **0.00%** |
+| **v4** (câu mở rộng `gold_v4` + `v6`) | 44 (40) | 0.653 | 0.709 | **+5.62%** | 0.683 | 0.743 | **+5.94%** |
+
+*Ghi chú: Khối v3 giữ nguyên 100% không suy giảm (zero regression); toàn bộ cải thiện tập trung ở khối câu hỏi mới của v4.*
+
+#### C. Chi tiết trên các lát cắt mục tiêu
+
+| Lát cắt (Slice) | Số câu | Baseline nDCG@10 | Mới nDCG@10 | **Δ nDCG@10** | Baseline Judged | Mới Judged |
+|---|---:|---:|---:|:---:|---:|---:|
+| `poi_resolution` | 12 | 0.399 | **0.566** | **+16.71%** | 0.425 | **0.717** |
+| `duration_false_positive` | 9 | 0.703 | **0.729** | **+2.56%** | 0.700 | **0.722** |
+| `taxonomy_collision` | 5 | 0.795 | **0.798** | **+0.29%** | 1.000 | 1.000 |
+| Các lát cắt khác (149 câu) | 149 | - | - | **0.00%** | 1.000 | 1.000 |
+
+#### D. Hiệu quả trên tập Test độc lập (`split = test`, 87 câu)
+
+Trên tập Test độc lập (đảm bảo không bị overfit):
+- `duration_false_positive` (4 câu test): nDCG@10 tăng vọt từ **0.643 lên 0.770 (+12.68%)**.
+- `poi_resolution` (6 câu test): nDCG@10 tăng từ **0.451 lên 0.586 (+13.52%)**, judged@10 tăng từ **0.483 lên 0.700**.
+- Khối v4 trên tập Test: nDCG@10 full tăng **+6.28%** (condensed tăng **+5.52%**).
+
+#### E. Kiểm định Guards Phase A (`sb guards`)
+
+- **Độ chính xác bóc tách ý định (`parse_accuracy`)**: Đạt **1.000 (100%) PASS** trên toàn bộ các trường mới (`duration_days`, `duration_nights`, `entity`, `entity_role`, `location_entity`).
+- **Tỷ lệ vi phạm ràng buộc (`forbidden_at_10`)**: Giảm mạnh từ **0.162 (13 câu vi phạm) xuống 0.059 (chỉ còn 5 câu)**.
+- **Tỷ lệ truy vấn dính vi phạm (`forbidden_query_rate`)**: Giảm từ **0.271 (27.1%) xuống 0.104 (10.4%)**.
+- **Độ chính xác ràng buộc (`constraint_precision`)**: Tăng từ **0.775 lên 0.899 (+12.4%)**.
 
 ---
 
