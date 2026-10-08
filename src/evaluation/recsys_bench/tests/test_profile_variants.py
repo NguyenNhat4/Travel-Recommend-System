@@ -1,7 +1,18 @@
 """FR-REC-02 / AC-REC-02: purchase must survive repeated views in a trip.
 
-Production regression is strict xfail until the engine is fixed. P1/P4 are
-experimental implementations; passing them does not mean production is fixed.
+"Production" here means `build_profile` in `src/backend/app/domain/recommendation/profile.py` on this branch, which is the
+08/10/2026 production engine (`release-mvp-v2` @ `6f77e80`, including `9b703ba`: trip age, `ends_on` and purchased units are
+computed over *every* event, so `MAX_REPEAT_PER_TRIP` only caps vector weight).
+
+Split in two on 2026-10-08 (plan WP1, `docs/plan/2026-10-08-ban-giao-recsys-bam-so-thich.md`) because the single original case
+bundled two different expectations and therefore stayed xfail on an engine that had already fixed the business half:
+
+- `test_purchase_state_survives_repeat_cap`  — trip state (bought units, taxonomies, `ends_on`, open trip, strategy).
+  Production **passes**; this is a regression guard for `9b703ba`.
+- `test_strong_events_weight_trip_vector`    — the purchase also carries weight in the trip vector. Production still fails
+  (strict xfail): the 4th+ repeat of a unit is dropped from `trip.events` even when it is a purchase. Fixing it is plan WP5.3.
+
+P1/P4 are experimental implementations in `theme_study/profile_variants.py`; passing them does not mean production is fixed.
 """
 from datetime import date
 
@@ -25,30 +36,57 @@ def build(builder, events):
                    np.array(["hotel"]), np.array(["Đà Nẵng"]), today=TODAY)
 
 
-@pytest.mark.parametrize("builder", [
-    pytest.param(build_profile, id="production-known-bug", marks=pytest.mark.xfail(
-        strict=True, reason="Production drops purchase after three earlier views")),
+BUILDERS = [
+    pytest.param(build_profile, id="production"),
     pytest.param(make_build_profile(cap_fix=True), id="P1"),
+    pytest.param(make_build_profile(confidence=True), id="P2"),
     pytest.param(make_build_profile(cap_fix=True, confidence=True, session=True), id="P4"),
-])
-@pytest.mark.parametrize("reverse_input", [False, True], ids=["oldest-first", "newest-first"])
-def test_purchase_survives_three_views_with_trip_state(builder, reverse_input):
-    # All events are older than the view-only 14-day window: only usingDate
-    # can keep this purchased trip open.
+]
+
+
+def _repeat_capped_trip(builder, reverse_input):
+    """Three views of the same unit then a purchase of it — the purchase is the 4th repeat, so it is the one
+    `MAX_REPEAT_PER_TRIP` drops. Every event is older than the 14-day view-only window, so only `usingDate` can keep
+    this trip open: if the purchase is lost, the trip silently stops being an open trip."""
     events = [event("product_view", d) for d in (24, 23, 22)]
     purchase = event("purchase", 21, USING_DATE)
     events.append(purchase)
     if reverse_input:
         events.reverse()
-    profile = build(builder, events)
+    return build(builder, events), purchase
+
+
+@pytest.mark.parametrize("builder", BUILDERS)
+@pytest.mark.parametrize("reverse_input", [False, True], ids=["oldest-first", "newest-first"])
+def test_purchase_state_survives_repeat_cap(builder, reverse_input):
+    profile, _ = _repeat_capped_trip(builder, reverse_input)
     trip = profile.trips["trip-1"]
-    assert purchase in trip.events
     assert profile.bought_units == {0}
     assert trip.purchased_taxonomies == {"hotel"}
     assert trip.ends_on == USING_DATE
     assert not trip.ended
     assert profile.active_trip is trip
     assert profile.strategy == "cross_vertical"
+
+
+#: Only the `cap_fix` variants claim to keep strong events in the vector. Production and P2 share the production cap, so
+#: both drop the purchase — P2 is listed as xfail too, to document that P2 alone does not fix this half.
+CAP_XFAIL = pytest.mark.xfail(
+    strict=True, reason="plan WP5.3: the repeat cap still drops the 4th+ event from trip.events even for a purchase")
+
+
+@pytest.mark.parametrize("builder", [
+    pytest.param(build_profile, id="production", marks=CAP_XFAIL),
+    pytest.param(make_build_profile(confidence=True), id="P2", marks=CAP_XFAIL),
+    pytest.param(make_build_profile(cap_fix=True), id="P1"),
+    pytest.param(make_build_profile(cap_fix=True, confidence=True, session=True), id="P4"),
+])
+@pytest.mark.parametrize("reverse_input", [False, True], ids=["oldest-first", "newest-first"])
+def test_strong_events_weight_trip_vector(builder, reverse_input):
+    """A purchase must also contribute to the trip vector, not only to the trip's state: `W_TYPE["purchase"] = 1.0` is
+    five times a view, so dropping it leaves the trip pointing at whatever the user merely browsed."""
+    profile, purchase = _repeat_capped_trip(builder, reverse_input)
+    assert purchase in profile.trips["trip-1"].events
 
 
 @pytest.mark.parametrize("strong_first", [False, True])

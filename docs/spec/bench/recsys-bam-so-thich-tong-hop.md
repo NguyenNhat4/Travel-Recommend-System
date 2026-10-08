@@ -7,6 +7,11 @@
   File kết quả gốc (JSON, kèm SHA-256): `src/evaluation/recsys_bench/theme_study/results/2026-10-08/`.
 - Đề xuất PRD liên quan (chờ chốt, **nội dung đã cũ**, xem §7): `docs/prd/update/2026-10-08-recsys-bam-so-thich-va-o-kham-pha.md`.
 - Bản này thay bản tổng hợp viết lúc bước 2 còn chạy. Số trong bảng sinh thẳng từ file JSON, không chép tay.
+- **Đã có phần tiếp (08/10, WP0–WP3 của plan):** mốc đo lại trên engine production
+  (`src/evaluation/reports/eval-2026-10-08-recsys-so-thich-moc-moi.md`), CI ghép cặp + nhiều seed + nhiễu cùng khách
+  (`eval-2026-10-08-recsys-so-thich-ci.md`), và **bảng quyết định chọn công thức**
+  (`docs/spec/bench/recsys-bam-so-thich-quyet-dinh.md`). Ba kết luận "chưa phân biệt được" ở §2.4 và §4.5 của tài liệu
+  này đã được giải quyết ở đó; §4.2 có hai cột cần đính chính — xem ghi chú ngay dưới bảng.
 
 ## 0. Tóm tắt
 
@@ -176,6 +181,24 @@ Mã: **P** = cách dựng profile, **F** = công thức điểm khi không chuy�
 
 ¹ Split thật của P0+F7 từ engine `85cea82`; cột `noisy` từ `profile_noisy.json`. Mọi lượt bước 1–2 kiểm khớp bản viết lại với
 `build_profile` của nhánh: `parity_mismatch_llbo200 = 0`.
+
+**Đính chính 08/10 (WP0 — đo lại trên engine production của `feat/recSys_update`, cùng cỡ mẫu 800 khách):** 58 / 60 ô có số
+ở cả hai engine khớp đến chữ số cuối; **hai cột `next nDCG@10` và `next h@4` phải thay** bằng số của engine production,
+cao hơn đều +0,0008 … +0,0009 và +0,0012 … +0,0013 (= 1 khách / 800):
+
+| Cấu hình | next nDCG@10 (bảng trên → engine production) | next h@4 (bảng trên → engine production) |
+|---|---|---|
+| P0+F0 | 0,016 → **0,0168** | 0,015 → **0,0163** |
+| P2+F0 | 0,0151 → **0,016** | 0,0175 → **0,0187** |
+| P2+F7 | 0,0083 → **0,0091** | 0,0063 → **0,0075** |
+| P2+F13a | 0,0071 → **0,0079** | 0,0063 → **0,0075** |
+| P2+F14 | 0,0073 → **0,0081** | 0,0063 → **0,0075** |
+
+Chi tiết, parity mở rộng và lệnh tái sinh: `src/evaluation/reports/eval-2026-10-08-recsys-so-thich-moc-moi.md`.
+
+Thêm một cảnh báo về chính bảng này: cỡ mẫu "800 khách đầu theo id" **lệch** so với toàn bộ khách của mỗi split (LLBO h@20
+0,836 so với 0,808; nexttrip h@20 của P2+F14 0,025 so với 0,035). Số dùng để quyết định nằm ở report CI
+(`eval-2026-10-08-recsys-so-thich-ci.md`, toàn bộ khách), không ở bảng này.
 
 ### 4.3 Khách giả lập theo chủ đề (chi tiết)
 

@@ -7,6 +7,8 @@
 """
 from __future__ import annotations
 
+import random
+
 import numpy as np
 
 from src.backend.app.domain.recommendation import score_candidates as prod_score
@@ -40,3 +42,38 @@ def make_quantile(q_low, q_high, ws=0.55, wp=0.30, wl=0.15):
         s = np.clip((E @ u - q_low) / span, 0.0, 1.0)
         return ws * s + wp * pop + wl * s, u
     return score
+
+
+def calibrate_quantile(eng4, world, build_profile, as_of, seed=99, n_per_theme=40, lo=10, hi=99) -> dict:
+    """Ngưỡng `q_low` / `q_high` của F14, đo trên tập calibration RIÊNG: khách giả lập `between` ở `seed` (phải khác seed
+    của bộ đo, nếu không F14 được hiệu chuẩn trên chính tập nó bị đánh giá).
+
+    Lấy phân vị của `E @ u_long` trên **đúng không gian ứng viên** mà engine chấm cho từng request (không phải trên toàn
+    catalog), nên ngưỡng gắn với cả model embedding, `TEXT_BUILDER_VERSION` và tầng lấy ứng viên — đổi bất kỳ thứ nào
+    cũng phải calibrate lại (plan WP5.3). Tách khỏi `eval_profile.py` 08/10 để `eval_slots.py` dùng cùng một bản."""
+    import src.backend.app.application.recommendation.use_cases as UC
+    from src.backend.app.domain.recommendation import build_profile as prod_build
+    from src.evaluation.recsys_bench.theme_study import theme_exp as TE
+
+    vals: list = []
+
+    def rec_score(profile, E, pop):
+        if profile.active_trip is None:
+            vals.append(np.asarray(E @ profile.u_long, dtype=np.float64))
+        return prod_score(profile, E, pop)
+
+    UC.build_profile, UC.score_candidates = build_profile, rec_score
+    try:
+        rng = random.Random(seed)
+        for th in ("beach", "mountain", "city"):
+            for n in range(n_per_theme):
+                u = TE.make_user(world, rng, f"CAL-{th[0]}{n:04d}", th, "between")
+                eng4.recommend(u["uid"], as_of, 4, u["events"])
+    finally:
+        UC.build_profile, UC.score_candidates = prod_build, prod_score
+    allv = np.concatenate(vals)
+    # Giữ đủ độ chính xác cho scorer (bản 08/10 dùng giá trị chưa làm tròn); `q_display` chỉ để in và để đối chiếu với
+    # công thức 4 chữ số viết trong báo cáo.
+    q_low, q_high = float(np.percentile(allv, lo)), float(np.percentile(allv, hi))
+    return {"calSeed": seed, "requests": len(vals), "q_low_p10": q_low, "q_high_p99": q_high,
+            "q_display": [round(q_low, 4), round(q_high, 4)]}

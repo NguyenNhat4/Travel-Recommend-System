@@ -88,6 +88,33 @@ def iso(t):
     return t.astimezone(timezone.utc).isoformat()
 
 
+def add_noise_views(w: World, rng, theme, ev):
+    """Thêm 5–8 lượt xem lẻ ở điểm đến KHÁC chủ đề vào `ev` (tại chỗ) — phần `noisy` của `make_user`, tách ra 08/10 để
+    kịch bản `noisy_paired` dùng đúng cùng một luật. Giữ nguyên từng lời gọi rng theo đúng thứ tự cũ để kịch bản
+    `noisy` cho ra y nguyên bộ khách đã đo 08/10."""
+    others = [d for d in w.dests if THEME_OF[d] != theme]
+    for _ in range(rng.randint(5, 8)):
+        d = rng.choice(others)
+        i = w.pick(rng, d, "hotel") or w.pick(rng, d, "attraction")
+        if i is None:
+            continue
+        ev.append({"cdpUserId": None, "eventName": "product_view", "timestamp": iso(AS_OF - timedelta(days=rng.randint(20, 300))),
+                   "productId": w.pid[i], "taxonomy": w.tax[i], "eventGroupId": None, "quantity": None,
+                   "unitPrice": None, "usingDate": None})
+    return ev
+
+
+def with_noise(w: World, rng, user, uid):
+    """Bản sao của `user` (thường là khách `between`) + lượt xem nhiễu → so "nhiễu làm theme giảm bao nhiêu" trên CÙNG
+    khách, thay vì so hai cohort khác nhau như kịch bản `noisy` (báo cáo cuối §2.2). Lịch sử nền giống hệt bản gốc."""
+    ev = [dict(e) for e in user["events"]]
+    add_noise_views(w, rng, user["theme"], ev)
+    for e in ev:
+        e["cdpUserId"] = uid
+    ev.sort(key=lambda e: e["timestamp"])
+    return {**user, "uid": uid, "scenario": "noisy_paired", "base_uid": user["uid"], "events": ev}
+
+
 def make_user(w: World, rng, uid, theme, scenario):
     """2–3 chuyến xong (khách sạn + 50% tham quan, có view trước), rồi chuyến kế tiếp cùng chủ đề 80 %.
     scenario 'between': không có chuyến mở. 'open': đang xem 3 món ở điểm đến của chuyến kế tiếp (view-only, 1–2 ngày trước)."""
@@ -125,18 +152,14 @@ def make_user(w: World, rng, uid, theme, scenario):
                        "unitPrice": None, "usingDate": None})
     if scenario == "noisy":
         # 08/10: mua theo gu nhưng lướt xem 5–8 sản phẩm ở điểm đến KHÁC chủ đề (không eventGroupId, 20–300 ngày trước,
-        # nên không tạo chuyến mở) — đo việc lượt xem lẻ lấn át u_long.
-        others = [d for d in w.dests if THEME_OF[d] != theme]
-        for _ in range(rng.randint(5, 8)):
-            d = rng.choice(others)
-            i = w.pick(rng, d, "hotel") or w.pick(rng, d, "attraction")
-            if i is None:
-                continue
-            ev.append({"cdpUserId": uid, "eventName": "product_view", "timestamp": iso(AS_OF - timedelta(days=rng.randint(20, 300))),
-                       "productId": w.pid[i], "taxonomy": w.tax[i], "eventGroupId": None, "quantity": None,
-                       "unitPrice": None, "usingDate": None})
+        # nên không tạo chuyến mở) — đo việc lượt xem lẻ lấn át u_long. Đây là cohort ĐỘC LẬP với `between`
+        # (sinh tiếp từ cùng luồng rng); muốn so trên cùng khách thì dùng `with_noise` (kịch bản `noisy_paired`).
+        add_noise_views(w, rng, theme, ev)
+        for e in ev:
+            e["cdpUserId"] = uid
     ev.sort(key=lambda e: e["timestamp"])
-    return {"uid": uid, "theme": theme, "past": past, "next": nxt, "target": target, "open": open_items, "events": ev}
+    return {"uid": uid, "theme": theme, "scenario": scenario, "past": past, "next": nxt, "target": target,
+            "open": open_items, "events": ev}
 
 
 def user_vectors(w: World, events, now):

@@ -8,6 +8,11 @@ Dựa trên `domain.recommendation.profile.build_profile` (production) với ba 
                  nặng như nhau sau chuẩn hoá (một lượt xem lẻ 0,2; một lần mua 1,0; năm lượt xem 1,0).
 - `session`    : gom các event không có eventGroupId (`_solo_<sản phẩm>`, mỗi sản phẩm xem là một "chuyến") thành phiên theo
                  điểm đến, cách nhau ≤ ACTIVE_TRIP_MAX_AGE_DAYS.
+
+Viết lại 2026-10-08 (plan WP0.3, `docs/plan/2026-10-08-ban-giao-recsys-bam-so-thich.md`): bản cũ tính tuổi chuyến, `ends_on`,
+`purchased_taxonomies` và `bought_units` trên event CÒN LẠI sau cap, tức luật trước `9b703ba`. Engine của nhánh này tính bốn
+thứ đó trên MỌI event (dict `every` trong `build_profile`); cap chỉ giới hạn trọng số vector. Bản viết lại theo đúng engine,
+nên khác biệt giữa P0 và P1/P2/P4 chỉ còn đúng ba công tắc trên.
 """
 from __future__ import annotations
 
@@ -62,27 +67,29 @@ def make_build_profile(cap_fix=False, confidence=False, session=False, force=Fal
 
     def bp(events, E, taxonomy, destination, today: date | None = None) -> Profile:
         evs = _sessionize(events, destination) if session else list(events)
-        by_trip: dict[str, list] = defaultdict(list)
+        by_trip: dict[str, list] = defaultdict(list)       # sau cap: trọng số vector, n_events, điểm đến, độ tin cậy
+        every: dict[str, list] = defaultdict(list)         # mọi event: tuổi, ngày kết thúc, món đã mua (như build_profile)
+        for e in sorted(evs, key=lambda x: -x.days_ago):
+            every[e.trip_id].append(e)
         for e in _cap(evs, cap_fix):
             by_trip[e.trip_id].append(e)
         trips: dict[str, Trip] = {}
         conf: dict[str, float] = {}
         for tid, tev in by_trip.items():
             v = np.zeros(E.shape[1], dtype=np.float32)
-            w_sum = 0.0
             for e in tev:
-                w = W_TYPE.get(e.event_name, 0.1) * 2 ** (-e.days_ago / H_SHORT_DAYS)
-                v += w * E[e.unit]
-                w_sum += w
+                v += W_TYPE.get(e.event_name, 0.1) * 2 ** (-e.days_ago / H_SHORT_DAYS) * E[e.unit]
             n = np.linalg.norm(v)
-            ends_on = max((e.using_date for e in tev if e.using_date is not None), default=None)
+            all_evs = every[tid]
+            ends_on = max((e.using_date for e in all_evs if e.using_date is not None), default=None)
             trips[tid] = Trip(
-                trip_id=tid, events=tev, vec=v / n if n else v, age_days=min(e.days_ago for e in tev),
-                purchased_taxonomies={str(taxonomy[e.unit]) for e in tev if e.event_name == "purchase"},
+                trip_id=tid, events=tev, vec=v / n if n else v, age_days=min(e.days_ago for e in all_evs),
+                purchased_taxonomies={str(taxonomy[e.unit]) for e in all_evs if e.event_name == "purchase"},
                 destination=str(Counter(destination[e.unit] for e in tev).most_common(1)[0][0]),
                 ends_on=ends_on, ended=ends_on is not None and today is not None and ends_on < today,
             )
-            # độ tin cậy theo tổng trọng số loại event, KHÔNG suy giảm (tuổi chuyến đã có ở hệ số H_LONG)
+            # độ tin cậy theo tổng trọng số loại event, KHÔNG suy giảm (tuổi chuyến đã có ở hệ số H_LONG).
+            # Tính trên event sau cap vì nó là hệ số của chính vector dựng từ các event đó (giữ đúng P2 đã đo 08/10).
             conf[tid] = min(1.0, sum(W_TYPE.get(e.event_name, 0.1) for e in tev))
         if not trips:
             return Profile(trips={}, u_long=np.zeros(E.shape[1], dtype=np.float32), active_trip=None, n_events=0)
@@ -91,7 +98,7 @@ def make_build_profile(cap_fix=False, confidence=False, session=False, force=Fal
         u_long = u_long / (np.linalg.norm(u_long) or 1)
         active = [t for t in trips.values() if trip_is_open(t.age_days, t.ends_on, today)]
         active_trip = min(active, key=lambda t: t.age_days) if active else None
-        bought = {e.unit for t in trips.values() for e in t.events if e.event_name == "purchase"}
+        bought = {e.unit for tev in every.values() for e in tev if e.event_name == "purchase"}
         return Profile(trips=trips, u_long=u_long, active_trip=active_trip,
                        n_events=sum(len(t.events) for t in trips.values()), bought_units=bought)
 
