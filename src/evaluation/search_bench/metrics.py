@@ -93,12 +93,16 @@ class GoldQuery:
 
 
 #: trường của `expected_parse` được so với queryPlan (thiếu trường nào trong gold thì không so trường đó)
+#: 07/10 (contract 1.18.0): duration_days / duration_nights (queryPlan.duration), entity (khoá entity, queryPlan.entity.keys),
+#: entity_role (gate | location), location_entity (khoá địa danh gazetteer, queryPlan.location.key) — backend chỉ phát ba khối này
+#: khi cờ SEARCH_DURATION_FILTER / SEARCH_POI_RESOLVE / SEARCH_ENTITY_FILTER bật → trên arm cờ tắt parser đọc None / [].
 PARSE_FIELDS = ("taxonomy", "destination", "origin", "destination_city", "must_not", "must_not_brands", "must_not_taxonomies",
-                "price_max", "price_min", "star_min", "party_total")
+                "price_max", "price_min", "star_min", "party_total",
+                "duration_days", "duration_nights", "entity", "entity_role", "location_entity")
 #: kiểu của từng trường parse (dạng chuẩn để so — `canon_parse`)
-PARSE_STR_FIELDS = ("taxonomy", "destination", "origin", "destination_city")
-PARSE_LIST_FIELDS = ("must_not", "must_not_brands", "must_not_taxonomies")
-PARSE_INT_FIELDS = ("price_max", "price_min", "party_total")
+PARSE_STR_FIELDS = ("taxonomy", "destination", "origin", "destination_city", "entity_role", "location_entity")
+PARSE_LIST_FIELDS = ("must_not", "must_not_brands", "must_not_taxonomies", "entity")
+PARSE_INT_FIELDS = ("price_max", "price_min", "party_total", "duration_days", "duration_nights")
 PARSE_FLOAT_FIELDS = ("star_min",)
 
 #: variant của search unit (catalog.py `search_unit_variants`) — miền giá trị của `allowed_variants`
@@ -497,6 +501,9 @@ def plan_fields(extra: Mapping[str, Any] | None) -> dict[str, Any] | None:
       `taxonomies` mới, có thể vắng → [])
     - price_max / price_min = queryPlan.price.max / min · star_min = queryPlan.star.min · party_total = queryPlan.party.total
       (khoá mới, có thể vắng → None)
+    - 07/10 (1.18.0): duration_days / duration_nights = queryPlan.duration.days / nights · entity = queryPlan.entity.keys (sắp xếp)
+      · entity_role = queryPlan.entity.role · location_entity = queryPlan.location.key — ba khối chỉ phát khi cờ tương ứng bật
+      (vắng → None / [])
     None khi không có `queryPlan` (arm không phải APP, hoặc backend chưa phát). Arm APP đã lưu diagnostics theo câu (khoá
     `_APP_DIAG_KEYS`, có từ 06/10) mà không có `queryPlan` = backend không parse ra gì → so như plan rỗng (mọi trường None /
     []), không bỏ câu khỏi `parse_accuracy` (trước 06/10 23/154 câu bị bỏ, làm số parse cao giả)."""
@@ -516,12 +523,16 @@ def plan_fields(extra: Mapping[str, Any] | None) -> dict[str, Any] | None:
         derived = extra.get("derivedDestinations") or []
         dest = derived[0] if isinstance(derived, list) and len(derived) == 1 else None
     price, star, party = _d(qp.get("price")), _d(qp.get("star")), _d(qp.get("party"))
+    duration, entity, location = _d(qp.get("duration")), _d(qp.get("entity")), _d(qp.get("location"))
     return {"taxonomy": tax.get("value") if tax.get("source") in ("query", "param") else None,
             "destination": dest, "origin": route.get("origin"), "destination_city": route.get("destinationCity"),
             "must_not": sorted(must_not.get("amenities") or []), "must_not_brands": sorted(must_not.get("brands") or []),
             "must_not_taxonomies": sorted(must_not.get("taxonomies") or []),
             "price_max": price.get("max"), "price_min": price.get("min"), "star_min": star.get("min"),
-            "party_total": party.get("total")}
+            "party_total": party.get("total"),
+            "duration_days": duration.get("days"), "duration_nights": duration.get("nights"),
+            "entity": sorted(entity.get("keys") or []), "entity_role": entity.get("role"),
+            "location_entity": location.get("key")}
 
 
 def canon_parse(field_name: str, v: Any) -> Any:

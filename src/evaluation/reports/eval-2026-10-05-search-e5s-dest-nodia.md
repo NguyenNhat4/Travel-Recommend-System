@@ -4,7 +4,7 @@
 
 - Ngày chạy và viết: **05/10/2026**.
 - Phục vụ: **FR-SRC-01, FR-SRC-03, FR-SRC-04, AC-SRC-01** (chất lượng truy xuất, điểm đến do câu quyết định, không trả rỗng vô cớ). Số
-  về e5-small chỉ là bằng chứng cho đề xuất `docs/prd/update/2026-10-05-fr-src-02-embedding-local-e5-small.md` (**chờ chốt**) — PRD
+  về e5-small chỉ là bằng chứng cho đề xuất `docs/prd/update-archive/2026-10-05-fr-src-02-embedding-local-e5-small.md` (**chờ chốt**) — PRD
   FR-SRC-02 vẫn quy định Cohere v3 / 1024. Latency chỉ đo bước tạo vector câu hỏi local (NFR-PERF-01, một phần).
 - Nhánh: `fix/search` (tách từ `bench_search_recomSys`), HEAD `942f5aa`. Code backend F1/F2 và code bench trong report này nằm ở working
   tree **chưa commit** lúc chạy — xem `history/2026-10-05-search-dest-filter-no-diacritics.md`, `history/2026-10-05-search-bench-app-e5s.md`.

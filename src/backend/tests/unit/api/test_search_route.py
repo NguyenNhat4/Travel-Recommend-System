@@ -59,7 +59,7 @@ def test_empty_query_reports_configured_cutoff_not_hardcoded():
     r = client.get("/api/v1/search", params={"q": ""})
     assert r.status_code == 200 and r.json()["cutoff"] == 0.52 and r.json()["results"] == []
     no_engine, _ = _client(None)
-    assert no_engine.get("/api/v1/search", params={"q": "resort"}).json()["cutoff"] == 0.62
+    assert no_engine.get("/api/v1/search", params={"q": "resort"}).json()["cutoff"] == 0.84
 
 
 # --- contract 1.16.0: travelContext.guests (POST) và log tìm kiếm (SEARCH_LOG_QUERIES) ----------------------------------

@@ -18,6 +18,10 @@ on:
       - 'Dockerfile.daily'
       - 'Dockerfile.fresh-catalog'
       - 'src/data_collection/**'
+      # index của crawler dùng chung embedder backend (e5-small, 06/10): đổi model / revision / adapter → build lại image crawler
+      - 'src/backend/app/infrastructure/embeddings/**'
+      - 'src/backend/app/core/config.py'
+      - 'src/backend/requirements-embed.txt'
       - 'scripts/install-vota-cron.sh'
       - 'scripts/check-db-tunnel.sh'
   push:
@@ -32,6 +36,10 @@ on:
       - 'Dockerfile.daily'
       - 'Dockerfile.fresh-catalog'
       - 'src/data_collection/**'
+      # index của crawler dùng chung embedder backend (e5-small, 06/10): đổi model / revision / adapter → build lại image crawler
+      - 'src/backend/app/infrastructure/embeddings/**'
+      - 'src/backend/app/core/config.py'
+      - 'src/backend/requirements-embed.txt'
       - 'scripts/install-vota-cron.sh'
       - 'scripts/check-db-tunnel.sh'
   workflow_dispatch:

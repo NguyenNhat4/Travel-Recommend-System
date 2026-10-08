@@ -202,7 +202,7 @@ def main():
         <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; margin-bottom: 16px;">
             <h2 style="margin: 0; color: #0f172a;">🔍 V-OTA Search Debugger & Pipeline Inspector</h2>
             <span style="background-color: #dbeafe; color: #1e40af; font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 9999px;">
-                Clean Architecture • Contract 1.16.0
+                Clean Architecture • Contract 1.18.0
             </span>
         </div>
         """,
@@ -271,6 +271,10 @@ def main():
             route_filter = st.checkbox("F5: Lọc tuyến bay ('từ A đến B')", value=False)
             numeric_filter = st.checkbox("F6: Lọc giá / sao suy từ câu", value=False)
             party_filter = st.checkbox("F6: Lọc sức chứa đoàn khách ('4 người')", value=False)
+            # 07/10 (contract 1.18.0): ba họ mới, mặc định tắt như production — chỉ parse khi bật
+            duration_filter = st.checkbox("F7: Thời lượng ('3 ngày 2 đêm', 3N2Đ) — bỏ cụm khỏi BM25, chưa lọc", value=False)
+            poi_resolve = st.checkbox("POI: Địa danh gazetteer ('Hồ Hoàn Kiếm', 'Cầu Rồng') → điểm đến vào F1", value=False)
+            entity_filter = st.checkbox("Entity gate: 'VinWonders' / 'Safari' → chỉ attraction/combo có tên chứa entity", value=False)
 
         # Section 5: Câu không dấu
         with st.expander("🔤 Câu Không Dấu (No Diacritics)", expanded=False):
@@ -382,7 +386,9 @@ def main():
         principle="Phân tích cú pháp rule-based kết hợp từ điển thực thể (Gazetteer) từ catalog: nhận diện cue từ vựng mạnh/yếu, cấu trúc phủ định ('không có X'), cụm từ chỉ hướng bay ('từ A đến B'), biểu thức số lượng và tính điểm độ tin cậy của router (confidence score)."
     )
 
-    gazetteers = _plan_gazetteers(index.units)
+    # 07/10 (1.18.0): như SearchProducts.__post_init__ — bảng entity chỉ giữ khoá có unit trong catalog, bảng địa danh bỏ entry
+    # trỏ tới điểm đến catalog không có
+    gazetteers = _plan_gazetteers(index.units, entities=index.attrs.entities, destinations=set(index.destination.tolist()))
     plan_flags = PlanFlags(
         destination=dest_filter,
         negation=negation_filter,
@@ -391,6 +397,9 @@ def main():
         numeric=numeric_filter,
         taxonomy_strong_only=taxonomy_strong_only,
         party=party_filter,
+        duration=duration_filter,
+        poi=poi_resolve,
+        entity=entity_filter,
     )
     plan_params = PlanParams(
         taxonomy=override_taxonomy,
@@ -415,7 +424,8 @@ def main():
         st.code(
             f"text: {canonical_text}\n"
             f"params: taxonomy={override_taxonomy}, dest={override_destination or None}\n"
-            f"flags: F1(dest)={dest_filter}, F3(neg)={negation_filter}, F4(tax)={taxonomy_filter}, F5(route)={route_filter}, F6(num)={numeric_filter}, party={party_filter}",
+            f"flags: F1(dest)={dest_filter}, F3(neg)={negation_filter}, F4(tax)={taxonomy_filter}, F5(route)={route_filter}, F6(num)={numeric_filter}, party={party_filter}\n"
+            f"flags 1.18.0: F7(duration)={duration_filter}, poi={poi_resolve}, entity={entity_filter}",
             language="yaml",
         )
     with col2_out:

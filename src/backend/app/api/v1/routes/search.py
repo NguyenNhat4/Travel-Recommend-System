@@ -63,7 +63,7 @@ def _safe_search(search_products, query: str, taxonomy: str | None, destination:
             "offset": offset,
             "topScore": None,
             # cutoff đang cấu hình (trước 05/10 hard-code 0.62 trong khi core/config.py mặc định khác)
-            "cutoff": getattr(search_products, "cutoff", 0.62),
+            "cutoff": getattr(search_products, "cutoff", 0.84),   # = SEARCH_CUTOFF mặc định (e5-small, 06/10)
             "facets": {"taxonomy": {}, "destination": {}},
             "diagnostics": {
                 **ANN_DIAGNOSTICS,

@@ -212,3 +212,61 @@ class IndexQuotaTest(unittest.TestCase):
             self.assertEqual(recorded.call_count, 2)
             self.assertEqual(run.state['load']['cloud']['status'], 'partial')
             self.assertEqual(run.state['load']['local']['status'], 'ok')
+
+
+class IndexGateTest(unittest.TestCase):
+    """Bước embed sau khi nạp: EMBED_PROVIDER=local (mặc định) không cần key, cohere (đường lui) bắt buộc COHERE_API_KEY."""
+
+    def test_local_provider_needs_only_weaviate(self):
+        self.assertEqual(daily.index_missing({'WEAVIATE_URL': 'https://w'}), [])
+        self.assertEqual(daily.index_missing({'WEAVIATE_URL': 'https://w', 'EMBED_PROVIDER': 'local'}), [])
+        self.assertEqual(daily.index_missing({'WEAVIATE_URL': 'https://w', 'EMBED_PROVIDER': ''}), [])
+        self.assertEqual(daily.index_missing({}), ['WEAVIATE_URL'])
+
+    def test_cohere_rollback_requires_the_key(self):
+        self.assertEqual(daily.index_missing({'WEAVIATE_URL': 'https://w', 'EMBED_PROVIDER': ' Cohere '}),
+                         ['COHERE_API_KEY'])
+        self.assertEqual(daily.index_missing({'EMBED_PROVIDER': 'cohere'}), ['WEAVIATE_URL', 'COHERE_API_KEY'])
+        self.assertEqual(daily.index_missing({'WEAVIATE_URL': 'https://w', 'EMBED_PROVIDER': 'cohere',
+                                              'COHERE_API_KEY': 'k'}), [])
+
+    def load(self, env):
+        with tempfile.TemporaryDirectory() as d:
+            run = daily.Run(Path(d), 'gate-test')
+            with patch.object(daily, 'target_env', return_value=(env, [])), \
+                    patch.object(daily.subprocess, 'call', return_value=0) as call, \
+                    patch.object(daily, 'record_loaded'):
+                ok = daily.load_targets(run, ['local'], True, date(2026, 10, 6))
+            return ok, call, run.state['load']['local']
+
+    def test_load_runs_the_index_without_cohere_key_on_local_provider(self):
+        ok, call, res = self.load({'WEAVIATE_URL': 'http://localhost:8080', 'EMBED_PROVIDER': 'local'})
+        self.assertTrue(ok)
+        self.assertEqual(call.call_count, 2)  # seed + index_backlog
+        self.assertIn('src.data_collection.index_backlog', call.call_args_list[1].args[0])
+        self.assertNotIn('index', res)
+
+    def test_load_skips_the_index_when_cohere_has_no_key(self):
+        ok, call, res = self.load({'WEAVIATE_URL': 'http://localhost:8080', 'EMBED_PROVIDER': 'cohere'})
+        self.assertTrue(ok)
+        self.assertEqual(call.call_count, 1)  # chỉ seed
+        self.assertEqual(res['index'], 'skipped: thiếu COHERE_API_KEY')
+
+
+class CrawlerImageEmbeddingTest(unittest.TestCase):
+    """Image job index (daily, fresh-catalog) có đúng model/revision mà image backend dùng để tra (cùng không gian)."""
+
+    def test_crawler_images_pin_the_backend_model_and_cpu_torch(self):
+        import re
+        backend_file = (daily.REPO_ROOT / 'Dockerfile.backend').read_text(encoding='utf-8')
+        for name in ('Dockerfile.daily', 'Dockerfile.fresh-catalog'):
+            image = (daily.REPO_ROOT / name).read_text(encoding='utf-8')
+            with self.subTest(image=name):
+                for arg in ('EMBED_MODEL', 'EMBED_MODEL_REVISION'):
+                    pattern = rf'^ARG {arg}=(\S+)'
+                    self.assertEqual(re.search(pattern, image, re.M).group(1),
+                                     re.search(pattern, backend_file, re.M).group(1))
+                self.assertIn('--index-url https://download.pytorch.org/whl/cpu', image)
+                self.assertIn('-r /tmp/backend-requirements-embed.txt', image)
+                self.assertIn('HF_HUB_OFFLINE=1', image)
+                self.assertIn('.warmup()', image)

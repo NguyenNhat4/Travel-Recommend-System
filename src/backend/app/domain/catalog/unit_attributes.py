@@ -10,6 +10,10 @@ Cờ (`flags`, checklist dữ liệu §15): `includesFlight` / `includesHotel` c
 là `flight` / `hotel`; `ticketed` cho điểm tham quan có `attributes.ticketed` đúng bằng `true`. Thành phần combo do loader
 truyền vào (`combo_kinds_of`), không parse lại mô tả ở đây.
 
+Entity (`entities`, contract 1.18.0 — gate cứng điểm vui chơi): khoá của gazetteer (`search.gazetteer`, vd. `vinwonders`,
+`safari`) tìm thấy trong **tên** unit, chỉ với unit thuộc `ENTITY_TAXONOMIES` (attraction / combo); hotel, flight, golf luôn
+rỗng. Không đọc mô tả hay `combo_items` (P1 — đo trên catalog bench: label +2, `item_product_id` +10 / 133 combo).
+
 Quy ước "không biết" (spec §2.7 [C2], `amenities.py`): tiện ích vắng khoá = không biết; `brand` / `originCity` /
 `destinationCity` rỗng = ""; `starRating` / `min_price` / `max_occupancy` không có = NaN; không có cờ = không biết. Filter
 quyết định loại hay giữ "không biết" ở `UnitIndex.mask`, không phải ở đây. Thuần stdlib + numpy; không pydantic, không DB.
@@ -24,6 +28,7 @@ from typing import Any
 import numpy as np
 
 from ..search.amenities import amenity_keys
+from ..search.gazetteer import ENTITY_TAXONOMIES, entities_of_name, entity_table
 from .models import Product
 
 FLAG_INCLUDES_FLIGHT = "includesFlight"
@@ -104,6 +109,7 @@ class UnitAttributes:
     flags: tuple[frozenset[str], ...] = ()          # cờ `FLAGS` theo unit; frozenset rỗng = không cờ / không biết
     max_occupancy: np.ndarray | None = None         # (n,) float64 — max maxOccupancy của unit + con, NaN khi không biết
     children: tuple[tuple[ChildRow, ...], ...] = ()  # con của từng unit, sắp theo giá (None cuối) rồi id
+    entities: tuple[frozenset[str], ...] = ()       # khoá entity gazetteer trong TÊN unit (chỉ attraction/combo); rỗng = không có
 
     def __post_init__(self) -> None:
         n = len(self.amenities)
@@ -113,8 +119,11 @@ class UnitAttributes:
             object.__setattr__(self, "max_occupancy", np.full(n, np.nan, dtype=np.float64))
         if not self.children:
             object.__setattr__(self, "children", ((),) * n)
-        if len(self.flags) != n or len(self.children) != n or self.max_occupancy.shape != (n,):
-            raise ValueError("flags / max_occupancy / children phải cùng chiều với amenities")
+        if not self.entities:
+            object.__setattr__(self, "entities", (frozenset(),) * n)
+        if (len(self.flags) != n or len(self.children) != n or self.max_occupancy.shape != (n,)
+                or len(self.entities) != n):
+            raise ValueError("flags / max_occupancy / children / entities phải cùng chiều với amenities")
 
     def __len__(self) -> int:
         return len(self.amenities)
@@ -129,6 +138,7 @@ class UnitAttributes:
         kids_of: Mapping[str, Sequence[Product]] = children_of or {}
         kinds_of: Mapping[str, Iterable[str]] = combo_kinds_of or {}
         kids = [kids_of.get(p.product_id, ()) for p in units]
+        names = entity_table()
         return UnitAttributes(
             amenities=tuple(
                 amenity_keys(_amenity_strings(p) + [s for c in cs for s in _amenity_strings(c)]) for p, cs in zip(units, kids)
@@ -141,6 +151,8 @@ class UnitAttributes:
             flags=tuple(_flags(p, kinds_of.get(p.product_id, ())) for p in units),
             max_occupancy=np.array([_max_occupancy(p, cs) for p, cs in zip(units, kids)], dtype=np.float64),
             children=tuple(_child_rows(cs) for cs in kids),
+            entities=tuple(entities_of_name(p.name, names) if p.taxonomy in ENTITY_TAXONOMIES else frozenset()
+                           for p in units),
         )
 
 
