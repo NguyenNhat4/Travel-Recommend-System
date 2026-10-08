@@ -118,7 +118,8 @@ Checklist:
 - [x] Dùng `.npy` của gói bàn giao, `meta.json` khớp revision `614241f…` (không cần sinh lại)
 - [x] `profile_variants.py` thêm logic `every`, parity mở rộng từ 3 lên 8 phép so: 0/200, `parity_mismatch_by_field = {}`
 - [x] Mốc mới đo xong (thêm P0+F7, P2+F0, P2+F13a), report `src/evaluation/reports/eval-2026-10-08-recsys-so-thich-moc-moi.md`
-- [ ] Chốt nhánh đích PR; W 0,7/0,15/0,15 có trên `main` — **còn lại, cần người dùng**
+- [x] Chốt nhánh đích PR = **`release-mvp-v2`** (08/10, người dùng; dùng `origin/release-mvp-v2` @ `d8a86ac`, đã merge vào feat
+      sạch). W 0,7/0,15/0,15 lên `main` là PR riêng, ngoài phạm vi
 - [x] history entry (`history/2026-10-08-wp0-wp3-recsys-bam-so-thich.md`)
 
 DoD: **đạt** — 58 / 60 ô khớp bảng cũ đến chữ số cuối; chênh duy nhất ở nexttrip nDCG@10 (+0,0008 … +0,0009) và nexttrip
@@ -211,7 +212,8 @@ Checklist:
       thích (`--syn-target`) — bộ đo duy nhất phản ánh được lợi ích
 - [ ] Coldstart + AC-REC-01/02 — **còn lại**
 - [x] Latency **ranking-only**: p95 38,63 → 38,54 (F14c) → 39,26 ms (destCap2), Δp95 +0,63 ms. Tiêu chí latency đầu-cuối
-      của G1 vẫn trống, cần `http_latency` hoặc API local
+      của G1 **đã chốt 08/10**: Δp95 `diagnostics.latencyMs` ≤ 50 ms, đo bằng `recsys_bench http-latency --users` trên backend
+      local + Weaviate local, tổng và theo `strategy` — đo ở lane A1 của `docs/plan/2026-10-08-recsys-trien-khai-theo-giai-doan.md`
 - [x] Report + history
 - [x] (ngoài plan) Ứng viên mới **destCap2** — giới hạn 2 món / điểm đến khi không có chuyến mở: nextDestHit@20 +0,2472 so
       với F14c, trả 0,013 theme; đưa khoảng cách độ phủ điểm đến so với production từ −0,296 về −0,049
@@ -306,6 +308,9 @@ Tài liệu sinh ra ở lượt WP0–WP3 (08/10): `src/evaluation/reports/eval-
 `eval-2026-10-08-recsys-so-thich-ci.md`, `docs/spec/bench/recsys-bam-so-thich-quyet-dinh.md`,
 `src/evaluation/recsys_bench/theme_study/results/2026-10-08-wp0-wp3/`,
 `history/2026-10-08-wp0-wp3-recsys-bam-so-thich.md`.
+
+**Từ WP5 trở đi xem `docs/plan/2026-10-08-recsys-trien-khai-theo-giai-doan.md`** (G2 làm theo giai đoạn, ba đề xuất PRD,
+lane A/B, PR-A/PR-B).
 
 Lượt điều tra G2 + WP4 (08/10, sau khi chốt gate): `src/evaluation/reports/eval-2026-10-08-recsys-g2-va-wp4.md`,
 `docs/spec/bench/recsys-bam-so-thich-quyet-dinh.md` §7,
