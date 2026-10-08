@@ -827,13 +827,13 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_all_transient_failures_terminate_without_fake_results(self):
         # Kể cả get_recommendations là lời gọi duy nhất của planner, lưới an toàn category mặc định (§2.6) vẫn
-        # thêm search hotel/attraction/golf; search cũng phải lỗi tạm thời để lượt này thực sự không còn ứng
-        # viên nào, nếu không kết quả search thật sẽ hợp lệ thành FALLBACK thay vì lỗi.
+        # thêm search hotel/attraction (golf chỉ khi người dùng nhắc tới); search cũng phải lỗi tạm thời để lượt này
+        # thực sự không còn ứng viên nào, nếu không kết quả search thật sẽ hợp lệ thành FALLBACK thay vì lỗi.
         error = ToolError('TOOL_TIMEOUT', retryable=True)
         clients = Clients(rec_error=error, search_error=error)
         llm = ScriptedLlm(plan=[{'name': 'get_recommendations', 'args': {}}])
         result = await self.run_graph(llm, clients)
-        self.assertEqual(clients.calls, ['rec', 'search', 'search', 'search'] * 2)
+        self.assertEqual(clients.calls, ['rec', 'search', 'search'] * 2)
         self.assertEqual(result['http_status'], 503)
         self.assertEqual(result['response']['error']['code'], 'SEARCH_UNAVAILABLE')
 

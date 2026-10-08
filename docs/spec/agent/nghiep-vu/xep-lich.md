@@ -45,7 +45,8 @@ Không bao giờ chọn cả phòng lẫn khách sạn cha của nó, và hai kh
   1. nguồn Search trước Recommendation;
   2. [hoạt động cả ngày](glossary.md#hoat-dong-ca-ngay) (≥ 360 phút) trước;
   3. [mức khoảng cách](glossary.md#muc-khoang-cach) tới [mốc](glossary.md#moc) của chuyến; chưa rõ vị trí xếp sau;
-  4. giá thấp;
+  4. giá thấp; [tham quan tự do](glossary.md#tham-quan-tu-do) tính 0 đ (như ở tổng tiền), không xếp cuối như giá chưa
+     biết;
   5. `productId`.
 - Không chọn hai sản phẩm cùng cha.
 - **Rải ngày:** mỗi hoạt động vào ngày đang ít việc nhất, hoà thì ngày sớm hơn. Luật này quyết định *số* hoạt động mỗi

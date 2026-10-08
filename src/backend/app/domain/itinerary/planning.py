@@ -177,7 +177,10 @@ def _parent_key(product: Product) -> str:
 
 
 def _price_key(product: Product) -> tuple[int, float]:
-    """Cheapest first; an unknown price cannot be compared, so it goes last."""
+    """Cheapest first; an unknown price cannot be compared, so it goes last. Tham quan tự do (`free_to_visit`) tính 0 đ
+    như ở tổng tiền, không phải giá chưa biết."""
+    if free_to_visit(product):
+        return (0, 0.0)
     price = product.get("unitPrice")
     return (1, 0.0) if price is None else (0, float(price))
 

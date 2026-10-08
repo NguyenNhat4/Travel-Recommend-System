@@ -340,6 +340,17 @@ class TotalsTests(unittest.TestCase):
         self.assertIsNone(plan['estimatedTotal'])
         self.assertEqual(plan['budgetStatus'], 'UNKNOWN')
 
+    def test_a_free_to_visit_place_counts_as_zero_not_as_an_unknown_price(self):
+        # Trace 2026-10-08 (TP.HCM): Chợ Bến Thành, Bưu điện… không có giá bị xếp sau mọi vé có giá; spec tính 0 đ.
+        candidates = catalog(product('ticket_a', unitPrice=300_000), product('ticket_b', unitPrice=200_000),
+                             product('market', unitPrice=None), product('pagoda', attributes={'ticketed': False}))
+        proposal = compose_plan(candidates, sources_for(candidates), intent(days=1))
+        self.assertEqual({slot['product_id'] for slot in proposal['slots']}, {'market', 'pagoda'})
+        # Khách sạn thiếu giá vẫn là giá chưa biết, xếp sau khách sạn có giá.
+        stays = catalog(product('priced', taxonomy='hotel', unitPrice=9_000_000),
+                        product('unpriced', taxonomy='hotel', unitPrice=None))
+        self.assertEqual(compose_plan(stays, sources_for(stays), intent())['stay_id'], 'priced')
+
     def test_free_to_visit_covers_only_attractions_and_golf(self):
         self.assertTrue(free_to_visit(product('a', unitPrice=None)))
         self.assertTrue(free_to_visit(product('g', taxonomy='golf', unitPrice=None)))

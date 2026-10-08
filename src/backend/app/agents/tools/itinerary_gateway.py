@@ -4,6 +4,8 @@ from collections.abc import Awaitable, Callable
 from time import monotonic
 from typing import Any
 
+from langsmith import trace
+
 from src.backend.app.application.ports.itinerary_tools import (
     CatalogPort, RecommendationPort, SearchProductsPort, SimilarProductsPort, ToolError,
 )
@@ -15,6 +17,27 @@ from src.backend.app.core.request_context import current_request_id
 from src.backend.app.domain.itinerary.types import ToolCall, ToolDefinition, ToolResult
 
 logger = logging.getLogger("uvicorn.error")
+
+#: Số sản phẩm tối đa ghi vào span LangSmith của một lời gọi tool.
+TRACE_ITEMS = 50
+
+
+def trace_summary(data: Any) -> dict[str, Any]:
+    """Output rút gọn của một lời gọi tool cho span LangSmith: tổng số và mỗi sản phẩm một dòng (id, tên, loại, giá,
+    toạ độ) để thấy ngay tool trả gì và nằm ở đâu, không chép cả payload."""
+    if not isinstance(data, dict):
+        return {}
+    items = next((data[key] for key in ("results", "recommendations") if isinstance(data.get(key), list)), None)
+    if items is None:
+        return {"total": data.get("total")}
+    rows = []
+    for item in items[:TRACE_ITEMS]:
+        product = item.get("product", item) if isinstance(item, dict) else {}
+        attributes = product.get("attributes") or {}
+        rows.append({"productId": product.get("productId"), "name": product.get("name"),
+                     "taxonomy": product.get("taxonomy"), "unitPrice": product.get("unitPrice"),
+                     "lat": attributes.get("latitude"), "lon": attributes.get("longitude")})
+    return {"total": data.get("total", len(items)), "returned": len(items), "items": rows}
 
 
 class ItineraryToolGateway:
@@ -63,9 +86,13 @@ class ItineraryToolGateway:
         allowed = {"parentProductId", "destination", "taxonomy", "availableOnly", "sort", "limit", "offset"}
         if not set(params) <= allowed:
             raise ToolError("INVALID_ARGUMENTS")
-        data = await self._catalog.list_products(params)
-        if not valid("ProductListResponse", data):
-            raise ToolError("INVALID_TOOL_RESPONSE")
+        # Code gọi (không qua planner) nhưng vẫn là một span `tool` riêng, để trace thấy được catalog trả gì.
+        with trace("list_products", "tool", inputs={"params": params}) as run:
+            data = await self._catalog.list_products(params)
+            if not valid("ProductListResponse", data):
+                run.end(error="INVALID_TOOL_RESPONSE")
+                raise ToolError("INVALID_TOOL_RESPONSE")
+            run.end(outputs=trace_summary(data))
         return data
 
     async def call_tool(self, name: str, arguments: dict[str, Any], authorization: str | None = None) -> dict[str, Any]:
@@ -87,6 +114,17 @@ class ItineraryToolGateway:
         return data
 
     async def execute(self, call: ToolCall) -> ToolResult:
+        """Một lời gọi tool của planner; mỗi lời gọi là một span `tool` riêng trên LangSmith (khi tracing bật), output
+        là arguments đã kiểm và `trace_summary` của kết quả. Không có credential nào trong span."""
+        name = call.get("name")
+        with trace(name if isinstance(name, str) and name in contracts() else "unknown_tool", "tool",
+                   inputs={"tool_call_id": call.get("id")}) as run:
+            result = await self._execute(call)
+            run.end(outputs={"arguments": result["arguments"], **trace_summary(result.get("data")),
+                             "error": result.get("error"), "duration_ms": result["duration_ms"]})
+        return result
+
+    async def _execute(self, call: ToolCall) -> ToolResult:
         started = monotonic()
         # Validate before recording arguments; invalid values cannot leak credentials.
         name = call.get("name")

@@ -28,14 +28,9 @@ def test_agent_gateway_consumes_enriched_backend_endpoints(services):
 
     async def handler(http_request):
         if http_request.url.path.endswith("/search"):
-            body = search.search(
-                q=http_request.url.params["q"],
-                taxonomy=http_request.url.params.get("taxonomy"),
-                destination=http_request.url.params.get("destination"),
-                limit=int(http_request.url.params.get("limit", 20)),
-                offset=int(http_request.url.params.get("offset", 0)),
-                search_products=request.app.state.search,
-            )
+            # Adapter HTTP gọi POST /search (route duy nhất nhận số khách), body là SearchRequest.
+            body = search.search_post(search.SearchRequestPayload.model_validate_json(http_request.content),
+                                      search_products=request.app.state.search)
         else:
             body = recommendations.recommendations(
                 k=int(http_request.url.params.get("k", 5)),
