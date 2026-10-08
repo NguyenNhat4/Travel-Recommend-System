@@ -16,6 +16,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from collectors.common import read_jsonl
+from collectors.textutil import trip_combo_dates
 from normalise import PRODUCT_FIELDS as FIELDS, product_id
 
 
@@ -393,6 +394,8 @@ def apply_window(rows: list[dict], as_of: date) -> dict[str, dict]:
         kinds[pid] = meta.variant({"taxonomy": row["taxonomy"], "attributes": attrs})
         start, end = (date.fromisoformat(day) for day in
                       loader.clip(attrs.get("sourceAvailableFrom"), attrs.get("sourceAvailableTo"), lo, hi))
+        if kinds[pid] == "combo":  # như load_products.convert: dòng combo trip.com cũ trong DB còn ngày "14/10"
+            attrs = trip_combo_dates(attrs)
         if kinds[pid] == "hotel_room":  # nguyên cửa sổ, không cắt theo ngày nguồn (như load_products.convert)
             start, end = lo, hi
         elif kinds[pid] == "flight" and attrs.get("fixedDepartureDate"):
