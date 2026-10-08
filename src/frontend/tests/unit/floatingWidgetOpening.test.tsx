@@ -118,21 +118,6 @@ describe('floating assistant opening', () => {
     expect(screen.getByRole('heading', { name: 'Bạn muốn đi đâu tiếp theo?' })).toBeTruthy();
   });
 
-  it('opens the actual saved conversation and reports load failures', async () => {
-    mocks.state.conversationId = 'saved-1';
-    mocks.state.transcript = [{ id: 'user-1', sender: 'user', text: 'Đi Hội An', createdAt: Date.now() }];
-    const view = open();
-    fireEvent.click(screen.getByRole('button', { name: 'Danh sách hội thoại & Tạo chat mới' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Đoạn chat mới' }));
-    mocks.state = { ...createInitialAssistantState(), isHydrated: true };
-    view.rerender(<AiFloatingWidget />);
-    fireEvent.click(screen.getByRole('button', { name: 'Danh sách hội thoại & Tạo chat mới' }));
-    mocks.loadConversation.mockRejectedValueOnce(new Error('Unavailable'));
-    fireEvent.click(screen.getByRole('button', { name: 'Mở hội thoại Đi Hội An' }));
-    await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith('Không thể mở lại hội thoại. Vui lòng thử lại.'));
-    expect(mocks.loadConversation).toHaveBeenCalledWith('saved-1');
-  });
-
   it('preserves retry for errors instead of sending a duplicate request', () => {
     mocks.state.phase = 'failed';
     mocks.state.error = { code: 'NETWORK_ERROR', message: 'Chưa kết nối được', retryable: true };

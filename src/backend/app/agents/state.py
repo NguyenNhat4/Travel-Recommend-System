@@ -57,6 +57,7 @@ class AgentState(TypedDict, total=False):
     sources: Sources
     warnings: list[PlanWarning]
     nearest_open_date: str | None
+    flight_options: dict[str, Any]  # `application/itinerary/flights.flight_options` của lượt này (AC-AGT-02)
     drop_summary: dict[str, DropSummary]
     response: dict[str, Any]  # `ItineraryResponse` envelope; contract-owned, see domain/itinerary/types.py
     http_status: int

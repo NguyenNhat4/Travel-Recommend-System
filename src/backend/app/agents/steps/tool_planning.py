@@ -13,6 +13,7 @@ from src.backend.app.application.ports.itinerary_tools import ToolError, ToolExe
 from src.backend.app.core.logging_config import log_event
 from src.backend.app.domain.itinerary.normalization import match_destination
 from src.backend.app.domain.itinerary.planning import SCHEDULABLE_TAXONOMIES
+from src.backend.app.domain.itinerary.search_hints import retrieval_hints, search_query_text
 
 from ..models import DestinationChoice
 from .history import llm_context, prompt_yaml
@@ -171,7 +172,7 @@ def _allowed_similar_calls(state: dict, plan: list, offered: frozenset[str] | No
 
 
 def _destination_search(state: dict) -> dict:
-    """Lời gọi search tất định theo điểm đến đã chuẩn hóa — cùng giá trị fallback `query` ở `_validated_args`."""
+    """Lời gọi search tất định theo điểm đến đã chuẩn hóa; `_validated_args` đổi `query` thành danh từ loại kèm gợi ý."""
     destination = state.get("intent", {}).get("destination")
     if not destination:
         raise ToolError("INVALID_TOOL_PLAN")
@@ -240,6 +241,13 @@ def _validated_args(state: dict, call: dict) -> dict:
     if call["name"] == "search_products":
         if args.get("taxonomy") in constraints.get("exclude_taxonomies", []):
             raise ToolError("INVALID_ARGUMENTS")
+        # Query chỉ mang phần ngữ nghĩa: /search đọc ngân sách, ngày, số người trong text thành filter từng sản phẩm,
+        # còn document embed không có chúng (`domain/itinerary/search_hints.py`). Planner vẫn hay viết vào, nên cắt ở đây.
+        hints = retrieval_hints(intent, constraints).get(args.get("taxonomy"), [])
+        args["query"], removed = search_query_text(args["query"], args.get("taxonomy"), hints, intent.get("destination"))
+        if removed:
+            logger.info("itinerary.tool_plan.query_sanitized requestId=%s taxonomy=%s removed=%d",
+                        state.get("request_id", "unknown"), args.get("taxonomy"), removed)
         if args.get("taxonomy") == "hotel":
             for source, target in (("hotel_price_max", "priceMax"), ("star_rating_min", "starRatingMin")):
                 if constraints.get(source) is not None:
@@ -316,11 +324,15 @@ def _planner_input(state: dict, intent: dict, constraints: dict,
     offer_similar = bool(selection) and any(d["name"] == SIMILAR_PRODUCTS for d in definitions)
     if not offer_similar:
         definitions = [d for d in definitions if d["name"] != SIMILAR_PRODUCTS]
+    party = intent.get("party") or {}
     payload = {"message": state.get("query", ""),
                **llm_context(state, intent=intent, constraints=constraints),
-               # Tên khoá cũ mà TOOL_PLAN_PROMPT nhắc tới: intent đã chuẩn hóa là nguồn chính.
-               "intent": intent,
-               "constraints": constraints}
+               # Chỉ phần intent dùng để viết query; ngân sách, ngày, số người là filter, planner không cần thấy lại.
+               "intent": {"destination": intent.get("destination"), "interests": intent.get("interests") or [],
+                          "partyType": party.get("type") or constraints.get("party_type_hint"),
+                          "hasChildren": bool(party.get("children") or constraints.get("children_ages"))},
+               "constraints": constraints,
+               "search_hints": retrieval_hints(intent, constraints)}
     if offer_similar:
         payload["previous_selection"] = [{key: item[key] for key in ("productId", "name", "taxonomy") if key in item}
                                          for item in selection]

@@ -209,8 +209,8 @@ Tất cả việc code và Terraform trong §3 đã xong; còn các bước ph�
 - p95 < 800 ms, lỗi < 1% với 150 VU (k6).
 - Autoscaler tăng VM khi CPU > 60% và giảm sau khi hết tải.
 - Xoá 1 VM giữa lúc chạy tải: lỗi < 1%, VM mới tự lên và vào rotation.
-- Rolling update image không có request 5xx kéo dài (max_unavailable = 0).
-- Mất 1 zone vẫn phục vụ được (cần min ≥ 2 trải nhiều zone).
+- Rolling update image không có request 5xx kéo dài (max_unavailable = 0). **Chưa được kiểm chứng**: thiếu `min_ready_sec` thì MIG coi VM mới là xong trước khi nạp RecSys; đã thêm `min_ready_sec` và kịch bản `ops/loadtest/ha-rolling-update-drill.sh`, xem `docs/plan/2026-10-07-ha-vung-crawler-rolling.md` §5.1.
+- Mất 1 zone vẫn phục vụ được (cần min ≥ 2 trải nhiều zone). Với 2 VM, VM còn lại chịu 120% CPU ở `cpu_target` 0,6: nay `min_replicas = 3` và `cpu_target ≤ (N−1)/N` (plan 2026-10-07 §5.2). DB cũng phải sống sót khi mất zone: replica khác zone và Patroni (plan 2026-10-07 §2).
 
 Lệnh: `k6 run -e BASE_URL=http://<lb-ip> ops/loadtest/k6-ha.js`.
 

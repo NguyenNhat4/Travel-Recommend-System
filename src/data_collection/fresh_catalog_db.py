@@ -141,9 +141,12 @@ def trip_price_reference(row: dict):
 def prepare_rows(fresh: list[dict], existing: list[dict], checked_hotels: set[str],
                  seen_at: str, *, trip_max_age_days: int = 7,
                  now: datetime | None = None) -> tuple[list[dict], dict[str, int]]:
-    """Preserve DB static columns, update live fields, insert newly seen rooms."""
-    if trip_max_age_days < 1:
-        raise ValueError("trip_max_age_days phải >= 1")
+    """Preserve DB static columns, update live fields, insert newly seen rooms.
+
+    `trip_max_age_days`: giá Trip gốc chưa làm mới quá số ngày này thì xoá giá và tắt bán; 0 = không tắt (setting
+    `tripHotels.priceMaxAgeDays`)."""
+    if trip_max_age_days < 0:
+        raise ValueError("trip_max_age_days phải >= 0")
     now = now or datetime.now(timezone.utc)
     cutoff = now - timedelta(days=trip_max_age_days)
     validate_catalog(fresh, allow_external_parents=True)
@@ -176,6 +179,8 @@ def prepare_rows(fresh: list[dict], existing: list[dict], checked_hotels: set[st
         if pid in old and not previous:
             raise ValueError(f"ID conflict for {pid}: sourceRef changed")
         attrs = price_attributes(item, previous["attributes"] if previous else None, seen_at)
+        if attrs.get("mergedInto") and str(attrs["mergedInto"]) not in old:
+            attrs.pop("mergedInto")  # gộp vào dòng đã không còn trong DB: nguồn còn bán thì dòng này hiện lại
         # Khoảng ngày của nguồn trong lượt này; apply_window cắt nó vào cửa sổ 30 ngày như seed.
         for key, value in (("sourceAvailableFrom", item["availableFrom"]), ("sourceAvailableTo", item["availableTo"])):
             if value is None:
@@ -235,7 +240,7 @@ def prepare_rows(fresh: list[dict], existing: list[dict], checked_hotels: set[st
         represented.add(str(previous["product_id"]))
     # Rotation can take more than one day. Never leave native Trip prices and
     # availability marked live after their last successful capture ages out.
-    for previous in existing:
+    for previous in existing if trip_max_age_days else ():
         if (str(previous["product_id"]) in represented
                 or (previous.get("attributes") or {}).get("priceFreshness") == "stale"
                 or not any(trip_price_reference(previous))):
@@ -289,17 +294,29 @@ def resolve_ref_conflicts(existing: list[dict]) -> tuple[dict[str, dict], list[t
             pid = losers[pid]
         return pid
 
+    def claims(pid: str, ref: str) -> bool:
+        row = rows.get(pid)
+        return row is not None and (row["source_ref"] == ref or ref in ((row["attributes"] or {}).get("sameAs") or []))
+
     for previous in existing:
-        if (previous["attributes"] or {}).get("mergedInto"):  # đã gộp vào dòng khác: ref của nó thuộc dòng kia
-            continue
-        for ref in [previous["source_ref"], *((previous["attributes"] or {}).get("sameAs") or [])]:
+        refs = [previous["source_ref"], *((previous["attributes"] or {}).get("sameAs") or [])]
+        keeper = (previous["attributes"] or {}).get("mergedInto")
+        if keeper:
+            # Đã gộp vào dòng khác: ref thuộc dòng kia. Dòng kia không còn hoặc không nhận ref (gộp "treo") thì dòng này
+            # vẫn giữ ref của chính nó, để lượt cào lại khớp đúng dòng thay vì báo trùng ID và hỏng cả lô nạp.
+            refs = [ref for ref in refs if not claims(str(keeper), ref)]
+        for ref in refs:
             mine = canon(str(previous["product_id"]))
             theirs = canon(owner[ref]) if ref in owner else mine
             if theirs == mine:
                 owner[ref] = mine
                 continue
             alias_mine, alias_theirs = rows[mine]["source_ref"] != ref, rows[theirs]["source_ref"] != ref
-            keep = mine if (alias_mine, theirs) > (alias_theirs, mine) else theirs
+            hidden_mine, hidden_theirs = (bool((rows[pid]["attributes"] or {}).get("mergedInto")) for pid in (mine, theirs))
+            if hidden_mine != hidden_theirs:  # dòng đang hiện thắng dòng đã gộp
+                keep = theirs if hidden_mine else mine
+            else:
+                keep = mine if (alias_mine, theirs) > (alias_theirs, mine) else theirs
             losers[theirs if keep == mine else mine] = keep
             owner[ref] = keep
     by_ref = {ref: rows[canon(pid)] for ref, pid in owner.items()}
@@ -472,15 +489,18 @@ def pipeline_connection(url: str, **kwargs):
                                    '-c idle_in_transaction_session_timeout=60000', **kwargs)
 
 
-def maintain_catalog(url: str, *, today: date | None = None, now: datetime | None = None) -> dict[str, int]:
-    """Transaction riêng ở đầu mỗi lượt, chạy cả khi mọi nguồn lỗi: hết hạn giá Trip quá hạn và cuộn cửa sổ 30 ngày."""
+def maintain_catalog(url: str, *, today: date | None = None, now: datetime | None = None,
+                     trip_max_age_days: int = 7) -> dict[str, int]:
+    """Transaction riêng ở đầu mỗi lượt, chạy cả khi mọi nguồn lỗi: hết hạn giá Trip quá hạn, cuộn cửa sổ 30 ngày và
+    parse lại thành phần combo (sync_combo_items)."""
     import psycopg
     from psycopg.types.json import Jsonb
     today = today or date.today()
     with pipeline_connection(url, row_factory=psycopg.rows.dict_row) as conn:
         conn.execute("SELECT pg_advisory_xact_lock(7791024)")
         existing = conn.execute("SELECT * FROM cdp.products").fetchall()
-        expired, counts = prepare_rows([], existing, set(), today.isoformat(), now=now)
+        expired, counts = prepare_rows([], existing, set(), today.isoformat(), now=now,
+                                       trip_max_age_days=trip_max_age_days)
         state = {str(row["product_id"]): row for row in existing}
         state.update((str(row["product_id"]), row) for row in expired)
         windowed = apply_window(list(state.values()), today)
@@ -496,7 +516,10 @@ def maintain_catalog(url: str, *, today: date | None = None, now: datetime | Non
                  for row in writes.values()])
         from data_collection.seed import simulated_business  # _seed_rules() đã đưa src/ vào sys.path
         simulated = simulated_business.sync(conn)
-    return {"staleTrip": counts["staleTrip"], "windowRows": len(windowed), **simulated}
+        # Thành phần combo theo code parse hiện hành cho mọi combo, kể cả combo lượt này không cào được.
+        state.update(writes)
+        combos = sync_combo_items(conn, rows=list(state.values()))
+    return {"staleTrip": counts["staleTrip"], "windowRows": len(windowed), **simulated, **combos}
 
 
 def row_action(row: dict, previous: dict | None, fresh_ids: set[str]) -> str:
@@ -550,8 +573,119 @@ def bring_manual_combo_mapping(run_dir: Path, source: Path | None = None) -> boo
     return True
 
 
+def _catalog_view(row: dict) -> dict:
+    """Dòng `cdp.products` (snake_case) → dạng 13 trường camelCase mà parse_combos đọc."""
+    view = {camel: row[snake] for snake, camel in zip(COLUMNS, FIELDS)}
+    view.update(productId=str(row["product_id"]), attributes=row["attributes"] or {}, description=row["description"] or "",
+                unitPrice=None if row["unit_price"] is None else float(row["unit_price"]))
+    return view
+
+
+def _canonical_ids(rows: list[dict]) -> dict[str, str]:
+    """productId / productId của mọi ref (sourceRef, sameAs) → product_id của dòng đang hiện (theo `mergedInto` nếu đã gộp).
+    Mapping duyệt tay ghi productId theo snapshot; dòng giữ trong DB có thể mang ID cũ của một nguồn khác."""
+    keeper = {str(row["product_id"]): str((row["attributes"] or {}).get("mergedInto") or row["product_id"]) for row in rows}
+    out = {}
+    for pid in keeper:
+        seen = pid
+        for _ in range(len(keeper)):  # chuỗi gộp A → B → C
+            if keeper.get(seen, seen) == seen:
+                break
+            seen = keeper[seen]
+        out[pid] = seen
+    for row in rows:
+        target = out[str(row["product_id"])]
+        for ref in [row["source_ref"], *((row["attributes"] or {}).get("sameAs") or [])]:
+            out.setdefault(product_id(ref), target)
+    return out
+
+
+def combo_items_from_db(rows: list[dict], manual: dict[tuple[str, int], dict]) -> tuple[dict[str, list[dict]], int]:
+    """Thành phần của mọi combo đang có trong DB, parse lại từ tên + mô tả đang lưu trong DB và ghép mapping duyệt tay.
+
+    Không phụ thuộc lượt cào: combo không cào được (nguồn chặn, lượt lỗi) vẫn nhận bản parse hiện hành, và thành phần map
+    sang sản phẩm của toàn catalog chứ không chỉ sản phẩm của lô đang nạp. Bỏ qua dòng đã gộp (`mergedInto`) và vé Thương
+    gia mô phỏng. Trả (combo_product_id → dòng, số dòng duyệt tay bị bỏ vì trỏ tới sản phẩm không có / sai loại)."""
+    from data_collection.seed import parse_combos
+    live = [row for row in rows if not (row["attributes"] or {}).get("mergedInto")
+            and not str(row["source_ref"]).startswith(SIMULATED_PREFIX)]
+    views = [_catalog_view(row) for row in live]
+    taxonomy = {view["productId"]: view["taxonomy"] for view in views}
+    canonical = _canonical_ids(rows)
+    reviewed: dict[tuple[str, int], dict] = {}
+    skipped = 0
+    for (cid, pos), item in manual.items():
+        combo = canonical.get(cid, cid)
+        target = item.get("item_product_id")
+        target = canonical.get(target, target) if target else None
+        if taxonomy.get(combo) != "combo":
+            continue  # combo không còn trong DB: không có gì để ghép
+        if target is not None and (taxonomy.get(target) != item["item_kind"] or target == combo):
+            skipped += 1  # FK (item_product_id, item_kind) sẽ hỏng: để dòng parse thay chỗ
+            continue
+        reviewed[(combo, int(pos))] = {**item, "combo_product_id": combo, "position": int(pos), "item_product_id": target}
+    cat = parse_combos.Catalog(views)
+    wanted = {view["productId"]: parse_combos.merge_manual(view["productId"], parse_combos.parse_combo(view, cat), reviewed)
+              for view in views if view["taxonomy"] == "combo"}
+    return wanted, skipped
+
+
+def _comparable(item: dict) -> tuple:
+    """So dòng DB (uuid, Decimal) với dòng parse (str, float) theo đúng kiểu cột (numeric(6,2), numeric(3,2))."""
+    def num(value, digits):
+        return None if value is None else round(float(value), digits)
+    return (int(item["position"]), item["label"], item["item_kind"],
+            None if item.get("item_product_id") is None else str(item["item_product_id"]), num(item["quantity"], 2),
+            item["unit"], bool(item["is_optional"]), item["source"], num(item.get("confidence"), 2), item.get("evidence"))
+
+
+def sync_combo_items(conn, *, manual_path: Path | None = None, rows: list[dict] | None = None,
+                     dry_run: bool = False) -> dict:
+    """Parse lại `catalog.combo_items` của mọi combo từ `cdp.products` trong transaction của `conn`; chỉ xoá + ghi lại combo
+    có thành phần đổi (không đổi thì không ghi, nên job index không embed lại). `rows`: trạng thái `cdp.products` đã có trong
+    transaction (None = đọc lại). `dry_run`: chỉ tính, không ghi; kết quả kèm `changedCombos` (tên, số dòng trước/sau)."""
+    import psycopg
+    from data_collection.seed import parse_combos
+    from data_collection.seed.database import COMBO, copy_rows
+    if manual_path is None:
+        from data_collection.seed.config import DEFAULT_SNAPSHOT_DIR
+        manual_path = DEFAULT_SNAPSHOT_DIR / "combo_items_manual.jsonl"
+    with conn.cursor(row_factory=psycopg.rows.dict_row) as cursor:
+        if rows is None:
+            rows = cursor.execute("SELECT * FROM cdp.products").fetchall()
+        stored: dict[str, list[dict]] = defaultdict(list)
+        for item in cursor.execute("SELECT * FROM catalog.combo_items").fetchall():
+            stored[str(item["combo_product_id"])].append(item)
+    wanted, skipped = combo_items_from_db(rows, parse_combos.load_manual(manual_path))
+    changed = [cid for cid, items in wanted.items()
+               if sorted(map(_comparable, items)) != sorted(map(_comparable, stored.get(cid, [])))]
+    fresh = [{**item, "combo_product_id": cid} for cid in changed for item in wanted[cid]]
+    if changed and not dry_run:
+        conn.execute("DELETE FROM catalog.combo_items WHERE combo_product_id = ANY(%s::uuid[])", (changed,))
+        copy_rows(conn, "catalog.combo_items", COMBO, fresh)
+    counts = {"combos": len(wanted), "combosChanged": len(changed), "comboItemsWritten": 0 if dry_run else len(fresh),
+              "manualSkipped": skipped}
+    if dry_run:
+        # Nhãn đổi = text index của combo đổi (text_builder ghép nhãn) → job index embed lại; chỉ đổi map/evidence thì không.
+        def labels(items):
+            return [item["label"] for item in sorted(items, key=lambda item: int(item["position"]))]
+        names = {str(row["product_id"]): row["name"] for row in rows}
+        report = []
+        for cid in changed:
+            before, after = labels(stored.get(cid, [])), labels(wanted[cid])
+            entry = {"productId": cid, "name": names.get(cid), "before": len(before), "after": len(after),
+                     "labelsChanged": before != after}
+            if before != after:
+                entry.update(labelsBefore=before, labelsAfter=after)
+            report.append(entry)
+        counts["combosLabelsChanged"] = sum(entry["labelsChanged"] for entry in report)
+        counts["changedCombos"] = report
+    return counts
+
+
 def load_into_db(products_path: Path, coverage_path: Path | None, url: str,
-                 collection_root: Path, report_path: Path | None = None) -> dict[str, int]:
+                 collection_root: Path, report_path: Path | None = None, *,
+                 trip_max_age_days: int = 7) -> dict[str, int]:
     """COPY into a temporary table then upsert in one transaction, as V-OTA does.
 
     `coverage_path` None = lượt không cào khách sạn Trip (không dòng Trip nào được nạp).
@@ -560,7 +694,7 @@ def load_into_db(products_path: Path, coverage_path: Path | None, url: str,
     source_root = collection_root.parent
     if str(source_root) not in sys.path:
         sys.path.insert(0, str(source_root))
-    from data_collection.seed.database import COMBO, copy_rows
+    from data_collection.seed.database import copy_rows
     from data_collection.seed import parse_combos
 
     fresh = list(read_jsonl(products_path))
@@ -569,21 +703,21 @@ def load_into_db(products_path: Path, coverage_path: Path | None, url: str,
         match = re.match(r"^trip:hotel:(\d+)(?::room:.*)?$", item["sourceRef"])
         if match and match.group(1) not in checked:
             raise ValueError(f"Trip hotel chưa đủ coverage: {item['sourceRef']}")
-    # Parse combo relationships with the same implementation as the source repo.
+    # priceBasis / nights / minPax của combo mới, cùng file soát tay của lượt. `catalog.combo_items` không lấy từ đây mà
+    # parse lại trên toàn catalog trong DB sau upsert (sync_combo_items).
     bring_manual_combo_mapping(products_path.parent)
     parse_combos.main(["--data-dir", str(products_path.parent)])
     combo_attrs = json.loads((products_path.parent / "combo_attributes.json").read_text(encoding="utf-8"))
     for item in fresh:
         if item["taxonomy"] == "combo" and item["productId"] in combo_attrs:
             item["attributes"].update(combo_attrs[item["productId"]]["attributes"])
-    combos = list(read_jsonl(products_path.parent / "combo_items.jsonl"))
     seen_at = date.today().isoformat()
     with pipeline_connection(url) as conn:
         conn.execute("SELECT pg_advisory_xact_lock(7791024)")
         with conn.cursor(row_factory=psycopg.rows.dict_row) as cursor:
             cursor.execute("SELECT * FROM cdp.products")
             existing = cursor.fetchall()
-        prepared, counts = prepare_rows(fresh, existing, checked, seen_at)
+        prepared, counts = prepare_rows(fresh, existing, checked, seen_at, trip_max_age_days=trip_max_age_days)
         # Cửa sổ 30 ngày tính trên trạng thái sau lượt này: dòng mới/làm mới, và tuyến có chuyến con đổi ngày.
         state = {str(row["product_id"]): row for row in existing}
         state.update((str(row["product_id"]), row) for row in prepared)
@@ -591,16 +725,8 @@ def load_into_db(products_path: Path, coverage_path: Path | None, url: str,
         # Giữ thứ tự: canonical_ids bên dưới ánh xạ fresh[i] với prepared[i].
         prepared = [windowed.pop(str(row["product_id"]), row) for row in prepared]
         prepared.extend(windowed.values())
-        # Combo parser sees IDs from this run. Existing DB aliases can retain an
-        # older canonical productId, so map both ends before FK validation.
         canonical_ids = {item["productId"]: prepared[index]["product_id"]
                          for index, item in enumerate(fresh)}
-        for combo in combos:
-            combo["combo_product_id"] = canonical_ids.get(
-                combo["combo_product_id"], combo["combo_product_id"])
-            if combo.get("item_product_id"):
-                combo["item_product_id"] = canonical_ids.get(
-                    combo["item_product_id"], combo["item_product_id"])
         conn.execute("CREATE TEMP TABLE incoming_products (LIKE cdp.products INCLUDING DEFAULTS) ON COMMIT DROP")
         copy_rows(conn, "incoming_products", list(COLUMNS), prepared)
         cols = ", ".join(COLUMNS)
@@ -621,12 +747,10 @@ def load_into_db(products_path: Path, coverage_path: Path | None, url: str,
             WHERE {changed}
             RETURNING product_id
         """).fetchall()
-        combo_ids = [canonical_ids[row["productId"]] for row in fresh if row["taxonomy"] == "combo"]
-        if combo_ids:
-            conn.execute("DELETE FROM catalog.combo_items WHERE combo_product_id = ANY(%s::uuid[])", (combo_ids,))
-            copy_rows(conn, "catalog.combo_items", COMBO, combos)
         counts["dbRowsWritten"] = len(written)
-        counts["comboItemsWritten"] = len(combos)
+        # Đọc lại cdp.products sau upsert (tên/mô tả không phải vé máy bay giữ bản trong DB) rồi parse mọi combo trên toàn
+        # catalog: lô nạp theo phần chỉ chứa một phần sản phẩm, parse riêng lô thì thành phần không map được.
+        counts.update(sync_combo_items(conn))
         from data_collection.seed import simulated_business
         counts.update(simulated_business.sync(conn))  # sau upsert + cửa sổ, cùng transaction (data-model.md §3)
     # Publish the report only after the connection context has committed successfully.
@@ -636,3 +760,26 @@ def load_into_db(products_path: Path, coverage_path: Path | None, url: str,
                           {str(row[0]) for row in written})
         temporary.replace(report_path)
     return counts
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Xem trước, chỉ đọc: combo nào sẽ được parse lại thành phần ở lượt chạy kế tiếp (không ghi gì).
+
+        python src/data_collection/fresh_catalog_db.py combo-items --database-url <dsn>
+    """
+    import argparse
+    import psycopg
+    ap = argparse.ArgumentParser(description=main.__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("command", choices=("combo-items",))
+    ap.add_argument("--database-url", required=True)
+    args = ap.parse_args(argv)
+    _seed_rules()  # đưa src/ vào sys.path cho data_collection.seed
+    with pipeline_connection(args.database_url) as conn:
+        conn.read_only = True
+        report = sync_combo_items(conn, dry_run=True)
+    print(json.dumps(report, ensure_ascii=False, indent=1))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

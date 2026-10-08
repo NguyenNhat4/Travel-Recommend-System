@@ -42,7 +42,7 @@ class RouteTests(unittest.TestCase):
         result = route_result(self.vague_state(), TurnRoute(route='vague'))
         self.assertEqual(result['decision'], 'missing_info')
         self.assertEqual(result['clarification_reason'], 'suggest_form')
-        self.assertEqual(result['missing_fields'], ['startDate', 'party', 'budget'])
+        self.assertEqual(result['missing_fields'], ['startDate', 'party', 'budget', 'origin'])
         self.assertEqual(result['interaction_type'], 'travel')
         self.assertTrue(result['start_date_asked'])
 
@@ -50,7 +50,7 @@ class RouteTests(unittest.TestCase):
         state = {**self.vague_state(destination=None), 'clarification_rounds': 1}
         result = route_result(state, TurnRoute(route='vague'))
         self.assertEqual(result['clarification_reason'], 'suggest_form')
-        self.assertEqual(result['missing_fields'], ['destination', 'startDate', 'party', 'budget'])
+        self.assertEqual(result['missing_fields'], ['destination', 'startDate', 'party', 'budget', 'origin'])
         self.assertEqual(result['clarification_rounds'], 2)
 
     def test_a_vague_answer_on_a_complete_trip_goes_to_extract(self):
@@ -247,7 +247,7 @@ class ClassifyRouteTests(unittest.TestCase):
 
     def test_complete_intent_uses_tools_without_keyword_override(self):
         state = intake_node({'query': 'timeout search status'})
-        result = extract_result(state, Extraction(patch={'budget': 5000000, 'startDate': '2999-10-10', 'party': {'type': 'SOLO', 'adults': 1, 'children': 0}} | {'destination': 'Nha Trang', 'days': 3}))
+        result = extract_result(state, Extraction(patch={'budget': 5000000, 'startDate': '2999-10-10', 'party': {'type': 'SOLO', 'adults': 1, 'children': 0}} | {'destination': 'Nha Trang', 'days': 3, 'origin': 'Hà Nội'}))
         self.assertEqual(result['decision'], 'tool')
 
     def test_clear_constraints_and_explicit_false_are_preserved(self):
@@ -260,7 +260,7 @@ class ClassifyRouteTests(unittest.TestCase):
     def test_unknown_party_type_remains_null_when_counts_are_explicit(self):
         result = extract_result(intake_node({'query': 'request'}), Extraction(
                   patch={'destination': 'Nha Trang', 'days': 2, 'budget': 5000000, 'startDate': '2999-10-10',
-                         'party': {'type': None, 'adults': 4, 'children': 0}}))
+                         'party': {'type': None, 'adults': 4, 'children': 0}, 'origin': 'Hà Nội'}))
         self.assertEqual(result['decision'], 'tool')
         self.assertIsNone(result['intent']['party']['type'])
 
@@ -280,10 +280,11 @@ class ClassifyRouteTests(unittest.TestCase):
 
 
 class StartDateQuestionTests(unittest.TestCase):
-    """Ngày đi, số người, ngân sách: hỏi gộp một câu, một lần, chỉ trước lần lập lịch đầu tiên."""
+    """Ngày đi, số người, ngân sách, nơi đi: hỏi gộp một câu, một lần, chỉ trước lần lập lịch đầu tiên."""
 
     trip = {'destination': 'Nha Trang', 'days': 2}
-    complete = {'startDate': '2999-10-10', 'budget': 5_000_000, 'party': {'type': 'COUPLE', 'adults': 2, 'children': 0}}
+    complete = {'startDate': '2999-10-10', 'budget': 5_000_000, 'party': {'type': 'COUPLE', 'adults': 2, 'children': 0},
+                'origin': 'Hà Nội'}
 
     def classify(self, state=None, **fields):
         state = state or intake_node({'query': 'request'})
@@ -293,25 +294,25 @@ class StartDateQuestionTests(unittest.TestCase):
     def test_asks_every_missing_detail_in_one_question(self):
         result = self.classify()
         self.assertEqual(result['decision'], 'missing_info')
-        self.assertEqual(result['missing_fields'], ['startDate', 'party', 'budget'])
+        self.assertEqual(result['missing_fields'], ['startDate', 'party', 'budget', 'origin'])
         self.assertTrue(result['start_date_asked'])
 
     def test_asks_only_what_is_still_missing(self):
         result = self.classify(patch={'startDate': '2999-10-10', 'party': self.complete['party']})
-        self.assertEqual(result['missing_fields'], ['budget'])
+        self.assertEqual(result['missing_fields'], ['budget', 'origin'])
 
     def test_after_asking_missing_required_details_show_the_form(self):
         state = intake_node({'query': 'request', 'start_date_asked': True})
         result = self.classify(state)
         self.assertEqual(result['decision'], 'missing_info')
         self.assertEqual(result['clarification_reason'], 'suggest_form')
-        self.assertEqual(result['missing_fields'], ['startDate', 'party', 'budget'])
+        self.assertEqual(result['missing_fields'], ['startDate', 'party', 'budget', 'origin'])
 
     def test_a_partial_answer_still_shows_the_form_with_what_is_left(self):
         state = intake_node({'query': '2 người', 'start_date_asked': True})
         result = self.classify(state, patch={'party': self.complete['party']})
         self.assertEqual(result['clarification_reason'], 'suggest_form')
-        self.assertEqual(result['missing_fields'], ['startDate', 'budget'])
+        self.assertEqual(result['missing_fields'], ['startDate', 'budget', 'origin'])
         self.assertEqual(result['intent']['party'], self.complete['party'])
 
     def test_budget_is_not_required_once_asked(self):
@@ -327,7 +328,7 @@ class StartDateQuestionTests(unittest.TestCase):
     def test_an_undecided_date_is_still_missing(self):
         result = self.classify(start_date_undecided=True, patch={'budget': 5_000_000, 'party': self.complete['party']})
         self.assertEqual(result['decision'], 'missing_info')
-        self.assertEqual(result['missing_fields'], ['startDate'])
+        self.assertEqual(result['missing_fields'], ['startDate', 'origin'])
 
     def test_missing_destination_or_days_come_before_the_details(self):
         result = self.classify(patch={'destination': None})
@@ -440,7 +441,7 @@ class InvalidInputTests(unittest.TestCase):
         result = self.extract({'startDate': '2026-09-24'}, intake_node({'query': 'request'}))
         self.assert_asks_again(result, 'startDate', 'past_date')
         self.assertEqual(result['invalid_inputs'][0]['value'], '2026-09-24')
-        self.assertEqual(result['missing_fields'], ['startDate', 'party', 'budget'])
+        self.assertEqual(result['missing_fields'], ['startDate', 'party', 'budget', 'origin'])
         self.assertTrue(result['start_date_asked'])
 
     def test_once_details_were_asked_only_the_date_is_asked_again(self):

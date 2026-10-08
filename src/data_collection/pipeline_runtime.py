@@ -9,6 +9,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+import catalog_run_lock
 import log
 
 from fresh_run_log import (HISTORY_FILE, LIVE_FILE, RUNNING_FILE, STOP_FILE, descendants,
@@ -48,7 +49,9 @@ def finish_interrupted(state: Path, runs: Path, pid: int, reason: str, *, stoppe
     if not lock_held:
         # After an unexpected exit another worker may already own the state directory.
         state.mkdir(parents=True, exist_ok=True)
-        with (state / 'fresh_catalog.lock').open('a') as lock:
+        lock_path = catalog_run_lock.lock_file(state)
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with lock_path.open('a') as lock:
             try:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:

@@ -374,6 +374,10 @@ components:
       $ref: ./schemas/itinerary-agent.yaml#/ItinerarySlot
     ItineraryStay:
       $ref: ./schemas/itinerary-agent.yaml#/ItineraryStay
+    FlightDirection:
+      $ref: ./schemas/itinerary-agent.yaml#/FlightDirection
+    ItineraryFlight:
+      $ref: ./schemas/itinerary-agent.yaml#/ItineraryFlight
     ItineraryDay:
       $ref: ./schemas/itinerary-agent.yaml#/ItineraryDay
     ItineraryPlan:

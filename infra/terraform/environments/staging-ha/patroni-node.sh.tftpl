@@ -1,0 +1,82 @@
+#!/bin/bash
+# Boot một node của cụm DB Patroni (role=db: etcd + Patroni/Postgres; role=witness: chỉ etcd, làm đa số thứ ba để
+# mất cả một zone vẫn còn 2/3 thành viên). Debian + docker.io; không IP public nên cần Cloud NAT (network.tf).
+# KHÔNG dùng $-mở-ngoặc-nhọn trong file này: templatefile của Terraform sẽ hiểu nhầm.
+set -euo pipefail
+ROLE='${role}'
+export DEBIAN_FRONTEND=noninteractive
+if ! command -v docker >/dev/null 2>&1; then
+  apt-get update
+  apt-get install -y ca-certificates curl docker.io jq
+fi
+systemctl enable --now docker
+
+TOKEN=$(curl -fsS -H 'Metadata-Flavor: Google' http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token | jq -er .access_token)
+printf '%s' "$TOKEN" | docker login -u oauth2accesstoken --password-stdin '${registry_host}'
+
+mkdir -p /etc/vota
+if [ "$ROLE" = db ]; then
+  # Đĩa dữ liệu riêng, tồn tại độc lập với VM (auto_delete=false): thay VM không mất dữ liệu.
+  DEV=/dev/disk/by-id/google-pgdata
+  if ! blkid "$DEV" >/dev/null 2>&1; then mkfs.ext4 -m 0 -F "$DEV"; fi
+  mkdir -p /mnt/disks/pgdata
+  grep -q /mnt/disks/pgdata /etc/fstab || echo "$DEV /mnt/disks/pgdata ext4 discard,defaults,nofail 0 2" >> /etc/fstab
+  mountpoint -q /mnt/disks/pgdata || mount /mnt/disks/pgdata
+  ETCD_DATA=/mnt/disks/pgdata/etcd
+else
+  mkdir -p /var/lib/etcd
+  ETCD_DATA=/var/lib/etcd
+fi
+mkdir -p "$ETCD_DATA"
+
+# etcd: 3 thành viên (2 node DB + witness) ở 3 zone. Cụm tĩnh; thay một thành viên xem docs/guide/van-hanh-db-patroni.md.
+docker rm -f vota-etcd >/dev/null 2>&1 || true
+docker run -d --name vota-etcd --restart unless-stopped --network host -v "$ETCD_DATA:/etcd-data" '${etcd_image}' etcd \
+  --name '${etcd_name}' --data-dir /etcd-data \
+  --listen-peer-urls 'http://${node_ip}:2380' --initial-advertise-peer-urls 'http://${node_ip}:2380' \
+  --listen-client-urls 'http://${node_ip}:2379,http://127.0.0.1:2379' --advertise-client-urls 'http://${node_ip}:2379' \
+  --initial-cluster '${etcd_initial_cluster}' --initial-cluster-state new --initial-cluster-token vota-pg
+
+if [ "$ROLE" = db ]; then
+  SECRET=$(curl -fsS -H "Authorization: Bearer $TOKEN" 'https://secretmanager.googleapis.com/v1/projects/${project_id}/secrets/${env_secret}/versions/latest:access' | jq -er .payload.data | base64 -d)
+  umask 077
+  printf '%s\n' "$SECRET" > /etc/vota/patroni.env
+  docker pull '${patroni_image}'
+  docker rm -f vota-patroni >/dev/null 2>&1 || true
+  mkdir -p /mnt/disks/pgdata/postgresql
+  CLONE_ARG=""
+  if [ -n '${clone_from_host}' ]; then CLONE_ARG="-e PATRONI_CLONE_FROM_HOST=${clone_from_host}"; fi
+  docker run -d --name vota-patroni --restart unless-stopped --network host --stop-timeout 60 \
+    -v /mnt/disks/pgdata/postgresql:/var/lib/postgresql --env-file /etc/vota/patroni.env \
+    -e PATRONI_NAME='${node_name}' -e PATRONI_NODE_IP='${node_ip}' -e PATRONI_ETCD3_HOSTS='${etcd_hosts}' \
+    -e PATRONI_SCOPE='${scope}' $CLONE_ARG \
+    --shm-size 256m '${patroni_image}'
+
+  # Probe cụm mỗi phút + Ops Agent đẩy dòng JSON lên Cloud Logging (cảnh báo "không còn replica", patroni_monitoring.tf).
+  mkdir -p /usr/local/libexec /var/log/vota
+  cat > /usr/local/libexec/patroni-cluster-probe.py <<'PROBE'
+${probe_script}
+PROBE
+  chmod 0755 /usr/local/libexec/patroni-cluster-probe.py
+  echo '* * * * * root PATRONI_NAME=${node_name} /usr/bin/python3 /usr/local/libexec/patroni-cluster-probe.py' > /etc/cron.d/vota-patroni-probe
+  chmod 0644 /etc/cron.d/vota-patroni-probe
+  cat > /etc/logrotate.d/vota-patroni <<'LOGROTATE'
+/var/log/vota/patroni-cluster.jsonl {
+  daily
+  rotate 7
+  maxsize 50M
+  missingok
+  notifempty
+  compress
+  copytruncate
+}
+LOGROTATE
+  if ! systemctl cat google-cloud-ops-agent.service >/dev/null 2>&1; then
+    curl -fsSL https://dl.google.com/cloudagents/add-google-cloud-ops-agent-repo.sh -o /tmp/add-ops-agent-repo.sh
+    bash /tmp/add-ops-agent-repo.sh --also-install
+  fi
+  cat > /etc/google-cloud-ops-agent/config.yaml <<'AGENT'
+${ops_agent_config}
+AGENT
+  systemctl restart google-cloud-ops-agent.service
+fi

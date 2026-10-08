@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from src.backend.app.application.itinerary.contracts import valid
+from src.backend.app.domain.itinerary.flights import flight_candidates
 from src.backend.app.domain.itinerary.planning import summary, validate_plan
 
 from .narration import unknown_links
@@ -16,7 +17,8 @@ def response_issues(state: dict, response: dict, http_status: int) -> list:
     try:
         if response.get("status") == "COMPLETED":
             issues = validate_plan(response["itinerary"], state["candidates"], state["sources"],
-                                   state["intent"], state.get("constraints", {}))
+                                   state["intent"], state.get("constraints", {}),
+                                   flight_candidates(state.get("flight_options") or {}))
             if response.get("intent") != state["intent"] or response["conversationId"] != state["conversation_id"]:
                 issues.append("intent")
             if unknown_links(response):

@@ -48,9 +48,9 @@ PRODUCT = {
 
 
 def extraction(**patch) -> Extraction:
-    # Đủ chi tiết chuyến đi (ngày đi, số người, ngân sách) để lượt đầu không dừng ở câu hỏi gộp hay form.
+    # Đủ chi tiết chuyến đi (ngày đi, số người, ngân sách, nơi đi) để lượt đầu không dừng ở câu hỏi gộp hay form.
     patch = {"startDate": "2999-10-10", "party": {"type": "SOLO", "adults": 1, "children": 0}, "budget": 5_000_000,
-             **patch}
+             "origin": "Hà Nội", **patch}
     return Extraction(patch=patch)
 
 

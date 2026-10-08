@@ -487,3 +487,10 @@ def test_existential_co_nao_keeps_the_lodging_cue():
 def test_diem_vui_choi_is_a_weak_attraction_cue():
     r = parse_vertical("điểm vui chơi ở Phú Quốc")
     assert (r.taxonomy, r.strength) == ("attraction", "weak")
+
+
+def test_remove_spans_keeps_punctuation_after_cut():
+    # Chuỗi thay thế từng là byte 0x01 thay vì `\1`: dấu câu sau đoạn cắt bị nuốt và để lại ký tự điều khiển.
+    q = "khách sạn cho 2 người lớn, gần biển"
+    span = (q.index("2"), q.index(","))
+    assert remove_spans(q, [span]) == "khách sạn cho, gần biển"

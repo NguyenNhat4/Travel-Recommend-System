@@ -5,8 +5,9 @@ from collections import Counter
 from copy import deepcopy
 import logging
 
-from src.backend.app.domain.itinerary.planning import (SCHEDULABLE_TAXONOMIES, compose_plan, free_to_visit, multi_day_offers, render_proposal,
-                                                        summary, validate_plan)
+from src.backend.app.domain.itinerary import flights as flight_rules
+from src.backend.app.domain.itinerary.planning import (SCHEDULABLE_TAXONOMIES, compose_plan, day_windows, free_to_visit, multi_day_offers,
+                                                        render_proposal, summary, totals, validate_plan)
 
 from . import messages
 from .explanations import missing_stay_note
@@ -115,7 +116,7 @@ def _no_results_suggestions(state: dict) -> list[str]:
     """Gợi ý bấm được cho NO_RESULTS, tối đa ba mục, mọi giá trị lấy từ dữ liệu thật của lượt này.
 
     Thứ tự: ngày gần nhất còn bán (docs/spec/hop-dong-tich-hop-itinerary-assistant.md §4.4), rồi gợi ý
-    bỏ ràng buộc đang bật (field-review.md §2.2), rồi điểm đến khác trong catalog. Không tự đổi điểm đến
+    bỏ ràng buộc đang bật (quyết định review field 2026-09-28, history/2026-09-28-ap-dung-de-xuat-field-review-agent.md), rồi điểm đến khác trong catalog. Không tự đổi điểm đến
     thay người dùng: chỉ đưa ra để họ chọn.
     """
     constraints = state.get("constraints", {})
@@ -182,13 +183,48 @@ def _uses_recommendation(plan: dict) -> bool:
     return any(slot.get("source") == "RECOMMENDATION" for day in plan.get("days", []) for slot in day.get("slots", []))
 
 
+def _flight_warning(state: dict, reason: str | None, legs: list) -> dict | None:
+    """Vì sao lịch trình không có (đủ) chặng bay (AC-AGT-02); None khi đủ vé hoặc người dùng không cần vé."""
+    if reason is None or reason in flight_rules.SILENT_REASONS:
+        return None
+    intent, options = state["intent"], state.get("flight_options") or {}
+    dates = flight_rules.trip_dates(intent)
+    values = {"origin": options.get("origin") or intent.get("origin") or "",
+              "destination": intent.get("destination") or "",
+              "out": display_date(dates[0].isoformat()) if dates else "",
+              "back": display_date(dates[1].isoformat()) if dates else ""}
+    key = reason
+    if reason == flight_rules.ONE_WAY_ONLY:
+        key = "MISSING_RETURN" if legs and legs[0]["direction"] == "OUTBOUND" else "MISSING_OUTBOUND"
+    return {"code": f"FLIGHT_{reason}", "message": messages.message(state, f"flight_warn_{key}", **values)}
+
+
+def with_flights(plan: dict, legs: list, intent: dict) -> dict:
+    """Gắn chặng bay chọn bằng luật (AC-AGT-02) vào lịch trình và tính lại tổng."""
+    if legs:
+        plan["flights"] = [{**leg, "product": summary(leg["product"])} for leg in legs]
+        plan["bookableCount"] = plan.get("bookableCount", 0) + len(legs)
+        plan["estimatedTotal"], plan["budgetStatus"] = totals(plan, intent)
+    return plan
+
+
 def composed(state: dict) -> dict:
-    """Build the itinerary from the retrieved candidates with fixed rules; no model is consulted."""
-    proposal = compose_plan(state["candidates"], state["sources"], state["intent"])
+    """Build the itinerary from the retrieved candidates with fixed rules; no model is consulted.
+
+    Vé được chọn trước khi xếp lịch, để hoạt động của ngày đến và ngày về nằm trong cửa sổ giờ bay (AC-AGT-02).
+    """
+    legs, flight_reason = flight_rules.choose_flights(state.get("flight_options") or {}, state["intent"])
+    windows = day_windows(state["intent"], legs)
+    proposal = compose_plan(state["candidates"], state["sources"], state["intent"], windows)
     plan = render_proposal(proposal, state["candidates"], state["sources"], state["intent"])
-    if validate_plan(plan, state["candidates"], state["sources"], state["intent"], state.get("constraints", {})):
+    plan = with_flights(plan, legs, state["intent"])
+    flight_warning = _flight_warning(state, flight_reason, legs)
+    if validate_plan(plan, state["candidates"], state["sources"], state["intent"], state.get("constraints", {}),
+                     flight_rules.flight_candidates(state.get("flight_options") or {})):
         raise ValueError("invalid composition")
     warnings = deepcopy(state.get("warnings", []))
+    if flight_warning:
+        warnings.append(flight_warning)
     warnings.append({"code": "SNAPSHOT_ONLY", "message": WARNINGS["SNAPSHOT_ONLY"]})
     warnings.append({"code": "SCHEDULE_ESTIMATE", "message": WARNINGS["SCHEDULE_ESTIMATE"]})
     if _uses_recommendation(plan):
@@ -198,6 +234,9 @@ def composed(state: dict) -> dict:
     if no_stay:
         warnings.append({"code": "NO_STAY_AVAILABLE", "message": no_stay})
     for day in plan["days"]:
+        # Ngày giờ bay không chừa buổi nào (hạ cánh tối, bay về sáng) chỉ có dòng di chuyển: không phải ngày trống.
+        if day["day"] in windows and not windows[day["day"]]["times"]:
+            continue
         if not any(slot["product"] for slot in day["slots"]):
             warnings.append({"code": "DAY_WITHOUT_PRODUCTS",
                              "message": f"Ngày {day['day']} dành cho nghỉ ngơi hoặc hoạt động chung, "

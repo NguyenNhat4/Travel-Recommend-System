@@ -63,9 +63,8 @@ Phục vụ FR-AGT-04 (grounding 100%), NFR-REL-01, FR-CAT-01..04 (`docs/prd/req
 | `description` | Mô tả catalog cho agent đọc, giữ nguyên, không chứa chỉ dẫn hệ thống |
 
 Field `description`/`attributes` là hai field **nặng nhất** khi chép vào response lịch trình (20–40KB/lịch
-3 ngày, theo `docs/spec/agent/field-review.md` §2.1) — FE hiện chỉ đọc bốn khoá attributes
-(`beachfront`, `oceanView`, `pool`, `ticketed`) và một chỗ đọc `description` thô. Cắt việc này **chưa có
-quyết định**, xem field-review.md.
+3 ngày). Đã cắt từ 2026-09-28 (`history/2026-09-28-ap-dung-de-xuat-field-review-agent.md`): `ProductSummary` trong lịch trình bỏ `description` và chỉ giữ các khoá
+`attributes` trong `SUMMARY_ATTRIBUTE_KEYS` (`src/backend/app/domain/itinerary/planning.py`).
 
 ## 3. `ProductAttributes` — ba trạng thái, không phải hai
 
@@ -73,6 +72,33 @@ Từ `catalog.yaml` (`ProductAttributes`): key **có mặt và `true`** = nguồ
 `false`** = nguồn xác nhận **không** có; **key vắng mặt** = không biết. Tầng serialization đã loại các key
 `false` trước khi trả JSON, nên response agent nhận được chỉ còn `true` hoặc vắng mặt — **không được coi
 key vắng mặt là `false`**, và không cần tự lọc `false` ở tầng agent (đã bị strip từ trước).
+
+Ví dụ minh hoạ (ở tầng DB nội bộ, trước khi serialization strip `false`):
+
+```json
+// Sản phẩm A — nguồn đã kiểm và xác nhận rõ ràng
+{ "oceanView": true, "pool": false }
+// oceanView: CÓ view biển (đã xác nhận)
+// pool: KHÔNG có hồ bơi (đã xác nhận, không phải "chưa biết")
+
+// Sản phẩm B — nguồn chưa từng ghi nhận amenity này
+{ "oceanView": true }
+// pool: KHÔNG xuất hiện trong JSON → không biết có hồ bơi hay không,
+// KHÔNG được suy diễn thành "không có hồ bơi"
+```
+
+Response thật mà agent nhận từ API (sau khi serialization strip mọi key `false`) chỉ còn:
+
+```json
+// Sản phẩm A trả cho agent: pool:false đã bị lược bỏ
+{ "oceanView": true }
+// Sản phẩm B trả cho agent: giống hệt sản phẩm A
+{ "oceanView": true }
+```
+
+→ Agent **không thể phân biệt** được sản phẩm A (xác nhận không có pool) với sản phẩm B (chưa biết) chỉ
+bằng cách nhìn response — cả hai đều "vắng mặt key `pool`". Vì vậy quy tắc bắt buộc là: vắng mặt = không
+biết, không được hiển thị/diễn giải thành "không có" trong cả hai trường hợp.
 
 Hai khoá agent cần chú ý riêng vì ảnh hưởng cấu trúc lịch trình, không phải chỉ hiển thị:
 
@@ -108,7 +134,7 @@ không nút) và khi đó `activityType` bắt buộc; `product` khác `null` th
 
 ### 5.1. Field contract có nhưng backend chưa từng trả (đừng dựa vào lúc code)
 
-Theo `docs/spec/agent/field-review.md` §2.2, các field sau **hợp lệ theo schema** nhưng FE đọc mà backend
+Theo đợt review field 2026-09-28 (`history/2026-09-28-ap-dung-de-xuat-field-review-agent.md`), các field sau **hợp lệ theo schema** nhưng FE đọc mà backend
 chưa bao giờ điền — luôn kiểm code hiện tại trước khi giả định đã có:
 
 `suggestedValues` (NEEDS_CLARIFICATION), `suggestions` (NO_RESULTS), `startTime`/`endTime` của slot,
@@ -140,5 +166,4 @@ trả `combo_items`, không tự bịa từ `description`.
 | Payload tối thiểu MVP | `docs/spec/mvp-minimal-fields-1.2.0.md` |
 | Quy tắc grounding đầy đủ | `docs/spec/hop-dong-tich-hop-itinerary-assistant.md` §5, `docs/prd/architecture.md` §3 |
 | Field nào `AgentState` đang giữ, node nào đọc | `docs/spec/agent/state-fields.md` |
-| Field nào đang review để giữ/bỏ/gộp (chưa quyết) | `docs/spec/agent/field-review.md` |
 | Field DB gốc | `docs/spec/PRODUCT_SCHEMA.md`, `docs/spec/DATABASE_SCHEMA.md` |

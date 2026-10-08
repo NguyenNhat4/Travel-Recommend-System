@@ -7,6 +7,7 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 
+import fresh_settings
 import normalise
 from collectors.trip_live import assemble, price_packet
 from fresh_catalog_db import prepare_rows
@@ -28,6 +29,16 @@ class FreshTripTests(unittest.TestCase):
         self.assertEqual(price_packet({'data': {'physicRoomMap': {}, 'saleRoomMap': {},
                                                     'isRoomListSoldOut': True}})[0], 'sold_out')
         self.assertEqual(price_packet({'data': {'saleRoomMap': {}}})[0], 'missing')
+
+    def test_sold_out_list_with_only_full_rooms_is_sold_out_not_missing(self):
+        full = {'physicalRoomId': 7, 'priceInfo': {'price': 900000, 'currency': 'VND'},
+                'bookingStatusInfo': {'isFullRoom': True}}
+        packet = {'data': {'physicRoomMap': {'7': {'name': 'Deluxe'}}, 'saleRoomMap': {'a': full, 'b': dict(full)},
+                           'isRoomListSoldOut': True}}
+        self.assertEqual(price_packet(packet)[0], 'sold_out')
+        # Không có cờ hết phòng của danh sách: vẫn là chưa biết, không tự kết luận hết phòng.
+        packet['data']['isRoomListSoldOut'] = False
+        self.assertEqual(price_packet(packet)[0], 'missing')
 
     def test_assemble_and_normalise_three_dates_and_new_room(self):
         target = {'trip_hotel_id': '999', 'city_id': '1777', 'destination': 'Nha Trang'}
@@ -131,6 +142,21 @@ class FreshTripTests(unittest.TestCase):
         self.assertEqual(counts['staleTrip'], 1)
         self.assertFalse(rows[0]['available'])
         self.assertIsNone(rows[0]['unit_price'])
+
+    def test_trip_price_expiry_follows_setting_and_zero_disables_it(self):
+        old = {'product_id': 'old', 'source_ref': 'trip:hotel:1:room:7',
+               'attributes': {'level': 'room', 'priceRefreshedAt': '2026-09-20T00:00:00Z'},
+               'unit_price': 700000, 'available': True}
+        now = datetime(2026, 9, 24, tzinfo=timezone.utc)
+        rows, counts = prepare_rows([], [old], set(), '2026-09-24', now=now, trip_max_age_days=0)
+        self.assertEqual((rows, counts['staleTrip']), ([], 0))
+        _, counts = prepare_rows([], [old], set(), '2026-09-24', now=now, trip_max_age_days=5)
+        self.assertEqual(counts['staleTrip'], 0)  # 4 ngày < 5
+        _, counts = prepare_rows([], [old], set(), '2026-09-24', now=now, trip_max_age_days=3)
+        self.assertEqual(counts['staleTrip'], 1)
+        with self.assertRaises(ValueError):
+            prepare_rows([], [old], set(), '2026-09-24', now=now, trip_max_age_days=-1)
+        self.assertEqual(fresh_settings.BY_KEY['tripHotels.priceMaxAgeDays'].default, 7)
 
 
 if __name__ == '__main__':

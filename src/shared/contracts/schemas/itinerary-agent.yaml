@@ -100,6 +100,15 @@ TripIntent:
       oneOf:
       - $ref: ../openapi.yaml#/components/schemas/Pace
       - type: 'null'
+    origin:
+      type:
+      - string
+      - 'null'
+      maxLength: 150
+      description: >-
+        (1.18.0, AC-AGT-02) Thành phố đi, đúng giá trị `attributes.originCity` của tuyến bay trong catalog. Tuỳ chọn:
+        vắng mặt tương đương null; null thì lịch trình không có chặng bay. Web gợi ý từ vị trí trình duyệt chỉ gửi tên
+        thành phố, không gửi toạ độ (AC-AGT-03).
 TripIntentPatch:
   type: object
   description: Chỉ các trường người dùng sửa bằng chip; trường vắng mặt nghĩa là không đổi.
@@ -131,6 +140,11 @@ TripIntentPatch:
       oneOf:
       - $ref: ../openapi.yaml#/components/schemas/Pace
       - type: 'null'
+    origin:
+      type: string
+      minLength: 1
+      maxLength: 150
+      description: (1.18.0) Thành phố đi; chỉ gửi tên thành phố, không gửi toạ độ.
 ItineraryRequest:
   type: object
   description: Baseline tích hợp 1.1.0. Cần message hoặc intentOverride; intentOverride yêu cầu conversationId
@@ -264,6 +278,45 @@ ItineraryStay:
       type: array
       items:
         $ref: ../openapi.yaml#/components/schemas/BecauseItem
+FlightDirection:
+  type: string
+  description: (1.18.0) Chặng của vé trong lịch trình; ROUND_TRIP là một vé khứ hồi phủ cả hai chặng.
+  enum:
+  - OUTBOUND
+  - RETURN
+  - ROUND_TRIP
+ItineraryFlight:
+  type: object
+  description: >-
+    (1.18.0, AC-AGT-02) Một vé máy bay trong lịch trình. Backend chọn bằng luật tất định từ chuyến bay thật của catalog
+    (tầng con của tuyến), không do LLM tạo. Giá tính vào estimatedTotal bằng unitPrice × passengers.
+  required:
+  - product
+  - direction
+  - date
+  - passengers
+  - source
+  properties:
+    product:
+      $ref: ../openapi.yaml#/components/schemas/ProductSummary
+    direction:
+      $ref: ../openapi.yaml#/components/schemas/FlightDirection
+    date:
+      type: string
+      format: date
+      description: Ngày bay của chặng đi (OUTBOUND, ROUND_TRIP) hoặc chặng về (RETURN).
+    returnDate:
+      type:
+      - string
+      - 'null'
+      format: date
+      description: Ngày bay chặng về; chỉ khác null khi direction là ROUND_TRIP.
+    passengers:
+      type: integer
+      minimum: 1
+      description: Số khách (người lớn + trẻ em) dùng để tính tiền vé.
+    source:
+      $ref: ../openapi.yaml#/components/schemas/ItemSource
 ItineraryDay:
   type: object
   required:
@@ -298,6 +351,14 @@ ItineraryPlan:
       oneOf:
       - $ref: ../openapi.yaml#/components/schemas/ItineraryStay
       - type: 'null'
+    flights:
+      type: array
+      maxItems: 2
+      description: >-
+        (1.18.0, AC-AGT-02) Vé máy bay của chuyến: một vé ROUND_TRIP, hoặc OUTBOUND và/hoặc RETURN. Vắng mặt hoặc rỗng
+        khi không đủ điều kiện có chặng bay; lý do nằm trong warnings (mã FLIGHT_*).
+      items:
+        $ref: ../openapi.yaml#/components/schemas/ItineraryFlight
     days:
       type: array
       minItems: 1
@@ -458,6 +519,7 @@ ItineraryNeedsClarification:
         - startDate
         - party
         - budget
+        - origin
     knownIntent:
       $ref: ../openapi.yaml#/components/schemas/TripIntent
     suggestedValues:
@@ -491,6 +553,7 @@ ItineraryNeedsClarification:
             - startDate
             - party
             - budget
+            - origin
         defaults:
           $ref: ../openapi.yaml#/components/schemas/TripIntent
         startDateMin:

@@ -285,6 +285,9 @@ Weaviate Cloud mất 453 giây. Mỗi request gửi truy vấn top-K sang Weavia
 Metadata (taxonomy, destination, available, recommendable, parent) vẫn nạp từ
 Postgres để tính filter: lúc khởi động và sau đó mỗi `CATALOG_REFRESH_SECONDS`
 (mặc định 900 giây), để giá, trạng thái và cửa sổ ngày theo kịp job cào hằng ngày.
+Mỗi lần nạp lại hỏi Postgres mã băm của catalog (một dòng); mã trùng lần trước thì
+dùng lại catalog đang giữ, không kéo lại — kiểm vector và độ phổ biến vẫn chạy mỗi
+chu kỳ. Hỏi mã băm lỗi thì kéo đầy đủ như cũ.
 Lần nạp lại lỗi thì giữ bản đang phục vụ. Mỗi lần nạp kiểm từng search unit
 theo object id, `modelVersion`, `textHash` (không tải vector): unit chưa có vector
 vẫn nằm trong metadata nhưng Weaviate chưa trả nó cho tới khi job index xong; unit
@@ -657,8 +660,14 @@ Lấy 1–2 nguồn cao nhất, ngưỡng tối thiểu `0.15`.
 ### 4.7. Điểm cuối và đa dạng
 
 ```
-final = cos(u, v_c) + γ · log(1 + review_count)      γ = 0.05
+final = W_SHORT · cos(u_short, v_c) + W_POP · pop_D(c) + W_LONG · cos(u_long, v_c)
+W_SHORT / W_POP / W_LONG = 0.7 / 0.15 / 0.15
 ```
+
+`u_short` = vector chuyến đang mở (không có chuyến mở thì dùng `u_long`); `pop_D` = mức phổ biến của ứng viên. Hằng nằm ở
+`src/backend/app/domain/recommendation/profile.py` (`W_SHORT, W_POP, W_LONG`). Trọng số chốt 2026-10-07, thay 0.6 / 0.25 / 0.15
+(`docs/prd/update-archive/2026-10-06-recsys-trong-so-ngan-han-pho-bien.md`; số đo: `src/evaluation/reports/eval-2026-10-06-recsys-search-tong-hop.md`
+phần A §4, `eval-2026-10-07-recsys-grid-llbo-coldstart.md`).
 
 Sau đó MMR re-rank với `λ = 0.7`, cộng giới hạn cứng tối đa 2 kết quả mỗi
 `parentProductId`.
