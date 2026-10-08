@@ -61,7 +61,7 @@ ROWS = [
 EVENTS = [
  {"cdpUserId":"P1","eventName":"product_view","productId":"A1","timestamp":"2026-09-15T10:00:00Z","eventGroupId":"T1"},
  {"cdpUserId":"P1","eventName":"purchase","productId":"R1","timestamp":"2026-09-18T10:00:00Z","usingDate":"2026-10-05","eventGroupId":"T1"},
- {"cdpUserId":"P3","eventName":"purchase","productId":"R3","timestamp":"2026-02-01T10:00:00Z","usingDate":"2026-02-20","eventGroupId":"T0"},
+ {"cdpUserId":"P3","eventName":"purchase","productId":"R3","timestamp":"2025-08-01T10:00:00Z","usingDate":"2025-08-20","eventGroupId":"T0"},   # > 365 ngày: dormant (09/10)
  {"cdpUserId":"X","eventName":"purchase","productId":"R3","timestamp":"2025-09-15T10:00:00Z","usingDate":"2025-10-01","eventGroupId":"c"},
  {"cdpUserId":"Y","eventName":"purchase","productId":"FL1","timestamp":"2025-08-20T10:00:00Z","usingDate":"2025-09-05","eventGroupId":"e"},
 ]

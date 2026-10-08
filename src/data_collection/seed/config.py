@@ -110,7 +110,8 @@ P1 = {"destination": "Nha Trang", "past_trip_days_ago": (520, 300, 125), "past_v
       "upcoming_purchase_days_ago": 3, "upcoming_using_in_days": 12, "upcoming_nights": 1, "upcoming_brand": "Vinpearl",
       "upcoming_view_days_before": 1, "upcoming_cart_minutes_before": 20, "phone": "0900000001"}
 P2 = {"destination": "Phú Quốc", "view_days_ago": (2, 1)}
-P3 = {"destination": "Phú Quốc", "trip_days_ago": (470, 190), "verticals": ("hotel", "ticket")}
+#: Chuyến cuối 400 ngày (> 365 = ngưỡng dormant của engine, chốt 09/10); CDP lifecycle theo luật seed → churned.
+P3 = {"destination": "Phú Quốc", "trip_days_ago": (700, 400), "verticals": ("hotel", "ticket")}
 PERSONA_LEAD_DAYS = (7, 20)               # chuyến cũ của persona: nhận phòng sau ngày mua 7–20 ngày
 TEST_USERS = 50
 TEST_USER_EMAIL = "test{n:02d}@vota.demo"

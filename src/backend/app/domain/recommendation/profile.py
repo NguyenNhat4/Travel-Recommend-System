@@ -14,7 +14,10 @@ H_SHORT_DAYS, H_LONG_DAYS = 30.0, 365.0
 #: 60 → 14 đo trên temporal đóng băng (docs/spec/bench/recsys-offline-eval.md §4.14 v5: Recall@20 0,196 → 0,216, LLBO không
 #: đổi; grid §4.13 với luật tuổi đơn thuần N = 14 cho 0,225); trip có `usingDate` không dùng N (xem `trip_is_open`).
 ACTIVE_TRIP_MAX_AGE_DAYS = 14
-DORMANT_AFTER_DAYS = 180
+#: `strategy = dormant` khi chuyến gần nhất > N ngày. 180 → 365 chốt 2026-10-09 (persona P3_dormant,
+#: `docs/prd/update-archive/2026-10-09-persona-trang-thai-cold-start-va-phong-cach-du-lich.md`); `diagnostics.dormant` (90 ngày,
+#: contract) không đổi.
+DORMANT_AFTER_DAYS = 365
 MAX_REPEAT_PER_TRIP = 3
 #: Cap lặp chỉ đếm event yếu (view / search); purchase và add_to_cart luôn vào vector chuyến (P1 phần còn lại, 09/10/2026:
 #: `docs/spec/bench/recsys-bam-so-thich-tong-hop.md` §3.D — không đổi số đo, đúng nghiệp vụ).
@@ -33,7 +36,7 @@ EXPLORE_MAX_PER_DESTINATION = 1
 #: mua, ô khám phá khi có chuyến mở (hai luật sau ở tầng application nhưng đổi list nên đổi nhãn).
 #: 2026-10-09 (đề xuất `update-archive/2026-10-09-recsys-uu-tien-chuyen-da-dat.md`): chuyến đã đặt còn mở được ưu tiên làm
 #: `active_trip` hơn lượt xem / giỏ lẻ đến sau (sửa I-3).
-ENGINE_RULES_VERSION = "2026-10-09-booked-first"
+ENGINE_RULES_VERSION = "2026-10-09-booked-first"   # DORMANT_AFTER_DAYS là hằng nên configHash tự đổi khi 180 → 365
 
 
 @dataclass

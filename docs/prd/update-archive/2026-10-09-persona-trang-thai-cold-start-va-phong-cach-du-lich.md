@@ -2,7 +2,7 @@
 
 - Ngày: 2026-10-09
 - Người đề xuất: tqanh123 / Claude Code soạn
-- Trạng thái: đã chốt (chưa áp dụng)
+- Trạng thái: đã áp dụng (2026-10-09: PRD, AGENTS.md §6.4, engine `DORMANT_AFTER_DAYS = 365`, spec, seed P3)
 - Chốt bởi / ngày: tqanh123, 2026-10-09 (quyết định Q7, Q8 của plan `docs/plan/2026-10-09-recsys-cong-thuc-oph.md` §0)
 - PRD bị ảnh hưởng: `docs/prd/project-brief.md` §5; `docs/prd/data-model.md` §2.2 (`APP_USERS`); `docs/prd/api-contract.md` §2.1
   (`/auth/me`); `docs/prd/user-flow.md` §1; `docs/prd/requirements.md` §3 AC-REC-01; `docs/prd/test-plan.md` (bảng E2E, dòng 4)

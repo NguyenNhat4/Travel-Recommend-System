@@ -5,7 +5,7 @@
 > (không phải 0,6/0,25/0,15); đường request không đọc `cdp.profiles`; luật chuyến mở là if/else theo `usingDate`, không phải
 > `ends_on >= today OR age <= 14`; event `search` không có `productId` nên không vào vector. Các mục kiến trúc §10–15
 > (materialize profile, Redis, stale cache, precompute) lệch PRD và nằm ngoài plan đó (§8.3). Ngưỡng dormant đã chốt
-> 365 ngày, persona = 4 trạng thái cold-start (đề xuất `docs/prd/update/2026-10-09-persona-trang-thai-cold-start-va-phong-cach-du-lich.md`).
+> 365 ngày, persona = 4 trạng thái cold-start (đề xuất `docs/prd/update-archive/2026-10-09-persona-trang-thai-cold-start-va-phong-cach-du-lich.md` (đã áp dụng 09/10)).
 
 ## 1. Bối cảnh hiện tại
 

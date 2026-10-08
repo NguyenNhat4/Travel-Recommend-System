@@ -138,7 +138,7 @@ erDiagram
         string full_name
         string phone
         string role "customer, admin"
-        string persona_tag "P1_family, P2_biz, P3_explorer, P4_deal"
+        string persona "P1_frequent, P2_first_time, P3_dormant, P4_no_history"
         timestamp email_verified_at "NULL = chưa xác minh"
         timestamp created_at
     }

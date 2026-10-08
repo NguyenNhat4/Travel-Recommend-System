@@ -85,7 +85,7 @@ Kịch bản xác thực tổng thể trước khi phát hành phiên bản mớ
 | 1 | Truy cập Trang chủ ẩn danh | Thấy danh sách gợi ý phổ biến/trending | **Không** sinh sự kiện trong `cdp.events` (khách chưa đăng nhập không được tracking — FR-CDP-02 hoãn) |
 | 2 | Nhập tìm kiếm: *"khách sạn trung tâm có hồ bơi"* | Trả về danh sách khách sạn phù hợp ngữ nghĩa | Không sinh sự kiện `search` vì đang ẩn danh |
 | 3 | Mở xem chi tiết sản phẩm khách sạn A | Hiển thị đủ ảnh, tiện ích, lịch phòng khả dụng | Không sinh sự kiện `product_view` vì đang ẩn danh |
-| 4 | Đăng nhập tài khoản Persona P1 (Gia đình), rồi tìm kiếm và xem lại khách sạn A | Trang chủ chuyển sang giao diện cá nhân hóa cho gia đình; trình duyệt chỉ có cookie `vota_sid`, không có token | Từ lúc này mới sinh `search`, `product_view` gắn `cdp_user_id` của P1; không gộp lịch sử ẩn danh |
+| 4 | Đăng nhập tài khoản demo `P1_frequent`, rồi tìm kiếm và xem lại khách sạn A | Trang chủ chuyển sang gợi ý cá nhân hoá theo lịch sử của khách; trình duyệt chỉ có cookie `vota_sid`, không có token | Từ lúc này mới sinh `search`, `product_view` gắn `cdp_user_id` của P1; không gộp lịch sử ẩn danh |
 | 5 | Mở Trợ lý AI, yêu cầu lên lịch trình 3N2Đ | Nhận được kế hoạch có cấu trúc, chứa thẻ đặt phòng khách sạn thật | Log Agent ghi nhận luồng StateGraph và tool call thành công |
 | 6 | Bấm Đặt ngay ở khách sạn A, điền thông tin, chọn Stripe, bấm Thanh toán và trả bằng thẻ test `4242 4242 4242 4242` | Qua trang Stripe, quay về trang thành công với mã `VOTA-…` | `app.bookings` = `confirmed`, `app.payments` = `succeeded`, có event `purchase` trong CDP |
 | 7 | Quan sát màn hình xác nhận đơn hàng | Hiển thị các khối gợi ý vé máy bay và tour phù hợp với chuyến đi vừa đặt | API recommendation nhận context `checkout_confirmation` |

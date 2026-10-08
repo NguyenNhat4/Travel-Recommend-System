@@ -23,7 +23,7 @@ import numpy as np
 
 from src.backend.app.domain.recommendation.profile import H_LONG_DAYS, Profile, Trip, trip_is_open
 
-#: Ngưỡng dormant đã chốt 09/10/2026 (đề xuất `docs/prd/update/2026-10-09-persona-trang-thai-cold-start-va-phong-cach-du-lich.md`).
+#: Ngưỡng dormant đã chốt 09/10/2026 (đề xuất `docs/prd/update-archive/2026-10-09-persona-trang-thai-cold-start-va-phong-cach-du-lich.md`).
 DORMANT_DAYS = 365.0
 SESSION_TRIP_ID = "_session_"
 

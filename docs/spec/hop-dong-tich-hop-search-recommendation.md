@@ -539,7 +539,7 @@ decay(Δt) = exp( −ln(2) · Δt / halfLifeDays )
 | `w(product_view)` | 1.0 | |
 | `halfLifeDays` | 30 | |
 | `finishedTripFactor` | 0.2 | |
-| `dormantDays` | 90 | Khớp `hop-dong-tich-hop-backend.md` §6.2 |
+| `dormantDays` | 365 | Ngưỡng `strategy = dormant` (chuyến gần nhất), chốt 2026-10-09; `diagnostics.dormant` vẫn 90 ngày theo contract |
 
 **`Δt` tính bằng NGÀY, kiểu số thực.** Đây là lỗi âm thầm nguy hiểm nhất của cả
 engine: tính bằng giây thì `decay ≈ 0` cho mọi event, `u_raw` gần vector 0, sau
@@ -572,7 +572,7 @@ Cap lặp `MAX_REPEAT_PER_TRIP = 3` chỉ đếm event yếu (view / search); `p
 ```
 có trip đang mở + đã purchase ít nhất 1 taxonomy  → cross_vertical
 >= 3 event dùng được, không có trip đang mở       → recent_activity
-event gần nhất > 90 ngày                          → dormant
+chuyến gần nhất > 365 ngày (từ 09/10)             → dormant
 < 3 event, không JWT, hoặc CDP lỗi                → popular
 có trip đang mở, chưa purchase trong trip,
   tổng < 3 event dùng được                        → cold_start_content
@@ -589,8 +589,9 @@ engine và chưa sửa**, đang chờ Team Recommendation/Search cùng Web quy�
   trị này khi **có** trip đang mở, trip đó chưa purchase và tổng ≥ 3 event dùng được. Engine
   coi trip đang mở là trip có event gần nhất trong 60 ngày (`ACTIVE_TRIP_MAX_AGE_DAYS`) — *luật tới 01/10/2026; từ đó theo
   bổ sung bên dưới (`usingDate`, N = 14).*
-- `dormant`: bảng này và `hop-dong-tich-hop-backend.md` §6.2 ghi 90 ngày; engine
-  dùng 180 ngày (`DORMANT_AFTER_DAYS`).
+- `dormant`: trước 09/10 bảng này và `hop-dong-tich-hop-backend.md` §6.2 ghi 90 ngày, engine dùng 180. Từ 2026-10-09
+  (đề xuất `update-archive/2026-10-09-persona-trang-thai-cold-start-va-phong-cach-du-lich.md`) cả hai là **365 ngày tính từ
+  chuyến gần nhất** (`DORMANT_AFTER_DAYS`); `diagnostics.dormant` (event gần nhất > 90 ngày) của contract không đổi nghĩa.
 - `< 3 event → popular`: engine trả `popular` khi không còn event nào dùng
   được (kể cả khách ẩn danh và CDP lỗi). Dưới 3 event mà có trip đang mở thì ra
   `cold_start_content`; chỉ có trip cũ thì ra `long_term` hoặc `dormant`.
@@ -734,8 +735,9 @@ Số nghiên cứu (`eval-2026-10-08-recsys-g2-va-wp4.md`, `--how ulong`): hit@4
 3. Còn lại                      → most-popular toàn hệ thống, tối đa 2 mỗi taxonomy
 ```
 
-**Dormant** (event gần nhất > 90 ngày): vẫn dựng user vector nhưng
-`halfLifeDays × 3`, ưu tiên `lastDestination`.
+**Dormant** (chuyến gần nhất > 365 ngày, từ 09/10): vẫn dựng user vector như khách có lịch sử. `halfLifeDays × 3` và
+`lastDestination` của bản thiết kế ban đầu **không** cài — bench 09/10 (`src/evaluation/reports/eval-2026-10-09-recsys-cong-thuc-oph.md`)
+không thấy tác dụng của `H_LONG × 3` và `lastDestination` lấy từ snapshot lộ đáp án.
 
 **Ẩn danh**: `strategy: "popular"`, `cdpUserId: null`, `200` — không `401`.
 
