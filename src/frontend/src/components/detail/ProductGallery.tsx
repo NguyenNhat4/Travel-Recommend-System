@@ -171,7 +171,7 @@ export const ProductGallery: React.FC<GalleryProps> = ({ images, name, taxonomy,
               type="button"
               onClick={() => setOpen(slot)}
               aria-label={slot === 0 ? `Xem ${images.length} ảnh của ${name}` : `Xem ảnh ${slot + 1}`}
-              className={`relative min-h-0 overflow-hidden focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-blue-600 ${cellClass(slot, total)}`}
+              className={`relative min-h-0 overflow-hidden focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-600 ${cellClass(slot, total)}`}
             >
               <Photo src={src} alt={slot === 0 ? name : ''} taxonomy={taxonomy} priority={slot === 0} className="h-full w-full object-cover transition-transform duration-300 hover:scale-[1.03] motion-reduce:transition-none" />
               {images.length > 1 && slot === 0 && badge('inline-flex md:hidden')}

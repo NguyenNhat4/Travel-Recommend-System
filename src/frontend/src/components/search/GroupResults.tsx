@@ -112,7 +112,7 @@ export const GroupResults: React.FC<GroupResultsProps> = ({ group, query, destin
                 name="starRating"
                 checked={minStarRating === opt.val}
                 onChange={() => setMinStarRating(opt.val)}
-                className="text-blue-600 focus:ring-blue-500 w-3.5 h-3.5"
+                className="text-brand-600 focus:ring-brand-500 w-3.5 h-3.5"
               />
               <span>{opt.label}</span>
             </label>
@@ -134,11 +134,11 @@ export const GroupResults: React.FC<GroupResultsProps> = ({ group, query, destin
               const value = parseInt(e.target.value, 10);
               setMaxPrice(value >= 8000000 ? undefined : value);
             }}
-            className="w-full accent-blue-600"
+            className="w-full accent-brand-600"
           />
           <div className="flex justify-between text-xs text-slate-500 font-mono">
             <span>500k</span>
-            <span className="font-bold text-blue-700">{maxPrice ? new Intl.NumberFormat('vi-VN').format(maxPrice) + ' ₫' : 'Tất cả'}</span>
+            <span className="font-bold text-brand-700">{maxPrice ? new Intl.NumberFormat('vi-VN').format(maxPrice) + ' ₫' : 'Tất cả'}</span>
             <span>8tr+</span>
           </div>
         </div>
@@ -158,7 +158,7 @@ export const GroupResults: React.FC<GroupResultsProps> = ({ group, query, destin
       <div className="p-10 text-center bg-white rounded-2xl border border-slate-200 space-y-3">
         <h3 className="text-base font-bold text-slate-800">{error.message}</h3>
         {error.retryable && (
-          <button onClick={() => setRetryToken((n) => n + 1)} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg transition-colors">
+          <button onClick={() => setRetryToken((n) => n + 1)} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-lg transition-colors">
             Thử lại
           </button>
         )}
@@ -184,7 +184,7 @@ export const GroupResults: React.FC<GroupResultsProps> = ({ group, query, destin
             <button
               onClick={() => setPages((n) => n + 1)}
               disabled={loading}
-              className="px-5 py-2.5 bg-white border border-slate-300 hover:border-blue-500 hover:text-blue-700 text-slate-700 font-bold text-xs rounded-lg transition-colors disabled:opacity-60"
+              className="px-5 py-2.5 bg-white border border-slate-300 hover:border-brand-500 hover:text-brand-700 text-slate-700 font-bold text-xs rounded-lg transition-colors disabled:opacity-60"
             >
               {loading ? 'Đang tải…' : `Xem thêm (${loaded.items.length}/${loaded.total})`}
             </button>
@@ -212,7 +212,7 @@ export const GroupResults: React.FC<GroupResultsProps> = ({ group, query, destin
               Xóa bộ lọc
             </button>
           )}
-          <button onClick={onAskAssistant} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg transition-colors">
+          <button onClick={onAskAssistant} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-lg transition-colors">
             Nhờ Trợ lý AI gợi ý
           </button>
         </div>
@@ -227,11 +227,11 @@ export const GroupResults: React.FC<GroupResultsProps> = ({ group, query, destin
         <div className="bg-white p-3.5 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-slate-400 font-medium">Đang lọc:</span>
-            <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-medium border border-indigo-200">
+            <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-brand-50 text-brand-700 font-medium border border-brand-200">
               {label ?? SEARCH_GROUPS[group].label}
             </span>
             {destination && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 font-medium border border-blue-200">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-brand-50 text-brand-700 font-medium border border-brand-200">
                 {destination}
                 <button onClick={onClearDestination} aria-label={`Bỏ lọc ${destination}`}><X className="w-3 h-3" /></button>
               </span>

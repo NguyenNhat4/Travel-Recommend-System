@@ -35,7 +35,7 @@ export const HistoryPagination: React.FC<HistoryPaginationProps> = ({ page, page
           <button
             key={item} type="button" aria-label={`Trang ${item}`} aria-current={item === page ? 'page' : undefined}
             onClick={() => onPage(item)}
-            className={`${BUTTON} ${item === page ? 'bg-blue-600 text-white' : 'text-slate-700 hover:bg-slate-100'}`}
+            className={`${BUTTON} ${item === page ? 'bg-brand-600 text-white' : 'text-slate-700 hover:bg-slate-100'}`}
           >
             {item}
           </button>

@@ -104,7 +104,7 @@ function getTransitVisual(mode: TransitMode): TransitVisual {
 }
 
 const DAY_COLORS: Record<number, { bg: string; text: string; hex: string; border: string }> = {
-  1: { bg: 'bg-blue-600', text: 'text-white', hex: '#2563eb', border: '#1d4ed8' },
+  1: { bg: 'bg-brand-600', text: 'text-white', hex: '#2563eb', border: '#1d4ed8' },
   2: { bg: 'bg-emerald-600', text: 'text-white', hex: '#059669', border: '#047857' },
   3: { bg: 'bg-amber-600', text: 'text-white', hex: '#d97706', border: '#b45309' },
   4: { bg: 'bg-purple-600', text: 'text-white', hex: '#7c3aed', border: '#6d28d9' },
@@ -292,7 +292,7 @@ export const ItineraryMap: React.FC<ItineraryMapProps> = ({
     const bounds = L.latLngBounds([]);
     const stayHtml = `
       <div class="relative group cursor-pointer transform -translate-x-1/2 -translate-y-1/2">
-        <div class="w-9 h-9 rounded-full bg-indigo-600 text-white flex items-center justify-center shadow-lg border-2 border-white ring-2 ring-indigo-300 transition-transform hover:scale-110">
+        <div class="w-9 h-9 rounded-full bg-brand-600 text-white flex items-center justify-center shadow-lg border-2 border-white ring-2 ring-brand-300 transition-transform hover:scale-110">
           <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M7 13c1.66 0 3-1.34 3-3S8.66 7 7 7s-3 1.34-3 3 1.34 3 3 3zm12-6h-8v7H3V5H1v15h2v-3h18v3h2v-9c0-2.21-1.79-4-4-4z"/></svg>
         </div>
         <span class="absolute -bottom-5 left-1/2 -translate-x-1/2 bg-slate-900/90 text-white text-[10px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap shadow-sm pointer-events-none">
@@ -430,7 +430,7 @@ export const ItineraryMap: React.FC<ItineraryMapProps> = ({
         </div>
         <div class="text-[11px] text-slate-600 mt-1">${result.fromTitle} ➔ ${result.toTitle}</div>
         ${result.distanceMeters ? `<div class="text-[10px] text-slate-500 mt-1">${(result.distanceMeters / 1000).toFixed(1)} km · ${Math.round((result.durationSeconds ?? 0) / 60)} phút</div>` : ''}
-        ${result.transitInfo ? `<div class="text-[10px] text-blue-600 font-medium mt-1">ℹ️ ${result.transitInfo}</div>` : ''}
+        ${result.transitInfo ? `<div class="text-[10px] text-brand-600 font-medium mt-1">ℹ️ ${result.transitInfo}</div>` : ''}
       </div>`;
       segmentLine.bindTooltip(tooltip, { sticky: true, opacity: 0.95 });
 
@@ -468,7 +468,7 @@ export const ItineraryMap: React.FC<ItineraryMapProps> = ({
       // 2. Một vòng ping quanh marker sẵn có (không vẽ thêm chấm, tránh chồng hiệu ứng)
       const pulseHtml = `
         <div class="relative flex h-full w-full items-center justify-center pointer-events-none">
-          <div class="absolute h-10 w-10 rounded-full bg-blue-500/30 animate-ping motion-reduce:animate-none"></div>
+          <div class="absolute h-10 w-10 rounded-full bg-brand-500/30 animate-ping motion-reduce:animate-none"></div>
         </div>
       `;
 
@@ -539,11 +539,11 @@ export const ItineraryMap: React.FC<ItineraryMapProps> = ({
               }}
               className={`px-3 py-1 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer ${
                 filterDay === d.day 
-                  ? 'bg-blue-600 text-white shadow-2xs' 
+                  ? 'bg-brand-600 text-white shadow-2xs' 
                   : 'text-slate-600 hover:bg-slate-100'
               }`}
             >
-              <span className={`w-2 h-2 rounded-full ${filterDay === d.day ? 'bg-white' : 'bg-blue-500'}`} />
+              <span className={`w-2 h-2 rounded-full ${filterDay === d.day ? 'bg-white' : 'bg-brand-500'}`} />
               Ngày {d.day}
             </button>
           ))}
@@ -556,7 +556,7 @@ export const ItineraryMap: React.FC<ItineraryMapProps> = ({
           className="px-3 py-1.5 bg-white/95 backdrop-blur-xs hover:bg-white text-slate-700 text-xs font-semibold rounded-xl shadow-md border border-slate-200 transition-colors flex items-center gap-1.5 pointer-events-auto cursor-pointer"
           title="Khớp toàn bộ lộ trình"
         >
-          <Compass className="w-3.5 h-3.5 text-blue-600" />
+          <Compass className="w-3.5 h-3.5 text-brand-600" />
           <span className="hidden sm:inline">Khớp tầm nhìn</span>
         </button>
       </div>
@@ -578,7 +578,7 @@ export const ItineraryMap: React.FC<ItineraryMapProps> = ({
       {/* Map Legend (Bottom-Left) */}
       <div className="absolute bottom-4 left-4 z-[1000] p-2.5 bg-white/95 backdrop-blur-xs rounded-xl shadow-md border border-slate-200 text-[11px] text-slate-600 space-y-1.5 hidden md:block max-w-[210px]">
         <div className="font-bold text-slate-800 flex items-center gap-1">
-          <Layers className="w-3 h-3 text-blue-600" />
+          <Layers className="w-3 h-3 text-brand-600" />
           <span>Phương tiện & Lộ trình</span>
         </div>
         <div className="grid grid-cols-2 gap-1.5 pt-0.5 text-[10px]">
@@ -608,7 +608,7 @@ export const ItineraryMap: React.FC<ItineraryMapProps> = ({
           </div>
         </div>
         <div className="pt-1 border-t border-slate-100 flex items-center gap-1.5 text-[10px] text-slate-500">
-          <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 inline-block shrink-0"></span>
+          <span className="w-2.5 h-2.5 rounded-full bg-brand-600 inline-block shrink-0"></span>
           <span>Chỗ nghỉ cố định</span>
         </div>
       </div>
@@ -619,7 +619,7 @@ export const ItineraryMap: React.FC<ItineraryMapProps> = ({
           <div className="flex items-start justify-between gap-2">
             <div className="flex items-center gap-2">
               <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                selectedPoint.type === 'stay' ? 'bg-indigo-100 text-indigo-800' : 'bg-blue-100 text-blue-800'
+                selectedPoint.type === 'stay' ? 'bg-brand-100 text-brand-800' : 'bg-brand-100 text-brand-800'
               }`}>
                 {selectedPoint.type === 'stay' ? 'Chỗ nghỉ cả chuyến' : `Ngày ${selectedPoint.day} · ${getTimeLabel(selectedPoint.timeSlot)}`}
               </span>
@@ -661,7 +661,7 @@ export const ItineraryMap: React.FC<ItineraryMapProps> = ({
                 {pinActions.canAddToCart && (
                   <button
                     onClick={pinActions.addToCart}
-                    className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold rounded-lg transition-colors flex items-center gap-1"
+                    className="px-3 py-1.5 bg-brand-50 hover:bg-brand-100 text-brand-700 border border-brand-200 text-xs font-bold rounded-lg transition-colors flex items-center gap-1"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>Thêm vào giỏ</span>
@@ -669,7 +669,7 @@ export const ItineraryMap: React.FC<ItineraryMapProps> = ({
                 )}
                 <button
                   onClick={pinActions.bookNow}
-                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-xs transition-colors"
+                  className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold rounded-lg shadow-xs transition-colors"
                 >
                   Đặt ngay
                 </button>

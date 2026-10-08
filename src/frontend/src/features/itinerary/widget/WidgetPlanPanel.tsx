@@ -67,9 +67,9 @@ export function WidgetPlanPanel({ widget }: { widget: FloatingWidgetController }
         <button
           onClick={() => setActiveDayTab(0)}
           aria-pressed={activeDayTab === 0}
-          className={`min-h-11 px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap focus-visible:outline-2 focus-visible:outline-blue-600 ${
+          className={`min-h-11 px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap focus-visible:outline-2 focus-visible:outline-brand-600 ${
             activeDayTab === 0
-              ? 'bg-blue-600 text-white shadow-xs'
+              ? 'bg-brand-600 text-white shadow-xs'
               : 'text-slate-600 hover:text-slate-900'
           }`}
         >
@@ -80,9 +80,9 @@ export function WidgetPlanPanel({ widget }: { widget: FloatingWidgetController }
             key={d.day}
             onClick={() => setActiveDayTab(d.day)}
             aria-pressed={activeDayTab === d.day}
-            className={`min-h-11 px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap focus-visible:outline-2 focus-visible:outline-blue-600 ${
+            className={`min-h-11 px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap focus-visible:outline-2 focus-visible:outline-brand-600 ${
               activeDayTab === d.day
-                ? 'bg-blue-600 text-white shadow-xs'
+                ? 'bg-brand-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -124,7 +124,7 @@ export function WidgetPlanPanel({ widget }: { widget: FloatingWidgetController }
           onClick={handleCheckoutPlan}
           disabled={isCheckingOut}
           aria-busy={isCheckingOut}
-          className="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 active:bg-blue-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:cursor-wait disabled:opacity-60"
+          className="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 active:bg-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 disabled:cursor-wait disabled:opacity-60"
         >
           <span>{isCheckingOut ? 'Đang mở trang thanh toán…' : 'Thanh toán tất cả'}</span>
           {isCheckingOut ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}

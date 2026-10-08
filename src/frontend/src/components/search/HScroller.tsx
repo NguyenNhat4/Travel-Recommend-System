@@ -48,7 +48,7 @@ export const HScroller: React.FC<HScrollerProps> = ({ children, count, label }) 
     if (track) track.scrollBy({ left: direction * track.clientWidth * 0.9, behavior: 'smooth' });
   };
 
-  const buttonClass = 'absolute top-1/2 z-10 hidden h-10 w-10 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-md transition hover:text-blue-600 active:scale-95 md:flex';
+  const buttonClass = 'absolute top-1/2 z-10 hidden h-10 w-10 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-md transition hover:text-brand-600 active:scale-95 md:flex';
 
   return (
     <div className="relative" role="group" aria-label={label}>

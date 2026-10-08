@@ -316,7 +316,7 @@ Tab **Tất cả** không có thanh bên và không có sắp xếp: ba hàng th
 │ └──────────────────────────────────────┘└──ảnh──┘    ngang, không để ô trống)    │
 ├─ Tabs dính: Tổng quan · Tiện ích · Chọn ngày & số lượng ───────────────────────┤
 │ CỘT TRÁI (2/3)                              │ CỘT PHẢI (1/3, dính khi cuộn)    │
-│ ▸ Mô tả (4 dòng + "Xem thêm")               │ ┌ Hộp đặt ─────────────────────┐ │
+│ ▸ Mô tả (4 dòng + "Xem thêm")               │ ┌ Hộp đặt (không dùng cho KS) ─┐ │
 │ ▸ Điểm nổi bật: tag từ attributes          │ │ Từ 3.400.000 ₫ / đêm          │ │
 │ ▸ Tiện ích (lưới 2 cột, icon + nhãn,        │ │ Nhận phòng  [15/10/2026]      │ │
 │   "Xem tất cả n tiện ích")                  │ │ Trả phòng   [18/10/2026]      │ │
@@ -343,7 +343,7 @@ Tab **Tất cả** không có thanh bên và không có sắp xếp: ba hàng th
 | Tabs dính | Cuộn tới anchor, đánh dấu tab đang xem | — | `[R46]` Expedia web (Overview · Amenities · Rooms · Policies dính trên cùng); `[R47]` Klook web |
 | Mô tả | Mô tả tiếng Việt từ vinpearl.com, cắt 4 dòng | `description` | — |
 | Tiện ích / thuộc tính | Mục "Tiện ích khách sạn" từ `attributes.amenities`: chuỗi của nguồn, bỏ trùng không phân biệt hoa thường, hiện 12 mục đầu và nút "Xem tất cả (N)" mở hết, "Thu gọn" đóng lại. Không đoán nhãn từ key lạ | `attributes.amenities` | `[R48]` Airbnb web ("What this place offers" + "Show all 34 amenities") |
-| **Hộp đặt** | Các trường thay đổi theo `taxonomy` (bảng 4.3.3). Ngày bị giới hạn trong `availableFrom`–`availableTo`. Tổng tiền tính lại ngay khi đổi lựa chọn. Dòng trấn an: "Bạn chưa bị trừ tiền — đây là bản demo" | `unitPrice`, `available*` | `[R48]` Airbnb web (hộp đặt dính bên phải + "You won't be charged yet"); `[R51]` Klook web (lịch chọn ngày + chọn giờ + stepper số lượng + "Add to cart" / "Book now") |
+| **Hộp đặt** | Vé máy bay, vé tham quan, golf, combo: các trường thay đổi theo `taxonomy` (bảng 4.3.3). **Khách sạn không có hộp đặt dính** (chốt 2026-10-08): ngày và số khách ở thanh tìm kiếm trên cùng trang (phía trên thanh phân cấp, như tấm tìm kiếm ở trang danh mục), nút Đặt ngay nằm trên từng thẻ hạng phòng, có bộ lọc tiện ích phòng phía trên danh sách (frontend §4.3); không còn hạng phòng "đang chọn" và không có tổng ước tính trên trang. Với các loại còn lại: Ngày bị giới hạn trong `availableFrom`–`availableTo`. Tổng tiền tính lại ngay khi đổi lựa chọn. Dòng trấn an: "Bạn chưa bị trừ tiền — đây là bản demo" | `unitPrice`, `available*` | `[R48]` Airbnb web (hộp đặt dính bên phải + "You won't be charged yet"); `[R51]` Klook web (lịch chọn ngày + chọn giờ + stepper số lượng + "Add to cart" / "Book now") |
 | CTA theo loại | **Khách sạn, vé máy bay:** chỉ có "Đặt ngay" kèm dòng "được đặt trực tiếp, không thêm vào giỏ hàng" (giá và chỗ đổi liên tục nên không gom vào giỏ). **Tour, trải nghiệm, golf, combo:** "Thêm vào giỏ" (chính) → toast "Đã thêm vào giỏ · [Xem giỏ]", ở lại trang; và "Đặt ngay" (phụ). "Đặt ngay" ở mọi loại mở thẳng trang thanh toán với **đúng mục này**, không kèm mục nào đang có trong giỏ (`docs/spec/booking/dat-truc-tiep-theo-don-nhap.md`) | — | `[R51]` Klook web (hai nút cạnh nhau) |
 | Hoàn thiện chuyến | Chỉ khi đã đăng nhập **và** `destination` của gợi ý trùng với điểm đến sản phẩm. Dùng lại section ① của Home | `/recommendations` | `[R09]` Booking.com iOS |
 | Lối vào Trợ lý | Link nhỏ dưới hộp đặt: "Lên lịch trình quanh {tên}" → `/assistant` điền sẵn "Gợi ý lịch trình 3 ngày ở {destination}, tôi ở {tên}" | — | `[R88]` Booking.com iOS (người dùng mở chat bằng "I've booked: Wolf Inn Hotel…") |
@@ -352,7 +352,7 @@ Tab **Tất cả** không có thanh bên và không có sắp xếp: ba hàng th
 
 | `taxonomy` | Trường chọn | Công thức tổng | Ghi chú |
 |---|---|---|---|
-| `hotel` | **Hạng phòng** (danh sách từ `GET /products?parentProductId=`), nhận phòng, trả phòng, số phòng | `unitPrice của hạng phòng × số đêm × số phòng` | Khách sạn (property) không đặt trực tiếp: chọn một hạng phòng, mặc định hạng rẻ nhất còn đặt được. Ngày mặc định: ngày mai (giờ Việt Nam) trong cửa sổ mở bán, 1 đêm. Khách sạn không có hạng phòng thì chỉ để xem |
+| `hotel` | Không có hộp đặt: thanh tìm kiếm trên cùng trang (địa điểm gõ được, ngày ở, số phòng và khách; đổi địa điểm rồi tìm thì sang `/hotels`) và nút **Đặt ngay trên từng hạng phòng** (danh sách từ `GET /products?parentProductId=`) | `unitPrice của hạng phòng × số đêm × số phòng` (tính ở bước thanh toán) | Khách sạn (property) không đặt trực tiếp: bấm Đặt ngay ở hạng phòng nào thì đặt hạng phòng đó. Ngày và số khách điền sẵn từ URL tìm kiếm. Ngày mặc định: ngày mai (giờ Việt Nam) trong cửa sổ mở bán, 1 đêm. Khách sạn không có hạng phòng thì chỉ để xem |
 | `flight` | **Chuyến bay** của tuyến (danh sách như trên), số hành khách | `unitPrice × số khách` | Mỗi chuyến bay có một ngày cố định (`availableFrom = availableTo`), hiện ở dạng chỉ đọc |
 | `attraction` / `golf` | Ngày sử dụng (chip nhanh "Hôm nay · Ngày mai · Chọn ngày"), số khách | `unitPrice × số khách` | `[R53]` Klook web (chip "Today / Tomorrow / 27 Jan / All dates"); `[R52]` Klook web (panel "What's included") |
 | `combo` | Ngày bắt đầu, số khách | `unitPrice × số khách` | — |
@@ -364,7 +364,7 @@ Mọi lựa chọn được lưu thành một mục giỏ (tour, trải nghiệm
 | Trạng thái | Hành vi |
 |---|---|
 | Đang tải | Skeleton ảnh lớn + 3 dòng tiêu đề + khung hộp đặt. Pattern: `[R46]` Expedia web (skeleton khối phòng trong lúc tải) |
-| `available: false` | Hộp đặt thay bằng: "Sản phẩm này hiện đã hết chỗ". Hai CTA bị ẩn |
+| `available: false` | Hộp đặt (hoặc nút Đặt ngay của hạng phòng) thay bằng: "Sản phẩm này hiện đã hết chỗ". Hai CTA bị ẩn |
 | Ngày chọn ngoài `availableFrom`–`availableTo` | Ngày bị disable trên lịch. Nếu dữ liệu cũ khiến toàn bộ khoảng ngày đã qua thì xử lý như hết chỗ |
 | 404 (sản phẩm bị xóa, handbook §6 "event trỏ tới sản phẩm đã bị xóa") | Trang "Sản phẩm này không còn trên V-OTA" + carousel phổ biến + [Về trang chủ] |
 | Thêm vào giỏ thất bại | Nút trở lại bình thường. Toast lỗi "Chưa thêm được vào giỏ. [Thử lại]" |

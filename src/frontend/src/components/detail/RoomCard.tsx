@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Baby, Ban, Bed, BedDouble, CheckCircle2, ChevronDown, Images, Maximize2, ShieldCheck, Tag, Users, Waves } from 'lucide-react';
+import { Baby, Ban, Bed, BedDouble, ChevronDown, Loader2, Images, Maximize2, ShieldCheck, Tag, Users, Waves } from 'lucide-react';
 import { placeholderImage } from '../../services/catalog';
 import type { Product } from '../../types/travel';
 import { formatVnd } from '../confirmation/bookingLabels';
@@ -13,12 +13,17 @@ interface RoomCardProps {
   room: Product;
   /** Tên hạng phòng (`roomName`, không kèm tên khách sạn). */
   title: string;
-  selected: boolean;
-  /** Đang bán và có giá (cùng điều kiện đặt được ở hộp đặt). */
-  selectable: boolean;
+  /** Đang bán và có giá. */
+  bookable: boolean;
+  /** Ngày và đoàn khách đang nhập hợp lệ với phòng này; sai thì nút Đặt ngay khoá. */
+  canBook: boolean;
+  /** Lý do riêng của phòng này khi đoàn khách không hợp lệ (ví dụ vượt sức chứa). */
+  bookNote?: string | null;
   /** Giá thấp nhất trong các hạng phòng bán được (chỉ gắn nhãn khi có ít nhất hai hạng). */
   cheapest?: boolean;
-  onSelect: () => void;
+  onBook: () => void;
+  /** Đang tạo đơn nháp: khoá nút và hiện vòng xoay để khách không bấm hai lần. */
+  busy?: boolean;
   onPhotos: (images: string[]) => void;
   amenitiesOpen: boolean;
   onToggleAmenities: () => void;
@@ -43,12 +48,11 @@ function roomFacts(room: Product): Fact[] {
 }
 
 /**
- * Thẻ một hạng phòng ở bước "Chọn hạng phòng": ảnh lớn, thông số có icon, tiện ích nổi bật có icon, giá nổi bật và trạng thái chọn rõ.
- * Cả thẻ là một ô chọn (`role="radio"` phủ kín thẻ, nằm dưới nội dung); nút xem ảnh và tiện ích nằm trên nó nên bấm vào đó không đổi
- * lựa chọn. Nội dung `pointer-events-none` để mọi chỗ khác của thẻ đều chọn được.
+ * Thẻ một hạng phòng: ảnh lớn, thông số có icon, tiện ích nổi bật có icon, giá nổi bật và nút Đặt ngay ngay trên thẻ. Ngày và đoàn
+ * khách lấy từ thanh ngày/số khách phía trên danh sách (điền sẵn từ tấm tìm kiếm), nên khách đi từ kết quả tìm kiếm bấm đặt luôn.
  */
 export const RoomCard: React.FC<RoomCardProps> = ({
-  room, title, selected, selectable, cheapest, onSelect, onPhotos, amenitiesOpen, onToggleAmenities,
+  room, title, bookable, canBook, bookNote, busy, cheapest, onBook, onPhotos, amenitiesOpen, onToggleAmenities,
 }) => {
   const photos = imagesOf(room);
   const amenities = amenityList(room.attributes?.amenities);
@@ -57,25 +61,11 @@ export const RoomCard: React.FC<RoomCardProps> = ({
   const price = room.unitPrice;
   const panelId = `amenities-${room.id}`;
 
-  const frame = selected
-    ? 'border-blue-600 bg-blue-50/40 shadow-lg shadow-blue-900/10 ring-2 ring-blue-600/30'
-    : selectable
-      ? 'border-slate-200 bg-white hover:border-blue-300 hover:shadow-md'
-      : 'border-slate-200 bg-slate-50';
+  const frame = bookable ? 'border-slate-200 bg-white hover:border-brand-300 hover:shadow-md' : 'border-slate-200 bg-slate-50';
 
   return (
-    <div className={`relative overflow-hidden rounded-2xl border transition-all duration-200 motion-reduce:transition-none ${frame} ${selectable ? '' : 'opacity-75'}`}>
-      <button
-        type="button"
-        role="radio"
-        aria-checked={selected}
-        aria-label={`${title}${price != null ? `, ${formatVnd(price)} mỗi đêm` : ''}`}
-        disabled={!selectable}
-        onClick={onSelect}
-        className="absolute inset-0 z-0 h-full w-full cursor-pointer rounded-2xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:cursor-not-allowed"
-      />
-
-      <div className="pointer-events-none relative z-10 flex flex-col md:flex-row">
+    <div className={`relative overflow-hidden rounded-2xl border transition-all duration-200 motion-reduce:transition-none ${frame} ${bookable ? '' : 'opacity-75'}`}>
+      <div className="flex flex-col md:flex-row">
         <div className="relative aspect-16/10 shrink-0 overflow-hidden bg-slate-100 md:aspect-auto md:min-h-[230px] md:w-64">
           <img
             src={photos[0] ?? room.imageUrl}
@@ -88,19 +78,19 @@ export const RoomCard: React.FC<RoomCardProps> = ({
               const fallback = placeholderImage(room.taxonomy);
               if (!event.currentTarget.src.endsWith(fallback)) event.currentTarget.src = fallback;
             }}
-            className={`absolute inset-0 h-full w-full object-cover transition-transform duration-500 motion-reduce:transition-none ${selectable ? '' : 'grayscale'}`}
+            className={`absolute inset-0 h-full w-full object-cover transition-transform duration-500 motion-reduce:transition-none ${bookable ? '' : 'grayscale'}`}
           />
           {photos.length > 0 && (
             <button
               type="button"
               onClick={() => onPhotos(photos)}
               aria-label={`Xem ảnh phòng (${photos.length})`}
-              className="pointer-events-auto absolute bottom-3 left-3 inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-white/90 px-2.5 py-1.5 text-xs font-semibold text-slate-800 shadow backdrop-blur transition hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+              className="absolute bottom-3 left-3 inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-white/90 px-2.5 py-1.5 text-xs font-semibold text-slate-800 shadow backdrop-blur transition hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
             >
               <Images className="h-3.5 w-3.5" aria-hidden="true" />{photos.length}
             </button>
           )}
-          {!selectable && (
+          {!bookable && (
             <span className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-lg bg-slate-900/80 px-2.5 py-1 text-xs font-bold text-white">
               <Ban className="h-3.5 w-3.5" aria-hidden="true" />Hết chỗ
             </span>
@@ -110,7 +100,7 @@ export const RoomCard: React.FC<RoomCardProps> = ({
         <div className="flex min-w-0 flex-1 flex-col gap-3.5 p-4 md:p-5">
           <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1.5">
             <h4 className="min-w-0 font-display text-lg font-semibold leading-snug text-slate-900">{title}</h4>
-            {cheapest && selectable && (
+            {cheapest && bookable && (
               <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-800 ring-1 ring-amber-200">
                 <Tag className="h-3 w-3" aria-hidden="true" />Giá tốt nhất
               </span>
@@ -121,7 +111,7 @@ export const RoomCard: React.FC<RoomCardProps> = ({
             <ul className="flex flex-wrap gap-x-4 gap-y-2 text-[13px] font-medium text-slate-700" aria-label="Thông số phòng">
               {facts.map(({ icon: Icon, text }) => (
                 <li key={text} className="inline-flex items-center gap-1.5">
-                  <Icon className="h-4 w-4 shrink-0 text-blue-700" aria-hidden="true" />{text}
+                  <Icon className="h-4 w-4 shrink-0 text-brand-700" aria-hidden="true" />{text}
                 </li>
               ))}
             </ul>
@@ -133,7 +123,7 @@ export const RoomCard: React.FC<RoomCardProps> = ({
                 const Icon = amenityIcon(item);
                 return (
                   <li key={item} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/80 px-2.5 py-1 text-xs text-slate-700">
-                    <Icon className="h-3.5 w-3.5 shrink-0 text-blue-700" aria-hidden="true" />{item}
+                    <Icon className="h-3.5 w-3.5 shrink-0 text-brand-700" aria-hidden="true" />{item}
                   </li>
                 );
               })}
@@ -147,7 +137,7 @@ export const RoomCard: React.FC<RoomCardProps> = ({
                 aria-expanded={amenitiesOpen}
                 aria-controls={panelId}
                 onClick={onToggleAmenities}
-                className="pointer-events-auto inline-flex cursor-pointer items-center gap-1 text-xs font-semibold text-blue-700 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+                className="inline-flex min-h-11 cursor-pointer items-center gap-1 text-xs font-semibold text-brand-700 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
               >
                 {amenitiesOpen ? 'Ẩn tiện ích phòng' : `Tiện ích phòng (${amenities.length})`}
                 <ChevronDown className={`h-3.5 w-3.5 transition-transform motion-reduce:transition-none ${amenitiesOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
@@ -158,7 +148,7 @@ export const RoomCard: React.FC<RoomCardProps> = ({
               <div className="text-right">
                 {price != null ? (
                   <>
-                    <p className="text-2xl font-bold leading-none text-blue-900 tabular-nums">
+                    <p className="text-2xl font-bold leading-none text-brand-900 tabular-nums">
                       {formatVnd(price)}<span className="ml-1 text-xs font-medium text-slate-500">/ đêm</span>
                     </p>
                     <p className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-slate-500">
@@ -168,24 +158,26 @@ export const RoomCard: React.FC<RoomCardProps> = ({
                 ) : (
                   <p className="text-sm font-medium text-slate-500">Chưa có giá</p>
                 )}
+                {bookNote && <p role="alert" className="mt-1.5 max-w-64 text-[11px] font-medium text-amber-800" data-testid="room-book-note">{bookNote}</p>}
               </div>
-              <span
-                className={`inline-flex h-10 min-w-[7.5rem] items-center justify-center gap-1.5 rounded-xl px-4 text-sm font-bold transition-colors motion-reduce:transition-none ${
-                  !selectable ? 'bg-slate-200 text-slate-500'
-                    : selected ? 'bg-blue-700 text-white shadow-sm'
-                      : 'border border-blue-200 bg-white text-blue-700'}`}
-                aria-hidden="true"
+              <button
+                type="button"
+                onClick={onBook}
+                disabled={!bookable || !canBook || busy}
+                aria-busy={busy}
+                aria-label={`Đặt ngay ${title}`}
+                className="inline-flex h-11 min-w-[8rem] cursor-pointer items-center justify-center gap-2 rounded-xl bg-brand-600 px-5 text-sm font-bold text-white shadow-xs transition-colors hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 motion-reduce:transition-none"
               >
-                {selected && <CheckCircle2 className="h-4 w-4" />}
-                {!selectable ? 'Hết chỗ' : selected ? 'Đã chọn' : 'Chọn phòng'}
-              </span>
+                {busy && <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />}
+                {!bookable ? 'Hết chỗ' : busy ? 'Đang xử lý' : 'Đặt ngay'}
+              </button>
             </div>
           </div>
         </div>
       </div>
 
       {amenitiesOpen && amenities.length > 0 && (
-        <div id={panelId} className="pointer-events-auto relative z-10 border-t border-slate-100 bg-slate-50/80 px-4 py-4 md:px-5">
+        <div id={panelId} className="border-t border-slate-100 bg-slate-50/80 px-4 py-4 md:px-5">
           <AmenityList items={amenities} limit={60} label="Tiện ích phòng" compact columns />
         </div>
       )}

@@ -44,9 +44,9 @@ export const FlightFilters: React.FC<FlightFiltersProps> = ({ facets, airlines, 
   return (
     <aside aria-label="Bộ lọc chuyến bay" className={`rounded-[20px] border border-slate-100 bg-white px-5 pb-6 pt-2.5 shadow-[0_8px_40px_rgba(15,28,58,0.05)] ${className}`}>
       <div className="flex items-center gap-2 border-b border-slate-200 py-2 pb-3.5 md:border-b">
-        <h2 className="mr-auto font-display text-xl text-slate-900">Bộ lọc{activeCount > 0 && <span className="ml-2 align-middle text-sm text-blue-600">({activeCount})</span>}</h2>
+        <h2 className="mr-auto font-display text-xl text-slate-900">Bộ lọc{activeCount > 0 && <span className="ml-2 align-middle text-sm text-brand-600">({activeCount})</span>}</h2>
         <button type="button" onClick={onReset} disabled={activeCount === 0}
-          className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-1.5 py-1 text-[15px] font-medium text-blue-700 hover:bg-blue-50 disabled:cursor-default disabled:text-slate-400 disabled:hover:bg-transparent">
+          className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-1.5 py-1 text-[15px] font-medium text-brand-700 hover:bg-brand-50 disabled:cursor-default disabled:text-slate-400 disabled:hover:bg-transparent">
           <RotateCcw className="h-4 w-4" aria-hidden="true" />Đặt lại
         </button>
         <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-controls={bodyId} aria-label="Mở hoặc đóng bộ lọc"
@@ -67,9 +67,9 @@ export const FlightFilters: React.FC<FlightFiltersProps> = ({ facets, airlines, 
                 <button key={slot.id} type="button" aria-pressed={pressed} disabled={count === 0}
                   onClick={() => onChange({ ...filters, slots: toggled(filters.slots, slot.id) })}
                   className={`flex cursor-pointer flex-col gap-0.5 rounded-[14px] border px-2.5 py-2.5 text-left transition-colors last:col-span-2 disabled:cursor-not-allowed disabled:text-slate-400 ${
-                    pressed ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-900 enabled:hover:border-blue-300'}`}>
+                    pressed ? 'border-brand-600 bg-brand-50 text-brand-700' : 'border-slate-200 bg-white text-slate-900 enabled:hover:border-brand-300'}`}>
                   <span className="flex items-center gap-1.5">
-                    <Icon className={`h-5 w-5 ${pressed ? 'text-blue-600' : 'text-slate-500'} ${count === 0 ? 'opacity-50' : ''}`} aria-hidden="true" />
+                    <Icon className={`h-5 w-5 ${pressed ? 'text-brand-600' : 'text-slate-500'} ${count === 0 ? 'opacity-50' : ''}`} aria-hidden="true" />
                     <b className="text-sm font-semibold">{slot.label}</b>
                     <em className="ml-auto text-xs font-normal not-italic text-slate-500 tabular-nums" aria-label={`${count} chuyến`}>{count}</em>
                   </span>
@@ -94,7 +94,7 @@ export const FlightFilters: React.FC<FlightFiltersProps> = ({ facets, airlines, 
                   </span>
                   <input type="checkbox" disabled={count === 0} checked={!filters.hiddenAirlines.has(airline.name)}
                     onChange={() => onChange({ ...filters, hiddenAirlines: toggled(filters.hiddenAirlines, airline.name) })}
-                    className="h-[22px] w-[22px] shrink-0 cursor-[inherit] accent-blue-600" />
+                    className="h-[22px] w-[22px] shrink-0 cursor-[inherit] accent-brand-600" />
                 </label>
               );
             })}
@@ -110,7 +110,7 @@ export const FlightFilters: React.FC<FlightFiltersProps> = ({ facets, airlines, 
                 <button key={chip.kind} type="button" aria-pressed={pressed} disabled={chip.count === 0}
                   onClick={() => onChange({ ...filters, stops: toggled(filters.stops, chip.kind) })}
                   className={`h-9 cursor-pointer truncate rounded-full border px-2 text-[13px] transition-colors disabled:cursor-not-allowed disabled:text-slate-400 ${
-                    pressed ? 'border-blue-600 bg-blue-50 font-semibold text-blue-700' : 'border-slate-200 bg-white text-slate-800 enabled:hover:border-blue-300'}`}>
+                    pressed ? 'border-brand-600 bg-brand-50 font-semibold text-brand-700' : 'border-slate-200 bg-white text-slate-800 enabled:hover:border-brand-300'}`}>
                   {chip.label}
                 </button>
               );

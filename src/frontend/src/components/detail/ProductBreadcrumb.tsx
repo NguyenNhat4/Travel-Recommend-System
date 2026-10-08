@@ -1,6 +1,6 @@
 import React from 'react';
 import Link from 'next/link';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, Home } from 'lucide-react';
 import { buildSearchHref } from '../../features/catalog/landing/searchHref';
 import { verticalForTaxonomy, resolveTab } from '../../features/catalog/landing/verticals';
 import { parseTripContext } from '../../features/search/tripContext';
@@ -37,17 +37,19 @@ export function breadcrumbOf(product: Product, tripQuery = ''): Crumb[] {
 export const ProductBreadcrumb: React.FC<{ product: Product; tripQuery?: string }> = ({ product, tripQuery }) => {
   const crumbs = breadcrumbOf(product, tripQuery);
   return (
-    <nav aria-label="Thanh phân cấp">
-      <ol className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-slate-500">
+    <nav aria-label="Thanh phân cấp" className="-ml-2">
+      <ol className="no-scrollbar flex flex-nowrap items-center gap-0.5 overflow-x-auto text-sm text-slate-600 sm:flex-wrap sm:overflow-visible">
         {crumbs.map((crumb, index) => (
-          <li key={`${index}-${crumb.label}`} className="flex min-w-0 items-center gap-1.5">
-            {index > 0 && <ChevronRight className="h-3 w-3 shrink-0 text-slate-400" aria-hidden="true" />}
+          <li key={`${index}-${crumb.label}`} className="flex shrink-0 items-center gap-0.5 sm:min-w-0">
+            {index > 0 && <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden="true" />}
             {crumb.href ? (
-              <Link href={crumb.href} className="rounded hover:text-blue-600 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
+              <Link href={crumb.href}
+                className="inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2 font-medium transition-colors hover:bg-brand-50 hover:text-brand-700 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand-500 motion-reduce:transition-none">
+                {index === 0 && <Home className="h-3.5 w-3.5" aria-hidden="true" />}
                 {crumb.label}
               </Link>
             ) : (
-              <span aria-current="page" className="truncate font-medium text-slate-800">{crumb.label}</span>
+              <span aria-current="page" className="inline-flex min-h-8 max-w-[16rem] items-center truncate rounded-lg bg-slate-100 px-2.5 font-semibold text-slate-900 sm:max-w-none">{crumb.label}</span>
             )}
           </li>
         ))}

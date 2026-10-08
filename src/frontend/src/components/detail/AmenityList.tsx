@@ -46,7 +46,7 @@ export const AmenityList: React.FC<AmenityListProps> = ({ items, limit = 12, lab
           const Icon = amenityIcon(item);
           return (
             <li key={item} className="flex min-w-0 items-center gap-2">
-              <Icon className={`${compact ? 'h-4 w-4' : 'h-[18px] w-[18px]'} shrink-0 text-blue-700`} aria-hidden="true" />
+              <Icon className={`${compact ? 'h-4 w-4' : 'h-[18px] w-[18px]'} shrink-0 text-brand-700`} aria-hidden="true" />
               <span className="min-w-0">{item}</span>
             </li>
           );
@@ -54,7 +54,7 @@ export const AmenityList: React.FC<AmenityListProps> = ({ items, limit = 12, lab
       </ul>
       {hidden > 0 && (
         <button type="button" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded}
-          className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
+          className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-brand-700 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600">
           {expanded ? 'Thu gọn' : `Xem tất cả (${items.length})`}
           <ChevronDown className={`h-3.5 w-3.5 transition-transform motion-reduce:transition-none ${expanded ? 'rotate-180' : ''}`} aria-hidden="true" />
         </button>

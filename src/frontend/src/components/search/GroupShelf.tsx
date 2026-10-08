@@ -49,7 +49,7 @@ export const GroupShelf: React.FC<GroupShelfProps> = ({ group, query, destinatio
           {SEARCH_GROUPS[group].label}
           <span className="ml-2 text-xs font-medium text-slate-500">{count} kết quả</span>
         </h2>
-        <button type="button" onClick={() => onSeeAll(group)} className="inline-flex cursor-pointer items-center gap-1 text-sm font-semibold text-blue-600 hover:text-blue-700">
+        <button type="button" onClick={() => onSeeAll(group)} className="inline-flex cursor-pointer items-center gap-1 text-sm font-semibold text-brand-600 hover:text-brand-700">
           Xem tất cả <ArrowRight className="h-4 w-4" aria-hidden="true" />
         </button>
       </div>
@@ -57,7 +57,7 @@ export const GroupShelf: React.FC<GroupShelfProps> = ({ group, query, destinatio
       {section.error ? (
         <div role="alert" className="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-600">
           Chưa tải được nhóm này ·{' '}
-          <button type="button" onClick={section.retry} className="cursor-pointer font-semibold text-blue-600 hover:underline">Thử lại</button>
+          <button type="button" onClick={section.retry} className="cursor-pointer font-semibold text-brand-600 hover:underline">Thử lại</button>
         </div>
       ) : section.loading && items.length === 0 ? (
         <div className="flex gap-4 overflow-hidden" aria-busy="true">
@@ -81,7 +81,7 @@ export const GroupShelf: React.FC<GroupShelfProps> = ({ group, query, destinatio
               <button
                 type="button"
                 onClick={() => onSeeAll(group)}
-                className="flex aspect-square w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-3xl border border-dashed border-blue-300 bg-blue-50 p-4 text-center text-blue-700 hover:bg-blue-100"
+                className="flex aspect-square w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-3xl border border-dashed border-brand-300 bg-brand-50 p-4 text-center text-brand-700 hover:bg-brand-100"
               >
                 <span className="text-base font-bold">Còn {count - items.length} kết quả</span>
                 <span className="inline-flex items-center gap-1 text-sm font-semibold">Xem tất cả {count} <ArrowRight className="h-4 w-4" aria-hidden="true" /></span>

@@ -113,7 +113,7 @@ function CheckoutBackLabelled({ onCart }: { onCart: () => void }) {
 
 function CheckoutBackButton({ label, onClick }: { label: string; onClick: () => void }) {
   return (
-    <button onClick={onClick} className="text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors">
+    <button onClick={onClick} className="text-xs font-semibold text-brand-600 hover:text-brand-800 flex items-center gap-1 transition-colors">
       {label}
     </button>
   );
@@ -198,12 +198,12 @@ export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
             onClick={() => navigate('/')}
             className="flex items-center gap-2 cursor-pointer group"
           >
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white font-display text-lg shadow-xs group-hover:opacity-90 transition-opacity">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-brand-600 to-brand-600 flex items-center justify-center text-white font-display text-lg shadow-xs group-hover:opacity-90 transition-opacity">
               V
             </div>
             <div className="flex items-center gap-1.5">
               <span className="font-display text-xl tracking-wide text-slate-900">V-OTA</span>
-              <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-blue-50 text-blue-700 border border-blue-200">
+              <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-brand-50 text-brand-700 border border-brand-200">
                 Thanh toán an toàn
               </span>
             </div>
@@ -250,7 +250,7 @@ export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
               href="/"
               aria-label="V-OTA, về trang chủ"
               className={`group flex shrink-0 items-center gap-3 rounded-full focus-visible:outline-2 focus-visible:outline-offset-4 ${
-                onHero ? 'focus-visible:outline-white' : 'focus-visible:outline-blue-600'
+                onHero ? 'focus-visible:outline-white' : 'focus-visible:outline-brand-600'
               }`}
             >
               <span className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-tr from-amber-500 to-amber-300 font-display text-2xl leading-none text-white shadow-md shadow-amber-500/20 transition-transform duration-200 group-hover:scale-105">
@@ -320,7 +320,7 @@ export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
                 >
                   <ShoppingCart className="h-5 w-5" aria-hidden="true" />
                   {cartCount > 0 && (
-                    <span className="absolute right-0 top-0 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-bold leading-none text-white shadow-xs">
+                    <span className="absolute right-0 top-0 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-brand-600 px-1 text-[10px] font-bold leading-none text-white shadow-xs">
                       {cartCount}
                     </span>
                   )}
@@ -389,12 +389,12 @@ export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
                     aria-label={`Tài khoản ${currentPersona.name}`}
                     className={chipClass(tone)}
                   >
-                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-gradient-to-tr from-blue-700 via-blue-600 to-indigo-500 font-display text-sm leading-none text-white shadow-2xs">
+                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-gradient-to-tr from-brand-700 via-brand-600 to-brand-500 font-display text-sm leading-none text-white shadow-2xs">
                       {currentPersona.name.split(' ').pop()?.charAt(0) || 'M'}
                     </span>
                     <span className="hidden text-left xl:block">
                       <span className="block max-w-[9rem] truncate font-display text-sm leading-4">{currentPersona.name}</span>
-                      <span className={`block font-sans text-xs leading-4 ${onHero ? 'text-white/80' : 'text-blue-600'}`}>Thành viên</span>
+                      <span className={`block font-sans text-xs leading-4 ${onHero ? 'text-white/80' : 'text-brand-600'}`}>Thành viên</span>
                     </span>
                     {chevron(isAccountDropdownOpen)}
                   </button>

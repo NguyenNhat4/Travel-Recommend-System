@@ -98,20 +98,20 @@ export function TripDetailsForm({
     onConfirm(tripDetailsPrompt(intent));
   };
 
-  const chipClass = (selected: boolean) => `min-h-9 rounded-lg border px-2.5 py-1 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
-    selected ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-blue-50'
+  const chipClass = (selected: boolean) => `min-h-9 rounded-lg border px-2.5 py-1 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ai-500 focus-visible:ring-offset-2 ${
+    selected ? 'border-ai-600 bg-ai-600 text-white' : 'border-slate-200 bg-white text-slate-700 hover:border-ai-300 hover:bg-ai-50'
   } disabled:cursor-not-allowed disabled:opacity-50`;
 
   const stepperButton = 'flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-sm font-bold text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40';
 
   return (
-    <section aria-labelledby={titleId} className="mt-2 space-y-3 rounded-2xl border border-blue-200 bg-white p-3.5 text-slate-800 shadow-sm">
+    <section aria-labelledby={titleId} className="mt-2 space-y-3 rounded-2xl border border-ai-200 bg-white p-3.5 text-slate-800 shadow-sm">
       <h3 id={titleId} className="sr-only">Form gợi ý thông tin chuyến đi</h3>
       <form onSubmit={confirm} className="space-y-3">
         {form.fields.includes('destination') && (
           <fieldset>
             <legend className="mb-1.5 flex items-center gap-1.5 text-xs font-bold text-slate-700">
-              <MapPin className="h-3.5 w-3.5 text-blue-600" aria-hidden="true" /> Điểm đến
+              <MapPin className="h-3.5 w-3.5 text-ai-600" aria-hidden="true" /> Điểm đến
             </legend>
             {loadState === 'loading' && (
               <div role="status" className="flex min-h-9 items-center gap-2 rounded-lg bg-slate-50 px-3 text-xs text-slate-500">
@@ -148,14 +148,14 @@ export function TripDetailsForm({
                 setIntent((prev) => (prev.destination && options.includes(prev.destination) ? { ...prev, destination: '' } : prev));
               }}
               placeholder="Hoặc nhập điểm đến khác…"
-              className="mt-1.5 w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs outline-hidden focus:ring-1 focus:ring-blue-500" />
+              className="mt-1.5 w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs outline-hidden focus:ring-1 focus:ring-ai-500" />
           </fieldset>
         )}
 
         {form.fields.includes('days') && (
           <fieldset className="flex items-center justify-between gap-3">
             <legend className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
-              <Calendar className="h-3.5 w-3.5 text-blue-600" aria-hidden="true" /> Số ngày
+              <Calendar className="h-3.5 w-3.5 text-ai-600" aria-hidden="true" /> Số ngày
             </legend>
             <div className="flex items-center gap-2.5">
               <button type="button" disabled={disabled || (intent.days ?? MIN_DAYS) <= MIN_DAYS} onClick={() => setDays((intent.days ?? MIN_DAYS) - 1)} className={stepperButton}>−</button>
@@ -170,14 +170,14 @@ export function TripDetailsForm({
             <legend className="text-xs font-bold text-slate-700">Ngày khởi hành</legend>
             <input type="date" value={intent.startDate ?? today} min={today} disabled={disabled}
               onChange={(event) => setStartDate(event.target.value)}
-              className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs outline-hidden focus:ring-1 focus:ring-blue-500" />
+              className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs outline-hidden focus:ring-1 focus:ring-ai-500" />
           </fieldset>
         )}
 
         {form.fields.includes('party') && (
           <fieldset className="space-y-1.5">
             <legend className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
-              <Users className="h-3.5 w-3.5 text-blue-600" aria-hidden="true" /> Số người
+              <Users className="h-3.5 w-3.5 text-ai-600" aria-hidden="true" /> Số người
               {intent.party?.type && PARTY_LABELS[intent.party.type] ? ` · ${PARTY_LABELS[intent.party.type]}` : ''}
             </legend>
             <div className="flex flex-wrap items-center gap-3 text-xs">
@@ -198,20 +198,20 @@ export function TripDetailsForm({
         {form.fields.includes('budget') && (
           <fieldset className="flex items-center justify-between gap-3">
             <legend className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
-              <Wallet className="h-3.5 w-3.5 text-blue-600" aria-hidden="true" /> Ngân sách (không bắt buộc)
+              <Wallet className="h-3.5 w-3.5 text-ai-600" aria-hidden="true" /> Ngân sách (không bắt buộc)
             </legend>
             <div className="flex items-center gap-1.5">
               <input type="number" min={0} step={0.5} inputMode="decimal" disabled={disabled}
                 value={intent.budget ? intent.budget / 1_000_000 : ''}
                 onChange={(event) => setBudget(event.target.value)}
                 placeholder="Không giới hạn"
-                className="w-24 rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs outline-hidden focus:ring-1 focus:ring-blue-500" />
+                className="w-24 rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs outline-hidden focus:ring-1 focus:ring-ai-500" />
               <span className="text-xs font-semibold text-slate-500">triệu VNĐ</span>
             </div>
           </fieldset>
         )}
 
-        <button type="submit" disabled={disabled} className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300">
+        <button type="submit" disabled={disabled} className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-ai-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-ai-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ai-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300">
           <Send className="h-3.5 w-3.5" aria-hidden="true" /> Xác nhận
         </button>
       </form>

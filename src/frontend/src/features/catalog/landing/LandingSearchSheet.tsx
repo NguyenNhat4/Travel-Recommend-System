@@ -28,7 +28,7 @@ interface LandingSearchSheetProps {
   onFlightSearch?: (input: FlightSearchInput) => void;
 }
 
-const PILL = 'flex h-[70px] w-full min-w-0 items-center gap-3 rounded-[22px] bg-white px-5 text-left transition hover:bg-white/90 focus-within:ring-2 focus-within:ring-blue-500/60 lg:px-6';
+const PILL = 'flex h-[70px] w-full min-w-0 items-center gap-3 rounded-[22px] bg-white px-5 text-left transition hover:bg-white/90 focus-within:ring-2 focus-within:ring-brand-500/60 lg:px-6';
 const LABEL = 'text-xs font-medium text-slate-500';
 const VALUE = 'w-full min-w-0 truncate bg-transparent text-base font-semibold text-slate-900 outline-none placeholder:font-normal placeholder:text-slate-400';
 const POPOVER = 'absolute top-full z-40 mt-2 rounded-3xl bg-white p-4 text-slate-800 shadow-2xl ring-1 ring-slate-900/5';
@@ -305,7 +305,7 @@ export function LandingSearchSheet({ config, tab, initialDestination, initialTex
                       role="radio"
                       aria-checked={roundTrip === round}
                       onClick={() => setTripKind(round)}
-                      className={`h-9 cursor-pointer rounded-full px-4 text-sm font-semibold transition ${roundTrip === round ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-600'}`}
+                      className={`h-9 cursor-pointer rounded-full px-4 text-sm font-semibold transition ${roundTrip === round ? 'bg-white text-brand-600 shadow-xs' : 'text-slate-600'}`}
                     >
                       {label}
                     </button>
@@ -354,7 +354,7 @@ export function LandingSearchSheet({ config, tab, initialDestination, initialTex
         <button
           type="submit"
           aria-label="Tìm kiếm"
-          className="flex h-[70px] w-full shrink-0 cursor-pointer items-center justify-center gap-2 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 px-4 text-white shadow-lg transition hover:scale-[1.03] active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 lg:w-[120px]"
+          className="flex h-[70px] w-full shrink-0 cursor-pointer items-center justify-center gap-2 rounded-full bg-gradient-to-r from-brand-600 to-brand-600 px-4 text-white shadow-lg transition hover:scale-[1.03] active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 lg:w-[120px]"
         >
           <Search className="h-6 w-6" aria-hidden="true" />
           <span className="text-sm font-bold lg:sr-only">Tìm kiếm</span>

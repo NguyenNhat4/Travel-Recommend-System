@@ -34,6 +34,9 @@ import { ApiError } from '../../src/services/http';
 const hotelProperty = () => JSON.parse(JSON.stringify(propertyFixture));
 // Nhiều worker chạy song song làm render chậm: chờ lâu hơn mặc định 1 giây để test không chập chờn.
 const WAIT = { timeout: 5000 };
+// Khách sạn: nút Đặt ngay nằm trên từng thẻ hạng phòng (tên accessible "Đặt ngay {tên phòng}").
+const roomButtons = () => screen.getAllByRole('button', { name: /^Đặt ngay / }) as HTMLButtonElement[];
+const findRoomButtons = (name: RegExp = /^Đặt ngay /) => screen.findAllByRole('button', { name }, WAIT) as Promise<HTMLButtonElement[]>;
 
 describe('ProductDetailView', () => {
   beforeEach(() => {
@@ -55,16 +58,17 @@ describe('ProductDetailView', () => {
     expect(api.getProduct).toHaveBeenCalledWith('nt-h-10', expect.anything());
     await waitFor(() => expect(api.listVariants).toHaveBeenCalledWith('nt-h-10', expect.anything()), WAIT);
 
-    const rooms = await screen.findAllByRole('radio', {}, WAIT);
-    expect(rooms).toHaveLength(2);
-    expect(rooms[0].getAttribute('aria-checked')).toBe('true'); // phòng rẻ nhất đặt được được chọn sẵn
+    const rooms = await findRoomButtons();
+    expect(rooms).toHaveLength(2);                                  // mỗi hạng phòng một nút Đặt ngay ngay trên thẻ
+    expect(rooms.every((button) => !button.disabled)).toBe(true);
+    expect(screen.queryByRole('radio')).toBeNull();                // không còn ô chọn phòng
+    expect(screen.queryByTestId('estimate')).toBeNull();           // không còn hộp đặt dính bên phải
 
     // Khách sạn chỉ đặt trực tiếp: không có nút thêm giỏ (AC-BKG-15).
     expect(screen.queryByRole('button', { name: 'Thêm vào giỏ hàng' })).toBeNull();
     expect(screen.getByTestId('direct-booking-note').textContent).toBe('Khách sạn được đặt trực tiếp, không thêm vào giỏ hàng.');
 
     fireEvent.click(rooms[1]);
-    fireEvent.click(screen.getByRole('button', { name: 'Đặt ngay' }));
     await waitFor(() => expect(travel.startBooking).toHaveBeenCalled());
     expect(travel.addToCart).not.toHaveBeenCalled();
     const [[item]] = travel.startBooking.mock.calls[0];
@@ -91,21 +95,21 @@ describe('ProductDetailView', () => {
     }
   });
 
-  it('khách sạn: gợi ý sức chứa; vượt sức chứa thì khoá nút đặt và gợi ý thêm phòng, thêm phòng xong gửi số phòng và số khách', async () => {
+  it('khách sạn: vượt sức chứa thì chỉ khoá phòng không chứa nổi, thêm phòng xong gửi số phòng và số khách', async () => {
     api.getProduct.mockResolvedValue(hotelProperty());
     render(<ProductDetailView productId="nt-h-10" />);
-    await screen.findAllByRole('radio', {}, WAIT);                                    // phòng rẻ nhất (nt-h-10-r1, tối đa 2 khách) được chọn sẵn
-    // Phòng hiện ra trước khi effect đặt lại ngày/số khách theo phòng chạy; bấm sớm thì effect đó ghi đè lựa chọn.
-    await waitFor(() => expect(document.querySelector<HTMLInputElement>('input[type="date"]')?.value).toBeTruthy(), WAIT);
-    expect(screen.getByText('Tối đa 2 khách/phòng')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Thêm người lớn' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Thêm trẻ em' }));
-    const issue = screen.getByTestId('capacity-issue');
-    expect(issue.textContent).toContain('3 khách vượt sức chứa 2 khách của 1 phòng. Cần ít nhất 2 phòng.');
-    expect((screen.getByRole('button', { name: 'Đặt ngay' }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(screen.getByRole('button', { name: 'Thêm 1 phòng' }));
-    expect(screen.queryByTestId('capacity-issue')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Đặt ngay' }));
+    await findRoomButtons();                                                          // nt-h-10-r1 chứa tối đa 2 khách, nt-h-10-r2 tối đa 4
+    fireEvent.click(screen.getByRole('button', { name: /1 phòng, 1 người lớn/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Tăng người lớn' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Tăng trẻ em' }));
+    // Ba khách: phòng 2 khách bị khoá kèm lý do riêng, phòng 4 khách vẫn đặt được.
+    const [small, large] = roomButtons();
+    expect(small.disabled).toBe(true);
+    expect(large.disabled).toBe(false);
+    expect(screen.getByTestId('room-book-note').textContent).toContain('3 khách cần ít nhất 2 phòng');
+    fireEvent.click(screen.getByRole('button', { name: 'Tăng phòng' }));
+    expect(screen.queryByTestId('room-book-note')).toBeNull();
+    fireEvent.click(roomButtons()[0]);
     await waitFor(() => expect(travel.startBooking).toHaveBeenCalled());
     const [[item]] = travel.startBooking.mock.calls[0];
     expect(item.product).toMatchObject({ id: 'nt-h-10-r1' });
@@ -113,63 +117,91 @@ describe('ProductDetailView', () => {
     expect(item.guests).toEqual({ adults: 2, children: 1 });
   });
 
-  it('khách sạn: trả phòng không sau nhận phòng hoặc ngày trống thì báo lỗi, khoá nút đặt và không tự sửa ngày', async () => {
+  it('khách sạn: thanh tìm kiếm có tên khách sạn, ngày và số khách; chọn ngày ngoài luật thì báo lỗi và khoá nút đặt', async () => {
     api.getProduct.mockResolvedValue(hotelProperty());
     render(<ProductDetailView productId="nt-h-10" />);
-    await screen.findAllByRole('radio', {}, WAIT);
-    // Ô text dd/mm/yyyy đồng bộ từ ngày mặc định qua effect, sau ô date ẩn; chờ chính ô này để khỏi chạy đua trên CI chậm.
-    await waitFor(() => expect((screen.getByLabelText('Nhận phòng') as HTMLInputElement).value).toMatch(/^\d{2}\/\d{2}\/\d{4}$/), WAIT);
-    const checkIn = screen.getByLabelText('Nhận phòng') as HTMLInputElement;
-    const checkOut = screen.getByLabelText('Trả phòng') as HTMLInputElement;
-    expect(checkIn.value).toMatch(/^\d{2}\/\d{2}\/\d{4}$/);
-    const book = () => screen.getByRole('button', { name: 'Đặt ngay' }) as HTMLButtonElement;
+    await findRoomButtons();
+    const bar = screen.getByTestId('hotel-trip-bar');
+    expect((screen.getByRole('combobox', { name: 'Địa điểm hoặc tên khách sạn' }) as HTMLInputElement).value).toBe('Vinpearl Resort & Spa Nha Trang Bay');
+    expect(bar.textContent).toMatch(/\d{2}\/\d{2} - \d{2}\/\d{2}, 1 đêm/);
+    expect(bar.textContent).toContain('1 phòng, 1 người lớn');
     expect(screen.queryByTestId('date-error')).toBeNull();
-    expect(book().disabled).toBe(false);
 
-    fireEvent.change(checkOut, { target: { value: checkIn.value } });
-    expect(screen.getByTestId('date-error').textContent).toContain('Ngày trả phòng phải sau ngày nhận phòng');
-    expect(checkOut.value).toBe(checkIn.value);
-    expect(book().disabled).toBe(true);
-
-    fireEvent.change(checkOut, { target: { value: '' } });
-    expect(screen.getByTestId('date-error').textContent).toContain('ngày trả phòng');
-    expect(book().disabled).toBe(true);
-
-    fireEvent.change(checkIn, { target: { value: '' } });
-    expect(screen.getByTestId('date-error').textContent).toContain('ngày nhận phòng');
-    expect(book().disabled).toBe(true);
+    // Mở lịch, chọn nhận phòng rồi trả phòng cách 31 đêm: vượt 30 đêm.
+    fireEvent.click(screen.getByRole('button', { name: /^Ngày ở:/ }));
+    const dayButtons = () => Array.from(document.querySelectorAll<HTMLButtonElement>('[role="dialog"] .grid-cols-7 button:not(:disabled)'));
+    fireEvent.click(dayButtons()[0]);                                                  // nhận phòng = ngày đầu tiên còn chọn được
+    fireEvent.click(screen.getByRole('button', { name: 'Tháng sau' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Tháng sau' }));
+    fireEvent.click(dayButtons().at(-1)!);                                             // trả phòng ở cuối tháng thứ ba: quá 30 đêm
+    expect(screen.getByTestId('date-error').textContent).toContain('tối đa 30 đêm');
+    expect(roomButtons().every((button) => button.disabled)).toBe(true);
   });
 
-  it('khách sạn: ngày nhận phòng theo lịch (không quá khứ, tối đa 3 tháng), tối đa 30 đêm, không phụ thuộc cửa sổ mở bán', async () => {
+  it('khách sạn: nút tìm ghi ngày và số khách lên URL', async () => {
+    window.history.pushState({}, '', '/product/nt-h-10');
+    try {
+      api.getProduct.mockResolvedValue(hotelProperty());
+      render(<ProductDetailView productId="nt-h-10" />);
+      await findRoomButtons();
+      Element.prototype.scrollIntoView = vi.fn();
+      fireEvent.click(screen.getByRole('button', { name: 'Tìm phòng' }));
+      expect(window.location.search).toMatch(/checkIn=\d{4}-\d{2}-\d{2}&checkOut=\d{4}-\d{2}-\d{2}&adults=1&rooms=1/);
+    } finally {
+      window.history.pushState({}, '', '/');
+    }
+  });
+
+  it('khách sạn: đổi địa điểm ở thanh tìm kiếm rồi bấm tìm thì sang /hotels theo địa điểm, ngày và số khách', async () => {
     api.getProduct.mockResolvedValue(hotelProperty());
     render(<ProductDetailView productId="nt-h-10" />);
-    await screen.findAllByRole('radio', {}, WAIT);
-    // Ô text dd/mm/yyyy đồng bộ từ ngày mặc định qua effect, sau ô date ẩn; chờ chính ô này để khỏi chạy đua trên CI chậm.
-    await waitFor(() => expect((screen.getByLabelText('Nhận phòng') as HTMLInputElement).value).toMatch(/^\d{2}\/\d{2}\/\d{4}$/), WAIT);
-    const checkIn = screen.getByLabelText('Nhận phòng') as HTMLInputElement;
-    const checkOut = screen.getByLabelText('Trả phòng') as HTMLInputElement;
-    const dmy = (offsetDays: number) => {
-      const iso = new Date(Date.now() + offsetDays * 24 * 3600 * 1000).toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
-      return iso.split('-').reverse().join('/');
-    };
-    const error = () => screen.queryByTestId('date-error')?.textContent ?? '';
+    await findRoomButtons();
+    const input = screen.getByRole('combobox', { name: 'Địa điểm hoặc tên khách sạn' }) as HTMLInputElement;
+    expect(input.value).toBe('Vinpearl Resort & Spa Nha Trang Bay');
+    fireEvent.change(input, { target: { value: 'Đà Nẵng' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Tìm phòng' }));
+    expect(travel.navigate).toHaveBeenCalledTimes(1);
+    const href = new URL(travel.navigate.mock.calls[0][0], 'http://x');
+    expect(href.pathname).toBe('/hotels');
+    expect(href.searchParams.get('q')).toBe('Đà Nẵng');
+    expect(href.searchParams.get('adults')).toBe('1');
+    expect(href.searchParams.get('checkIn')).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
 
-    // Hôm nay được nhận phòng; hôm qua thì không.
-    fireEvent.change(checkIn, { target: { value: dmy(0) } });
-    fireEvent.change(checkOut, { target: { value: dmy(1) } });
-    expect(error()).toBe('');
-    fireEvent.change(checkIn, { target: { value: dmy(-1) } });
-    expect(error()).toContain('không được ở quá khứ');
-    // Quá 3 tháng thì không đặt được.
-    fireEvent.change(checkIn, { target: { value: dmy(120) } });
-    fireEvent.change(checkOut, { target: { value: dmy(121) } });
-    expect(error()).toContain('tối đa 3 tháng');
-    // 30 đêm được, 31 đêm thì không.
-    fireEvent.change(checkIn, { target: { value: dmy(1) } });
-    fireEvent.change(checkOut, { target: { value: dmy(31) } });
-    expect(error()).toBe('');
-    fireEvent.change(checkOut, { target: { value: dmy(32) } });
-    expect(error()).toContain('tối đa 30 đêm');
+  it('khách sạn: lọc hạng phòng theo tiện ích phòng, phải có đủ mọi tiện ích đã chọn, xoá bộ lọc để xem lại tất cả', async () => {
+    api.getProduct.mockResolvedValue(hotelProperty());
+    const rooms = JSON.parse(JSON.stringify(variantsFixture));
+    rooms.results[0].attributes = { ...rooms.results[0].attributes, amenities: ['Wifi miễn phí', 'Bồn tắm'] };
+    rooms.results[1].attributes = { ...rooms.results[1].attributes, amenities: ['Wifi miễn phí', 'Ban công'] };
+    api.listVariants.mockResolvedValue(rooms);
+    render(<ProductDetailView productId="nt-h-10" />);
+    await findRoomButtons();
+    const filter = screen.getByTestId('room-amenity-filter');
+    expect(roomButtons()).toHaveLength(2);
+    expect(filter.textContent).toContain('Wifi miễn phí2');         // có ở cả hai phòng
+
+    fireEvent.click(screen.getByRole('button', { name: /^Bồn tắm/ }));
+    expect(roomButtons()).toHaveLength(1);
+    expect(roomButtons()[0].getAttribute('aria-label')).toContain('Đặt ngay');
+    expect(filter.textContent).toContain('1/2 hạng phòng phù hợp');
+
+    fireEvent.click(screen.getByRole('button', { name: /^Ban công/ })); // không phòng nào có cả hai
+    expect(screen.queryAllByRole('button', { name: /^Đặt ngay / })).toHaveLength(0);
+    expect(screen.getByTestId('no-room-match')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Xoá bộ lọc' }));
+    expect(roomButtons()).toHaveLength(2);
+    expect(screen.queryByTestId('no-room-match')).toBeNull();
+  });
+
+  it('khách sạn: không có tiện ích phòng nào thì không hiện bộ lọc', async () => {
+    api.getProduct.mockResolvedValue(hotelProperty());
+    const rooms = JSON.parse(JSON.stringify(variantsFixture));
+    rooms.results.forEach((r: { attributes: Record<string, unknown> }) => { r.attributes = { ...r.attributes, amenities: [] }; });
+    api.listVariants.mockResolvedValue(rooms);
+    render(<ProductDetailView productId="nt-h-10" />);
+    await findRoomButtons();
+    expect(screen.queryByTestId('room-amenity-filter')).toBeNull();
   });
 
   it('vé tham quan: hai bộ đếm Người lớn/Trẻ em kèm đơn giá từng loại; ước tính theo giá trẻ em; gửi guests', async () => {
@@ -244,19 +276,20 @@ describe('ProductDetailView', () => {
     api.getProduct.mockResolvedValue({ ...hotelProperty(), variantSummary: { count: 0, minPrice: null, maxPrice: null, maxOccupancy: null } });
     api.listVariants.mockResolvedValue({ ...variantsFixture, results: [], total: 0 });
     render(<ProductDetailView productId="nt-h-10" />);
-    // Chưa có hạng phòng nào được chọn (unit = null): trang vẫn hiện, nút Đặt ngay bị khoá, không có nút thêm giỏ.
+    // Không có hạng phòng nào: trang vẫn hiện, không có thanh ngày, không có nút Đặt ngay lẫn nút thêm giỏ.
     expect(await screen.findByText(/chưa có hạng phòng nào trên V-OTA/)).toBeTruthy();
-    expect((screen.getByRole('button', { name: 'Đặt ngay' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole('button', { name: /^Đặt ngay/ })).toBeNull();
+    expect(screen.queryByTestId('hotel-trip-bar')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Thêm vào giỏ hàng' })).toBeNull();
   });
 
   it('books a product without variants directly: "Đặt ngay" starts a booking with only that product', async () => {
     api.getProduct.mockResolvedValue(ticketFixture);
     render(<ProductDetailView productId="nt-h-01" />);
-    await screen.findByRole('heading', { name: ticketFixture.name });
+    await screen.findByRole('heading', { level: 1, name: ticketFixture.name });
     expect(api.listVariants).not.toHaveBeenCalled();
-    await waitFor(() => expect(document.querySelector<HTMLInputElement>('input[type="date"]')?.value).toBeTruthy(), WAIT);
-    fireEvent.click(screen.getByRole('button', { name: 'Đặt ngay' }));
+    await screen.findByTestId('hotel-trip-bar', {}, WAIT);
+    fireEvent.click(roomButtons()[0]);          // fixture là một hạng phòng khách sạn lẻ: đặt ngay trên thẻ của chính nó
     await waitFor(() => expect(travel.startBooking).toHaveBeenCalledTimes(1));
     const [items] = travel.startBooking.mock.calls[0];
     expect(items).toHaveLength(1);
@@ -309,14 +342,14 @@ describe('ProductDetailView', () => {
     expect(screen.getByRole('list', { name: 'Tiện ích' }).querySelectorAll('li')).toHaveLength(12);
   });
 
-  it('thẻ hạng phòng: thông số có icon, nhãn Giá tốt nhất ở phòng rẻ nhất, "Đã chọn" theo lựa chọn; nút ảnh không đổi lựa chọn', async () => {
+  it('thẻ hạng phòng: thông số có icon, nhãn Giá tốt nhất ở phòng rẻ nhất, nút Đặt ngay trên thẻ; nút ảnh không đặt phòng', async () => {
     api.getProduct.mockResolvedValue(hotelProperty());
     const rooms = JSON.parse(JSON.stringify(variantsFixture));
     rooms.results[0].attributes = { ...rooms.results[0].attributes, roomSizeM2: 32, bed: '2 giường đơn', oceanView: true,
       images: ['https://img.example/r1.jpg', 'https://img.example/r1b.jpg'], amenities: ['Wifi miễn phí', 'Điều hoà không khí', 'Bồn tắm', 'Rèm cản sáng'] };
     api.listVariants.mockResolvedValue(rooms);
     render(<ProductDetailView productId="nt-h-10" />);
-    const radios = await screen.findAllByRole('radio', {}, WAIT);
+    await findRoomButtons();
 
     expect(screen.getAllByText('Giá tốt nhất')).toHaveLength(1);
     const facts = screen.getAllByRole('list', { name: 'Thông số phòng' })[0].textContent ?? '';
@@ -327,18 +360,14 @@ describe('ProductDetailView', () => {
     expect(highlights).toContain('Wifi miễn phí');
     expect(highlights).not.toContain('Rèm cản sáng');                    // không có icon riêng: không nêu nổi bật
 
-    expect(radios[0].getAttribute('aria-checked')).toBe('true');
-    expect(screen.getAllByText('Đã chọn')).toHaveLength(1);
+    expect(roomButtons()).toHaveLength(2);
+    expect(screen.queryByText('Chọn phòng')).toBeNull();                 // không còn nút giả
     fireEvent.click(screen.getByRole('button', { name: 'Xem ảnh phòng (2)' }));
     fireEvent.click(screen.getByRole('button', { name: 'Đóng' }));
-    expect(radios[0].getAttribute('aria-checked')).toBe('true');         // mở ảnh không đổi phòng
-    fireEvent.click(radios[1]);
-    expect(radios[1].getAttribute('aria-checked')).toBe('true');
-    expect(radios[0].getAttribute('aria-checked')).toBe('false');
-    expect(screen.getAllByText('Đã chọn')).toHaveLength(1);
+    expect(travel.startBooking).not.toHaveBeenCalled();                  // mở ảnh không đặt phòng
   });
 
-  it('mỗi hạng phòng có ảnh nhỏ, xem ảnh phòng riêng và tiện ích riêng; chọn phòng không bị ảnh hưởng', async () => {
+  it('mỗi hạng phòng có ảnh nhỏ, xem ảnh phòng riêng và tiện ích riêng; không đặt nhầm phòng', async () => {
     api.getProduct.mockResolvedValue(hotelProperty());
     const rooms = JSON.parse(JSON.stringify(variantsFixture));
     rooms.results[0].imageUrl = 'https://img.example/room1.jpg';
@@ -357,7 +386,8 @@ describe('ProductDetailView', () => {
     expect(screen.getByRole('list', { name: 'Tiện ích phòng' }).textContent).toContain('Wifi miễn phí');
     fireEvent.click(screen.getByRole('button', { name: 'Ẩn tiện ích phòng' }));
     expect(screen.queryByRole('list', { name: 'Tiện ích phòng' })).toBeNull();
-    expect(screen.getAllByRole('radio')).toHaveLength(2);                // vẫn là hai hạng phòng để chọn
+    expect(roomButtons()).toHaveLength(2);                               // vẫn là hai hạng phòng
+    expect(travel.startBooking).not.toHaveBeenCalled();
   });
 
   it('shows the "no longer on V-OTA" page with popular products on 404', async () => {
@@ -371,7 +401,7 @@ describe('ProductDetailView', () => {
   it('records product_view once for a signed-in user, never for a guest', async () => {
     api.getProduct.mockResolvedValue(ticketFixture);
     const { rerender } = render(<ProductDetailView productId="nt-h-01" />);
-    await screen.findByRole('heading', { name: ticketFixture.name });
+    await screen.findByRole('heading', { level: 1, name: ticketFixture.name });
     rerender(<ProductDetailView productId="nt-h-01" />);
     await waitFor(() => expect(api.trackProductView).toHaveBeenCalledTimes(1));
     expect(api.trackProductView).toHaveBeenCalledWith('nt-h-01');
@@ -380,7 +410,7 @@ describe('ProductDetailView', () => {
     api.trackProductView.mockClear();
     travel.currentPersona = null;
     render(<ProductDetailView productId="nt-h-01" />);
-    await screen.findByRole('heading', { name: ticketFixture.name });
+    await screen.findByRole('heading', { level: 1, name: ticketFixture.name });
     expect(api.trackProductView).not.toHaveBeenCalled();
   });
 
@@ -389,6 +419,6 @@ describe('ProductDetailView', () => {
       .mockResolvedValue(ticketFixture);
     render(<ProductDetailView productId="nt-h-01" />);
     fireEvent.click(await screen.findByRole('button', { name: 'Thử lại' }));
-    expect(await screen.findByRole('heading', { name: ticketFixture.name })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: ticketFixture.name })).toBeTruthy();
   });
 });

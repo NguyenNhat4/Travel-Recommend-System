@@ -16,7 +16,7 @@ export function SuggestionChips({ suggestions, onSelect, disabled }: {
           type="button"
           disabled={disabled}
           onClick={() => onSelect(suggestion)}
-          className="min-h-11 rounded-full border border-blue-200 bg-white px-4 py-2 text-left text-sm font-medium text-blue-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+          className="min-h-11 rounded-full border border-brand-200 bg-white px-4 py-2 text-left text-sm font-medium text-brand-700 transition hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {suggestion}
         </button>

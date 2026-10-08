@@ -34,7 +34,7 @@ function dateText(item: ApiCartItem): string {
 function typeTag(d: TravelerDraft, item: ApiCartItem): { text: string; className: string } {
   const traveler = draftToTraveler(d);
   if (fareTypeOn(traveler, item.usingDate) === 'ADULT') {
-    return { text: d.type === 'CHILD' ? 'Người lớn (đủ 12t)' : 'Người lớn', className: 'bg-blue-50 text-blue-700' };
+    return { text: d.type === 'CHILD' ? 'Người lớn (đủ 12t)' : 'Người lớn', className: 'bg-brand-50 text-brand-700' };
   }
   const age = traveler.birth ? ageOn(traveler.birth, item.usingDate) : null;
   if (item.product.taxonomy === 'flight' && isInfantForItem(d, item)) return { text: `Em bé, ${age} tuổi`, className: 'bg-rose-50 text-rose-700' };
@@ -68,7 +68,7 @@ const PolicyNote: React.FC<{ productId: string }> = ({ productId }) => {
   };
   return (
     <details className="text-xs" onToggle={(e) => { if ((e.currentTarget as HTMLDetailsElement).open) load(); }}>
-      <summary className="cursor-pointer select-none text-blue-600 font-semibold inline-flex items-center gap-1">
+      <summary className="cursor-pointer select-none text-brand-600 font-semibold inline-flex items-center gap-1">
         <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />Điều kiện vé trẻ em của điểm đến
       </summary>
       <p className="mt-2 text-slate-600 leading-relaxed bg-slate-50 border border-slate-100 rounded-lg px-3 py-2 whitespace-pre-line">
@@ -124,7 +124,7 @@ const CardShell: React.FC<{
         <textarea
           rows={1} maxLength={500} value={ctl.special[item.cartItemId] ?? ''} onChange={(e) => ctl.setSpecialRequest(item.cartItemId, e.target.value)}
           placeholder="Yêu cầu đặc biệt (không bắt buộc, tối đa 500 ký tự)" aria-label={`Yêu cầu đặc biệt cho ${item.product.name}`}
-          className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg outline-hidden focus:ring-2 focus:ring-blue-500 resize-y"
+          className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg outline-hidden focus:ring-2 focus:ring-brand-500 resize-y"
         />
       </div>
     </article>
@@ -154,8 +154,8 @@ const PersonCard: React.FC<{ ctl: CheckoutController; item: ApiCartItem }> = ({ 
             const tag = typeTag(d, item);
             const name = displayName(d, ctl.drafts);
             return (
-              <label key={d.ref} className={`flex items-center gap-2.5 rounded-lg border px-3 py-2 cursor-pointer hover:border-blue-400 ${on ? 'border-blue-300 bg-blue-50/50' : 'border-slate-200 bg-white'}`}>
-                <input type="checkbox" checked={on} onChange={() => ctl.toggleTraveler(item.cartItemId, d.ref)} aria-label={`${name} dùng ${item.product.name}`} className="w-4 h-4 accent-blue-600 shrink-0" />
+              <label key={d.ref} className={`flex items-center gap-2.5 rounded-lg border px-3 py-2 cursor-pointer hover:border-brand-400 ${on ? 'border-brand-300 bg-brand-50/50' : 'border-slate-200 bg-white'}`}>
+                <input type="checkbox" checked={on} onChange={() => ctl.toggleTraveler(item.cartItemId, d.ref)} aria-label={`${name} dùng ${item.product.name}`} className="w-4 h-4 accent-brand-600 shrink-0" />
                 <span className="text-sm text-slate-800 font-medium truncate">{name}</span>
                 <span className={`ml-auto text-[11px] font-semibold rounded px-1.5 py-0.5 whitespace-nowrap ${tag.className}`}>{tag.text}</span>
               </label>
@@ -202,7 +202,7 @@ const HotelCard: React.FC<{ ctl: CheckoutController; item: ApiCartItem }> = ({ c
         <span className={`text-[11px] font-semibold rounded px-1 ${tag.className}`}>{tag.text}</span>
         {options.length > 0 && (
           <select aria-label={`Chuyển ${nameOf(ref)} sang phòng khác`} value="" onChange={(e) => { if (e.target.value !== '') ctl.moveToRoom(item.cartItemId, ref, Number(e.target.value)); }}
-            className="text-xs font-semibold text-blue-700 bg-transparent border-0 py-0 pl-1 pr-0 rounded cursor-pointer focus:ring-2 focus:ring-blue-500">
+            className="text-xs font-semibold text-brand-700 bg-transparent border-0 py-0 pl-1 pr-0 rounded cursor-pointer focus:ring-2 focus:ring-brand-500">
             <option value="">{roomIndex === null ? 'Xếp vào…' : 'Đổi phòng'}</option>
             {options.map((k) => <option key={k} value={k}>Phòng {k + 1}</option>)}
           </select>
@@ -220,10 +220,10 @@ const HotelCard: React.FC<{ ctl: CheckoutController; item: ApiCartItem }> = ({ c
         <div className="flex items-center gap-3">
           <span className="text-sm font-semibold text-slate-800">Số phòng</span>
           <button type="button" onClick={() => ctl.removeRoom(item.cartItemId)} disabled={rooms <= 1} aria-label="Bớt phòng"
-            className="w-8 h-8 rounded-full border border-slate-300 text-slate-700 flex items-center justify-center hover:border-blue-500 hover:text-blue-600 disabled:opacity-40 disabled:cursor-not-allowed">−</button>
+            className="w-8 h-8 rounded-full border border-slate-300 text-slate-700 flex items-center justify-center hover:border-brand-500 hover:text-brand-600 disabled:opacity-40 disabled:cursor-not-allowed">−</button>
           <span className="w-5 text-center font-bold tabular-nums" aria-live="polite">{rooms}</span>
           <button type="button" onClick={() => ctl.addRoom(item.cartItemId)} disabled={!canAddRoom} aria-label="Thêm phòng"
-            className="w-8 h-8 rounded-full border border-slate-300 text-slate-700 flex items-center justify-center hover:border-blue-500 hover:text-blue-600 disabled:opacity-40 disabled:cursor-not-allowed">+</button>
+            className="w-8 h-8 rounded-full border border-slate-300 text-slate-700 flex items-center justify-center hover:border-brand-500 hover:text-brand-600 disabled:opacity-40 disabled:cursor-not-allowed">+</button>
         </div>
         <span className="text-xs text-slate-500">{cap ? `Tối đa ${cap} khách/phòng` : 'Khách sạn chưa công bố sức chứa phòng'}</span>
       </div>
@@ -246,14 +246,14 @@ const HotelCard: React.FC<{ ctl: CheckoutController; item: ApiCartItem }> = ({ c
                 <div className="flex items-center gap-2 flex-wrap">
                   <label htmlFor={`lead-${item.cartItemId}-${k}`} className="text-[11px] text-slate-600">Người đại diện nhận phòng</label>
                   <select id={`lead-${item.cartItemId}-${k}`} value={room.lead ?? ''} onChange={(e) => ctl.setLead(item.cartItemId, k, e.target.value)}
-                    aria-label={`Người đại diện nhận phòng (Phòng ${k + 1})`} className="text-xs py-1 border border-slate-300 rounded-lg pl-2 pr-7 bg-white focus:ring-2 focus:ring-blue-500">
+                    aria-label={`Người đại diện nhận phòng (Phòng ${k + 1})`} className="text-xs py-1 border border-slate-300 rounded-lg pl-2 pr-7 bg-white focus:ring-2 focus:ring-brand-500">
                     {roomAdults.map((ref) => <option key={ref} value={ref}>{nameOf(ref)}</option>)}
                   </select>
                 </div>
               )}
               <ErrorList messages={errs} />
               {roomAdults.length === 0 && adultsOnDate.length < rooms && (
-                <button type="button" onClick={() => ctl.removeRoom(item.cartItemId)} className="text-xs font-semibold text-blue-600 hover:underline">− Bớt phòng</button>
+                <button type="button" onClick={() => ctl.removeRoom(item.cartItemId)} className="text-xs font-semibold text-brand-600 hover:underline">− Bớt phòng</button>
               )}
             </div>
           );
@@ -265,7 +265,7 @@ const HotelCard: React.FC<{ ctl: CheckoutController; item: ApiCartItem }> = ({ c
           <div className="flex flex-wrap gap-1.5 items-center">
             {unassigned.map((ref) => chip(ref, null))}
             {canAddRoom && (
-              <button type="button" onClick={() => ctl.addRoom(item.cartItemId)} className="text-xs font-bold text-blue-700 bg-white border border-blue-200 hover:bg-blue-50 rounded-full px-3 py-1">+ Thêm phòng</button>
+              <button type="button" onClick={() => ctl.addRoom(item.cartItemId)} className="text-xs font-bold text-brand-700 bg-white border border-brand-200 hover:bg-brand-50 rounded-full px-3 py-1">+ Thêm phòng</button>
             )}
           </div>
         </div>
