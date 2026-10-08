@@ -3,6 +3,9 @@ import { expect, test } from '@playwright/test';
 const routes = [
   '/',
   '/search?q=khach-san&type=hotel',
+  '/hotels?q=khach-san',
+  '/experiences?q=san-golf&type=golf',
+  '/combos?q=combo',
   '/product/nt-hotel-01',
   '/cart',
   '/checkout',

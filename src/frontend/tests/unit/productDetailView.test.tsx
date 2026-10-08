@@ -5,14 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import propertyFixture from '../../../shared/mocks/catalog/getProduct.200-property.json';
 import ticketFixture from '../../../shared/mocks/catalog/getProduct.200-default.json';
 import variantsFixture from '../../../shared/mocks/catalog/listProducts.200-variants.json';
-import similarFixture from '../../../shared/mocks/catalog/getSimilarProducts.200-default.json';
 import popularFixture from '../../../shared/mocks/catalog/listProducts.200-popular.json';
 
 const api = vi.hoisted(() => ({
   getProduct: vi.fn(),
   listVariants: vi.fn(),
   listProducts: vi.fn(),
-  getSimilarProducts: vi.fn(),
   trackProductView: vi.fn(),
 }));
 const recsys = vi.hoisted(() => ({ fetchRecommendations: vi.fn() }));
@@ -42,7 +40,6 @@ describe('ProductDetailView', () => {
     vi.clearAllMocks();
     travel.currentPersona = { id: 'VP0000001', name: 'Nguyễn Minh Anh' };
     api.listVariants.mockResolvedValue(variantsFixture);
-    api.getSimilarProducts.mockResolvedValue(similarFixture);
     api.listProducts.mockResolvedValue(popularFixture);
     recsys.fetchRecommendations.mockRejectedValue(new Error('không cần trong test'));
     travel.addToCart.mockResolvedValue(true);
@@ -76,6 +73,22 @@ describe('ProductDetailView', () => {
     expect(item.usingDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(item.checkOutDate > item.usingDate).toBe(true);
     expect(item.guests).toEqual({ adults: 1, children: 0 });
+  });
+
+  it('thanh phân cấp về trang khách sạn của điểm đến, giữ ngày và số khách, không sang /search', async () => {
+    window.history.pushState({}, '', '/product/nt-h-10?checkIn=2099-10-20&checkOut=2099-10-22&adults=2');
+    try {
+      api.getProduct.mockResolvedValue(hotelProperty());
+      render(<ProductDetailView productId="nt-h-10" />);
+      const link = await screen.findByRole('link', { name: /^Khách sạn tại / }, WAIT);
+      await waitFor(() => expect(link.getAttribute('href')).toContain('checkIn=2099-10-20'), WAIT);
+      const href = new URL(link.getAttribute('href')!, 'http://x');
+      expect(href.pathname).toBe('/hotels');
+      expect(href.searchParams.get('adults')).toBe('2');
+      expect(screen.queryByRole('link', { name: 'Nha Trang' })).toBeNull();
+    } finally {
+      window.history.pushState({}, '', '/');
+    }
   });
 
   it('khách sạn: gợi ý sức chứa; vượt sức chứa thì khoá nút đặt và gợi ý thêm phòng, thêm phòng xong gửi số phòng và số khách', async () => {
@@ -253,10 +266,98 @@ describe('ProductDetailView', () => {
     expect(travel.navigate).not.toHaveBeenCalled();                                // startBooking tự mở trang thanh toán của đơn nháp
   });
 
-  it('shows similar products from the API', async () => {
+  it('không còn mục Tương tự ở trang chi tiết', async () => {
     api.getProduct.mockResolvedValue(ticketFixture);
     render(<ProductDetailView productId="nt-h-01" />);
-    expect(await screen.findByText(similarFixture.results[0].name)).toBeTruthy();
+    await screen.findByRole('heading', { level: 1 }, WAIT);
+    expect(screen.queryByText(/^Tương tự/)).toBeNull();
+  });
+
+  it('khách sạn: bộ ảnh nhiều tấm từ attributes.images, bấm mở trình xem ảnh lớn, ← → đổi ảnh, Esc đóng', async () => {
+    const hotel = hotelProperty();
+    hotel.attributes = { ...hotel.attributes, images: [
+      'https://img.example/a.jpg', 'https://img.example/b.jpg', 'https://img.example/c.jpg', 'https://img.example/d.jpg',
+      'https://img.example/e.jpg', 'https://img.example/f.jpg'] };
+    hotel.imageUrl = 'https://img.example/a.jpg';
+    api.getProduct.mockResolvedValue(hotel);
+    render(<ProductDetailView productId="nt-h-10" />);
+    const open = await screen.findByRole('button', { name: /^Xem 6 ảnh của / }, WAIT);
+    expect(screen.getAllByText('6 ảnh').length).toBeGreaterThan(0);
+    fireEvent.click(open);
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.textContent).toContain('1 / 6');
+    fireEvent.keyDown(document, { key: 'ArrowRight' });
+    expect(dialog.textContent).toContain('2 / 6');
+    fireEvent.keyDown(document, { key: 'ArrowLeft' });
+    fireEvent.keyDown(document, { key: 'ArrowLeft' });
+    expect(dialog.textContent).toContain('6 / 6');                       // vòng về ảnh cuối
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('khách sạn: tiện ích của khách sạn bỏ trùng, thu gọn 12 mục và mở hết bằng "Xem tất cả"', async () => {
+    const hotel = hotelProperty();
+    const names = Array.from({ length: 20 }, (_, i) => `Tiện ích ${i + 1}`);
+    hotel.attributes = { ...hotel.attributes, amenities: [...names, 'tiện ích 1', '  ', 7] };
+    api.getProduct.mockResolvedValue(hotel);
+    render(<ProductDetailView productId="nt-h-10" />);
+    const list = await screen.findByRole('list', { name: 'Tiện ích' }, WAIT);
+    expect(list.querySelectorAll('li')).toHaveLength(12);
+    fireEvent.click(screen.getByRole('button', { name: 'Xem tất cả (20)' }));
+    expect(screen.getByRole('list', { name: 'Tiện ích' }).querySelectorAll('li')).toHaveLength(20);
+    fireEvent.click(screen.getByRole('button', { name: 'Thu gọn' }));
+    expect(screen.getByRole('list', { name: 'Tiện ích' }).querySelectorAll('li')).toHaveLength(12);
+  });
+
+  it('thẻ hạng phòng: thông số có icon, nhãn Giá tốt nhất ở phòng rẻ nhất, "Đã chọn" theo lựa chọn; nút ảnh không đổi lựa chọn', async () => {
+    api.getProduct.mockResolvedValue(hotelProperty());
+    const rooms = JSON.parse(JSON.stringify(variantsFixture));
+    rooms.results[0].attributes = { ...rooms.results[0].attributes, roomSizeM2: 32, bed: '2 giường đơn', oceanView: true,
+      images: ['https://img.example/r1.jpg', 'https://img.example/r1b.jpg'], amenities: ['Wifi miễn phí', 'Điều hoà không khí', 'Bồn tắm', 'Rèm cản sáng'] };
+    api.listVariants.mockResolvedValue(rooms);
+    render(<ProductDetailView productId="nt-h-10" />);
+    const radios = await screen.findAllByRole('radio', {}, WAIT);
+
+    expect(screen.getAllByText('Giá tốt nhất')).toHaveLength(1);
+    const facts = screen.getAllByRole('list', { name: 'Thông số phòng' })[0].textContent ?? '';
+    expect(facts).toContain('32 m²');
+    expect(facts).toContain('2 giường đơn');
+    expect(facts).toContain('Hướng biển');
+    const highlights = screen.getAllByRole('list', { name: 'Tiện ích nổi bật' })[0].textContent ?? '';
+    expect(highlights).toContain('Wifi miễn phí');
+    expect(highlights).not.toContain('Rèm cản sáng');                    // không có icon riêng: không nêu nổi bật
+
+    expect(radios[0].getAttribute('aria-checked')).toBe('true');
+    expect(screen.getAllByText('Đã chọn')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Xem ảnh phòng (2)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Đóng' }));
+    expect(radios[0].getAttribute('aria-checked')).toBe('true');         // mở ảnh không đổi phòng
+    fireEvent.click(radios[1]);
+    expect(radios[1].getAttribute('aria-checked')).toBe('true');
+    expect(radios[0].getAttribute('aria-checked')).toBe('false');
+    expect(screen.getAllByText('Đã chọn')).toHaveLength(1);
+  });
+
+  it('mỗi hạng phòng có ảnh nhỏ, xem ảnh phòng riêng và tiện ích riêng; chọn phòng không bị ảnh hưởng', async () => {
+    api.getProduct.mockResolvedValue(hotelProperty());
+    const rooms = JSON.parse(JSON.stringify(variantsFixture));
+    rooms.results[0].imageUrl = 'https://img.example/room1.jpg';
+    rooms.results[0].attributes = { ...rooms.results[0].attributes, images: ['https://img.example/room1.jpg', 'https://img.example/room1b.jpg'],
+      amenities: ['Két an toàn', 'Wifi miễn phí', 'Ấm đun nước'] };
+    api.listVariants.mockResolvedValue(rooms);
+    render(<ProductDetailView productId="nt-h-10" />);
+    const photos = await screen.findByRole('button', { name: 'Xem ảnh phòng (2)' }, WAIT);
+    fireEvent.click(photos);
+    expect(screen.getByRole('dialog').textContent).toContain('1 / 2');
+    fireEvent.click(screen.getByRole('button', { name: 'Đóng' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    expect(screen.queryByRole('list', { name: 'Tiện ích phòng' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Tiện ích phòng (3)' }));
+    expect(screen.getByRole('list', { name: 'Tiện ích phòng' }).textContent).toContain('Wifi miễn phí');
+    fireEvent.click(screen.getByRole('button', { name: 'Ẩn tiện ích phòng' }));
+    expect(screen.queryByRole('list', { name: 'Tiện ích phòng' })).toBeNull();
+    expect(screen.getAllByRole('radio')).toHaveLength(2);                // vẫn là hai hạng phòng để chọn
   });
 
   it('shows the "no longer on V-OTA" page with popular products on 404', async () => {

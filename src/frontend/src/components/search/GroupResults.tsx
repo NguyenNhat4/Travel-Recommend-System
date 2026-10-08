@@ -5,8 +5,9 @@ import { Filter, Search, X } from 'lucide-react';
 import { ApiError } from '../../services/http';
 import {
   GROUP_PAGE_SIZE, SEARCH_GROUPS, searchCacheKey, searchGroupApi, viewItems,
-  type SearchGroup, type SearchResultItem, type SortOption,
+  type Guests, type SearchGroup, type Stay, type SearchResultItem, type SortOption,
 } from '../../services/search';
+import type { Taxonomy } from '../../types/travel';
 import { loadSection } from '../../hooks/useLazySection';
 import { ProductCard } from '../common/ProductCard';
 import { SearchAssistantBanner } from './SearchAssistantBanner';
@@ -19,6 +20,16 @@ interface GroupResultsProps {
   tripQuery: string;
   onClearDestination: () => void;
   onAskAssistant: () => void;
+  /** Thu hẹp nhóm về một loại (tab Vé tham quan / Sân golf ở /experiences); không có thì cả nhóm. */
+  taxonomy?: Taxonomy;
+  /** Số khách một phòng/đơn vị của tấm tìm kiếm: lọc cứng theo sức chứa ở API. */
+  guests?: Guests;
+  /** Ngày của tấm tìm kiếm: lọc cứng ở API (khách sạn theo luật đặt phòng và lịch phòng; vé theo cửa sổ mở bán). */
+  stay?: Stay;
+  /** Nhãn ở chip "Đang lọc" thay cho nhãn nhóm. */
+  label?: string;
+  /** Đặt trong trang danh mục: điểm đến là bộ lọc của tấm tìm kiếm nên bỏ ghi chú "không có bộ lọc điểm đến". */
+  embedded?: boolean;
 }
 
 interface Loaded {
@@ -33,7 +44,7 @@ interface Loaded {
  * Sắp xếp là popup ở mọi nhóm; lọc hạng sao và giá chỉ có ở Lưu trú (đơn vị giá đồng nhất).
  * Cha đặt `key` theo (nhóm, truy vấn, điểm đến) nên state ở đây tự đặt lại khi các giá trị đó đổi.
  */
-export const GroupResults: React.FC<GroupResultsProps> = ({ group, query, destination, tripQuery, onClearDestination, onAskAssistant }) => {
+export const GroupResults: React.FC<GroupResultsProps> = ({ group, query, destination, tripQuery, onClearDestination, onAskAssistant, taxonomy, guests, stay, label, embedded }) => {
   const [pages, setPages] = useState(1);
   const [retryToken, setRetryToken] = useState(0);
   const [sort, setSort] = useState<SortOption>('relevance');
@@ -50,8 +61,8 @@ export const GroupResults: React.FC<GroupResultsProps> = ({ group, query, destin
     Promise.all(Array.from({ length: pages }, (_, index) => {
       const offset = index * GROUP_PAGE_SIZE;
       return loadSection(
-        searchCacheKey('group', query, destination, group, GROUP_PAGE_SIZE, offset),
-        () => searchGroupApi(query, group, { destination, limit: GROUP_PAGE_SIZE, offset }),
+        searchCacheKey('group', query, destination, group, GROUP_PAGE_SIZE, offset, taxonomy, guests, stay),
+        () => searchGroupApi(query, group, { destination, limit: GROUP_PAGE_SIZE, offset, taxonomy, guests, stay }),
       );
     })).then((list) => {
       if (cancelled) return;
@@ -66,7 +77,9 @@ export const GroupResults: React.FC<GroupResultsProps> = ({ group, query, destin
       setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [query, destination, group, pages, retryToken]);
+  // guests và stay là object dựng lại mỗi lần render của cha: so theo giá trị từng trường để không tải lại vô ích.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, destination, group, taxonomy, guests?.adults, guests?.children, stay?.checkIn, stay?.checkOut, pages, retryToken]);
 
   const visible = useMemo(() => viewItems(loaded?.items ?? [], { sort, minStarRating, maxPrice }), [loaded, sort, minStarRating, maxPrice]);
   const isStay = group === 'stay';
@@ -131,9 +144,11 @@ export const GroupResults: React.FC<GroupResultsProps> = ({ group, query, destin
         </div>
       </div>
 
-      <p className="rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
-        Điểm đến do câu tìm kiếm quyết định, nên không có bộ lọc điểm đến.
-      </p>
+      {!embedded && (
+        <p className="rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
+          Điểm đến do câu tìm kiếm quyết định, nên không có bộ lọc điểm đến.
+        </p>
+      )}
     </div>
   );
 
@@ -213,7 +228,7 @@ export const GroupResults: React.FC<GroupResultsProps> = ({ group, query, destin
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-slate-400 font-medium">Đang lọc:</span>
             <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-medium border border-indigo-200">
-              {SEARCH_GROUPS[group].label}
+              {label ?? SEARCH_GROUPS[group].label}
             </span>
             {destination && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 font-medium border border-blue-200">

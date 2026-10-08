@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTravel } from '../../context/TravelContext';
 import {
-  getProduct, getSimilarProducts, hasVariants, listProducts, listVariants, productFromApi, trackProductView,
+  getProduct, hasVariants, listProducts, placeholderImage, listVariants, productFromApi, trackProductView,
   type VariantSummary,
 } from '../../services/catalog';
 import { isCartEligible } from '../../services/booking';
@@ -19,13 +19,17 @@ import { estimateFares } from '../checkout/fareEstimate';
 import { FareLines } from '../checkout/FareLines';
 import { GuestCounters } from '../checkout/GuestCounters';
 import { cartPayload, guestModeOf, initialCounts, isValidCounts, maxOccupancyFromAttributes, normalizeCounts } from '../checkout/guestCounts';
-import { parseTripContext } from '../../features/search/tripContext';
-import { MapPin, ShieldCheck, Users, BedDouble, Plane, Loader2, Calendar } from 'lucide-react';
+import { parseTripContext, serializeTripContext } from '../../features/search/tripContext';
+import { ProductBreadcrumb } from './ProductBreadcrumb';
+import { AmenityList, amenityList } from './AmenityList';
+import { RoomCard } from './RoomCard';
+import { ImageLightbox, ProductGallery, imagesOf } from './ProductGallery';
+import { MapPin, ShieldCheck, Users, BedDouble, Plane, Loader2, Calendar, Images } from 'lucide-react';
 
 /**
  * Trang chi tiết `/product/{productId}` (docs/spec/hop-dong-tich-hop-frontend.md §4.3, product.md §4.3).
  *
- * Mọi dữ liệu từ API: GET /products/{id}, /products/{id}/similar, /recommendations. Khách sạn (property) và
+ * Mọi dữ liệu từ API: GET /products/{id}, /recommendations. Khách sạn (property) và
  * tuyến bay (route) chỉ để xem — khách chọn một hạng phòng / chuyến bay cụ thể (GET /products?parentProductId=)
  * và mục đó mới được thêm vào giỏ (FR-CAT-02).
  */
@@ -213,6 +217,11 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
   const { addToCart, startBooking, navigate, currentPersona } = useTravel();
   const [state, setState] = useState<LoadState>({ status: 'loading' });
   const [retry, setRetry] = useState(0);
+  // Ngày và số khách của tấm tìm kiếm (?checkIn&…): giữ cho mục "Khách sạn tại …" của thanh phân cấp quay về đúng kết quả.
+  const [tripQuery, setTripQuery] = useState('');
+  useEffect(() => {
+    setTripQuery(serializeTripContext(parseTripContext(new URLSearchParams(window.location.search))));
+  }, [productId]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -245,6 +254,9 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
   const [variants, setVariants] = useState<Product[] | null>(null);
   const [variantsFailed, setVariantsFailed] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Ảnh lớn của một hạng phòng đang xem, và hạng phòng đang mở danh sách tiện ích.
+  const [roomPhotos, setRoomPhotos] = useState<{ images: string[]; index: number; title: string } | null>(null);
+  const [amenityRoomId, setAmenityRoomId] = useState<string | null>(null);
   useEffect(() => {
     setVariants(null);
     setVariantsFailed(false);
@@ -323,18 +335,6 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
     })
     : null;
 
-  // Sản phẩm tương tự: lỗi hoặc rỗng thì ẩn section.
-  const [similar, setSimilar] = useState<Product[]>([]);
-  useEffect(() => {
-    setSimilar([]);
-    if (!product) return;
-    const controller = new AbortController();
-    getSimilarProducts(product.id, 8, controller.signal)
-      .then((res) => setSimilar(res.results.map(productFromApi)))
-      .catch(() => setSimilar([]));
-    return () => controller.abort();
-  }, [product]);
-
   // Hoàn thiện chuyến: chỉ khi đăng nhập và gợi ý cùng điểm đến với sản phẩm.
   const [trip, setTrip] = useState<RecommendationResponse | null>(null);
   useEffect(() => {
@@ -390,6 +390,9 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
 
   const variantNoun = product.taxonomy === 'flight' ? 'chuyến bay' : 'hạng phòng';
   const bookableVariants = (variants ?? []).filter(isBookable);
+  // Hạng phòng rẻ nhất trong các hạng bán được; chỉ gắn nhãn "Giá tốt nhất" khi có từ hai hạng để so.
+  const cheapestRoomId = product.taxonomy !== 'flight' && bookableVariants.length > 1
+    ? bookableVariants.reduce((best, v) => ((v.unitPrice as number) < (best.unitPrice as number) ? v : best)).id : null;
   const unavailableReason = !unit
     ? (needsVariant ? (variants && bookableVariants.length === 0
       ? `Hiện chưa có ${variantNoun} nào đặt được trên V-OTA.` : `Chọn một ${variantNoun} để đặt.`) : null)
@@ -403,14 +406,7 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-10">
       {/* Breadcrumbs & Header */}
       <div className="space-y-3">
-        <div className="flex items-center gap-2 text-xs text-slate-500">
-          <span className="hover:text-blue-600 cursor-pointer" onClick={() => navigate('/')}>Trang chủ</span>
-          <span>›</span>
-          <span className="hover:text-blue-600 cursor-pointer"
-            onClick={() => navigate(`/search?q=${encodeURIComponent(product.destination)}&destination=${encodeURIComponent(product.destination)}`)}>
-            {product.destination}
-          </span>
-        </div>
+        <ProductBreadcrumb product={product} tripQuery={tripQuery} />
 
         <div className="flex items-center gap-2 flex-wrap mb-1.5">
           <span className="flex items-center gap-1 text-xs text-slate-500">
@@ -427,15 +423,8 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
         )}
       </div>
 
-      {/* Ảnh: MVP chỉ có một imageUrl (backend §2.3) */}
-      <div className="relative rounded-2xl overflow-hidden aspect-16/7 bg-slate-100 shadow-md border border-slate-200">
-        <img src={product.imageUrl} alt={product.name} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
-        {!product.available && (
-          <div className="absolute inset-0 bg-slate-900/70 flex items-center justify-center text-sm sm:text-base font-bold text-white uppercase tracking-wider">
-            Sản phẩm hiện đã tạm hết chỗ
-          </div>
-        )}
-      </div>
+      {/* Ảnh: `attributes.images` của nguồn (một ảnh lớn + bốn ảnh nhỏ, bấm để xem lớn); thiếu thì ảnh thay thế theo loại */}
+      <ProductGallery images={imagesOf(product)} name={product.name} taxonomy={product.taxonomy} unavailable={!product.available} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
         {/* Cột trái: mô tả + chọn hạng phòng/chuyến bay */}
@@ -446,6 +435,13 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
               {product.description || 'Chưa có mô tả cho dịch vụ này.'}
             </p>
           </div>
+
+          {amenityList(product.attributes?.amenities).length > 0 && (
+            <div className="space-y-3">
+              <h3 className="text-base font-bold text-slate-900">{product.taxonomy === 'hotel' ? 'Tiện ích khách sạn' : 'Tiện ích'}</h3>
+              <AmenityList items={amenityList(product.attributes?.amenities)} label="Tiện ích" />
+            </div>
+          )}
 
           {needsVariant && (
             <div className="space-y-3 pt-4 border-t border-slate-200" id="variants">
@@ -471,6 +467,16 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
                   {variants.map((variant) => {
                     const selectable = isBookable(variant);
                     const selected = variant.id === selectedId;
+                    if (variant.taxonomy !== 'flight') {
+                      return (
+                        <RoomCard key={variant.id} room={variant} title={variantTitle(variant)} selected={selected} selectable={selectable}
+                          cheapest={cheapestRoomId === variant.id}
+                          onSelect={() => setSelectedId(variant.id)}
+                          onPhotos={(images) => setRoomPhotos({ images, index: 0, title: variantTitle(variant) })}
+                          amenitiesOpen={amenityRoomId === variant.id}
+                          onToggleAmenities={() => setAmenityRoomId(amenityRoomId === variant.id ? null : variant.id)} />
+                      );
+                    }
                     return (
                       <button key={variant.id} type="button" role="radio" aria-checked={selected} disabled={!selectable}
                         onClick={() => setSelectedId(variant.id)}
@@ -480,11 +486,7 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
                         <div className="min-w-0">
                           <div className="text-sm font-bold text-slate-900 line-clamp-1">{variantTitle(variant)}</div>
                           <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-0.5 text-[11px] text-slate-500">
-                            {variantFacts(variant).map((fact) => (
-                              <span key={fact} className="inline-flex items-center gap-1">
-                                {fact.startsWith('Tối đa') && <Users className="w-3 h-3" />}{fact}
-                              </span>
-                            ))}
+                            {variantFacts(variant).map((fact) => <span key={fact}>{fact}</span>)}
                             {!variant.available && <span className="font-semibold text-rose-600">Hết chỗ</span>}
                           </div>
                         </div>
@@ -587,15 +589,6 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
         </div>
       </div>
 
-      {similar.length > 0 && (
-        <div className="pt-8 border-t border-slate-200 space-y-4">
-          <h2 className="text-lg font-black text-slate-900">Tương tự {product.name}</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {similar.slice(0, 8).map((sim) => <ProductCard key={sim.id} product={sim} variant="grid" />)}
-          </div>
-        </div>
-      )}
-
       {tripRecs.length > 0 && (
         <div className="pt-8 border-t border-slate-200 space-y-4">
           <h2 className="text-lg font-black text-slate-900">Hoàn thiện chuyến {product.destination}</h2>
@@ -606,6 +599,11 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
             ))}
           </div>
         </div>
+      )}
+
+      {roomPhotos && (
+        <ImageLightbox images={roomPhotos.images} index={roomPhotos.index} title={roomPhotos.title} taxonomy="hotel"
+          onClose={() => setRoomPhotos(null)} onIndex={(index) => setRoomPhotos((cur) => (cur ? { ...cur, index } : cur))} />
       )}
     </div>
   );

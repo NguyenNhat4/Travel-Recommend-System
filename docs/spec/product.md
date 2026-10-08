@@ -90,7 +90,7 @@ Tài khoản seed đăng nhập qua `/login` như mọi user (email seed + mật
 |---|---|---|---|
 | `/` | Home | Không (khi đã đăng nhập mới có phần cá nhân hóa) | |
 | `/search?q=&taxonomy=&destination=&sort=` | Kết quả tìm kiếm | Không | Route hiện hiển thị trạng thái API chưa khả dụng; page chưa gọi `searchProducts`, xem §1.5 |
-| `/hotels`, `/flights`, `/experiences`, `/combos` | Trang danh mục dịch vụ (hero, tấm tìm kiếm, carousel phổ biến và giá tốt, điểm đến) | Không | Nhận `?destination=`; `/experiences` nhận thêm `?type=attraction\|golf`; `/flights` không có khối phổ biến và giá tốt: tìm tại chỗ, chuyến bay hiện dưới tấm tìm kiếm, chưa tìm thì nhắc nhập. Xem frontend §4.1a, §4.1b |
+| `/hotels`, `/flights`, `/experiences`, `/combos` | Trang danh mục dịch vụ (hero, tấm tìm kiếm, carousel phổ biến và giá tốt, điểm đến) | Không | Nhận `?destination=`; `/experiences` nhận thêm `?type=attraction\|golf`; có `?q=` (kèm ngày, số khách) là đang tìm: kết quả của loại đó hiện ngay dưới tấm tìm kiếm thay các khối phổ biến và giá tốt, không chuyển sang `/search`; `/flights` không có khối phổ biến và giá tốt: tìm tại chỗ, chuyến bay hiện dưới tấm tìm kiếm, chưa tìm thì nhắc nhập. Xem frontend §4.1a, §4.1b |
 | `/product/:productId` | Chi tiết sản phẩm | Không | |
 | `/cart` | Giỏ hàng | **Có** | Có thể bị cắt (handbook §2, mục 4) |
 | `/checkout` | Checkout | **Có** | |
@@ -242,7 +242,7 @@ Bố cục theo bản mẫu đã duyệt, ngay trên `/flights` (tìm không chu
 
 #### 4.2.1 Ô tìm kiếm (header + Home)
 
-- Ở Home, `/search` và header trang chi tiết chỉ có **một ô nhập tự do**, không tách thành Điểm đến / Ngày / Khách, vì engine nhận `q` tự do. Ngoại lệ: **tấm tìm kiếm ở hero trang danh mục** (`/hotels`, `/flights`, `/experiences`, `/combos`) tách Địa điểm / Ngày / Số khách theo FR-SRC-03; ngày và số khách là ngữ cảnh chuyến đi điền sẵn hộp đặt, không lọc phòng trống (frontend §4.1a). Placeholder xoay vòng giữa các câu mẫu: "nghỉ dưỡng biển cho gia đình", "vé tham quan cho trẻ nhỏ ở Phú Quốc", "khách sạn 5 sao gần biển Đà Nẵng".
+- Ở Home, `/search` và header trang chi tiết chỉ có **một ô nhập tự do**, không tách thành Điểm đến / Ngày / Khách, vì engine nhận `q` tự do. Ngoại lệ: **tấm tìm kiếm ở hero trang danh mục** (`/hotels`, `/flights`, `/experiences`, `/combos`) tách Địa điểm / Ngày / Số khách theo FR-SRC-03; bấm Tìm thì kết quả hiện ngay tại trang danh mục đó (không sang `/search`); số khách lọc theo sức chứa và ngày lọc theo lịch (khách sạn kín lịch, vé ngoài cửa sổ bị loại), cả hai cũng điền sẵn hộp đặt (frontend §4.1a). Placeholder xoay vòng giữa các câu mẫu: "nghỉ dưỡng biển cho gia đình", "vé tham quan cho trẻ nhỏ ở Phú Quốc", "khách sạn 5 sao gần biển Đà Nẵng".
   Pattern: `[R35]` Booking.com iOS (tab "AI search": "Search in your own words ⓘ" + thẻ ví dụ "Try these out"). `[R37]` cho thấy chính Booking.com đặt tab "AI search" song song tab "Destination".
 - **Khi focus (ô rỗng):** dropdown gồm "Tìm kiếm gần đây" (lưu `localStorage` khoá `vota_recent_searches`, tối đa 5, có nút Xóa) và "Từ khoá phổ biến" (danh sách cố định `POPULAR_KEYWORDS` ở `features/search/instant/recentSearches.ts`). Không gọi API. Pattern: `[R38]` Skyscanner iOS ("Recent searches" + "Popular destinations").
 - **Khi đang gõ (FR-SRC-05, đề xuất `update-archive/2026-10-05-goi-y-tuc-thi-o-tim-kiem.md`):** gợi ý tức thì, không cần Enter, ở ô hero Home và ô đầu `/search`. Chia theo loại (điểm đến · khách sạn · vé tham quan · sân golf · combo; **không có vé máy bay**), mỗi dòng có icon, tên loại và phần chữ khớp in đậm (khớp đầu từ, không phân biệt dấu và hoa thường), tối đa 8 dòng, cuối là nút "Xem tất cả kết quả cho "…"" → `/search?q=…`. Chọn điểm đến hoặc từ khoá → `/search?q=<nhãn>`; chọn sản phẩm → `/product/{id}`. Gợi ý lấy từ `GET /search/suggestions` (khớp chữ trên catalog, không embed, không ghi event), không phải từ `POST /search`.
@@ -302,7 +302,7 @@ Tab **Tất cả** không có thanh bên và không có sắp xếp: ba hàng th
 
 ### 4.3 Product detail
 
-**Mục đích:** chuyển từ "quan tâm" sang "cho vào giỏ", và là nơi thứ hai hiển thị gợi ý (`/similar` + gợi ý theo chuyến).
+**Mục đích:** chuyển từ "quan tâm" sang "cho vào giỏ", và là nơi thứ hai hiển thị gợi ý (gợi ý theo chuyến). Không có mục "Tương tự": tương đồng ngữ nghĩa không phải lý do đúng để đề xuất thêm ở đây (quyết định 2026-10-07).
 
 #### 4.3.1 Bố cục desktop
 
@@ -314,7 +314,7 @@ Tab **Tất cả** không có thanh bên và không có sắp xếp: ba hàng th
 │ ┌──────────────── ảnh lớn ─────────────┐┌──ảnh──┐                               │
 │ │                                      │├──ảnh──┤   (1 ảnh thì chiếm hết chiều   │
 │ └──────────────────────────────────────┘└──ảnh──┘    ngang, không để ô trống)    │
-├─ Tabs dính: Tổng quan · Tiện ích · Chọn ngày & số lượng · Tương tự ───────────┤
+├─ Tabs dính: Tổng quan · Tiện ích · Chọn ngày & số lượng ───────────────────────┤
 │ CỘT TRÁI (2/3)                              │ CỘT PHẢI (1/3, dính khi cuộn)    │
 │ ▸ Mô tả (4 dòng + "Xem thêm")               │ ┌ Hộp đặt ─────────────────────┐ │
 │ ▸ Điểm nổi bật: tag từ attributes          │ │ Từ 3.400.000 ₫ / đêm          │ │
@@ -328,9 +328,6 @@ Tab **Tất cả** không có thanh bên và không có sắp xếp: ba hàng th
 │                                             │ │ không thêm vào giỏ hàng       │ │
 │                                             │ │ Bạn chưa bị trừ tiền — bản demo│ │
 │                                             │ └───────────────────────────────┘ │
-├─────────────────────────────────────────────┴──────────────────────────────────┤
-│ TƯƠNG TỰ VINPEARL RESORT NHA TRANG           (GET /similar/{id})               │
-│ ┌card┐ ┌card┐ ┌card┐ ┌card┐   nhãn "Tương tự"                                   │
 ├────────────────────────────────────────────────────────────────────────────────┤
 │ HOÀN THIỆN CHUYẾN NHA TRANG  (chỉ khi đăng nhập & strategy = cross_vertical)   │
 │ ┌card+because┐ …                                                               │
@@ -341,14 +338,13 @@ Tab **Tất cả** không có thanh bên và không có sắp xếp: ba hàng th
 
 | Thành phần | Chi tiết | Nguồn | Pattern |
 |---|---|---|---|
-| Đầu trang | Breadcrumb, tên, badge, hạng sao, điểm đến, điểm đánh giá tổng hợp + số lượng (được phép theo handbook §3; ẩn nếu không có) | `Product` | `[R49]` Tripadvisor web (tên + rating + "#14 of 467 small hotels" + gallery 1 lớn 3 nhỏ) |
-| Gallery | 1 ảnh lớn + tối đa 4 ảnh nhỏ. Schema chỉ có một `imageUrl` → MVP hiện 1 ảnh full-width, tỷ lệ 16:7. Ảnh lỗi → placeholder theo `taxonomy` | `imageUrl` (**phụ thuộc:** nhiều ảnh) | `[R49]` Tripadvisor web |
+| Đầu trang | Breadcrumb (Trang chủ › {Loại} tại {điểm đến} › tên; mục giữa về trang danh mục của loại, giữ ngày và số khách), tên, badge, hạng sao, điểm đến, điểm đánh giá tổng hợp + số lượng (được phép theo handbook §3; ẩn nếu không có) | `Product` | `[R49]` Tripadvisor web (tên + rating + "#14 of 467 small hotels" + gallery 1 lớn 3 nhỏ) |
+| Gallery | 1 ảnh lớn + tối đa 4 ảnh nhỏ (lưới 2×2 bên phải), nút "N ảnh" ở góc; bấm ảnh nào cũng mở trình xem ảnh lớn (← → đổi ảnh, Esc đóng, dải ảnh nhỏ bên dưới). Điện thoại chỉ hiện ảnh lớn kèm số ảnh. Ít ảnh thì lưới tự lấp đầy (1 ảnh chiếm hết chiều ngang). Ảnh lấy từ `attributes.images` (bỏ trùng), `imageUrl` làm ảnh đầu; ảnh lỗi hoặc không có → placeholder theo `taxonomy`. Ảnh nguồn thường nặng vài MB nên chỉ ảnh lớn được ưu tiên tải | `imageUrl`, `attributes.images` | `[R49]` Tripadvisor web |
 | Tabs dính | Cuộn tới anchor, đánh dấu tab đang xem | — | `[R46]` Expedia web (Overview · Amenities · Rooms · Policies dính trên cùng); `[R47]` Klook web |
 | Mô tả | Mô tả tiếng Việt từ vinpearl.com, cắt 4 dòng | `description` | — |
-| Tiện ích / thuộc tính | Map các key `attributes` sang icon + nhãn tiếng Việt. Key lạ thì bỏ qua, không hiện tên key thô | `attributes` | `[R48]` Airbnb web ("What this place offers": lưới 2 cột + "Show all 34 amenities") |
+| Tiện ích / thuộc tính | Mục "Tiện ích khách sạn" từ `attributes.amenities`: chuỗi của nguồn, bỏ trùng không phân biệt hoa thường, hiện 12 mục đầu và nút "Xem tất cả (N)" mở hết, "Thu gọn" đóng lại. Không đoán nhãn từ key lạ | `attributes.amenities` | `[R48]` Airbnb web ("What this place offers" + "Show all 34 amenities") |
 | **Hộp đặt** | Các trường thay đổi theo `taxonomy` (bảng 4.3.3). Ngày bị giới hạn trong `availableFrom`–`availableTo`. Tổng tiền tính lại ngay khi đổi lựa chọn. Dòng trấn an: "Bạn chưa bị trừ tiền — đây là bản demo" | `unitPrice`, `available*` | `[R48]` Airbnb web (hộp đặt dính bên phải + "You won't be charged yet"); `[R51]` Klook web (lịch chọn ngày + chọn giờ + stepper số lượng + "Add to cart" / "Book now") |
 | CTA theo loại | **Khách sạn, vé máy bay:** chỉ có "Đặt ngay" kèm dòng "được đặt trực tiếp, không thêm vào giỏ hàng" (giá và chỗ đổi liên tục nên không gom vào giỏ). **Tour, trải nghiệm, golf, combo:** "Thêm vào giỏ" (chính) → toast "Đã thêm vào giỏ · [Xem giỏ]", ở lại trang; và "Đặt ngay" (phụ). "Đặt ngay" ở mọi loại mở thẳng trang thanh toán với **đúng mục này**, không kèm mục nào đang có trong giỏ (`docs/spec/booking/dat-truc-tiep-theo-don-nhap.md`) | — | `[R51]` Klook web (hai nút cạnh nhau) |
-| Tương tự | "Tương tự {tên rút gọn}", 4–8 thẻ có nhãn "Tương tự". Không có `BecauseLine`, vì lý do đã nằm ở tiêu đề (nguồn là chính sản phẩm đang xem) | `GET /similar/{productId}` | `[R54]` KAYAK web ("You might also like — Similar hotels" + badge "Similar"); `[R55]` Turo web ("Similar cars for your dates"); `[R56]` Tripadvisor web ("Popular Nearby ⓘ") |
 | Hoàn thiện chuyến | Chỉ khi đã đăng nhập **và** `destination` của gợi ý trùng với điểm đến sản phẩm. Dùng lại section ① của Home | `/recommendations` | `[R09]` Booking.com iOS |
 | Lối vào Trợ lý | Link nhỏ dưới hộp đặt: "Lên lịch trình quanh {tên}" → `/assistant` điền sẵn "Gợi ý lịch trình 3 ngày ở {destination}, tôi ở {tên}" | — | `[R88]` Booking.com iOS (người dùng mở chat bằng "I've booked: Wolf Inn Hotel…") |
 
@@ -367,11 +363,10 @@ Mọi lựa chọn được lưu thành một mục giỏ (tour, trải nghiệm
 
 | Trạng thái | Hành vi |
 |---|---|
-| Đang tải | Skeleton ảnh lớn + 3 dòng tiêu đề + khung hộp đặt. Section Tương tự tải riêng. Pattern: `[R46]` Expedia web (skeleton khối phòng trong lúc tải) |
-| `available: false` | Hộp đặt thay bằng: "Sản phẩm này hiện đã hết chỗ" + [Xem lựa chọn tương tự] (cuộn tới section Tương tự). Hai CTA bị ẩn |
+| Đang tải | Skeleton ảnh lớn + 3 dòng tiêu đề + khung hộp đặt. Pattern: `[R46]` Expedia web (skeleton khối phòng trong lúc tải) |
+| `available: false` | Hộp đặt thay bằng: "Sản phẩm này hiện đã hết chỗ". Hai CTA bị ẩn |
 | Ngày chọn ngoài `availableFrom`–`availableTo` | Ngày bị disable trên lịch. Nếu dữ liệu cũ khiến toàn bộ khoảng ngày đã qua thì xử lý như hết chỗ |
 | 404 (sản phẩm bị xóa, handbook §6 "event trỏ tới sản phẩm đã bị xóa") | Trang "Sản phẩm này không còn trên V-OTA" + carousel phổ biến + [Về trang chủ] |
-| `/similar` lỗi hoặc rỗng | Ẩn section, không báo lỗi |
 | Thêm vào giỏ thất bại | Nút trở lại bình thường. Toast lỗi "Chưa thêm được vào giỏ. [Thử lại]" |
 | Khách vãng lai bấm CTA | Modal đăng nhập (§4.7). Thành công thì tự thực hiện hành động đã bấm |
 
@@ -936,7 +931,7 @@ Quy tắc chung: vùng chạm ≥ 44 × 44 px, lề ngang 16 px, không cuộn n
 | **Home** | Ô tìm kiếm to trên cùng. Section ① lên thứ hai, carousel ngang (thẻ rộng 72% màn hình). Checklist chuyến thành hàng chip cuộn ngang. `BecauseLine` giữ 1 dòng, cắt tên ở 24 ký tự. Toast "trang chủ đã cập nhật" hiện ngay trên tab bar | `[R08]` Airbnb iOS; `[R13]` Booking.com iOS; `[R15]` Best Buy iOS (toast ngay trên tab bar) |
 | **Search (nhập)** | Bấm ô tìm kiếm mở màn hình toàn phần: ô nhập + "Tìm kiếm gần đây" + "Thử tìm" | `[R37]` Booking.com iOS; `[R38]` Skyscanner iOS |
 | **Search (kết quả)** | Thẻ dọc (ảnh trên, nội dung dưới). Hàng chip dính dưới header: [Bộ lọc (n)] [Khách sạn] [Vé tham quan] [Sắp xếp ▾]. "Bộ lọc" mở bottom sheet toàn phần, nút dính đáy "Xem {n} kết quả" | `[R120]` Agoda iOS (chip "Filters 6" + khoảng giá + "Sort" dính trên cùng); `[R36]` Booking.com iOS (sheet lọc với nút dính đáy "925 matching properties · Show results"); `[R121]` Skyscanner iOS (nút nổi "Sort and filters") |
-| **Product detail** | Ảnh full-width trên cùng. Tabs anchor thành hàng cuộn ngang dính. Hộp đặt chuyển thành **thanh dính đáy**: "Từ 3.400.000 ₫ / đêm" + [Chọn ngày] → mở bottom sheet chọn ngày/số lượng → [Thêm vào giỏ] (chỉ tour, trải nghiệm, tiện ích) [Đặt ngay]. Section Tương tự thành carousel | `[R117]` Agoda iOS (thanh đáy "Start at S$64 · Choose my room"); `[R118]` Agoda iOS (vé tham quan: thẻ ngày cuộn ngang + thanh đáy "Starts from · See options") |
+| **Product detail** | Ảnh full-width trên cùng. Tabs anchor thành hàng cuộn ngang dính. Hộp đặt chuyển thành **thanh dính đáy**: "Từ 3.400.000 ₫ / đêm" + [Chọn ngày] → mở bottom sheet chọn ngày/số lượng → [Thêm vào giỏ] (chỉ tour, trải nghiệm, tiện ích) [Đặt ngay]. | `[R117]` Agoda iOS (thanh đáy "Start at S$64 · Choose my room"); `[R118]` Agoda iOS (vé tham quan: thẻ ngày cuộn ngang + thanh đáy "Starts from · See options") |
 | **Cart** | Danh sách 1 cột. Tóm tắt thành **thanh dính đáy**: "Tổng 14.180.000 ₫ ▴" (bấm để mở chi tiết) + [Đặt chỗ]. "Thường được đặt cùng" carousel dưới danh sách | `[R58]` Klook web (bản desktop; cấu trúc tương đương) |
 | **Checkout** | 1 cột, ba bước. Thanh cố định ở đáy: "2 người lớn · 1 trẻ em", tổng tiền ⌃ (bấm mở bottom sheet tóm tắt đơn) và nút chính của bước (Tiếp tục / Thanh toán {tổng}). Bàn phím: email `type=email`, điện thoại `type=tel`, ngày sinh `inputMode=numeric`. Dòng "Giữ chỗ 30 phút sau khi bấm Thanh toán" dưới nút ở bước ③ | `[R119]` Agoda iOS (CTA dính đáy "NEXT: FINAL STEP") |
 | **Confirmation** | Mã tham chiếu + nút sao chép trên cùng. Hai CTA xếp dọc full-width. Gợi ý thành carousel | — |

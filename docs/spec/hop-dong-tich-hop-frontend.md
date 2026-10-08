@@ -102,8 +102,8 @@ type ProductSummary = components["schemas"]["ProductSummary"];
 | Route | Màn hình | Cần đăng nhập | Query param chính thức |
 |---|---|---:|---|
 | `/` | Home | Không | `debug` |
-| `/hotels`, `/flights`, `/combos` | Trang danh mục: khách sạn & resort, vé máy bay, combo (đề xuất PRD `update-archive/2026-09-29-route-trang-danh-muc-dich-vu.md`) | Không | `destination`. `/flights` có `origin` **và** `destination` thì hiện chuyến bay của lần tìm dưới tấm tìm kiếm (§4.1b), kèm ngữ cảnh chuyến đi `checkIn`, `checkOut`, `adults`, `children`; không có thì hiện lời nhắc nhập |
-| `/experiences` | Trang danh mục: tour và trải nghiệm | Không | `destination`, `type` (`attraction` mặc định \| `golf`) |
+| `/hotels`, `/flights`, `/combos` | Trang danh mục: khách sạn & resort, vé máy bay, combo (đề xuất PRD `update-archive/2026-09-29-route-trang-danh-muc-dich-vu.md`) | Không | `destination`; `q` (có `q` là đang tìm: kết quả hiện ngay dưới tấm tìm kiếm, §4.1a; `/hotels` và `/combos`) kèm ngữ cảnh chuyến đi `checkIn`, `checkOut`, `adults`, `children`, `rooms`. `/flights` có `origin` **và** `destination` thì hiện chuyến bay của lần tìm dưới tấm tìm kiếm (§4.1b), kèm ngữ cảnh chuyến đi `checkIn`, `checkOut`, `adults`, `children`; không có thì hiện lời nhắc nhập |
+| `/experiences` | Trang danh mục: tour và trải nghiệm | Không | `destination`, `type` (`attraction` mặc định \| `golf`), `q` và ngữ cảnh chuyến đi như `/hotels` (kết quả chỉ trong tab đang chọn) |
 | `/search` | Kết quả tìm kiếm | Không | `q` (bắt buộc), `type` (hoặc `taxonomy`): `stay` \| `exp` \| `more` — nhận cả taxonomy cũ `hotel`, `attraction`, `golf`, `combo`; không có thì là tab Tất cả; `flight` chỉ khi mở từ `/flights` (danh sách phẳng, không tab), `destination` (chip ✕ ở "Đang lọc", không có checkbox); ngữ cảnh chuyến đi `checkIn`, `checkOut`, `adults`, `children`, `rooms` (§4.1a) |
 | `/product/{productId}` | Chi tiết sản phẩm | Không | ngữ cảnh chuyến đi tùy chọn `checkIn`, `checkOut`, `adults`, `children`, `rooms` (điền sẵn hộp đặt, §4.1a) |
 | `/cart` | Giỏ hàng | Có | — |
@@ -147,16 +147,23 @@ Ký hiệu auth: **—** không gửi JWT · **tùy** gửi nếu có · **bắt
 
 Một template (`features/catalog/landing`), cấu hình ở `verticals.ts`. Hero + tấm tìm kiếm, rồi các khối. **`/flights` là ngoại lệ** (đề xuất PRD `update-archive/2026-09-30-trang-ve-may-bay-tim-tai-cho-bo-khoi-pho-bien-va-gia-tot.md`): không có hai khối 1 và 2 dưới đây; bên dưới tấm tìm kiếm là kết quả chuyến bay hoặc lời nhắc nhập (§4.1b), rồi điểm đến và banner trợ lý.
 
+**Tìm tại chỗ** (đề xuất PRD `update-archive/2026-10-07-tim-kiem-tai-trang-danh-muc.md`): ở `/hotels`, `/experiences`, `/combos`, URL có `?q=` là đang tìm. Hero thu gọn, kết quả của tab đang chọn hiện ngay dưới tấm tìm kiếm (`features/catalog/landing/LandingResults.tsx`, dùng lại `components/search/GroupResults.tsx`) thay cho hai khối 1, 2, điểm đến và banner trợ lý; không có `?q=` thì là trang danh mục như bảng dưới.
+
 | Khu vực | Endpoint | Auth | Trường Web đọc | Khi lỗi / rỗng |
 |---|---|---|---|---|
 | Khối 1 "… phổ biến" (tải ngay) | `GET /products?taxonomy=<t>&sort=popular&availableOnly=true&limit=8` (+ `destination` khi có `?destination=`) | — | `results[]` (`ProductSummary`) | Lỗi → "Chưa tải được · Thử lại" tại khối. Rỗng → "Chưa có {loại} tại {điểm đến}" + liên kết `/search` |
 | Khối 2 "… giá tốt nhất" (tải khi vào vùng nhìn) | như trên với `sort=price_asc` (sản phẩm chưa có giá xếp cuối) | — | như trên | Dưới 3 thẻ hoặc lỗi rỗng → ẩn khối |
+| Kết quả tìm kiếm (chỉ khi có `?q=`; thay khối 1, 2 và điểm đến) | `POST /search` một lần cho loại của tab (`taxonomy`; `/experiences` chỉ attraction **hoặc** golf), `destination` khi có, `travelContext.guests` khi URL có số người lớn và `travelContext.checkIn` / `checkOut` khi URL có ngày (xem dưới), `limit: 20`, `offset += 20`, qua bộ đệm 60 giây như §4.2 | tùy | `results[]` (`ProductSummary` + `score`), `total` | Lỗi → "Thử lại"; rỗng → "Chưa tìm thấy dịch vụ nào cho …" + "Nhờ Trợ lý AI gợi ý"; rỗng do lọc → "Xóa bộ lọc" |
 | Điểm đến (tải khi vào vùng nhìn) | `GET /destinations` | — | `destination`, `productCount` | Lỗi hoặc rỗng → ẩn khối |
 | Gợi ý điểm đến trong tấm tìm kiếm (vé máy bay: cả ô Điểm đi) | `GET /destinations` | — | như trên | Lỗi → vẫn gõ tự do được |
 
-`/experiences` có hai tab (`?type=attraction|golf`); các trang khác một tab. Tấm tìm kiếm gửi bằng điều hướng sang `/search?q&type[&destination]&checkIn&checkOut&adults&children&rooms` (riêng vé máy bay **không** rời trang: tìm ngay tại `/flights`, §4.1b): điểm đến chọn từ gợi ý (hoặc gõ đúng nhãn) thành `destination`, còn lại vào `q` (rỗng thì dùng câu mặc định theo danh mục, `services/search.ts` `DEFAULT_QUERY`).
+`/experiences` có hai tab (`?type=attraction|golf`); các trang khác một tab. Tấm tìm kiếm gửi bằng điều hướng về **chính trang danh mục** `/{hotels|experiences|combos}?q[&type][&destination]&checkIn&checkOut&adults&children&rooms` (`searchHref.ts` `buildSearchHref`; `type` chỉ ghi khi không phải tab đầu; vé máy bay **không** rời trang: tìm ngay tại `/flights`, §4.1b): điểm đến chọn từ gợi ý (hoặc gõ đúng nhãn) thành `destination`, còn lại vào `q` (rỗng thì dùng câu mặc định theo danh mục, `services/search.ts` `DEFAULT_QUERY`; câu mặc định không hiện thành "Kết quả cho …"). Mở lại URL thì tấm tìm kiếm được điền sẵn từ `destination`, `q` (chữ tự do), ngày, số khách và số phòng. Kết quả có bộ lọc hạng sao và giá (chỉ khách sạn), popup sắp xếp và "Xem thêm" như tab nhóm của `/search`; ngày và số khách mang tiếp tới liên kết sản phẩm. Băng "kết quả yếu" chỉ có ở `/search`.
 
-**Ngữ cảnh chuyến đi** (`features/search/tripContext.ts`) là dữ liệu điền sẵn, **không phải bộ lọc phòng trống** (Backend chưa lọc theo ngày; không gửi `travelContext`). `/search` không hiển thị ngữ cảnh này (không chip ngày/số khách, vì hộp đặt ở trang chi tiết đã có chỗ chọn) mà chỉ nối query vào liên kết sản phẩm; hộp đặt ở `/product/{id}` điền sẵn ngày, số khách, số phòng nếu hợp lệ với hạng phòng đang chọn (sức chứa đúng; ngày nằm trong `availableFrom`–`availableTo`, riêng khách sạn: nhận phòng từ hôm nay đến hôm nay + 3 tháng, trả phòng sau 1–30 đêm, theo FR-CAT-03). Giá trị sai bị bỏ im lặng; Backend vẫn quyết định (`DATE_OUT_OF_RANGE`, `VALIDATION_ERROR`). Luật đoàn theo FR-BKG-08: tối đa 9 khách, mỗi phòng ít nhất 1 người lớn. Không đưa họ tên hay token vào URL.
+**Số khách là bộ lọc thật ở trang danh mục** (đang tìm bằng `?q=`): gửi `travelContext.guests` (contract 1.16.0, hard filter sức chứa; sản phẩm chưa khai sức chứa vẫn giữ). Backend so `adults + children` với sức chứa của **một** hạng phòng, nên nhiều phòng thì chia đều làm tròn lên (4 người ở 2 phòng gửi 2; `LandingResults.guestsOf`); không có số người lớn trên URL thì không gửi. `/search` không gửi.
+
+**Ngày là bộ lọc thật ở trang danh mục** (đề xuất PRD `update-archive/2026-10-07-loc-theo-ngay-o-tim-kiem.md`, contract 1.19.0): gửi `travelContext.checkIn` (+ `checkOut` khi có, ví dụ khách sạn nhiều đêm) cùng `guests` (`LandingResults.stayOf`). Backend loại sản phẩm không dùng được vào khoảng ngày đó (khách sạn: ngoài luật đặt phòng hoặc mọi hạng phòng kín lịch; vé tham quan, golf, combo: ngoài cửa sổ mở bán hoặc ngày kín lịch); thiếu dữ liệu lịch thì giữ. Lịch không chặn đặt chỗ nên khách sạn bị loại vẫn đặt được nếu mở thẳng trang chi tiết. `/search` không gửi ngày.
+
+**Ngữ cảnh chuyến đi** (`features/search/tripContext.ts`) còn điền sẵn hộp đặt ở trang chi tiết. `/search` không hiển thị ngữ cảnh này (không chip ngày/số khách, vì hộp đặt ở trang chi tiết đã có chỗ chọn) mà chỉ nối query vào liên kết sản phẩm; kết quả ở trang danh mục chỉ ghi nó thành một dòng ngắn cạnh tiêu đề; hộp đặt ở `/product/{id}` điền sẵn ngày, số khách, số phòng nếu hợp lệ với hạng phòng đang chọn (sức chứa đúng; ngày nằm trong `availableFrom`–`availableTo`, riêng khách sạn: nhận phòng từ hôm nay đến hôm nay + 3 tháng, trả phòng sau 1–30 đêm, theo FR-CAT-03). Giá trị sai bị bỏ im lặng; Backend vẫn quyết định (`DATE_OUT_OF_RANGE`, `VALIDATION_ERROR`). Luật đoàn theo FR-BKG-08: tối đa 9 khách, mỗi phòng ít nhất 1 người lớn. Không đưa họ tên hay token vào URL.
 
 Sau checkout (cờ `justBooked`): gọi lại ① bỏ qua cache. Chỉ hiện toast "Trang chủ đã cập nhật" khi `strategy` **hoặc** `nextVertical` khác lần gọi trước.
 
@@ -186,7 +193,7 @@ Quy tắc:
 
 ### 4.2. Search `/search`
 
-Đề xuất PRD `update-archive/2026-09-30-trang-search-bo-diem-den-ve-may-bay-va-tab-theo-nhom.md`. Tab theo nhóm header: **Tất cả · Lưu trú (`hotel`) · Tour và trải nghiệm (`attraction` + `golf`) · Tiện ích khác (`combo`)**. Vé máy bay không nằm trong tìm kiếm ngữ nghĩa; `?type=flight` (từ `/flights`) là ngoại lệ, một danh sách phẳng không tab. Không có bộ lọc điểm đến; `?destination=` từ tấm tìm kiếm ở trang danh mục vẫn truyền cho API và hiện thành chip có ✕.
+Đề xuất PRD `update-archive/2026-09-30-trang-search-bo-diem-den-ve-may-bay-va-tab-theo-nhom.md`. Tab theo nhóm header: **Tất cả · Lưu trú (`hotel`) · Tour và trải nghiệm (`attraction` + `golf`) · Tiện ích khác (`combo`)**. Vé máy bay không nằm trong tìm kiếm ngữ nghĩa; `?type=flight` (từ `/flights`) là ngoại lệ, một danh sách phẳng không tab. Không có bộ lọc điểm đến; `?destination=` (từ liên kết cũ hoặc chọn điểm đến ở gợi ý tức thì) vẫn truyền cho API và hiện thành chip có ✕. Tấm tìm kiếm ở trang danh mục không còn dẫn sang đây: kết quả hiện ngay tại trang danh mục (§4.1a).
 
 | Khu vực | Endpoint | Auth | Trường Web đọc | Khi lỗi / rỗng |
 |---|---|---|---|---|
@@ -212,11 +219,16 @@ Quy tắc:
 |---|---|---|---|---|
 | Thông tin, hộp đặt | `GET /products/{productId}` | — | `ProductDetail` đầy đủ, `variantSummary` | `404 PRODUCT_NOT_FOUND` → trang "Sản phẩm này không còn trên V-OTA" + carousel `GET /products?sort=popular` |
 | Chọn hạng phòng / chuyến bay | `GET /products?parentProductId={productId}&sort=price_asc` | — | `results[]` (`ProductSummary` của tầng con) | Chỉ gọi khi `attributes.level` là `property` hoặc `route`. Rỗng → "chưa có hạng phòng/chuyến bay đặt được", khoá nút đặt. Lỗi → dòng thông báo, khoá nút đặt |
-| Tương tự | `GET /products/{productId}/similar?limit=8` | — | `results[]` + `score` | Lỗi hoặc rỗng → ẩn section |
 | Hoàn thiện chuyến | `GET /recommendations?k=4&destination=<product.destination>` | bắt buộc | như Home ① | Chỉ render khi `destination` response trùng sản phẩm |
 | Thêm vào giỏ (chỉ `attraction`, `golf`, `combo`) | `POST /cart/items` | không cần | gửi `productId`, `usingDate`, `guests` (số người lớn và trẻ em) và `quantity` (combo); đọc `CartResponse.itemCount` (badge header) | Xem §8. `400 VALIDATION_ERROR` → toast `message`. Khách sạn và vé máy bay **không có nút này**, chỉ có Đặt ngay kèm dòng "được đặt trực tiếp, không thêm vào giỏ hàng" |
 | Đặt ngay (mọi loại) | `POST /booking-drafts` | không cần | gửi `items[]` một phần tử: `productId`, `usingDate`, `nights` (khách sạn), `guests`, `quantity` (khách sạn, combo); đọc `draftId` | Xong → `/checkout?draft=<draftId>`: chỉ thanh toán sản phẩm này, không kèm mục nào trong giỏ. Lỗi → toast, ở lại trang |
 | Ghi lượt xem | `POST /events` `{ eventName: "product_view", productId }` | bắt buộc | — (`202` không body) | Không JWT thì không gọi. Mọi lỗi bỏ qua im lặng, không hiện gì cho người dùng |
+
+**Không có mục "Tương tự"** ở trang chi tiết (quyết định 2026-10-07: tương đồng ngữ nghĩa không phải lý do đúng để đề xuất thêm ở đây); Web không gọi `GET /products/{productId}/similar`, endpoint vẫn do Backend cung cấp cho Agent.
+
+**Ảnh và tiện ích** (`components/detail/ProductGallery.tsx`, `AmenityList.tsx`): bộ ảnh đầu trang đọc `attributes.images` (một ảnh lớn, tối đa bốn ảnh nhỏ, nút "N ảnh", trình xem ảnh lớn). Mục "Tiện ích khách sạn" đọc `attributes.amenities` của sản phẩm. Mỗi hạng phòng trong danh sách chọn phòng (`GET /products?parentProductId=`, `components/detail/RoomCard.tsx`) là một thẻ: ảnh lớn bên trái (`imageUrl`, nút "Xem ảnh phòng (N)" mở các ảnh của riêng phòng `attributes.images`); tên phòng; thông số mỗi mục một icon (`maxOccupancy`, `roomSizeM2`, `bed`, `bedrooms`, `oceanView`, `familyFriendly`); tối đa 5 tiện ích nổi bật có icon (Wifi, điều hoà, bồn tắm, vòi sen, TV, ban công, két… chọn theo thứ tự quan trọng, mỗi loại icon một lần); nút "Tiện ích phòng (N)" mở toàn bộ `attributes.amenities` của phòng, mỗi mục một icon theo loại (`amenityIcons.ts`, nhận chữ tiếng Việt không phân biệt dấu; không nhận ra thì dấu tích); giá lớn "/ đêm" kèm "Đã gồm thuế & phí"; nhãn "Giá tốt nhất" ở hạng rẻ nhất khi có từ hai hạng bán được; nút giả "Chọn phòng" / "Đã chọn" (cả thẻ là một ô `role="radio"`). Hạng không bán được hiện "Hết chỗ" và không chọn được. Nút ảnh và tiện ích nằm trên ô chọn nên bấm không đổi lựa chọn. Chuyến bay vẫn dùng hàng gọn cũ.
+
+**Thanh phân cấp** (`components/detail/ProductBreadcrumb.tsx`): Trang chủ › {Loại} tại {điểm đến} › tên sản phẩm (mục cuối không phải liên kết). Mục giữa là liên kết thật về trang danh mục của loại (`/hotels`, `/experiences` kèm `type=golf` cho sân golf, `/combos`; vé máy bay về `/flights?destination=`) với kết quả của điểm đến đó và **giữ ngày, số khách** của tấm tìm kiếm trên URL (`checkIn`, `checkOut`, `adults`, `children`, `rooms`); không dẫn sang `/search`, trang gộp dành cho câu tìm tự do. Không có điểm đến thì bỏ mục giữa.
 
 Gọi `POST /events` **một lần** khi trang chi tiết đã hiển thị trên trình duyệt với người dùng đã đăng nhập; không gọi trong Server Component, khi prefetch link hay khi render lại cùng sản phẩm. Web không gửi event `search` hay `add_to_cart`: Backend tự ghi khi xử lý `/search`, `/cart/items` và `/booking-drafts`.
 
@@ -738,7 +750,6 @@ Ca biên bắt buộc để dựng đủ 8 màn hình:
 | `because[].productId: null` (sản phẩm nguồn đã xóa) | nằm trong `200-p3-dormant` |
 | Sản phẩm `available: false`, `rating: null`, `attributes: {}` | `catalog/listProducts.200-popular` |
 | Search rỗng, `topScore: null` | `search/searchProducts.200-empty` |
-| Similar rỗng | `catalog/getSimilarProducts.200-empty` |
 | Sản phẩm 404 | `catalog/getProduct.404-not-found` |
 | Giỏ rỗng / có hai điểm đến | `booking/getCart.200-empty`, `booking/getCart.200-two-destinations` |
 | Checkout `409 PRICE_CHANGED`, `409 PRODUCT_UNAVAILABLE` | `booking/createBooking.409-*` |

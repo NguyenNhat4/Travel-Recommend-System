@@ -2,7 +2,8 @@
  * Ngữ cảnh chuyến đi (ngày, số khách, số phòng) mang qua URL từ tấm tìm kiếm ở trang danh mục
  * tới `/search` rồi tới hộp đặt ở trang chi tiết (docs/plan/2026-09-29-ui-trang-danh-muc-va-header.md §6).
  *
- * Đây là ngữ cảnh điền sẵn, không phải bộ lọc phòng trống: Backend chưa lọc theo ngày. Giá trị sai bị bỏ im lặng.
+ * Ngữ cảnh này điền sẵn hộp đặt ở trang chi tiết, và ở trang danh mục còn là bộ lọc của kết quả (`travelContext`, contract 1.19.0).
+ * Giá trị sai bị bỏ im lặng.
  * Không đưa họ tên, token hay dữ liệu cá nhân vào URL.
  */
 

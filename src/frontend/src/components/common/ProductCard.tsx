@@ -221,14 +221,22 @@ export const ProductCard: React.FC<ProductCardProps> = ({
     return (
       <div 
         onClick={handleCardClick}
-        className={`flex flex-col md:flex-row bg-white rounded-xl border border-slate-200 overflow-hidden cursor-pointer ${className} ${!product.available ? 'opacity-65' : ''}`}
+        className={`flex flex-col md:flex-row md:h-60 bg-white rounded-xl border border-slate-200 overflow-hidden cursor-pointer ${className} ${!product.available ? 'opacity-65' : ''}`}
       >
-        <div className="relative w-full md:w-64 h-48 md:h-auto overflow-hidden bg-slate-100 shrink-0">
-          <img 
-            src={product.imageUrl} 
+        {/* Khung ảnh có kích thước cố định (16:10 trên điện thoại, cao bằng thẻ trên màn hình rộng): ảnh phủ kín bất kể tỉ lệ gốc,
+            nên mọi thẻ trong danh sách cao bằng nhau; thiếu hoặc lỗi ảnh thì dùng ảnh dự phòng theo loại. */}
+        <div className="relative w-full md:w-64 aspect-16/10 md:aspect-auto md:h-full overflow-hidden bg-slate-100 shrink-0">
+          <img
+            src={product.imageUrl || placeholderImage(product.taxonomy)}
             alt={product.name}
+            loading="lazy"
+            decoding="async"
             referrerPolicy="no-referrer"
-            className="w-full h-full object-cover"
+            onError={(event) => {
+              const fallback = placeholderImage(product.taxonomy);
+              if (!event.currentTarget.src.endsWith(fallback)) event.currentTarget.src = fallback;
+            }}
+            className="absolute inset-0 w-full h-full object-cover"
           />
           {!product.available && (
             <div className="absolute inset-0 bg-slate-900/60 flex items-center justify-center text-xs font-bold text-white uppercase tracking-wider">
@@ -242,8 +250,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           )}
         </div>
 
-        <div className="flex-1 p-5 flex flex-col justify-between">
-          <div>
+        <div className="flex-1 min-w-0 p-5 flex flex-col justify-between gap-3 overflow-hidden">
+          <div className="min-w-0">
             <div className="flex items-center justify-between gap-2 mb-1">
               <span className="inline-flex items-center gap-1 text-xs text-slate-500 font-medium">
                 <MapPin className="w-3.5 h-3.5 text-slate-400" />
@@ -264,12 +272,12 @@ export const ProductCard: React.FC<ProductCardProps> = ({
               {product.name}
             </h3>
 
-            <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed mb-3">
+            <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed min-h-10 mb-3">
               {product.description}
             </p>
 
-            {/* Attribute tag chips */}
-            <div className="flex flex-wrap gap-1.5 mb-3">
+            {/* Attribute tag chips: một hàng cao cố định, nhiều tag thì cắt bớt thay vì làm thẻ cao thêm */}
+            <div className="flex flex-nowrap gap-1.5 h-[22px] overflow-hidden whitespace-nowrap">
               {product.attributes.oceanView && (
                 <span className="text-[11px] font-medium bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-100">
                   Hướng biển
@@ -298,7 +306,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             </div>
           </div>
 
-          <div className="flex items-end justify-between pt-3 border-t border-slate-100">
+          <div className="flex items-end justify-between pt-3 min-h-[54px] border-t border-slate-100">
             <PriceTag price={product.unitPrice} taxonomy={product.taxonomy} hasPrefixFrom showTaxesIncluded size="md" />
             <div className="flex items-center gap-2">
               <span className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700">
