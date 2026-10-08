@@ -1010,7 +1010,9 @@ Mã lỗi riêng của auth (`UNAUTHENTICATED`, `SESSION_EXPIRED`, `CSRF_FAILED`
 | 503 | `PAYMENT_PROVIDER_UNAVAILABLE` | Stripe timeout hoặc 5xx khi tạo/đóng phiên; kèm `Retry-After` | — |
 | 500 | `INTERNAL_ERROR` | Lỗi không lường trước | — |
 
-`retryable: true` chỉ dành cho `SEARCH_UNAVAILABLE`, `PAYMENT_PROVIDER_UNAVAILABLE` và `INTERNAL_ERROR` (danh sách đầy đủ gồm cả mã auth: `schemas/common.yaml`). Mọi lỗi còn lại là `false` — thử lại nguyên request sẽ cho cùng kết quả.
+`retryable: true` chỉ dành cho `SEARCH_UNAVAILABLE`, `PAYMENT_PROVIDER_UNAVAILABLE`, `DATABASE_UNAVAILABLE` và `INTERNAL_ERROR` (danh sách đầy đủ gồm cả mã auth: `schemas/common.yaml`).
+
+**PostgreSQL không với tới được (contract 1.14.0, NFR-REL-03 đang chờ chốt).** Mọi endpoint cần DB trả `503 DATABASE_UNAVAILABLE` (`retryable: true`, header `Retry-After: 5`) thay cho `500 INTERNAL_ERROR` hoặc treo: adapter Postgres mở kết nối qua `infrastructure/persistence/db_connection.py` (`DB_CONNECT_TIMEOUT_SECONDS`, mặc định 3 giây; keepalive và `tcp_user_timeout` cho DB chết giữa chừng), ném `DatabaseUnavailableError`, và `api/errors.py` ánh xạ lỗi này. Riêng `LocalCdpClient` vẫn trả `CDP_UNAVAILABLE` như cũ. `GET /health` (liveness) không đụng DB; `GET /health/ready` thêm trường `database: ok|down|unknown` (kiểm `SELECT 1`, cache 5 giây) nhưng vẫn trả 200 khi app đã khởi động xong, để orchestrator không restart app và deploy không bị hoàn tác chỉ vì DB gián đoạn. DB hồi phục thì request kế tiếp tự thành công, không cần restart. Mọi lỗi còn lại là `false` — thử lại nguyên request sẽ cho cùng kết quả.
 
 ### 8.3. Phân trang
 

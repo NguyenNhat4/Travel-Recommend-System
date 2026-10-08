@@ -90,6 +90,10 @@ class Settings(BaseSettings):
     # Kết nối TRỰC TIẾP tới Postgres (không qua pgbouncer) cho khoá advisory của job đối soát. Trống = dùng database_url.
     leader_lock_database_url: str = ""
     cdp_database_url: str = "postgresql://cdp_client_login:cdp@localhost:5432/vota"
+    # Thời hạn kết nối PostgreSQL (infrastructure/persistence/db_connection.py). DB không với tới được trong
+    # khoảng này thì request trả 503 DATABASE_UNAVAILABLE thay vì treo theo timeout TCP của hệ điều hành.
+    db_connect_timeout_seconds: int = Field(default=3, ge=1, le=30)
+    db_tcp_user_timeout_ms: int = Field(default=15000, ge=1000)
     cdp_adapter: Literal["local", "http"] = "local"
 
     # Future/production HTTP adapter. Ignored while CDP_ADAPTER=local.

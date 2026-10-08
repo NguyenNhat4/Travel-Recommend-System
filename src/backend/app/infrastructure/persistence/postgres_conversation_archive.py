@@ -5,9 +5,9 @@ import math
 import uuid
 from typing import Any
 
-import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
+from src.backend.app.infrastructure.persistence.db_connection import connect_async
 
 
 def _uuid(value: str) -> str | None:
@@ -33,7 +33,7 @@ class PostgresConversationArchive:
         self._database_url = database_url
 
     async def _connect(self):
-        return await psycopg.AsyncConnection.connect(self._database_url, row_factory=dict_row)
+        return await connect_async(self._database_url, row_factory=dict_row)
 
     async def record_turn(
         self, conversation_id: str, cdp_user_id: str, state: dict[str, Any]
