@@ -179,7 +179,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--per-user", nargs="+", required=True, help="một hoặc nhiều file JSONL của --per-user-out")
     ap.add_argument("--baseline", default=None, help="cấu hình làm mốc; mặc định cấu hình xuất hiện đầu tiên")
-    ap.add_argument("--compare", default="", help="cặp tường minh, vd 'A:B,C:D' — ghi đè --baseline")
+    ap.add_argument("--compare", default="", help="cặp tường minh, vd 'A:B,C:D' hoặc 'A>B' — ghi đè --baseline")
     ap.add_argument("--boot", type=int, default=BOOT)
     ap.add_argument("--seed", type=int, default=BOOT_SEED)
     ap.add_argument("--by-seed", action="store_true", help="thêm dòng CI riêng cho từng seed khách giả lập")
@@ -193,7 +193,8 @@ def main():
     idx = index(rows)
     configs = list(dict.fromkeys(r["config"] for r in rows))
     if a.compare:
-        pairs = [tuple(p.split(":", 1)) for p in a.compare.split(",") if p]
+        # 'A>B' khi tên cấu hình chứa ':' (vd `B2+popH:90:1>B2+popH:90:1+dormHL:3`); 'A:B' như cũ
+        pairs = [tuple(p.split(">", 1)) if ">" in p else tuple(p.split(":", 1)) for p in a.compare.split(",") if p]
     else:
         base = a.baseline or configs[0]
         if base not in configs:

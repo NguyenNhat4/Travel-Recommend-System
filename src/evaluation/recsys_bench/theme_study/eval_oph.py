@@ -273,7 +273,7 @@ def main():
         if pu is not None:
             pu.close()
     if a.parity:
-        pairs = [tuple(p.split(":", 1)) for p in a.parity.split(",") if p]
+        pairs = [tuple(p.split(">", 1)) if ">" in p else tuple(p.split(":", 1)) for p in a.parity.split(",") if p]
         res["parity"] = parity(rows, pairs)
         print("parity", json.dumps(res["parity"], ensure_ascii=False), flush=True)
     json.dump(res, open(a.out, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
