@@ -247,7 +247,7 @@ export interface paths {
         put?: never;
         /**
          * Semantic search trên catalog theo hợp đồng v1
-         * @description Bề mặt v1 được giữ để không phá client hiện có. Agent không gắn danh tính khi tìm kiếm: chế độ `inprocess` gọi engine trong tiến trình; chế độ `http` gọi GET compatibility endpoint không kèm JWT. Web có thể tiếp tục dùng POST với SearchRequest. Từ 1.16.0 travelContext.guests (adults, children) thành filter sức chứa (appliedFilters.hard.minOccupancy, partySource = param); GET không có tham số tương ứng.
+         * @description Bề mặt v1 được giữ để không phá client hiện có. Agent không gắn danh tính khi tìm kiếm: chế độ `inprocess` gọi engine trong tiến trình; chế độ `http` gọi GET compatibility endpoint không kèm JWT. Web có thể tiếp tục dùng POST với SearchRequest. Từ 1.16.0 travelContext.guests (adults, children) thành filter sức chứa (appliedFilters.hard.minOccupancy, partySource = param); GET không có tham số tương ứng. Từ 1.19.0 travelContext.checkIn / checkOut thành filter ngày (appliedFilters.hard.checkIn, checkOut, dateSource = param; diagnostics.queryPlan.date).
          */
         post: operations["searchProducts"];
         delete?: never;
@@ -973,7 +973,7 @@ export interface components {
         ScoredProduct: components["schemas"]["ProductSummary"] & {
             /** @description Cosine đã clamp về [0,1]. Chỉ hiển thị cho khách ở chế độ debug — 0.81 KHÔNG phải "81% phù hợp". */
             score: number;
-            /** @description (1.16.0, chỉ /search) productId các hạng phòng / chuyến bay con của kết quả thoả ĐỒNG THỜI các điều kiện giá (priceMin/priceMax) và số khách (minOccupancy) đang áp, giá tăng dần (giá null cuối), tối đa 5 — để UI hiển thị đúng phòng hợp giá/số khách thay vì giá thấp nhất của property. Chỉ có khi lọc giá hoặc số khách đang áp và kết quả có ít nhất một con thoả; con không biết sức chứa được tính là thoả điều kiện số khách. */
+            /** @description (1.16.0, chỉ /search) productId các hạng phòng / chuyến bay con ĐANG BÁN của kết quả thoả ĐỒNG THỜI các điều kiện giá (priceMin/priceMax), số khách (minOccupancy) và (từ 1.19.0, chỉ khách sạn) ngày (checkIn/checkOut) đang áp, giá tăng dần (giá null cuối), tối đa 5 — để UI hiển thị đúng phòng hợp truy vấn thay vì giá thấp nhất của property. Chỉ có khi lọc giá, số khách hoặc ngày đang áp và kết quả có ít nhất một con thoả; con không biết sức chứa hoặc không có lịch được tính là thoả. */
             matchedChildren?: string[];
         };
         ProductListResponse: {
@@ -1174,11 +1174,14 @@ export interface components {
             requestId?: string;
         };
         TravelContext: {
-            /** Format: date */
+            /**
+             * Format: date
+             * @description (1.19.0) Ở POST /search: ngày nhận phòng / ngày dùng, thành hard filter ngày. Khách sạn: nhận phòng từ hôm nay đến hôm nay + 3 tháng, 1–30 đêm (cùng luật đặt phòng), và phải còn ít nhất một hạng phòng đang bán (`available` + có giá) không có đêm kín (`attributes.availability` = 0) trong [checkIn, checkOut) — cùng MỘT phòng phải thoả đồng thời ngày, số khách (guests) và giá (priceMin/priceMax) đang áp; phòng không có lịch hoặc đêm ngoài khoảng lịch không bị loại. Vé tham quan, sân golf: checkIn trong [availableFrom, availableTo] và ngày đó không kín lịch. Combo: checkIn trong [availableFrom, availableTo]. Vé máy bay: không lọc theo ngày. Không biết (không có lịch, đêm ngoài khoảng lịch) thì giữ ([C2]). Lọc theo snapshot catalog nên áp ở cả CATALOG_ONLY. Chỉ có checkOut mà không có checkIn thì bỏ qua. Khai ở appliedFilters.hard.checkIn / checkOut / dateSource và diagnostics.queryPlan.date. Lịch không chặn ĐẶT chỗ (FR-CAT-03): khách sạn bị loại ở đây vẫn đặt được khi mở thẳng.
+             */
             checkIn?: string | null;
             /**
              * Format: date
-             * @description Không bao gồm. Kiểm tra mọi đêm trong [checkIn, checkOut).
+             * @description Không bao gồm. Kiểm tra mọi đêm trong [checkIn, checkOut). Phải sau checkIn (400 VALIDATION_ERROR nếu không).
              */
             checkOut?: string | null;
             /** @description (1.16.0) Ở POST /search: số khách thành hard filter sức chứa — minOccupancy = adults + children (chỉ có children thì không lọc). Loại unit có sức chứa ĐÃ BIẾT (attributes.maxOccupancy của unit hoặc hạng phòng con) nhỏ hơn; không biết sức chứa thì giữ. Thắng số khách suy ra từ câu; khai ở appliedFilters.hard.minOccupancy và diagnostics.queryPlan.party. */
@@ -1194,7 +1197,7 @@ export interface components {
          */
         AvailabilityMode: "CATALOG_ONLY" | "CHECK_DATE_RANGE";
         AppliedFilters: {
-            /** @description Đã loại thẳng. taxonomy, destination, priceMin/Max, availableOnly. Ở /search từ 1.14.0 có thêm destinationSource (param = tham số request, query = địa danh suy ra từ câu, FR-SRC-03); sau fallback (diagnostics.destinationFilter.fallback) khối hard không còn destination. Từ 1.15.0 (query plan, kiến trúc Phase A): taxonomySource (param | query), origin + originSource + destinationCity (tuyến bay, chỉ câu vé máy bay), mustNotAmenities (khoá tiện ích bị phủ định — loại unit CÓ GHI NHẬN tiện ích; unit không có dữ liệu vẫn qua, [C2]), mustNotBrands ("không phải Vinpearl" — loại unit có ghi brand đó), priceMin/priceMax + priceSource (param | query; giá null bị loại khi có lọc giá), availableOnly. Từ 1.16.0: mustNotTaxonomies (loại sản phẩm bị phủ định — "không lấy combo", "vé lẻ"; loại unit có taxonomy đó), mustNotFlags (includesFlight | includesHotel — combo CÓ GHI NHẬN thành phần đó bị loại; combo không có dữ liệu thành phần vẫn qua, [C2]), minOccupancy + partySource (param = travelContext.guests của request | query = số khách suy từ câu; loại unit có sức chứa ĐÃ BIẾT nhỏ hơn minOccupancy, không biết thì giữ). */
+            /** @description Đã loại thẳng. taxonomy, destination, priceMin/Max, availableOnly. Ở /search từ 1.14.0 có thêm destinationSource (param = tham số request, query = địa danh suy ra từ câu, FR-SRC-03); sau fallback (diagnostics.destinationFilter.fallback) khối hard không còn destination. Từ 1.15.0 (query plan, kiến trúc Phase A): taxonomySource (param | query), origin + originSource + destinationCity (tuyến bay, chỉ câu vé máy bay), mustNotAmenities (khoá tiện ích bị phủ định — loại unit CÓ GHI NHẬN tiện ích; unit không có dữ liệu vẫn qua, [C2]), mustNotBrands ("không phải Vinpearl" — loại unit có ghi brand đó), priceMin/priceMax + priceSource (param | query; giá null bị loại khi có lọc giá), availableOnly. Từ 1.16.0: mustNotTaxonomies (loại sản phẩm bị phủ định — "không lấy combo", "vé lẻ"; loại unit có taxonomy đó), mustNotFlags (includesFlight | includesHotel — combo CÓ GHI NHẬN thành phần đó bị loại; combo không có dữ liệu thành phần vẫn qua, [C2]), minOccupancy + partySource (param = travelContext.guests của request | query = số khách suy từ câu; loại unit có sức chứa ĐÃ BIẾT nhỏ hơn minOccupancy, không biết thì giữ). Từ 1.19.0: checkIn (+ checkOut khi có) + dateSource (luôn param) — travelContext.checkIn / checkOut của request, loại unit không dùng được vào khoảng ngày đó (xem TravelContext.checkIn). */
             hard: {
                 [key: string]: unknown;
             };
@@ -1351,17 +1354,26 @@ export interface components {
                     /** @enum {string} */
                     source?: "param" | "query";
                 };
+                /** @description (1.19.0) Bộ lọc ngày của request (travelContext.checkIn / checkOut), luôn áp khi có checkIn. Chỉ khai khi request có checkIn. */
+                date?: {
+                    /** Format: date */
+                    checkIn?: string;
+                    /** Format: date */
+                    checkOut?: string | null;
+                    /** @enum {string} */
+                    source?: "param";
+                };
                 /** @description Câu đưa vào nhánh BM25 và độ phủ vớt sau khi bỏ các cụm đã thành filter (phủ định, giá/sao, cue loại, địa danh tuyến). Vector dense vẫn dùng câu chuẩn hoá đầy đủ (khoá cache embed không đổi). */
                 lexicalText?: string;
                 /** @description Họ filter suy từ câu THẬT SỰ đã áp vào F (cờ bật và câu có giá trị); rỗng khi mọi cờ tắt. */
-                applied?: ("taxonomy" | "route" | "mustNot" | "price" | "star" | "party")[];
-                /** @description Số kết quả bị loại ở bước kiểm lại hard filter sau fusion (kỳ vọng 0; > 0 là lỗi dữ liệu/mask). Từ 1.16.0 gồm cả unit có phòng/chuyến con mà KHÔNG con nào thoả đồng thời giá và số khách khi hai điều kiện cùng áp (mask kiểm hai điều kiện độc lập trên unit + con). */
+                applied?: ("taxonomy" | "route" | "mustNot" | "price" | "star" | "party" | "date")[];
+                /** @description Số kết quả bị loại ở bước kiểm lại hard filter sau fusion (kỳ vọng 0; > 0 là lỗi dữ liệu/mask). Ở 1.16.0 – 1.18.0 gồm cả unit có phòng/chuyến con mà KHÔNG con nào thoả đồng thời giá và số khách; từ 1.19.0 mask kiểm các điều kiện cấp phòng (giá, số khách, ngày) trên cùng một con nên không còn trường hợp đó. */
                 revalidatedDrops?: number;
                 /**
-                 * @description F rỗng do họ filter nào (họ đầu tiên làm F rỗng theo thứ tự áp). Filter suy từ câu KHÔNG được nới ngầm (kiến trúc Phase A §6); chỉ điểm đến suy ra có fallback (diagnostics.destinationFilter.fallback, FR-SRC-04). Từ 1.16.0 khai thêm star (mọi unit còn lại đều KHAI sao thấp hơn starRatingMin — giá trị engine 1.15.0 đã có thể trả) và party (mọi unit còn lại có sức chứa đã biết nhỏ hơn số khách).
+                 * @description F rỗng do họ filter nào (họ đầu tiên làm F rỗng theo thứ tự áp). Filter suy từ câu KHÔNG được nới ngầm (kiến trúc Phase A §6); chỉ điểm đến suy ra có fallback (diagnostics.destinationFilter.fallback, FR-SRC-04). Từ 1.16.0 khai thêm star (mọi unit còn lại đều KHAI sao thấp hơn starRatingMin — giá trị engine 1.15.0 đã có thể trả) và party (mọi unit còn lại có sức chứa đã biết nhỏ hơn số khách). Từ 1.19.0 khai thêm date (mọi unit còn lại không dùng được vào khoảng ngày checkIn / checkOut).
                  * @enum {string}
                  */
-                emptyReason?: "taxonomy" | "route" | "mustNot" | "price" | "star" | "party" | "destination" | "param";
+                emptyReason?: "taxonomy" | "route" | "mustNot" | "price" | "star" | "party" | "date" | "destination" | "param";
                 /** @description Tham số request bị bỏ qua vì sai ngữ cảnh (ví dụ origin cho câu không phải vé máy bay). */
                 ignored?: string[];
                 /** @description (1.16.0) Router confidence của plan rule-based (kiến trúc §5): 1 trừ 0.25 cho mỗi lý do ở fallbackReasons, tất định, chỉ để khai báo — /search không gọi LLM. Có mặt khi khối queryPlan có mặt. */

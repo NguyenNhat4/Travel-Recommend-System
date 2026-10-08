@@ -127,9 +127,10 @@ def test_max_occupancy_over_unit_and_children(attrs2):
 
 
 def test_children_sorted_by_price_none_last_then_id(attrs2):
-    assert attrs2.children[5] == (("R3B", 2_000_000.0, None), ("R3D", 2_000_000.0, None), ("R3A", 9_000_000.0, 12.0),
-                                  ("R3C", None, 2.0))
-    assert attrs2.children[6] == (("R1", 3_400_000.0, None), ("R1B", None, None))
+    # (id, giá, sức chứa, lịch, đang bán được): phòng không giá chưa bán được trên V-OTA
+    assert attrs2.children[5] == (("R3B", 2_000_000.0, None, None, True), ("R3D", 2_000_000.0, None, None, True),
+                                  ("R3A", 9_000_000.0, 12.0, None, True), ("R3C", None, 2.0, None, False))
+    assert attrs2.children[6] == (("R1", 3_400_000.0, None, None, True), ("R1B", None, None, None, False))
     assert attrs2.children[0] == ()
 
 

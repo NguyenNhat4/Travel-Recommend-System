@@ -430,10 +430,11 @@ ScoredProduct:
         items:
           type: string
         description: >-
-          (1.16.0, chỉ /search) productId các hạng phòng / chuyến bay con của kết quả thoả ĐỒNG THỜI các điều kiện giá
-          (priceMin/priceMax) và số khách (minOccupancy) đang áp, giá tăng dần (giá null cuối), tối đa 5 — để UI hiển thị
-          đúng phòng hợp giá/số khách thay vì giá thấp nhất của property. Chỉ có khi lọc giá hoặc số khách đang áp và kết quả
-          có ít nhất một con thoả; con không biết sức chứa được tính là thoả điều kiện số khách.
+          (1.16.0, chỉ /search) productId các hạng phòng / chuyến bay con ĐANG BÁN của kết quả thoả ĐỒNG THỜI các điều kiện giá
+          (priceMin/priceMax), số khách (minOccupancy) và (từ 1.19.0, chỉ khách sạn) ngày (checkIn/checkOut) đang áp, giá tăng
+          dần (giá null cuối), tối đa 5 — để UI hiển thị đúng phòng hợp truy vấn thay vì giá thấp nhất của property. Chỉ có khi
+          lọc giá, số khách hoặc ngày đang áp và kết quả có ít nhất một con thoả; con không biết sức chứa hoặc không có lịch
+          được tính là thoả.
 
 ProductListResponse:
   type: object

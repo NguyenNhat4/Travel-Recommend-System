@@ -2,11 +2,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import calendar
 from datetime import date
 from typing import Any
 
 from src.backend.app.domain.catalog.models import Product
+from src.backend.app.domain.catalog.stay_dates import (  # noqa: F401 — luật cửa sổ dùng chung với bộ lọc ngày của /search
+    HOTEL_MAX_ADVANCE_MONTHS,
+    HOTEL_MAX_NIGHTS,
+    hotel_booking_window,
+)
 
 from .fares import child_unit_price
 
@@ -27,17 +31,6 @@ class LineIssue:
 
     code: str  # PRODUCT_UNAVAILABLE | PRICE_CHANGED | DATE_OUT_OF_RANGE
     details: dict[str, Any]
-
-
-HOTEL_MAX_ADVANCE_MONTHS = 3
-HOTEL_MAX_NIGHTS = 30
-
-
-def hotel_booking_window(today: date) -> tuple[date, date]:
-    """Ngày nhận phòng khách sạn hợp lệ: từ hôm nay đến hôm nay + 3 tháng (cắt về cuối tháng nếu tháng đó ngắn hơn)."""
-    month_index = today.month - 1 + HOTEL_MAX_ADVANCE_MONTHS
-    year, month = today.year + month_index // 12, month_index % 12 + 1
-    return today, date(year, month, min(today.day, calendar.monthrange(year, month)[1]))
 
 
 def check_product(

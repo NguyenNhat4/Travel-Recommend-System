@@ -188,7 +188,7 @@ def test_matched_children(ix2):
     assert ix2.matched_children(h2) == []                                           # không điều kiện → []
     assert ix2.matched_children(h2, price_max=3_000_000) == ["R2B", "R2D"]          # giá null (R2C) bị loại khi có biên
     assert ix2.matched_children(h2, price_min=2_600_000) == ["R2D", "R2A"]          # thứ tự đã lưu = giá tăng dần
-    assert ix2.matched_children(h2, min_occupancy=6) == ["R2D", "R2A", "R2C"]       # R2D không biết sức chứa → giữ; R2B 4 < 6
+    assert ix2.matched_children(h2, min_occupancy=6) == ["R2D", "R2A"]              # R2D không biết sức chứa → giữ; R2B 4 < 6; R2C không giá → chưa bán được
     assert ix2.matched_children(h2, price_max=3_000_000, min_occupancy=6) == ["R2D"]
     assert ix2.matched_children(h2, min_occupancy=1, limit=2) == ["R2B", "R2D"]
     assert ix2.matched_children(h2, min_occupancy=1, limit=0) == []

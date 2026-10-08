@@ -16,6 +16,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
+from ..catalog.stay_dates import StayDates
 from .constraints import (
     AMBIGUOUS,
     POI_BRAND_CUES,
@@ -42,6 +43,7 @@ TAXONOMY_FLIGHT = "flight"
 #: Họ filter suy từ câu (giá trị của `queryPlan.applied` và `queryPlan.emptyReason`).
 APPLIED_TAXONOMY, APPLIED_ROUTE, APPLIED_MUST_NOT, APPLIED_PRICE, APPLIED_STAR = "taxonomy", "route", "mustNot", "price", "star"
 APPLIED_PARTY = "party"
+APPLIED_DATE = "date"          # travelContext.checkIn/checkOut — chỉ từ tham số request, không suy từ câu
 EMPTY_DESTINATION, EMPTY_PARAM = "destination", "param"
 SKIPPED_NOT_FLIGHT = "not_flight"
 #: Tín hiệu hạ router confidence (kiến trúc §5 "Khi nào gọi LLM?" — ở đây chỉ khai, không gọi gì), theo thứ tự khai báo.
@@ -67,6 +69,7 @@ class PlanParams:
     available_only: bool = True
     adults: int | None = None        # travelContext.guests.adults
     children: int | None = None      # travelContext.guests.children
+    stay: StayDates | None = None    # travelContext.checkIn / checkOut (+ hôm nay giờ Việt Nam) — luôn áp khi có
 
 
 @dataclass(frozen=True)
@@ -142,6 +145,7 @@ class QueryPlan:
     party_source: str | None = None              # param | query | None
     confidence: float = 1.0                      # router confidence (kiến trúc §5), chỉ khai
     fallback_reasons: tuple[str, ...] = ()
+    stay: StayDates | None = None                # contract 1.19.0: bộ lọc ngày của request (nguồn luôn là `param`)
 
     # ------------------------------------------------------------------ giá trị hiệu lực cho mask
     @property
@@ -167,6 +171,10 @@ class QueryPlan:
         """Số khách vào mask: tham số request (travelContext.guests) luôn áp; suy từ câu chỉ khi cờ `party` bật."""
         return self.party_total is not None and (self.party_source == SOURCE_PARAM or APPLIED_PARTY in self.applied)
 
+    @property
+    def date_active(self) -> bool:
+        return self.stay is not None
+
     def _must_not_kwargs(self) -> dict:
         kw: dict = {"exclude_amenities": self.must_not_amenities, "exclude_brands": self.must_not_brands}
         if self.must_not_taxonomies:     # chỉ khi có — kwargs của câu không phủ định loại sản phẩm giữ nguyên như trước
@@ -186,6 +194,8 @@ class QueryPlan:
             kw["star_min"] = self.star_min
         if self.party_active:
             kw["min_occupancy"] = self.party_total
+        if self.date_active:
+            kw["stay"] = self.stay
         if APPLIED_MUST_NOT in self.applied:
             kw.update(self._must_not_kwargs())
         return kw
@@ -203,6 +213,8 @@ class QueryPlan:
             steps.append((APPLIED_STAR, {"star_min": self.star_min}))
         if self.party_active:
             steps.append((APPLIED_PARTY, {"min_occupancy": self.party_total}))
+        if self.date_active:
+            steps.append((APPLIED_DATE, {"stay": self.stay}))
         if APPLIED_MUST_NOT in self.applied:
             steps.append((APPLIED_MUST_NOT, self._must_not_kwargs()))
         return tuple(steps)
@@ -249,6 +261,10 @@ class QueryPlan:
         if extended and self.party_source:
             out["party"] = {"adults": self.party_adults, "children": self.party_children, "total": self.party_total,
                             "source": self.party_source}
+        if extended and self.stay is not None:
+            out["date"] = {"checkIn": self.stay.check_in.isoformat(),
+                           "checkOut": self.stay.check_out.isoformat() if self.stay.check_out else None,
+                           "source": SOURCE_PARAM}
         if self.applied:
             out["lexicalText"] = self.lexical_text
             out["applied"] = list(self.applied)
@@ -298,6 +314,11 @@ class QueryPlan:
         if self.party_active:
             hard["minOccupancy"] = self.party_total
             hard["partySource"] = self.party_source
+        if self.date_active:
+            hard["checkIn"] = self.stay.check_in.isoformat()
+            if self.stay.check_out is not None:
+                hard["checkOut"] = self.stay.check_out.isoformat()
+            hard["dateSource"] = SOURCE_PARAM
         if not self.available_only:
             hard["availableOnly"] = False
         if self.star_active:
@@ -467,4 +488,5 @@ def build_query_plan(nq: NormalizedQuery | None, raw_query: str, params: PlanPar
         must_not_taxonomies=must_not_taxonomies, must_not_flags=must_not_flags,
         party_adults=party_adults, party_children=party_children, party_total=party_total, party_source=party_source,
         confidence=round(max(0.0, 1.0 - _REASON_PENALTY * len(reasons)), 2), fallback_reasons=reasons,
+        stay=params.stay,
     )
