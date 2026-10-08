@@ -22,7 +22,7 @@ import json
 import numpy as np
 
 #: Chỉ số đo theo loại stratum. Split thật có target nên đo hit / nDCG; khách giả lập đo tỷ lệ đúng chủ đề.
-SPLIT_METRICS = ("hit@20", "ndcg@10", "hit@4")
+SPLIT_METRICS = ("hit@20", "ndcg@10", "hit@4", "destHit@20")   # destHit@20 chỉ có khi eval_split nhận idx (lane A2)
 #: `tgtHit` / `nextDestHit` chỉ có khi chạy `eval_profile --syn-target`; `index()` tự bỏ chỉ số không có trong dòng.
 SYN_METRICS = ("themePrec", "tgtHit@20", "tgtHit@4", "nextDestHit@20", "nextDestHit@4")
 BOOT = 2000

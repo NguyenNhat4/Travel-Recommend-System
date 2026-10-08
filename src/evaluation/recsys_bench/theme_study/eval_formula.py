@@ -76,15 +76,24 @@ def set_variant(name):
     UC.score_candidates = prod_score if VARIANTS[name] is None else VARIANTS[name]
 
 
-def eval_split(split, eng20, eng4, idx_ids, max_users=None, sink=None, row_base=None):
+def eval_split(split, eng20, eng4, idx, max_users=None, sink=None, row_base=None):
     """`sink`: callable nhận một dict / khách (plan WP2.1) để ghi kết quả từng khách ra JSONL — điều kiện để tính CI
-    ghép cặp (`paired_ci.py`). Không truyền thì chỉ trả chỉ số tổng hợp như trước."""
+    ghép cặp (`paired_ci.py`). Không truyền thì chỉ trả chỉ số tổng hợp như trước.
+
+    `idx` (UnitIndex, có thể None): khi có, tính thêm `destHit@20` = điểm đến của target có trong list 20 không. Trên dữ
+    liệu có sở thích, lợi ích bám sở thích phải hiện ở mức ĐIỂM ĐẾN của chuyến kế tiếp trước khi hiện ở hit@20 món
+    (khách sạn cụ thể còn phụ thuộc Zipf) — plan lane A2 / B2."""
     users = sorted(split.targets)[: max_users or None]
-    h20 = n10 = h4 = 0.0
+    h20 = n10 = h4 = d20 = 0.0
+    dest_of = (lambda pid: (str(idx.destination[idx.idx[pid]]) if pid in idx.idx else None)) if idx is not None else (lambda pid: None)
     for u in users:
         tgt, as_of, train = split.targets[u], split.as_of_by_user[u], split.train_by_user[u]
-        r20 = [x["productId"] for x in eng20.recommend(u, as_of, 20, train)["recommendations"]]
+        rec20 = eng20.recommend(u, as_of, 20, train)["recommendations"]
+        r20 = [x["productId"] for x in rec20]
         r4 = [x["productId"] for x in eng4.recommend(u, as_of, 4, train)["recommendations"]]
+        tdest = dest_of(tgt)
+        dhit = float(tdest is not None and any(x.get("destination") == tdest for x in rec20))
+        d20 += dhit
         hit20 = ndcg = 0.0
         if tgt in r20:
             hit20 = 1.0
@@ -96,9 +105,12 @@ def eval_split(split, eng20, eng4, idx_ids, max_users=None, sink=None, row_base=
         h4 += hit4
         if sink is not None:
             sink({**(row_base or {}), "uid": u, "hit@20": hit20, "ndcg@10": round(ndcg, 6), "hit@4": hit4,
-                  "target": tgt, "list4": r4})
+                  "destHit@20": dhit if tdest is not None else None, "target": tgt, "list4": r4})
     n = max(len(users), 1)
-    return {"n": len(users), "hit@20": round(h20 / n, 4), "ndcg@10": round(n10 / n, 4), "hit@4": round(h4 / n, 4)}
+    out = {"n": len(users), "hit@20": round(h20 / n, 4), "ndcg@10": round(n10 / n, 4), "hit@4": round(h4 / n, 4)}
+    if idx is not None:
+        out["destHit@20"] = round(d20 / n, 4)
+    return out
 
 
 def main():
