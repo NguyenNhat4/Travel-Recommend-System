@@ -9,10 +9,12 @@
  *
  * Hai nguồn (docs/spec/booking/dat-truc-tiep-theo-don-nhap.md §13): `/checkout` thanh toán giỏ, `/checkout?draft=<mã>` thanh toán
  * đúng một đơn nháp của Đặt ngay (có đồng hồ 30 phút; hết hạn thì khách sạn, vé máy bay phải đặt lại, tour và tiện ích còn
- * trong giỏ). Khách chưa đăng nhập đi hết ba bước được; đăng nhập khi bấm Thanh toán.
+ * trong giỏ). Khách chưa đăng nhập đi hết ba bước được; đăng nhập khi bấm Thanh toán. Khách chủ động rời trang khi chưa thanh
+ * toán thì được hỏi lại (`useLeaveGuard`, `LeaveCheckoutDialog`).
  */
 import React, { useEffect, useState } from 'react';
 import { Clock, Loader2 } from 'lucide-react';
+import { LeaveCheckoutDialog } from './LeaveCheckoutDialog';
 import { MobileBar, SummaryPanel } from './OrderSummary';
 import { ReviewStep } from './ReviewStep';
 import { ServicesStep } from './ServicesStep';
@@ -115,6 +117,9 @@ export const CheckoutView: React.FC = () => {
         </div>
       </div>
       <MobileBar ctl={ctl} />
+      {ctl.leavePrompt && (
+        <LeaveCheckoutDialog items={ctl.items} sourceKind={ctl.sourceKind} timeLeft={timeLeft} onStay={ctl.stayOnCheckout} onLeave={ctl.confirmLeave} />
+      )}
     </div>
   );
 };

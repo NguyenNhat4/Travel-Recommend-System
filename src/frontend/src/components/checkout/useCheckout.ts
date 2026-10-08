@@ -30,6 +30,7 @@ import {
 import { useCheckoutSource } from './checkoutSource';
 import { createPatchQueue } from './patchQueue';
 import { mapValidationFields, type Step, type SummaryEntry } from './serverErrors';
+import { stepHistoryState, useLeaveGuard } from './useLeaveGuard';
 
 export const STEPS: Array<{ key: Step; label: string }> = [
   { key: 'travelers', label: 'Hành khách' },
@@ -124,6 +125,13 @@ export function useCheckout() {
   const [method, setMethod] = useState<'stripe'>('stripe');
   const [submitting, setSubmitting] = useState(false);
 
+  // Hỏi lại trước khi khách rời trang (FR-BKG-01): chỉ khi ba bước đang hiển thị và chưa gửi đơn. Màn hình hết hạn, không tìm
+  // thấy, đang tải và lúc đang sang Stripe thì không hỏi.
+  const { prompt: leavePrompt, stay: stayOnCheckout, leave: confirmLeave, allowLeave } = useLeaveGuard({
+    active: source.status === 'ready' && items.length > 0 && drafts.length > 0 && !submitting,
+    fallback: source.kind === 'cart' ? '/cart' : '/',
+  });
+
   // --- tham chiếu mới nhất cho mã bất đồng bộ (PATCH nối tiếp, submit) --------------------------------------------
   // Cập nhật sau mỗi lần vẽ (khai báo đầu tiên nên chạy trước các effect bên dưới); các hàm xử lý sự kiện tự ghi thẳng vào đây khi
   // cần thấy ngay giá trị mới (hai thao tác liên tiếp trước khi React kịp vẽ lại).
@@ -170,7 +178,7 @@ export function useCheckout() {
     // Mở thẳng một bước sau khi chưa có dữ liệu (tải lại trang): về bước đầu và nói rõ vì sao.
     if (readStep() !== 'travelers') {
       setNotice(RELOAD_NOTE);
-      window.history.replaceState(null, '', stepUrl('travelers', source.draftId));
+      window.history.replaceState(stepHistoryState('replace'), '', stepUrl('travelers', source.draftId));
       setStepState('travelers');
     }
   }, [cart, currentPersona, authReady, source.draftId]);
@@ -205,8 +213,11 @@ export function useCheckout() {
 
   // Giỏ rỗng thì về /cart (§6.2), trừ khi đang gửi đơn. Đơn nháp không còn mục nào (đã bỏ mục cuối) thì về trang chủ.
   useEffect(() => {
-    if (cart && cart.items.length === 0 && !submitting) navigate(source.kind === 'cart' ? '/cart' : '/');
-  }, [cart, submitting, navigate, source.kind]);
+    if (cart && cart.items.length === 0 && !submitting) {
+      allowLeave();
+      navigate(source.kind === 'cart' ? '/cart' : '/');
+    }
+  }, [cart, submitting, navigate, source.kind, allowLeave]);
 
   // Nút Back / Forward của trình duyệt đổi `?step=` mà không mất dữ liệu (§6.2).
   useEffect(() => {
@@ -261,7 +272,8 @@ export function useCheckout() {
 
   const goto = useCallback((next: Step, opts: { replace?: boolean; refresh?: boolean } = {}) => {
     const url = stepUrl(next, source.draftId);
-    if (opts.replace) window.history.replaceState(null, '', url); else window.history.pushState(null, '', url);
+    // Giữ dấu của mục lịch sử để nút Back ở bước đầu vẫn rơi vào mục chặn rời trang (useLeaveGuard).
+    if (opts.replace) window.history.replaceState(stepHistoryState('replace'), '', url); else window.history.pushState(stepHistoryState('push'), '', url);
     setStepState(next);
     setSummary([]);
     focusHeading();
@@ -588,6 +600,7 @@ export function useCheckout() {
     const details = error.details ?? {};
     switch (error.code) {
       case 'CART_EMPTY':
+        allowLeave();
         navigate('/cart');
         return;
       case 'BOOKING_PENDING_PAYMENT':
@@ -668,6 +681,8 @@ export function useCheckout() {
     try {
       const booking: BookingResponse = await bookingApi.createBooking(request);
       rememberBooking(booking);
+      // Khách đang hoàn tất đơn: lần rời trang này không hỏi lại.
+      allowLeave();
       // Giữ nút ở trạng thái đang xử lý trong lúc trình duyệt rời sang trang Stripe.
       if (booking.payment?.checkoutUrl) bookingApi.redirectToCheckout(booking.payment.checkoutUrl);
       else navigate(`/booking/${booking.referenceCode}`);
@@ -697,6 +712,8 @@ export function useCheckout() {
 
   const continuePending = async () => {
     if (!pendingHold) return;
+    // Tiếp tục đơn đang giữ chỗ là hoàn tất đơn, không phải bỏ dở: không hỏi lại.
+    allowLeave();
     try {
       const held = await bookingApi.getBooking(pendingHold.referenceCode);
       rememberBooking(held);
@@ -727,7 +744,7 @@ export function useCheckout() {
     // dữ liệu
     cart, items, email, currentPersona, authReady, earliest, facts, partyCap,
     sourceKind: source.kind, sourceStatus: source.status, draftId: source.draftId, draftExpiresAt: source.expiresAt,
-    expiredItems: source.expiredItems, leave,
+    expiredItems: source.expiredItems, leave, leavePrompt, stayOnCheckout, confirmLeave,
     drafts, travelers, hasFlight, flightDates, isInfant, contactFullName, phone, syncContact, allocs, special, confirmRemove,
     step, done, errors, summary, serverItemErrors, serverRoomErrors, itemViolations, patchErrors, busy, pending, anyPending,
     notice, cartChanged, banner, pendingHold, termsAgreed, method, submitting, hasUnavailable, labels,

@@ -34,6 +34,8 @@ const shared = vi.hoisted(() => ({
   refreshCart: vi.fn(),
   /** Độ trễ giả lập của PATCH (ms), để dựng "request đang bay". */
   patchDelay: 0,
+  /** Guard mà trang đăng ký vào `navigate` (như `TravelContext`): trả true là đã chặn lần chuyển trang. */
+  guard: null as ((route: string) => boolean) | null,
 }));
 
 vi.mock('../../src/services/booking', async (importOriginal) => ({
@@ -73,6 +75,10 @@ function applyPatch(cart: any, id: string, body: any) {
   return { ...cart, items, subtotal: total, total };
 }
 
+/** `navigate` và `setNavigationGuard` như của `TravelContext`: guard chặn thì không chuyển trang. */
+const guardedNavigate = (route: string) => { if (!shared.guard?.(route)) shared.navigate(route); };
+const setNavigationGuard = (guard: ((route: string) => boolean) | null) => { shared.guard = guard; };
+
 const DRAFT_ID = familyDraft.draftId;
 /** Đơn nháp phía "Backend" của test: GET, PATCH, DELETE của đơn nháp đọc và ghi vào đây. */
 const store: { draft: any } = { draft: null };
@@ -103,7 +109,7 @@ function Harness({ accountName = 'Nguyễn Minh Anh', cart = null, signedIn = tr
   React.useEffect(() => { cartRef.current = cartState; }, [cartState]);
   const value = useMemo(() => ({
     cart: cartState, currentPersona: signedIn ? { id: 'VP0000001', name: accountName, email: 'minhanh@example.vn' } : null, authReady: true,
-    navigate: shared.navigate, rememberBooking: shared.rememberBooking, showToast: shared.showToast, openLoginModal: shared.openLoginModal,
+    navigate: guardedNavigate, setNavigationGuard, rememberBooking: shared.rememberBooking, showToast: shared.showToast, openLoginModal: shared.openLoginModal,
     refreshCart: async () => { shared.refreshCart(); return cartRef.current; },
     updateCartItem: async (id: string, body: any, options?: any) => {
       shared.updateCartItem(id, body, options);
@@ -113,7 +119,15 @@ function Harness({ accountName = 'Nguyễn Minh Anh', cart = null, signedIn = tr
       return null;
     },
   }), [cartState, accountName, signedIn]);
-  return <shared.Ctx.Provider value={value}><CheckoutView /></shared.Ctx.Provider>;
+  // Phần khung quanh trang thanh toán: logo của header (gọi `navigate`) và hai liên kết như ở chân trang.
+  return (
+    <shared.Ctx.Provider value={value}>
+      <button type="button" onClick={() => guardedNavigate('/')}>V-OTA</button>
+      <CheckoutView />
+      <a href="/hotels">Khách sạn</a>
+      <a href="#checkout-top">Lên đầu trang</a>
+    </shared.Ctx.Provider>
+  );
 }
 
 /** Mở trang thanh toán của một đơn nháp và chờ đơn nháp tải xong (bước đầu hiện ra). */
@@ -679,5 +693,137 @@ describe('CheckoutView — hai nguồn: đơn nháp của Đặt ngay và giỏ 
     window.history.replaceState(null, '', '/checkout');
     render(<Harness cart={{ ...clone(familyCart), items: [], itemCount: 0, subtotal: 0, total: 0 }} />);
     expect(shared.navigate).toHaveBeenCalledWith('/cart');
+  });
+});
+
+describe('CheckoutView — hỏi lại trước khi rời trang (AC-BKG-20)', () => {
+  beforeEach(() => {
+    window.history.replaceState(null, '', `/checkout?draft=${DRAFT_ID}`);
+    vi.clearAllMocks();
+    shared.patchDelay = 0;
+    shared.guard = null;
+    mockDraftApi();
+    api.createBooking.mockResolvedValue(createdFamily);
+  });
+  afterEach(() => cleanup());
+
+  const dialog = () => screen.queryByRole('alertdialog');
+  const stayButton = () => screen.getByRole('button', { name: 'Ở lại thanh toán' });
+  const leaveButton = () => screen.getByRole('button', { name: 'Rời trang' });
+  const logo = () => screen.getByRole('button', { name: 'V-OTA' });
+  const lastNameOfAdult2 = () => screen.getByLabelText('Họ (Người lớn 2)') as HTMLInputElement;
+  /** Nút Back của trình duyệt, rồi chờ `popstate`. */
+  const pressBack = () => act(async () => { window.history.back(); await new Promise((r) => setTimeout(r, 50)); });
+  const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+
+  it('giỏ: bấm Sửa giỏ hàng thì hỏi lại; Ở lại giữ nguyên dữ liệu đã nhập; Rời trang mới về giỏ', async () => {
+    window.history.replaceState(null, '', '/checkout');
+    render(<Harness cart={clone(familyCart)} />);
+    fireEvent.change(lastNameOfAdult2(), { target: { value: 'Trần' } });
+    fireEvent.click(screen.getAllByText('Sửa giỏ hàng')[0]);
+    expect(shared.navigate).not.toHaveBeenCalled();
+    expect(dialog()!.textContent).toContain('Rời trang thanh toán?');
+    expect(screen.getByTestId('leave-lose').textContent).toContain('Họ tên và ngày sinh hành khách đã nhập sẽ bị xoá');
+    expect(screen.getByTestId('leave-keep').textContent).toContain('1 dịch vụ trong giỏ hàng vẫn được giữ nguyên');
+    expect(dialog()!.textContent).not.toContain('Phiên thanh toán còn');              // giỏ không có đồng hồ
+    expect(document.activeElement).toBe(stayButton());                                // mặc định là ở lại
+    fireEvent.click(stayButton());
+    expect(dialog()).toBeNull();
+    expect(lastNameOfAdult2().value).toBe('Trần');
+    expect(shared.navigate).not.toHaveBeenCalled();
+    fireEvent.click(screen.getAllByText('Sửa giỏ hàng')[0]);
+    fireEvent.click(leaveButton());
+    expect(shared.navigate).toHaveBeenCalledWith('/cart');
+    expect(dialog()).toBeNull();
+  });
+
+  it('đơn nháp: bấm logo thì hộp nêu khách sạn, vé máy bay không được giữ, vé tham quan vẫn trong giỏ, kèm đồng hồ', async () => {
+    await open({ ...clone(familyDraft), expiresAt: new Date(Date.now() + 20 * 60_000).toISOString() });
+    fireEvent.click(logo());
+    expect(shared.navigate).not.toHaveBeenCalled();
+    const lose = screen.getAllByTestId('leave-lose').map((li) => li.textContent);
+    expect(lose[0]).toContain('Lucky Sun Hotel Nha Trang Beach – Phòng Deluxe 3 Người không được giữ lại');
+    expect(lose[1]).toMatch(/^Chuyến bay VietJet Air VJ601 .* ngày 19\/10\/2026 không được giữ lại/);
+    expect(lose[2]).toContain('Họ tên, ngày sinh và giấy tờ hành khách đã nhập sẽ bị xoá');
+    expect(screen.getByTestId('leave-keep').textContent).toMatch(/Vé VinWonders Nha Trang .* ngày 18\/10\/2026 vẫn nằm trong giỏ hàng/);
+    expect(dialog()!.textContent).toMatch(/Phiên thanh toán còn (19|20):\d\d/);
+    fireEvent.click(leaveButton());
+    expect(shared.navigate).toHaveBeenCalledWith('/');
+  });
+
+  it('liên kết sang trang khác bị chặn và hỏi lại; liên kết trong trang thì không', async () => {
+    await open(clone(familyDraft));
+    fireEvent.click(screen.getByRole('link', { name: 'Lên đầu trang' }));
+    expect(dialog()).toBeNull();
+    expect(fireEvent.click(screen.getByRole('link', { name: 'Khách sạn' }))).toBe(false);                // trình duyệt không được tự chuyển trang
+    expect(dialog()).toBeTruthy();
+    fireEvent.click(leaveButton());
+    expect(shared.navigate).toHaveBeenCalledWith('/hotels');
+  });
+
+  it('Esc và bấm ra ngoài hộp là ở lại', async () => {
+    await open(clone(familyDraft));
+    fireEvent.click(logo());
+    fireEvent.keyDown(stayButton(), { key: 'Escape' });
+    expect(dialog()).toBeNull();
+    fireEvent.click(logo());
+    fireEvent.click(screen.getByTestId('leave-checkout'));
+    expect(dialog()).toBeNull();
+    expect(shared.navigate).not.toHaveBeenCalled();
+  });
+
+  it('nút Back ở bước Hành khách (sau khi khách đã thao tác): hỏi lại; Ở lại về lại trang, dữ liệu còn; Rời trang lùi về trang trước', async () => {
+    await open(clone(familyDraft));
+    fireEvent.keyDown(lastNameOfAdult2(), { key: 'T' });                              // thao tác đầu tiên đặt mục chặn dưới trang
+    fireEvent.change(lastNameOfAdult2(), { target: { value: 'Trần' } });
+    await pressBack();
+    expect(dialog()).toBeTruthy();
+    expect(heading()).toBe('Hành khách');                                            // trang không bị gỡ
+    expect(new URLSearchParams(window.location.search).get('draft')).toBe(DRAFT_ID);
+    fireEvent.click(stayButton());
+    await settle();
+    expect(dialog()).toBeNull();
+    expect(lastNameOfAdult2().value).toBe('Trần');
+    await pressBack();
+    expect(dialog()).toBeTruthy();
+    const back = vi.spyOn(window.history, 'back').mockImplementation(() => undefined);
+    fireEvent.click(leaveButton());
+    expect(back).toHaveBeenCalledTimes(1);
+    expect(shared.navigate).not.toHaveBeenCalled();
+    back.mockRestore();
+  });
+
+  it('nút Back ở bước Dịch vụ chỉ lùi về bước Hành khách, không hỏi; Back lần nữa mới hỏi', async () => {
+    await open(clone(familyDraft));
+    await goToServices();
+    await pressBack();
+    await waitFor(() => expect(heading()).toBe('Hành khách'));
+    expect(dialog()).toBeNull();
+    await pressBack();
+    expect(dialog()).toBeTruthy();
+  });
+
+  it('đóng tab hoặc tải lại: yêu cầu trình duyệt hỏi lại; sau khi bấm Thanh toán sang Stripe thì không', async () => {
+    await open(clone(familyDraft));
+    const before = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(before);
+    expect(before.defaultPrevented).toBe(true);
+    await goToReview();
+    fireEvent.click(screen.getByLabelText(/Tôi đã kiểm tra họ tên hành khách/));
+    fireEvent.click(payButton());
+    await waitFor(() => expect(api.redirectToCheckout).toHaveBeenCalled());
+    const after = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(after);
+    expect(after.defaultPrevented).toBe(false);
+    expect(dialog()).toBeNull();
+  });
+
+  it('màn hình hết hạn không hỏi lại: nút Về giỏ hàng chuyển trang ngay', async () => {
+    api.getBookingDraft.mockRejectedValue(apiError(draftExpiredOnLoad as any, 410));
+    render(<Harness />);
+    await screen.findByTestId('draft-expired');
+    fireEvent.click(screen.getByRole('button', { name: 'Về giỏ hàng' }));
+    expect(shared.navigate).toHaveBeenCalledWith('/cart');
+    expect(dialog()).toBeNull();
   });
 });
