@@ -12,7 +12,7 @@ import { FlightCard } from './FlightCard';
 import { FlightDateStrip } from './FlightDateStrip';
 import { FlightFilters } from './FlightFilters';
 import { TicketPanel, type LegId, type TicketLeg } from './TicketPanel';
-import { shortDate, weekdayLong } from './flightFormat';
+import { shortDate, thousands, weekdayLong } from './flightFormat';
 import { buildFlightResultsHref, type FlightSearch } from './flightHref';
 import {
   FLIGHT_SORT_LABELS, applyFilters, canFollow, countActiveFilters, countFacets, noFilters, pickDate, pruneFilters,
@@ -81,9 +81,12 @@ export const FlightResultsView: React.FC<{ search: FlightSearch; notice?: string
   }
 
   const days = summarizeDays(legOptions, today);
-  const wantedDate = dates[step] ?? (step === 'out' ? trip.checkIn : trip.checkOut ?? chosen.out?.option.date);
+  // Ngày khách đã tìm hoặc đã bấm trên dải ngày. Chiều về không nhập ngày thì chưa có ngày mong muốn: mở ngày đầu tiên có chuyến
+  // nối được. Ngày mong muốn không có chuyến thì không hiện chuyến của ngày khác, chỉ báo và gợi ý ngày gần nhất (frontend §4.1b).
+  const wantedDate = dates[step] ?? (step === 'out' ? trip.checkIn : trip.checkOut);
   const pick = pickDate(days, wantedDate);
   const activeDate = pick?.date ?? null;
+  const pickDay = (date: string) => setDates((prev) => ({ ...prev, [step]: date }));
 
   const dayOptions = legOptions.filter((option) => option.date === activeDate);
   const facets = countFacets(dayOptions);
@@ -137,8 +140,6 @@ export const FlightResultsView: React.FC<{ search: FlightSearch; notice?: string
     setSubmitting(false);
   };
 
-  const dateNote = pick && !pick.exact && wantedDate
-    ? `Không có chuyến ngày ${shortDate(wantedDate)}. Đang hiển thị ngày gần nhất có chuyến: ${weekdayLong(pick.date)}, ${shortDate(pick.date)}.` : null;
   const codes = outboundRoute
     ? [(outboundRoute.attributes as Record<string, unknown>).originAirports, (outboundRoute.attributes as Record<string, unknown>).destinationAirports]
       .map((list) => (Array.isArray(list) ? String(list[0] ?? '') : '')).filter(Boolean).join(' – ')
@@ -190,11 +191,38 @@ export const FlightResultsView: React.FC<{ search: FlightSearch; notice?: string
         {step === 'ret' && <button type="button" onClick={() => setStep('out')} className="cursor-pointer text-sm font-semibold text-brand-700 hover:underline">Đổi chuyến chiều đi</button>}
       </div>
     );
+  } else if (activeDate === null && wantedDate) {
+    body = (
+      <>
+        <FlightDateStrip days={days} selected={null} onSelect={pickDay} />
+        <div role="status" className={`${CARD} space-y-3 p-10 text-center`} data-testid="no-flights-on-date">
+          <h3 className="font-display text-lg text-slate-900">
+            Không có chuyến bay {legFrom} → {legTo} ngày {weekdayLong(wantedDate)}, {shortDate(wantedDate)}/{wantedDate.slice(0, 4)}
+          </h3>
+          {step === 'ret' && chosen.out && (
+            <p className="text-sm text-slate-600">Không có chuyến chiều về nào ngày này cất cánh sau chuyến chiều đi đã chọn.</p>
+          )}
+          {pick && pick.nearest.length > 0 && (
+            <>
+              <p className="text-sm text-slate-600">Ngày gần nhất có chuyến:</p>
+              <div className="flex flex-wrap justify-center gap-2">
+                {pick.nearest.map((day) => (
+                  <button key={day.date} type="button" onClick={() => pickDay(day.date)}
+                    className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-full border border-brand-600 bg-white px-4 text-sm font-semibold text-brand-700 hover:bg-brand-50">
+                    <span>{weekdayLong(day.date)}, {shortDate(day.date)}</span>{' '}
+                    <span className="font-medium tabular-nums text-slate-500">· từ {thousands(day.minPrice)}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      </>
+    );
   } else {
     body = (
       <>
-        <FlightDateStrip days={days} selected={activeDate} onSelect={(date) => setDates((prev) => ({ ...prev, [step]: date }))} />
-        {dateNote && <Notice>{dateNote}</Notice>}
+        <FlightDateStrip days={days} selected={activeDate} onSelect={pickDay} />
         <p className="px-0.5 text-[13px] text-slate-500" aria-live="polite">
           {visible.length} chuyến bay{visible.length !== dayOptions.length ? ` (lọc từ ${dayOptions.length})` : ''} · {legFrom} → {legTo}
           {activeDate && ` · ${weekdayLong(activeDate)}, ${shortDate(activeDate)}/${activeDate.slice(0, 4)}`}
