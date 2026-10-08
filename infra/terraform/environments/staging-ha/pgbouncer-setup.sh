@@ -2,7 +2,8 @@
 # Sinh cấu hình pgbouncer cho một VM từ env của backend. Dùng:
 #   pgbouncer-setup.sh <backend.env> <thư mục cấu hình> <pgbouncer.ini mẫu> [uid chủ sở hữu]
 # Cần trong env: PGBOUNCER_UPSTREAM_HOST (db.vota.internal), DATABASE_URL và CDP_DATABASE_URL (trỏ 127.0.0.1:6432).
-# Mật khẩu role phải là ký tự thường dùng trong URL, không có % @ : / ". Không in mật khẩu ra log.
+# Mật khẩu trong URL có thể mã hoá phần trăm (%40 cho @, %2F cho /...): script giải mã trước khi ghi userlist.txt của pgbouncer
+# (userlist cần mật khẩu thô). Ký tự thô @ : / " \ hoặc dấu cách phải mã hoá. Không in mật khẩu ra log.
 set -euo pipefail
 ENV_FILE=${1:?backend.env}; OUT_DIR=${2:?thư mục cấu hình}; TEMPLATE=${3:?pgbouncer.ini mẫu}; OWNER=${4:-70}
 
@@ -20,9 +21,11 @@ seen=""; count=0
 for var in DATABASE_URL CDP_DATABASE_URL; do
   url=$(get "$var")
   [[ "$url" == postgres*://*:*@* ]] || fail "$var thiếu hoặc không có dạng postgresql://user:mật-khẩu@host/db"
-  creds=${url#*://}; creds=${creds%%@*}; user=${creds%%:*}; pass=${creds#*:}
+  creds=${url#*://}; creds=${creds%%@*}; user=${creds%%:*}; pass_raw=${creds#*:}
   [[ "$user" =~ ^[A-Za-z0-9_]+$ ]] || fail "$var: tên role không hợp lệ"
-  [[ -n "$pass" && ! "$pass" =~ [%@:/\"\ ] ]] || fail "$var: mật khẩu rỗng hoặc chứa ký tự cần mã hoá URL"
+  [[ "$pass_raw" =~ ^([^%@:/\"\\\ ]|%[0-9A-Fa-f]{2})+$ ]] || fail "$var: mật khẩu rỗng hoặc chứa ký tự thô cần mã hoá URL (@ : / \" \\ dấu cách) hoặc % không theo sau bởi 2 chữ số hex"
+  pass=$(printf '%b' "${pass_raw//%/\\x}")
+  pass=${pass//\"/\"\"}   # userlist.txt: dấu " trong mật khẩu viết thành ""
   case " $seen " in
     *" $user "*) ;;   # role đã có (vd. hai URL dùng chung role)
     *) printf '"%s" "%s"\n' "$user" "$pass" >> "$tmp_users"; seen="$seen $user"; count=$((count + 1)) ;;

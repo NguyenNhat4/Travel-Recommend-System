@@ -41,6 +41,7 @@ class RollingUpdate(unittest.TestCase):
 
     def test_surge_never_removes_capacity(self):
         mig = block(MAIN, "google_compute_region_instance_group_manager", "app")
+        self.assertRegex(mig, r'replacement_method\s*=\s*"SUBSTITUTE"')
         self.assertIn("max_unavailable_fixed = 0", mig)
 
     def test_autohealing_initial_delay_covers_boot(self):
@@ -85,6 +86,13 @@ class GracefulShutdown(unittest.TestCase):
     def test_image_reads_graceful_timeout_from_env_not_a_hardcoded_30(self):
         self.assertIn("UVICORN_TIMEOUT_GRACEFUL_SHUTDOWN=30", DOCKERFILE)
         self.assertNotIn('"--timeout-graceful-shutdown", "30"', DOCKERFILE)
+
+
+class SecretPermissions(unittest.TestCase):
+    def test_jwt_files_are_root_owned_and_readable_by_backend_group(self):
+        self.assertIn("chown root:10001 /etc/vota/secrets /etc/vota/secrets/*.pem", STARTUP)
+        self.assertRegex(STARTUP, r"chmod 750 /etc/vota/secrets")
+        self.assertRegex(STARTUP, r"chmod 640 /etc/vota/secrets/\*\.pem")
 
 
 class PatroniTier(unittest.TestCase):

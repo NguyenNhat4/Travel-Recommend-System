@@ -74,9 +74,10 @@ resource "google_monitoring_alert_policy" "group_at_max" {
   conditions {
     display_name = "Số VM bằng max_replicas trong 15 phút"
     condition_threshold {
-      filter          = local.group_vm_filter
-      comparison      = "COMPARISON_GE"
-      threshold_value = var.max_replicas
+      filter = local.group_vm_filter
+      # Cloud Monitoring chỉ nhận COMPARISON_GT / COMPARISON_LT. Số VM là số nguyên nên "> max-0,5" tương đương ">= max".
+      comparison      = "COMPARISON_GT"
+      threshold_value = var.max_replicas - 0.5
       duration        = "900s"
 
       aggregations {

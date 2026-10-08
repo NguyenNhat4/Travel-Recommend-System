@@ -1,15 +1,38 @@
 #!/bin/bash
 # Boots one app VM: pull images, fetch env from Secret Manager, run compose.
+# Boot image là Container-Optimized OS: KHÔNG có gcloud và KHÔNG có `docker compose`; có curl, jq, python3, docker và
+# docker-credential-gcr. Secret đọc bằng REST + token của metadata server; compose chạy trong image docker:27-cli
+# (đã kiểm trên VM thật: compose v2.33). KHÔNG dùng $-mở-ngoặc-nhọn trong file này (templatefile của Terraform).
 set -euo pipefail
-mkdir -p /etc/vota
-gcloud secrets versions access latest --secret='${backend_env_secret}' > /etc/vota/backend.env
+export HOME=/var/lib/vota   # COS: / chỉ đọc; docker-credential-gcr ghi cấu hình docker vào $HOME/.docker
+mkdir -p "$HOME" /etc/vota
+
+iptables -A INPUT -p tcp --dport 3000 -j ACCEPT
+
+TOKEN=$(curl -fsS -H 'Metadata-Flavor: Google' http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token | jq -er .access_token)
+PROJECT=$(curl -fsS -H 'Metadata-Flavor: Google' http://metadata.google.internal/computeMetadata/v1/project/project-id)
+curl -fsS -H "Authorization: Bearer $TOKEN" "https://secretmanager.googleapis.com/v1/projects/$PROJECT/secrets/${backend_env_secret}/versions/latest:access" \
+  | jq -er .payload.data | base64 -d > /etc/vota/backend.env
 chmod 600 /etc/vota/backend.env
+
+mkdir -p /etc/vota/secrets
+chmod 700 /etc/vota/secrets
+if grep -q '^JWT_PRIVATE_KEY_B64=' /etc/vota/backend.env; then
+  grep '^JWT_PRIVATE_KEY_B64=' /etc/vota/backend.env | cut -d'=' -f2- | tr -d '\r' | base64 -d > /etc/vota/secrets/jwt-private.pem
+  grep '^JWT_PUBLIC_KEY_B64=' /etc/vota/backend.env | cut -d'=' -f2- | tr -d '\r' | base64 -d > /etc/vota/secrets/jwt-public.pem
+  # The backend image runs as UID/GID 10001 (user `app`), so keep the keys root-owned
+  # while allowing that process to traverse the directory and read the bind-mounted files.
+  chown root:10001 /etc/vota/secrets /etc/vota/secrets/*.pem
+  chmod 750 /etc/vota/secrets
+  chmod 640 /etc/vota/secrets/*.pem
+fi
 # The frontend gets only what it needs, not the DB credentials in backend.env.
 {
   grep -E '^AUTH_SERVICE_TOKEN=' /etc/vota/backend.env || true
   sed -n 's/^AUTH_REDIS_URL=/SESSION_REDIS_URL=/p' /etc/vota/backend.env
 } > /etc/vota/frontend.env
 chmod 600 /etc/vota/frontend.env
+
 docker-credential-gcr configure-docker --registries='${registry_host}'
 cat > /etc/vota/pgbouncer.ini.tmpl <<'PGBINI'
 ${pgbouncer_ini}
@@ -22,6 +45,12 @@ chmod +x /etc/vota/pgbouncer-setup.sh
 cat > /etc/vota/compose.yml <<'COMPOSE'
 ${compose}
 COMPOSE
+
 export BACKEND_IMAGE='${backend_image}' FRONTEND_IMAGE='${frontend_image}' UVICORN_WORKERS='${uvicorn_workers}' \
   UVICORN_GRACEFUL_SECONDS='${graceful_seconds}' BACKEND_STOP_GRACE='${stop_grace_seconds}'
-docker compose -f /etc/vota/compose.yml up -d
+# Image riêng kéo bằng docker của host (có credential helper); compose trong container không có helper nên dùng bản đã có.
+docker pull "$BACKEND_IMAGE"
+docker pull "$FRONTEND_IMAGE"
+docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v /etc/vota:/etc/vota -w /etc/vota \
+  -e BACKEND_IMAGE -e FRONTEND_IMAGE -e UVICORN_WORKERS -e UVICORN_GRACEFUL_SECONDS -e BACKEND_STOP_GRACE \
+  docker:27-cli docker compose -f /etc/vota/compose.yml up -d
