@@ -230,6 +230,34 @@ body {
   100% { transform: translateX(100%); }
 }
 
+/* Hộp cảnh báo rời trang thanh toán: trượt lên từ đáy trên điện thoại, hiện dần ở giữa màn hình từ `sm` trở lên */
+@keyframes leaveScrimIn {
+  from { opacity: 0; }
+}
+@keyframes leaveSheetIn {
+  from { transform: translateY(100%); }
+}
+@keyframes leaveDialogIn {
+  from { opacity: 0; transform: translateY(6px) scale(0.97); }
+}
+.leave-scrim-in {
+  animation: leaveScrimIn 0.18s ease-out both;
+}
+.leave-dialog-in {
+  animation: leaveSheetIn 0.24s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@media (min-width: 40rem) {
+  .leave-dialog-in {
+    animation: leaveDialogIn 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .leave-scrim-in,
+  .leave-dialog-in {
+    animation: none;
+  }
+}
+
 /* Hàng cuộn ngang có điểm dừng để lộ một phần thẻ kế tiếp (product.md §7.1) */
 .snap-row {
   scroll-snap-type: x proximity;

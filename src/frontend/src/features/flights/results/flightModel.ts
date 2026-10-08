@@ -273,13 +273,18 @@ export function summarizeDays(options: FlightOption[], notBefore?: string): DayS
   return [...days.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
 
-/** Ngày để mở đầu: đúng ngày mong muốn nếu có chuyến, không thì ngày gần nhất sau đó, không có nữa thì ngày cuối. */
-export function pickDate(days: DaySummary[], wanted?: string): { date: string; exact: boolean } | null {
+/**
+ * Ngày đang xem: đúng ngày mong muốn nếu có chuyến; chưa có ngày mong muốn thì ngày đầu tiên có chuyến. Ngày mong muốn không có
+ * chuyến thì **không** tự đổi sang ngày khác (`date: null`, không chuyến nào được hiện): chỉ trả các ngày gần nhất có chuyến, một
+ * ngày trước và một ngày sau, để khách tự chọn.
+ */
+export function pickDate(days: DaySummary[], wanted?: string): { date: string | null; nearest: DaySummary[] } | null {
   if (days.length === 0) return null;
-  if (!wanted) return { date: days[0].date, exact: true };
-  const exact = days.find((day) => day.date === wanted);
-  if (exact) return { date: exact.date, exact: true };
-  return { date: (days.find((day) => day.date > wanted) ?? days[days.length - 1]).date, exact: false };
+  if (!wanted) return { date: days[0].date, nearest: [] };
+  if (days.some((day) => day.date === wanted)) return { date: wanted, nearest: [] };
+  const before = days.filter((day) => day.date < wanted).pop();
+  const after = days.find((day) => day.date > wanted);
+  return { date: null, nearest: [before, after].filter((day): day is DaySummary => day !== undefined) };
 }
 
 // ---------------------------------------------------------------------------------------------------------------- Tuyến

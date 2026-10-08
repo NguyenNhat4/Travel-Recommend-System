@@ -13,12 +13,13 @@ interface FlightDateStripProps {
 
 /**
  * Dải ngày có chuyến kèm giá thấp nhất mỗi ngày ("Từ 1.493k"). Chỉ có ngày còn chuyến: dữ liệu catalog thưa nên ngày trống
- * không có gì để chọn và không được hiện như đã có giá.
+ * không có gì để chọn và không được hiện như đã có giá. `selected` là `null` khi ngày khách tìm không có chuyến: không ngày nào
+ * được chọn sẵn, khách tự bấm ngày khác.
  */
 export const FlightDateStrip: React.FC<FlightDateStripProps> = ({ days, selected, onSelect }) => {
   const rootRef = useRef<HTMLDivElement>(null);
 
-  // Đưa ngày đang chọn vào giữa hàng (mở trang ở ngày gần nhất có thể nằm ngoài vùng nhìn).
+  // Đưa ngày đang chọn vào giữa hàng (ngày khách tìm có thể nằm ngoài vùng nhìn).
   useEffect(() => {
     const button = rootRef.current?.querySelector<HTMLElement>('[aria-pressed="true"]');
     button?.scrollIntoView?.({ inline: 'center', block: 'nearest' });
