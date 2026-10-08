@@ -269,6 +269,8 @@ Phương thức thanh toán: chỉ Stripe (chọn sẵn); ví điện tử, chuy
 
 Họ tên và ngày sinh chỉ nằm trong bộ nhớ của trang, không ghi `localStorage`, `sessionStorage`, URL hay cookie; tải lại trang thì mất và Web nói rõ điều đó. Web không gửi `guestNames` (chỉ client cũ gửi, spec §7.6). Hạn hoàn tiền hiển thị ở bước ③ tính theo FR-BKG-07 nhưng chỉ để hiển thị; Backend quyết định `cancellableUntil`.
 
+**Rời trang khi chưa thanh toán (FR-BKG-01, AC-BKG-20).** Khách bấm logo, nút quay lại, "Sửa giỏ hàng", một liên kết khác trên trang hoặc Back của trình duyệt ở bước Hành khách thì Web hỏi lại bằng hộp "Rời trang thanh toán?" trước khi rời; đóng tab hoặc tải lại thì trình duyệt hỏi bằng hộp mặc định. Không gọi endpoint nào: đơn nháp tự hết hạn, tour và tiện ích đã nằm trong giỏ. `TravelContext.setNavigationGuard` cho trang đang mở đăng ký một guard cho `navigate()`. Chi tiết và giới hạn của nút Back: spec `booking/checkout-nhieu-buoc-hanh-khach.md` §6.2.
+
 ### 4.5a. Đặt ngay và đơn nháp
 
 Phục vụ FR-BKG-01, AC-BKG-13…17. Bộ luật: `docs/spec/booking/dat-truc-tiep-theo-don-nhap.md`.

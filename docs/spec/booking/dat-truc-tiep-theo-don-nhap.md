@@ -226,7 +226,7 @@ Theo phân lớp ở `docs/prd/architecture.md` §2.
 |---|---|
 | Trang chi tiết | Khách sạn: chỉ Đặt ngay. Tour, golf, combo: Thêm vào giỏ hàng và Đặt ngay. Đặt ngay gọi `POST /booking-drafts` rồi mở `/checkout?draft=<mã>` |
 | `/flights` | Một nút Đặt ngay tạo một đơn nháp cho một hoặc hai chặng |
-| Trang thanh toán | Nguồn là giỏ (`/checkout`) hoặc đơn nháp (`/checkout?draft=`). Đơn nháp: đồng hồ "Phiên thanh toán còn mm:ss" theo `expiresAt`; `410` → màn hình hết hạn (R-DRF-21, R-DRF-22); `404` → về trang chủ kèm thông báo. Nút quay lại: nguồn giỏ về `/cart`, nguồn đơn nháp về trang trước |
+| Trang thanh toán | Nguồn là giỏ (`/checkout`) hoặc đơn nháp (`/checkout?draft=`). Đơn nháp: đồng hồ "Phiên thanh toán còn mm:ss" theo `expiresAt`; `410` → màn hình hết hạn (R-DRF-21, R-DRF-22); `404` → về trang chủ kèm thông báo. Nút quay lại: nguồn giỏ về `/cart`, nguồn đơn nháp về trang trước. Rời trang khi chưa thanh toán thì được hỏi lại; hộp nêu khách sạn, vé máy bay không được giữ và tour, tiện ích vẫn trong giỏ (FR-BKG-01, AC-BKG-20; spec `checkout-nhieu-buoc-hanh-khach.md` §6.2) |
 | Bấm Đặt ngay hoặc Tiến hành đặt chỗ ở giỏ khi chưa đăng nhập | Hộp đăng nhập trên trang; xong thì tạo đơn nháp và vào `/checkout` (hoặc vào `/checkout` của giỏ) |
 | Bấm Thanh toán ở `/checkout` khi chưa đăng nhập (mở thẳng URL) | Hộp đăng nhập trên trang; xong thì gửi lại `POST /bookings` |
 | Trang giỏ | Bỏ khối "Thường được đặt cùng chuyến" và lời gọi `/recommendations` của trang giỏ. Thêm dòng giải thích khách sạn, vé máy bay được đặt trực tiếp. Khách chưa đăng nhập xem và sửa giỏ được |

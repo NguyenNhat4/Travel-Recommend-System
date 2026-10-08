@@ -4,6 +4,7 @@
 - Người viết: mihhquan / Claude Code (vai PO). Phần triển khai và §10–§16: Claude Code.
 - Trạng thái: **Đã chốt và đã triển khai** trên nhánh `feat/booking`. Đề xuất `docs/prd/update-archive/2026-09-29-checkout-nhieu-buoc-hanh-khach.md` được mihhquan chốt ngày 2026-09-29 và đã áp dụng vào PRD (FR-BKG-08, AC-BKG-05…07, §15.1). **Chưa làm:** Phụ lục A (FR-BKG-11, AC-BKG-10) và hai yêu cầu vé máy bay khác đã vào PRD, FR-BKG-10 (hạng vé, khứ hồi, AC-BKG-09) và FR-BKG-12 (xuất vé mô phỏng) (§13.4). **Chưa có nghiệm thu cuối** của người dùng: danh sách kiểm ở §12.4.
 - **Cập nhật 2026-10-08 (FR-BKG-08, đề xuất `docs/prd/update-archive/2026-10-08-gioi-han-khach-theo-phong.md`):** trần 9 khách (D6) giữ cho mọi mục trừ khách sạn; khách sạn tối đa **9 khách mỗi phòng và 9 phòng mỗi mục** (cao nhất 81). Trần của đoàn ở bước ① là trần của mục lớn nhất trong đơn (đơn chỉ có khách sạn: 9 × số phòng; đơn có mục khác: 9). Khách sạn trên 9 khách không gộp được với dịch vụ khác (`PARTY_TOO_LARGE`, trường `itemDetails`). Mã lỗi mới `ROOMS_TOO_MANY` (trường `quantity`). Lịch trình của trợ lý không còn "Thanh toán tất cả". Các dòng dưới đây còn ghi "9" đọc theo ghi chú này; mã nguồn là `domain/booking/party.py` (`item_party_cap`, `order_party_cap`, `room_capacity`) và `components/checkout/checkoutRules.ts`.
+- **Cập nhật 2026-10-08 (FR-BKG-01, AC-BKG-20, đề xuất `docs/prd/update-archive/2026-10-08-canh-bao-roi-trang-thanh-toan.md`):** khách chủ động rời trang khi chưa bấm Thanh toán thì được hỏi lại (§6.2, §10.1).
 - Phục vụ: FR-BKG-01, FR-BKG-02, FR-BKG-06, FR-BKG-08, FR-CAT-02, FR-CAT-03, NFR-SEC-01, NFR-MAINT-02 và AC-BKG-05…07 (`docs/prd/requirements.md`).
 - Giữ nguyên: giữ chỗ 30 phút, Stripe Checkout, webhook, đối soát, huỷ và hoàn tiền (`docs/spec/booking/so-do-luong-dat-cho-thanh-toan.md`). Spec này chỉ đổi phần **trước** khi bấm Thanh toán, cách tính tiền theo loại khách và dữ liệu hành khách lưu kèm đơn.
 - Căn cứ: code nhánh `feat/booking` (commit `5feb987`, trước khi triển khai), snapshot catalog `src/data_collection/snapshots/2026-09-23`, mẫu UX trên Mobbin (§16).
@@ -327,6 +328,14 @@ sequenceDiagram
 - Không giữ chỗ, không tạo đơn, không gọi Stripe trước khi bấm Thanh toán (FR-BKG-06). Cập nhật số khách ở bước ① và ② chỉ sửa giỏ (`PATCH /cart/items`) và không ghi event CDP.
 - Mỗi lần chuyển bước, Web gọi `GET /cart`. Nếu giỏ bị đổi ở tab khác: mục mới nhận phân bổ mặc định, mục đã xoá bị bỏ ra, và Web hiện banner "Giỏ hàng vừa thay đổi". Nếu giỏ rỗng thì về `/cart`.
 - Nếu hết phiên (401) giữa chừng: hiện hộp đăng nhập lại và giữ nguyên dữ liệu đang nhập (như `product.md` §4.5.3).
+- **Rời trang khi chưa thanh toán (FR-BKG-01, AC-BKG-20).** Khi ba bước đang hiển thị và chưa gửi đơn, mọi lối rời trang do khách chủ động đều hỏi lại bằng hộp "Rời trang thanh toán?" (`LeaveCheckoutDialog`), áp dụng cho cả giỏ và đơn nháp, kể cả khi khách chưa nhập gì:
+  - Lối bị chặn: lệnh `navigate()` của `TravelContext` (logo, "Quay lại giỏ hàng", "Sửa giỏ hàng"), mọi thẻ `<a>` sang đường dẫn khác cùng origin (liên kết ở chân trang), và nút Back của trình duyệt khi đang ở bước Hành khách (gồm nút "← Quay lại" của đơn nháp, vì nút này gọi `history.back()`). Back giữa ba bước vẫn chỉ lùi một bước.
+  - Nội dung: mỗi khách sạn, vé máy bay của đơn nháp một dòng "không được giữ lại"; một dòng thông tin hành khách đã nhập sẽ bị xoá; tour, trải nghiệm, tiện ích của đơn nháp đang có trong giỏ thì ghi "vẫn nằm trong giỏ hàng"; với giỏ ghi "n dịch vụ trong giỏ hàng vẫn được giữ nguyên". Đơn nháp kèm đồng hồ "Phiên thanh toán còn mm:ss".
+  - Hai nút: "Ở lại thanh toán" (mặc định, nhận focus; Esc và bấm ra ngoài hộp cũng là ở lại) giữ nguyên bước và dữ liệu; "Rời trang" đưa khách tới đúng nơi họ định mở. Với nút Back là mục lịch sử ngay trước trang thanh toán; không có mục đó (mở thẳng trang) thì về `/cart` (giỏ) hoặc trang chủ (đơn nháp).
+  - Dưới `sm` hộp trượt lên từ đáy màn hình, hai nút xếp dọc; từ `sm` trở lên hộp nằm giữa màn hình.
+  - Đóng tab, tải lại, gõ địa chỉ khác: trang gắn `beforeunload`, trình duyệt hiện hộp mặc định của nó (không đổi được chữ; một số trình duyệt di động không hiện).
+  - Không hỏi: bấm Thanh toán sang Stripe, tiếp tục đơn đang giữ chỗ, giỏ rỗng, màn hình hết hạn và không tìm thấy, đang tải.
+  - Cách chặn nút Back (`useLeaveGuard.ts`): không huỷ được `popstate`, nên ở thao tác đầu tiên của khách (bấm hoặc gõ) trang đánh dấu mục lịch sử hiện tại là mục chặn rồi thêm một mục cùng URL lên trên; các mục của bước `?step=` mang cùng dấu trên `history.state`. Back ở bước đầu rơi vào mục chặn (trang không bị gỡ) và hộp hiện lên. Tải lại trang không đặt thêm mục chặn thứ hai. **Giới hạn:** trình duyệt bỏ qua mục lịch sử do script thêm khi khách chưa thao tác, nên khách vào trang rồi bấm Back ngay thì rời luôn, không hỏi.
 
 ### 6.3. Khung chung của ba bước
 
@@ -837,6 +846,8 @@ Thư mục `src/frontend/src/components/checkout/` (mới):
 | `patchQueue.ts` | Hàng đợi `PATCH /cart/items` theo từng mục (§10.3) |
 | `fareEstimate.ts` | Ước tính dòng giá để **hiển thị** ở hộp đặt, trước khi có giỏ. Phản chiếu `domain/booking/fares.py` |
 | `guestCounts.ts` | Luật của bộ đếm (R-CRT chặn ngay ở nút bấm) và `partyCartRequest` cho trợ lý (§6.9) |
+| `useLeaveGuard.ts` | Chặn các lối rời trang khi chưa thanh toán: `navigate()`, thẻ `<a>`, `beforeunload`, nút Back (§6.2) |
+| `LeaveCheckoutDialog.tsx` | Hộp "Rời trang thanh toán?" và `leaveLines` (nội dung theo nguồn) |
 
 Sửa thêm: `services/booking.ts` (kiểu `GuestCounts`, `FareLine`, `CheckoutTraveler`, `BookingTraveler`, `ValidationFieldError`), `context/TravelContext.tsx` (`addToCart` nhận `options.guests`; `updateCartItem` trả `ApiError | null` và có tuỳ chọn `silent`), `cart/CartView.tsx`, `detail/ProductDetailView.tsx`, `confirmation/ConfirmationView.tsx`, `hooks/useAssistantCart.ts`, `assistant/AssistantResultPanel.tsx`, `assistant/AiFloatingWidget.tsx`, và `types/api.gen.ts` (sinh lại).
 
