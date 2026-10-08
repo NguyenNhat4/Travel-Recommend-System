@@ -2,7 +2,7 @@
 
 - Phục vụ: FR-REC-01, FR-REC-02, FR-REC-04 (`docs/prd/requirements.md` §1.4), AC-REC-02.
 - Trạng thái: **nghiên cứu xong bước 1 và bước 2; chưa chọn cấu hình, chưa sửa engine theo nghiên cứu, chưa có gì lên production.**
-  Bàn giao cho tqanh123 theo plan `docs/plan/2026-10-08-ban-giao-recsys-bam-so-thich.md`.
+  Bàn giao cho tqanh123 trên nhánh `feat/recSys_update` theo plan `docs/plan/2026-10-08-ban-giao-recsys-bam-so-thich.md`.
 - Số thô và lệnh tái sinh: `src/evaluation/reports/eval-2026-10-08-recsys-so-thich-chu-de.md`.
   File kết quả gốc (JSON, kèm SHA-256): `src/evaluation/recsys_bench/theme_study/results/2026-10-08/`.
 - Đề xuất PRD liên quan (chờ chốt, **nội dung đã cũ**, xem §7): `docs/prd/update/2026-10-08-recsys-bam-so-thich-va-o-kham-pha.md`.
@@ -25,8 +25,8 @@
 5. **Khuyến nghị (chưa chốt):** P2 + công thức F14 (hoặc F7) chỉ áp khi không có chuyến mở; bỏ P3; phần còn lại của P1 là việc nhỏ.
    Trước khi chốt cần CI ghép cặp và nhiều seed (plan WP2–WP3).
 6. **Đính chính quan trọng:** lỗi "giới hạn lặp làm mất purchase" **đã được sửa trên `origin/main` và `release-mvp-v2`**
-   (commit `9b703ba`). Chỉ nhánh `bench_search_recomSys` còn code cũ. Test `production-known-bug` của Codex thực ra đang test engine cũ
-   của nhánh này (§5.1).
+   (commit `9b703ba`). Nhánh `bench_search_recomSys` còn code cũ; nhánh bàn giao `feat/recSys_update` dựng từ production nên đã có.
+   Test `production-known-bug` của Codex viết khi chạy trên engine cũ; trên engine mới nó vẫn xfail vì một kiểm khác (§5.1).
 
 ## 1. Xuất phát
 
@@ -269,13 +269,13 @@ Mã: **P** = cách dựng profile, **F** = công thức điểm khi không chuy�
 
 ## 7. Trạng thái code, nhánh, tài liệu (08/10, sau khi push)
 
-- Nghiên cứu này và thay đổi trọng số 0,7/0,15/0,15 (chốt 07/10) **đã commit và push** lên `origin/bench_search_recomSys`, rebase trên
-  6 commit search của tqanh123 (06/10). Thay đổi chưa commit của các việc khác (crawler Trip, search bench, latency, nạp catalog theo
-  mã băm) vẫn nằm local trên máy người bàn giao, không có trên nhánh.
-- Nhánh vẫn **chậm 71 commit** so với `origin/main`, trong đó có `9b703ba` (sửa cap lặp, "hôm nay" theo giờ VN) — plan WP0.
-- Trọng số 0,7/0,15/0,15 có trên `release-mvp-v2` / production và nay trên nhánh này, nhưng **`origin/main` vẫn 0,6/0,25/0,15**.
-- `embed_prodcopy.py` chạy được trên nhánh (đã có `LocalE5Embedder` sau khi đồng bộ).
-- `profile_variants.py` viết lại `build_profile` của nhánh bench; sau khi merge main phải đưa logic `9b703ba` vào bản viết lại, kiểm parity lại.
+- Bàn giao nằm trên **`feat/recSys_update`**, tạo từ `release-mvp-v2` @ `6f77e80` (= code production 08/10). Bản cùng nội dung trên
+  `bench_search_recomSys` (`0ccc948`) chạy engine cũ — không làm tiếp ở đó.
+- Engine của `feat/recSys_update` **đã có** `9b703ba` (sửa cap lặp, "hôm nay" theo giờ VN), trọng số 0,7/0,15/0,15 và `LocalE5Embedder`
+  (`embed_prodcopy.py` chạy được). Test `recsys_bench` trên nhánh: 138 passed, 2 xfailed.
+- Số bước 1–2 trong báo cáo này chạy trên engine cũ của `bench_search_recomSys` (§2.3) → phải đo lại mốc trên engine này (plan WP0).
+  Kiểm nhanh 08/10: `profile_variants` khớp `build_profile` của nhánh này 0/200 khách LLBO (parity chỉ so một số trường).
+- `origin/main` vẫn 0,6/0,25/0,15 và khác `release-mvp-v2` ở phần recommendation.
 - Đề xuất PRD `2026-10-08-recsys-bam-so-thich-va-o-kham-pha.md` (chờ chốt) chỉ có F7 + ô B; chưa có P2, F14, tiêu chí §6. Phải viết lại
   trước khi trình chốt.
 - Engine production: chưa sửa theo nghiên cứu này. Không có gì deploy.

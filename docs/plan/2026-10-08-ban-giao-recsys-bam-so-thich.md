@@ -3,7 +3,8 @@
 - Ngày: 2026-10-08
 - Người bàn giao: Pham Nguyen Dang Khoi (soạn cùng Claude Code)
 - Người nhận: tqanh123 (Trịnh Quang Anh)
-- Nhánh: `bench_search_recomSys`
+- Nhánh: **`feat/recSys_update`**, tạo từ `release-mvp-v2` @ `6f77e80` (= code production 08/10). Cùng nội dung nghiên cứu cũng có trên
+  `bench_search_recomSys` (`0ccc948`), nhưng nhánh đó dùng engine cũ — làm tiếp trên `feat/recSys_update`.
 - Phục vụ: FR-REC-01, FR-REC-02, FR-REC-04, AC-REC-02 (`docs/prd/requirements.md` §1.4, §3)
 - Trạng thái: nghiên cứu xong bước 1–2; còn đo có thống kê, chọn cấu hình, chốt PRD, cài vào engine.
 
@@ -29,7 +30,7 @@
 | Chọn cấu hình | **Chưa** — ứng viên P2 + F14 (dự phòng F7) |
 | Đề xuất PRD đúng nội dung mới, người dùng chốt | **Chưa** |
 | Sửa engine backend, spec, unit test, deploy | **Chưa** |
-| Commit / push | **Xong** 08/10: 2 commit trên `origin/bench_search_recomSys`, rebase trên 6 commit search 06/10 |
+| Commit / push | **Xong** 08/10 trên `origin/feat/recSys_update` (base `release-mvp-v2` @ `6f77e80`) |
 
 ## 2. File bàn giao
 
@@ -54,20 +55,13 @@ history/2026-10-08-kiem-thu-purchase-va-doi-chieu-buoc-2.md
 history/2026-10-08-bao-cao-cuoi-va-ban-giao-recsys-so-thich.md
 ```
 
-Commit kèm (nghiên cứu phụ thuộc, việc 07/10 đã chốt): `src/backend/app/domain/recommendation/profile.py`
-(W 0,7/0,15/0,15), `git mv` đề xuất `2026-10-06-recsys-trong-so-ngan-han-pho-bien.md` sang `update-archive/`,
-`history/2026-10-07-recsys-trong-so-0-7-0-15.md`, `src/evaluation/reports/eval-2026-10-07-recsys-grid-llbo-coldstart.md`.
+Commit kèm: `src/evaluation/reports/eval-2026-10-07-recsys-grid-llbo-coldstart.md` (grid W_SHORT 07/10). Trọng số 0,7/0,15/0,15,
+đề xuất 06/10 đã lưu trữ và history 07/10 **đã có sẵn** trên `release-mvp-v2` nên không commit lại.
 
-### 2.2 Không thuộc bàn giao này — vẫn local trên máy người bàn giao, chủ việc tự commit
+### 2.2 Không thuộc bàn giao này
 
-Crawler Trip (`src/data_collection/collectors/trip_*.py`, `fresh_catalog.py`, test tương ứng, history 06/10 về Trip / Cohere),
-nạp catalog theo mã băm (`postgres_store.py`, `test_postgres_catalog_reader.py`, history 07/10), search bench
-(`sbench.yaml`, report search 05/10 và 07/10), latency (`latency-cloud-summary.md`, report latency), `docs/prd/deployment-plan.md`,
-`docs/plan/2026-09-28-lich-10-ngay-3-engine.md`, `src/backend/README.md`, `.claude/`.
-7 file trong số này trùng với 6 commit search 06/10; khi đồng bộ đã ghép lại trên máy người bàn giao (1 xung đột `src/backend/README.md`, đã gộp cả hai phía). Không ảnh hưởng người nhận: `docs/plan/2026-09-28-lich-10-ngay-3-engine.md`,
-`docs/prd/deployment-plan.md`, `docs/spec/hop-dong-tich-hop-search-recommendation.md`, `src/backend/README.md`,
-`src/backend/app/infrastructure/vectors/postgres_store.py`, `src/data_collection/fresh_catalog.py`,
-`src/evaluation/search_bench/config/sbench.yaml`.
+Các thay đổi chưa commit của việc khác (crawler Trip, nạp catalog theo mã băm, search bench, latency…) vẫn nằm local trên máy người bàn giao,
+không có trên `feat/recSys_update`. Người nhận không cần quan tâm.
 
 ### 2.3 Ngoài git (chuyển qua kênh riêng, không đưa lên git)
 
@@ -96,33 +90,37 @@ Không tự chọn thay người dùng; chưa chốt thì không sửa engine (A
 Ước lượng thời gian chạy lấy từ log 08/10: một cấu hình đủ ba split + khách giả lập mất 20–45 phút; chỉ khách giả lập ~1 phút / cấu hình.
 Chạy song song tối đa 2 tiến trình (4 tiến trình làm mỗi job chậm gần gấp đôi).
 
-### WP0 — Đồng bộ nhánh, dựng lại môi trường, đo lại mốc
+### WP0 — Dựng môi trường, đo lại mốc trên engine production
 
-Mục tiêu: mọi số sau này đo trên engine giống production.
+Mục tiêu: mọi số sau này đo trên engine giống production. Nhánh đã dựng từ `release-mvp-v2` nên **đã có** `9b703ba` (sửa cap lặp,
+"hôm nay" theo giờ VN, parser `usingDate` chung), trọng số 0,7/0,15/0,15 và `LocalE5Embedder`. Số bước 1–2 trong báo cáo cuối chạy trên
+engine cũ của `bench_search_recomSys` (§2.3 báo cáo) → phải đo lại mốc.
 
-1. ~~Kéo 6 commit search của `origin/bench_search_recomSys`~~ — đã xong khi push 08/10. Người nhận chỉ cần `git pull`.
-2. Merge `origin/main` (nhánh chậm 71 commit). Quan trọng nhất: `9b703ba` (cap lặp, "hôm nay" theo giờ VN, parser `usingDate` chung).
-3. Đảm bảo trọng số 0,7/0,15/0,15 có trên `main` (`origin/main` vẫn 0,6/0,25/0,15; production `release-mvp-v2` đã 0,7). Việc này đã chốt
-   07/10, chỉ thiếu PR.
-4. Viết lại `profile_variants.py` theo `build_profile` mới (dict `every`: tuổi / `ends_on` / món đã mua tính trên mọi event; cap chỉ
-   giới hạn vector). Kiểm `parity_mismatch_llbo200 = 0`.
-5. Nạp `vota_prodcopy` (`pg_restore`) và vector; tạo env local.
-6. Đo lại P0+F0, P2+F7, P2+F14 trên engine mới; so với bảng cũ; ghi report `src/evaluation/reports/eval-YYYY-MM-DD-recsys-so-thich-moc-moi.md`.
+1. `git fetch && git switch feat/recSys_update`.
+2. Nạp `vota_prodcopy` (`pg_restore`) và vector; tạo env local (`DATABASE_URL`, `CDP_DATABASE_URL`, `EVAL_DATABASE_URL` trỏ DB đó).
+3. `profile_variants.py` viết lại theo `build_profile` cũ (không có dict `every`). Kiểm 08/10 trên engine của nhánh này:
+   `parity_mismatch_llbo200 = 0` (lượt `eval_profile --profiles P0_prod --scorers F0_prod --n-syn 2 --max-users 50 --splits ""`).
+   Parity chỉ so một số trường profile, nên vẫn đưa logic `every` vào bản viết lại cho đúng (tuổi / `ends_on` / món đã mua tính trên mọi
+   event; cap chỉ giới hạn vector) và mở rộng parity so cả `bought_units`, `ends_on`, `active_trip`, `strategy`.
+4. Đo lại P0+F0, P2+F7, P2+F14 trên engine này; so với bảng cũ; ghi report `src/evaluation/reports/eval-YYYY-MM-DD-recsys-so-thich-moc-moi.md`.
+5. Chọn nhánh đích cho PR khi cài engine (WP5): `release-mvp-v2` hay `main`. Lưu ý `origin/main` còn khác `release-mvp-v2` ở phần
+   recommendation (vẫn trọng số 0,6/0,25/0,15) — việc đưa 0,7 vào `main` đã chốt 07/10, chỉ thiếu PR.
 
 Checklist:
-- [x] Đồng bộ 6 commit search (xong khi push 08/10)
-- [ ] merge `origin/main`, `pytest src/evaluation/recsys_bench/tests` pass
-- [ ] W 0,7/0,15/0,15 có trên `main` (đã có trên nhánh này, commit `235e92e`; cần PR vào `main`)
-- [ ] `profile_variants.py` theo engine mới, parity 0/200
-- [ ] `embed_prodcopy.py` (import được từ 08/10) sinh lại vector, hoặc dùng `.npy` được gửi; `meta.json` khớp revision `614241f…`
+- [x] Nhánh dựng từ engine production (`feat/recSys_update` @ `6f77e80` + 2 commit bàn giao)
+- [x] `pytest src/evaluation/recsys_bench/tests` trên nhánh: 138 passed, 2 xfailed (08/10)
+- [ ] DB `vota_prodcopy` + vector + env trên máy người nhận
+- [ ] `embed_prodcopy.py` sinh lại vector (nếu không dùng `.npy` được gửi); `meta.json` khớp revision `614241f…`
+- [ ] `profile_variants.py` thêm logic `every`, parity mở rộng 0/200
 - [ ] Mốc mới P0+F0 / P2+F7 / P2+F14 đo xong, có report
+- [ ] Chốt nhánh đích PR; W 0,7/0,15/0,15 có trên `main`
 - [ ] history entry
 
 DoD: số mốc mới có report; chênh với bảng cũ được giải thích.
 
 ### WP1 — Sửa test mất purchase
 
-Ca `production-known-bug` trong `test_profile_variants.py` gộp hai kiểm. Sau WP0, `build_profile` của main đã đúng phần nghiệp vụ
+Ca `production-known-bug` trong `test_profile_variants.py` gộp hai kiểm. Trên nhánh này `build_profile` đã đúng phần nghiệp vụ
 nhưng vẫn không đưa purchase vào vector chuyến.
 
 1. Tách thành `test_purchase_state_survives_repeat_cap` (bought_units, purchased_taxonomies, ends_on, ended, active_trip, strategy) —
@@ -258,9 +256,9 @@ WP6, WP7: độc lập, làm song song
 
 ## 7. Checklist tổng
 
-- [x] Commit + push §2.1 (08/10)
+- [x] Commit + push §2.1 lên `feat/recSys_update` (08/10)
 - [ ] Gửi riêng: dump `vota_prodcopy`, bộ vector
-- [ ] WP0 đồng bộ nhánh + mốc mới
+- [ ] WP0 môi trường + mốc mới trên engine production
 - [ ] WP1 tách test purchase
 - [ ] WP2 CI ghép cặp, 3 seed, `noisy` cùng khách
 - [ ] G1, G2 chốt
