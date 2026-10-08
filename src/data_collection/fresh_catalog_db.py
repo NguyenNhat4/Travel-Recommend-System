@@ -670,9 +670,9 @@ def maintain_catalog(url: str, *, today: date | None = None, now: datetime | Non
                  for row in writes.values()])
             stage["out"] = len(writes)
         from data_collection.seed import simulated_business  # _seed_rules() đã đưa src/ vào sys.path
-        with stages.stage("vé thương gia mô phỏng") as stage:
-            simulated = simulated_business.sync(conn)
-            stage.update({"in": simulated.get("simulatedBusiness"), "changed": simulated.get("simulatedBusinessWritten")})
+        # Vé thương gia mô phỏng là dữ liệu demo, không phải bước xử lý: không ghi bước con / dòng log cho monitor (số đếm vẫn
+        # vào kết quả của bước).
+        simulated = simulated_business.sync(conn)
         # Thành phần combo theo code parse hiện hành cho mọi combo, kể cả combo lượt này không cào được.
         state.update(writes)
         with stages.stage("parse thành phần combo") as stage:
@@ -946,10 +946,8 @@ def load_into_db(products_path: Path, coverage_path: Path | None, url: str,
             counts.update(combos)
             stage.update({"in": combos.get("combos"), "changed": combos.get("combosChanged")})
         from data_collection.seed import simulated_business
-        with stages.stage("vé thương gia mô phỏng") as stage:
-            simulated = simulated_business.sync(conn)  # sau upsert + cửa sổ, cùng transaction (data-model.md §3)
-            counts.update(simulated)
-            stage.update({"in": simulated.get("simulatedBusiness"), "changed": simulated.get("simulatedBusinessWritten")})
+        # sau upsert + cửa sổ, cùng transaction (data-model.md §3); dữ liệu demo nên không hiện thành bước con trên monitor
+        counts.update(simulated_business.sync(conn))
     # Publish the report only after the connection context has committed successfully.
     if report_path is not None and quarantine:
         (report_path.parent / "db_quarantine.jsonl").write_text(

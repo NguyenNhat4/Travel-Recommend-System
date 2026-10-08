@@ -592,8 +592,9 @@ def graph_strip_detail(nodes: list[dict]) -> dict[str, list[list[str]]]:
 
 
 # Số bước con của các bước lớn khi đang chạy (để tô tiến độ = số bước con đã xong / tổng): fresh_catalog_db.maintain_catalog,
-# load_into_db, fresh_catalog.validate_step; chuẩn hoá / gộp theo normalise.StepClock (SUBSTEP_INFO, phần bước Gộp).
-EXPECTED_SUBSTEPS = {"maintain": 7, "validate": 6, "db": 8, "normalise": 11}
+# load_into_db, fresh_catalog.validate_step; chuẩn hoá / gộp theo normalise.StepClock (SUBSTEP_INFO, phần bước Gộp). Vé
+# thương gia mô phỏng là dữ liệu demo, không phải bước xử lý nên không có bước con.
+EXPECTED_SUBSTEPS = {"maintain": 6, "validate": 6, "db": 7, "normalise": 11}
 GOOD_STATUSES = ("ok", "partial", "skipped")
 
 
