@@ -3,7 +3,10 @@
   noSeen    : bỏ món khách đã xem / thêm giỏ trong lịch sử (lấy 12 món rồi lọc, lấp đủ 4)
   explore1  : 3 món đầu của engine + 1 món khám phá ở điểm đến khác (destsim, xem theme_exp.explore)
   noSeen+explore1
-Đo: hit@4 (split thật), tỷ lệ chủ đề và tỷ lệ món đã xem (giả lập), số điểm đến khác."""
+Đo: hit@4 (split thật), tỷ lệ chủ đề và tỷ lệ món đã xem (giả lập), số điểm đến khác.
+
+08/10 (plan WP4.1): thêm `--profile` và các scorer F13 / F14 để chạy ô khám phá **cùng tổ hợp sẽ triển khai** (P2 + công
+thức đã chọn), không chỉ profile production + F0 như lượt 08/10 đầu tiên."""
 from __future__ import annotations
 
 import argparse
@@ -14,8 +17,13 @@ import time
 
 import numpy as np
 
+import src.backend.app.application.recommendation.use_cases as UC
+from src.backend.app.domain.recommendation import build_profile as prod_build
 from src.evaluation.recsys_bench.theme_study import eval_formula as EF
 from src.evaluation.recsys_bench.theme_study import theme_exp as TE
+from src.evaluation.recsys_bench.theme_study.eval_profile import F14_WEIGHTS
+from src.evaluation.recsys_bench.theme_study.profile_variants import PROFILES, make_build_profile
+from src.evaluation.recsys_bench.theme_study.step2_scorers import calibrate_quantile, make_centered, make_quantile
 from src.evaluation.recsys_bench import splits as SP
 
 
@@ -48,6 +56,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--vec", required=True)
     ap.add_argument("--scorer", default="F0_prod")
+    ap.add_argument("--profile", default="P0_prod", choices=sorted(PROFILES))
+    ap.add_argument("--f14-cal-seed", type=int, default=99)
     ap.add_argument("--n-syn", type=int, default=100)
     ap.add_argument("--as-of", default=None)
     ap.add_argument("--out", required=True)
@@ -56,14 +66,28 @@ def main():
     if a.as_of:
         from datetime import datetime
         TE.AS_OF = datetime.fromisoformat(a.as_of)
-    EF.set_variant(a.scorer)
     t0 = time.time()
     idx, vec = TE.load_index(a.vec)
     events = TE.load_events()
     purchases = [e for e in events if e["eventName"] == "purchase"]
     eng = TE.OfflineEngine(idx, vec, purchases, mode="prod")
     w = TE.World(idx, vec, [e for e in purchases if TE.parse_ts(e["timestamp"]) < TE.AS_OF])
-    out = {"scorer": a.scorer}
+    out = {"scorer": a.scorer, "profile": a.profile}
+    bp = make_build_profile(**PROFILES[a.profile])
+    # F13 / F14 không nằm sẵn trong EF.VARIANTS: F13 cần vector trung bình catalog, F14 cần tập calibration riêng.
+    if a.scorer.startswith("F13"):
+        mean_vec = np.asarray(vec.E, dtype=np.float32).mean(0)
+        EF.VARIANTS.setdefault("F13a_betweenCenter", make_centered(mean_vec, 0.70, 0.15, 0.15))
+        EF.VARIANTS.setdefault("F13b_betweenCenterPop30", make_centered(mean_vec, 0.55, 0.30, 0.15))
+    if a.scorer.startswith("F14"):
+        if a.scorer not in F14_WEIGHTS:
+            raise SystemExit(f"scorer {a.scorer!r} chưa có trọng số trong F14_WEIGHTS: {sorted(F14_WEIGHTS)}")
+        cal = calibrate_quantile(eng, w, bp, TE.AS_OF, seed=a.f14_cal_seed)
+        out["F14_calibration"] = {"profile": a.profile, **cal}
+        EF.VARIANTS[a.scorer] = make_quantile(cal["q_low_p10"], cal["q_high_p99"], *F14_WEIGHTS[a.scorer])
+        print("calibration", out["F14_calibration"], flush=True)
+    EF.set_variant(a.scorer)
+    UC.build_profile = bp
     for name, sp in (("llbo", SP.leave_last_booking_out(events, idx)), ("temporal", SP.temporal_split(events, idx))):
         hits = collections.Counter(); n = 0; tgt_seen = 0
         for uid in sorted(sp.targets)[:a.max_users or None]:
@@ -91,7 +115,8 @@ def main():
                     agg[f"len_{k}"].append(len(ids))
         out[f"syn_{sc}"] = {k: round(float(np.mean(v)), 3) for k, v in sorted(agg.items())}
         print(sc, out[f"syn_{sc}"], flush=True)
-    json.dump(out, open(a.out, "w"), ensure_ascii=False, indent=1)
+    UC.build_profile = prod_build
+    json.dump(out, open(a.out, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     print(f"done {time.time()-t0:.0f}s")
 
 

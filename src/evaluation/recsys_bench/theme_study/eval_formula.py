@@ -76,18 +76,27 @@ def set_variant(name):
     UC.score_candidates = prod_score if VARIANTS[name] is None else VARIANTS[name]
 
 
-def eval_split(split, eng20, eng4, idx_ids, max_users=None):
+def eval_split(split, eng20, eng4, idx_ids, max_users=None, sink=None, row_base=None):
+    """`sink`: callable nhận một dict / khách (plan WP2.1) để ghi kết quả từng khách ra JSONL — điều kiện để tính CI
+    ghép cặp (`paired_ci.py`). Không truyền thì chỉ trả chỉ số tổng hợp như trước."""
     users = sorted(split.targets)[: max_users or None]
     h20 = n10 = h4 = 0.0
     for u in users:
         tgt, as_of, train = split.targets[u], split.as_of_by_user[u], split.train_by_user[u]
         r20 = [x["productId"] for x in eng20.recommend(u, as_of, 20, train)["recommendations"]]
         r4 = [x["productId"] for x in eng4.recommend(u, as_of, 4, train)["recommendations"]]
+        hit20 = ndcg = 0.0
         if tgt in r20:
-            h20 += 1
+            hit20 = 1.0
             rk = r20.index(tgt)
-            n10 += (1 / math.log2(rk + 2)) if rk < 10 else 0
-        h4 += tgt in r4
+            ndcg = (1 / math.log2(rk + 2)) if rk < 10 else 0.0
+        hit4 = float(tgt in r4)
+        h20 += hit20
+        n10 += ndcg
+        h4 += hit4
+        if sink is not None:
+            sink({**(row_base or {}), "uid": u, "hit@20": hit20, "ndcg@10": round(ndcg, 6), "hit@4": hit4,
+                  "target": tgt, "list4": r4})
     n = max(len(users), 1)
     return {"n": len(users), "hit@20": round(h20 / n, 4), "ndcg@10": round(n10 / n, 4), "hit@4": round(h4 / n, 4)}
 

@@ -26,8 +26,11 @@
 | Bước 2 trên P2: F7, F12b, F13a, F13b, F14 | Xong (16:15) |
 | Ô khám phá, không ẩn món đã xem | Xong (profile production) |
 | Test giới hạn lặp / mất purchase | Có, nhưng ca "production" test nhầm engine (WP1) |
-| CI ghép cặp, nhiều seed, `noisy` cùng khách | **Chưa** |
-| Chọn cấu hình | **Chưa** — ứng viên P2 + F14 (dự phòng F7) |
+| CI ghép cặp, nhiều seed, `noisy` cùng khách | **Xong** 08/10 (WP2) — `eval-2026-10-08-recsys-so-thich-ci.md` |
+| Mốc mới trên engine production | **Xong** 08/10 (WP0) — bảng cũ đúng, trừ hai cột nexttrip |
+| Tách test mất purchase | **Xong** 08/10 (WP1) — production pass phần nghiệp vụ, xfail chỉ còn ở phần vector |
+| Bảng quyết định có CI | **Xong** 08/10 (WP3) — `docs/spec/bench/recsys-bam-so-thich-quyet-dinh.md` |
+| Chọn cấu hình | **Chưa — chờ G3.** Ứng viên: P2 + F14c (pop 0,35) chắc nhất, P2 + F13a nếu ưu tiên bền với nhiễu, P2 + F7 nếu không muốn nuôi hằng nào |
 | Đề xuất PRD đúng nội dung mới, người dùng chốt | **Chưa** |
 | Sửa engine backend, spec, unit test, deploy | **Chưa** |
 | Commit / push | **Xong** 08/10 trên `origin/feat/recSys_update` (base `release-mvp-v2` @ `6f77e80`) |
@@ -109,14 +112,15 @@ engine cũ của `bench_search_recomSys` (§2.3 báo cáo) → phải đo lại 
 Checklist:
 - [x] Nhánh dựng từ engine production (`feat/recSys_update` @ `6f77e80` + 2 commit bàn giao)
 - [x] `pytest src/evaluation/recsys_bench/tests` trên nhánh: 138 passed, 2 xfailed (08/10)
-- [ ] DB `vota_prodcopy` + vector + env trên máy người nhận
-- [ ] `embed_prodcopy.py` sinh lại vector (nếu không dùng `.npy` được gửi); `meta.json` khớp revision `614241f…`
-- [ ] `profile_variants.py` thêm logic `every`, parity mở rộng 0/200
-- [ ] Mốc mới P0+F0 / P2+F7 / P2+F14 đo xong, có report
-- [ ] Chốt nhánh đích PR; W 0,7/0,15/0,15 có trên `main`
-- [ ] history entry
+- [x] DB `vota_prodcopy` + vector + env trên máy người nhận (08/10: `pg_restore` gói bàn giao vào container `vota-prodcopy-pg` :55433; 18/18 checksum OK)
+- [x] Dùng `.npy` của gói bàn giao, `meta.json` khớp revision `614241f…` (không cần sinh lại)
+- [x] `profile_variants.py` thêm logic `every`, parity mở rộng từ 3 lên 8 phép so: 0/200, `parity_mismatch_by_field = {}`
+- [x] Mốc mới đo xong (thêm P0+F7, P2+F0, P2+F13a), report `src/evaluation/reports/eval-2026-10-08-recsys-so-thich-moc-moi.md`
+- [ ] Chốt nhánh đích PR; W 0,7/0,15/0,15 có trên `main` — **còn lại, cần người dùng**
+- [x] history entry (`history/2026-10-08-wp0-wp3-recsys-bam-so-thich.md`)
 
-DoD: số mốc mới có report; chênh với bảng cũ được giải thích.
+DoD: **đạt** — 58 / 60 ô khớp bảng cũ đến chữ số cuối; chênh duy nhất ở nexttrip nDCG@10 (+0,0008 … +0,0009) và nexttrip
+hit@4 (+0,0012 … +0,0013 = 1 khách / 800), đúng dự đoán §2.3 của báo cáo cuối. Không cần đo lại nghiên cứu.
 
 ### WP1 — Sửa test mất purchase
 
@@ -130,9 +134,10 @@ nhưng vẫn không đưa purchase vào vector chuyến.
 3. Sửa docstring: "production" = `build_profile` của `src/backend`, ghi commit tham chiếu.
 
 Checklist:
-- [ ] Hai ca tách riêng, tên đúng nghĩa
-- [ ] `pytest src/evaluation/recsys_bench/tests/test_profile_variants.py` pass (xfail chỉ ở ca vector)
-- [ ] history entry
+- [x] Hai ca tách riêng, tên đúng nghĩa; thêm P2 vào cả hai ca
+- [x] `pytest src/evaluation/recsys_bench/tests/test_profile_variants.py`: 15 passed, 4 xfailed — production **pass** ca
+      trạng thái chuyến (bỏ xfail), xfail chỉ còn ở ca vector (production + P2, mỗi ca 2 thứ tự đầu vào)
+- [x] history entry
 
 ### WP2 — Đo lại có thống kê
 
@@ -146,15 +151,19 @@ Checklist:
 6. Cấu hình đo: P0+F0, P2+F0, P0+F7, P2+F7, P2+F14 (+ P2+F13a nếu còn muốn).
 
 Checklist:
-- [ ] `--per-user-out` + test
-- [ ] `paired_ci.py` + test
-- [ ] `noisy` cùng khách (kịch bản mới, kịch bản cũ giữ seed)
-- [ ] 3 seed khách giả lập
-- [ ] Quyết định 800 hay toàn bộ khách split thật; ghi lý do
-- [ ] Report `src/evaluation/reports/eval-YYYY-MM-DD-recsys-so-thich-ci.md` có bảng CI
-- [ ] history entry
+- [x] `--per-user-out` (JSONL mỗi khách) + `--scenarios` / `--syn-seeds` / `--f14-cal-profile` / `--f14-cal-seed`
+- [x] `paired_ci.py` + 14 test unit (gồm `noise_effect` ghép qua `baseUid`)
+- [x] `noisy` cùng khách: thêm kịch bản `noisy_paired` (`theme_exp.with_noise`). **Giữ nguyên tên `noisy`** cho cohort độc
+      lập cũ thay vì đổi tên như plan ghi: đổi tên không đủ, phải giữ cả vị trí trong luồng rng, nên cách này mới tái sinh
+      đúng số cũ — đã kiểm: mọi số theme của bản 08/10 ra y nguyên (`noisy` 0,447 / 0,666)
+- [x] 3 seed khách giả lập (42, 7, 2026), có bảng trung bình ± độ lệch giữa seed
+- [x] Dùng **toàn bộ** khách mỗi split (LLBO 4.072 / temporal 775 / nexttrip 1.835). Lý do: trên máy này một cấu hình đủ ba
+      split mất ~4 phút chứ không phải 20–45 phút, nên chi phí 2–5× là chấp nhận được; và mẫu 800 khách đầu theo id lệch
+      thật (LLBO h@20 0,836 ở 800 so với 0,808 ở toàn bộ; nexttrip h@20 0,025 so với 0,035)
+- [x] Report `src/evaluation/reports/eval-2026-10-08-recsys-so-thich-ci.md` có bảng CI
+- [x] history entry
 
-DoD: mọi so sánh trong khuyến nghị có CI ghép cặp.
+DoD: **đạt** — mọi so sánh trong khuyến nghị có CI ghép cặp (`results/2026-10-08-wp0-wp3/ci_full_*.json`).
 
 ### WP3 — Chọn công thức (cần G1, G2)
 
@@ -165,16 +174,29 @@ DoD: mọi so sánh trong khuyến nghị có CI ghép cặp.
 4. Trình người dùng chọn (G3).
 
 Checklist:
-- [ ] Tiêu chí G1 đã chốt, chép vào báo cáo
-- [ ] F14 biến thể pop + độ bền calibration
-- [ ] Bảng quyết định có CI
-- [ ] Người dùng chọn công thức (G3), ghi ngày / người chốt
+- [ ] Tiêu chí G1 đã chốt, chép vào báo cáo — **còn lại, cần người dùng** (bảng đối chiếu sẵn ở
+      `docs/spec/bench/recsys-bam-so-thich-quyet-dinh.md` §4; ngưỡng temporal 0,03 không phân biệt được bằng dữ liệu hiện
+      có, có hai cách xử lý đề nghị)
+- [x] F14 biến thể pop (0,25 / 0,30 / 0,35 / 0,45, toàn bộ khách) + độ bền calibration (3 seed: `q` lệch ±0,3 %, kết quả
+      lệch ≤ 0,006 → F14 **không** nhạy với tập calibration)
+- [x] Bảng quyết định có CI: `docs/spec/bench/recsys-bam-so-thich-quyet-dinh.md`. Biên hiệu quả
+      production → P2+F7 → P2+F14c → P2+F14 → P2+F13a; F14b và F14d bị trội, loại
+- [ ] Người dùng chọn công thức (G3), ghi ngày / người chốt — **còn lại, cần người dùng**
+
+Phát hiện phải ghi lại: ở cỡ mẫu đầy đủ, **F13a không còn thua F14** ở temporal / nexttrip (CI chứa 0) và hơn ở
+`noisy_paired` (+0,028), nên lý do loại F13a ở báo cáo cuối §6 không còn đứng được. Và **P2+F14c (pop 0,35) hơn P2+F7 ở
+theme (+0,035) mà không có chi phí nào phân biệt được.**
+
+2b. (Tuỳ chọn, chưa làm) F13 centering **toàn phần**: center cả vector truy vấn Weaviate, profile và MMR. Giờ đáng làm hơn
+    trước, vì F13a bản chấm-điểm-thôi đã ngang F14 ở split thật và tốt nhất ở độ bền với nhiễu.
 
 ### WP4 — Đo đúng tổ hợp sẽ triển khai
 
 Cấu hình: P2 + phần còn lại của P1 (purchase / cart luôn vào vector) + công thức đã chọn + ô khám phá B (nếu G4 đồng ý).
 
 1. Cài ô B trong tiến trình đo (`eval_slots.py` đã có `fillExplore` cho profile production) để chạy chung với P2 + công thức.
+   **08/10: `eval_slots.py` đã thêm `--profile` và dựng được scorer F13 / F14**, nên chạy được ngay sau khi có G3; chưa chạy
+   vì còn chờ G3 / G4.
 2. Đo LLBO / temporal / nexttrip / coldstart (`recsys_bench`), khách giả lập `between` / `open` / `noisy`, AC-REC-01/02.
 3. Latency: `recsys_bench` `http_latency` hoặc gọi API local, trước / sau, p50 / p95. Ô B không được thêm lượt gọi Weaviate; nếu cần
    `near_vector(u_long)` thì đo riêng.
@@ -257,15 +279,21 @@ WP6, WP7: độc lập, làm song song
 ## 7. Checklist tổng
 
 - [x] Commit + push §2.1 lên `feat/recSys_update` (08/10)
-- [ ] Gửi riêng: dump `vota_prodcopy`, bộ vector
-- [ ] WP0 môi trường + mốc mới trên engine production
-- [ ] WP1 tách test purchase
-- [ ] WP2 CI ghép cặp, 3 seed, `noisy` cùng khách
-- [ ] G1, G2 chốt
-- [ ] WP3 bảng quyết định → G3
-- [ ] G4 ô khám phá
+- [x] Gửi riêng: dump `vota_prodcopy`, bộ vector (gói `recsys-theme-2026-10-08-ban-giao.zip`, 18/18 checksum OK, đã nạp)
+- [x] WP0 môi trường + mốc mới trên engine production
+- [x] WP1 tách test purchase
+- [x] WP2 CI ghép cặp, 3 seed, `noisy` cùng khách
+- [ ] G1, G2 chốt — **chờ người dùng**
+- [x] WP3 bảng quyết định → trình G3
+- [ ] G3 chọn công thức — **chờ người dùng**
+- [ ] G4 ô khám phá — **chờ người dùng** (tooling đã sẵn)
 - [ ] WP4 đo tổ hợp + latency
 - [ ] WP5.1 đề xuất viết lại → G5
 - [ ] WP5.2–5.8 PRD, engine, spec, test, gate, archive, deploy
-- [ ] WP7.1 xử lý `askpass.cmd`
+- [ ] WP7.1 xử lý `askpass.cmd` (của chủ nhánh `fix/search-production`, không tự làm)
 - [ ] WP6 lên kế hoạch riêng
+
+Tài liệu sinh ra ở lượt WP0–WP3 (08/10): `src/evaluation/reports/eval-2026-10-08-recsys-so-thich-moc-moi.md`,
+`eval-2026-10-08-recsys-so-thich-ci.md`, `docs/spec/bench/recsys-bam-so-thich-quyet-dinh.md`,
+`src/evaluation/recsys_bench/theme_study/results/2026-10-08-wp0-wp3/`,
+`history/2026-10-08-wp0-wp3-recsys-bam-so-thich.md`.

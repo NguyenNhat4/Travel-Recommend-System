@@ -22,29 +22,59 @@ from src.evaluation.recsys_bench import splits as SP
 from src.evaluation.recsys_bench.theme_study import eval_formula as EF
 from src.evaluation.recsys_bench.theme_study import theme_exp as TE
 from src.evaluation.recsys_bench.theme_study.profile_variants import PROFILES, make_build_profile
-from src.evaluation.recsys_bench.theme_study.step2_scorers import make_centered, make_quantile
+from src.evaluation.recsys_bench.theme_study.step2_scorers import calibrate_quantile, make_centered, make_quantile
 
 CAPTURED: list = []
+
+#: Biến thể trọng số của F14 (calibration phân vị) — cùng ngưỡng q, khác `W_POP`. Thêm 08/10 cho plan WP3.1: `W_POP` là núm
+#: vặn giữa "bám sở thích" và "món bán chạy" (báo cáo cuối §4.1), nên ứng viên F14 phải được thử ở vài mức pop.
+F14_WEIGHTS = {
+    "F14_betweenQuantilePop30": (0.55, 0.30, 0.15),
+    "F14b_betweenQuantilePop25": (0.60, 0.25, 0.15),
+    "F14c_betweenQuantilePop35": (0.50, 0.35, 0.15),
+    #: Bản thận trọng, song song F9 của bước 1: giữ pop cao để mất ít nhất ở temporal / nexttrip.
+    "F14d_betweenQuantilePop45": (0.40, 0.45, 0.15),
+}
+
+
+def _trip_fields(p):
+    """Mọi trường của Trip mà engine dùng để quyết định (trừ vector, so riêng): để parity bắt được cả lệch nghiệp vụ,
+    không chỉ lệch u_long. Mở rộng 08/10 theo plan WP0.3 — bản cũ chỉ so trips / u_long / trip_id của chuyến mở."""
+    return {tid: (round(t.age_days, 6), t.ends_on, t.ended, tuple(sorted(t.purchased_taxonomies)), t.destination,
+                  len(t.events)) for tid, t in p.trips.items()}
 
 
 def parity(split, eng, n=200):
     """Bản viết lại với mọi công tắc tắt phải cho đúng profile như production."""
     reimpl = make_build_profile(force=True)
     bad = 0
+    diffs: collections.Counter = collections.Counter()
 
     def cmp(events, E, tax, dest, today=None):
         nonlocal bad
         a, b = prod_build(events, E, tax, dest, today), reimpl(events, E, tax, dest, today)
-        same = (set(a.trips) == set(b.trips) and np.allclose(a.u_long, b.u_long, atol=1e-5)
-                and (a.active_trip is None) == (b.active_trip is None)
-                and (a.active_trip is None or a.active_trip.trip_id == b.active_trip.trip_id))
-        bad += not same
+        checks = {
+            "trips": set(a.trips) == set(b.trips),
+            "u_long": np.allclose(a.u_long, b.u_long, atol=1e-5),
+            "active_trip": ((a.active_trip is None) == (b.active_trip is None)
+                            and (a.active_trip is None or a.active_trip.trip_id == b.active_trip.trip_id)),
+            "bought_units": a.bought_units == b.bought_units,
+            "n_events": a.n_events == b.n_events,
+            "strategy": a.strategy == b.strategy,
+            "trip_fields": _trip_fields(a) == _trip_fields(b),
+            "trip_vecs": all(np.allclose(a.trips[t].vec, b.trips[t].vec, atol=1e-5)
+                             for t in set(a.trips) & set(b.trips)),
+        }
+        for name, ok in checks.items():
+            if not ok:
+                diffs[name] += 1
+        bad += not all(checks.values())
         return a
     UC.build_profile = cmp
     for u in sorted(split.targets)[:n]:
         eng.recommend(u, split.as_of_by_user[u], 4, split.train_by_user[u])
     UC.build_profile = prod_build
-    return bad
+    return bad, dict(diffs)
 
 
 def profile_stats(bp, split, eng, n=300):
@@ -74,6 +104,15 @@ def main():
     ap.add_argument("--profiles", default=",".join(PROFILES))
     ap.add_argument("--scorers", default="F0_prod")
     ap.add_argument("--splits", default="llbo,temporal,nexttrip", help="rỗng = chỉ đo khách giả lập")
+    ap.add_argument("--scenarios", default="between,open,noisy",
+                    help="kịch bản khách giả lập; `noisy_paired` = cùng khách với `between` + lượt xem nhiễu (WP2.3)")
+    ap.add_argument("--syn-seeds", default="7", help="một hoặc nhiều seed khách giả lập, vd 42,7,2026 (WP2.4). "
+                                                    "Mặc định 7 = đúng bộ khách đã đo 08/10")
+    ap.add_argument("--f14-cal-profile", default=None,
+                    help="profile dùng để calibrate F14; mặc định profile đầu tiên của --profiles")
+    ap.add_argument("--f14-cal-seed", type=int, default=99,
+                    help="seed của tập calibration F14 (WP3.1: đổi seed để xem q có bền không). 99 = bản đã đo 08/10")
+    ap.add_argument("--per-user-out", default=None, help="file JSONL ghi kết quả từng khách (plan WP2.1)")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     TE.AS_OF = datetime.fromisoformat(a.as_of)
@@ -86,58 +125,89 @@ def main():
     splits = {"llbo": SP.leave_last_booking_out(events, idx), "temporal": SP.temporal_split(events, idx),
               "nexttrip": SP.next_trip_split(events, idx)}
     w = TE.World(idx, vec, [e for e in purchases if TE.parse_ts(e["timestamp"]) < TE.AS_OF])
-    rng = random.Random(7)                                   # cùng seed với eval_formula → cùng khách giả lập
-    syn = [TE.make_user(w, rng, f"SYN-{sc[0]}{th[0]}{n:04d}", th, sc)
-           for sc in ("between", "open", "noisy") for th in ("beach", "mountain", "city") for n in range(a.n_syn)]
-    res = {"parity_mismatch_llbo200": parity(splits["llbo"], eng4)}
+    scenarios = [s for s in a.scenarios.split(",") if s]
+    seeds = [int(s) for s in a.syn_seeds.split(",") if s]
+    # Một seed = một bộ khách giả lập độc lập; đo nhiều seed để biết chênh giữa các cấu hình có bền qua seed không (WP2.4).
+    # Với seeds=[7] và kịch bản mặc định, luồng rng y nguyên bản 08/10 (uid chỉ là nhãn, engine không đọc nó).
+    syn = []
+    for seed in seeds:
+        rng = random.Random(seed)                            # seed 7 = cùng bộ khách với eval_formula
+        base = {}
+        for sc in [s for s in scenarios if s != "noisy_paired"]:
+            for th in ("beach", "mountain", "city"):
+                for n in range(a.n_syn):
+                    u = TE.make_user(w, rng, f"SYN{seed}-{sc[0]}{th[0]}{n:04d}", th, sc)
+                    u["seed"] = seed
+                    syn.append(u)
+                    if sc == "between":
+                        base[(th, n)] = u
+        if "noisy_paired" in scenarios:
+            if not base:
+                raise SystemExit("--scenarios noisy_paired cần cả `between` (lịch sử nền của cùng khách)")
+            nrng = random.Random(seed * 1_000_003 + 17)       # luồng riêng: không xê dịch bộ khách `between` / `open` / `noisy`
+            for (th, n), u in base.items():
+                p = TE.with_noise(w, nrng, u, f"SYN{seed}-p{th[0]}{n:04d}")
+                p["seed"] = seed
+                syn.append(p)
+    n_bad, by_field = parity(splits["llbo"], eng4)
+    res = {"parity_mismatch_llbo200": n_bad, "parity_mismatch_by_field": by_field}
     need = a.scorers.split(",")
     if any(x.startswith("F13") for x in need):
         mean_vec = np.asarray(vec.E, dtype=np.float32).mean(0)
         EF.VARIANTS["F13a_betweenCenter"] = make_centered(mean_vec, 0.70, 0.15, 0.15)
         EF.VARIANTS["F13b_betweenCenterPop30"] = make_centered(mean_vec, 0.55, 0.30, 0.15)
     if any(x.startswith("F14") for x in need):
-        # tập calibration riêng: khách giả lập "between" seed 99 (bộ đo dùng seed 7), dựng theo profile đầu tiên được yêu cầu
-        cal_vals = []
-        def rec_score(profile, E, pop):
-            if profile.active_trip is None:
-                cal_vals.append(np.asarray(E @ profile.u_long, dtype=np.float64))
-            return prod_score(profile, E, pop)
-        UC.build_profile = make_build_profile(**PROFILES[a.profiles.split(",")[0]])
-        UC.score_candidates = rec_score
-        crng = random.Random(99)
-        for th in ("beach", "mountain", "city"):
-            for n in range(40):
-                u = TE.make_user(w, crng, f"CAL-{th[0]}{n:04d}", th, "between")
-                eng4.recommend(u["uid"], TE.AS_OF, 4, u["events"])
-        UC.build_profile, UC.score_candidates = prod_build, prod_score
-        allv = np.concatenate(cal_vals)
-        q_low, q_high = float(np.percentile(allv, 10)), float(np.percentile(allv, 99))
-        res["F14_calibration"] = {"requests": len(cal_vals), "q_low_p10": round(q_low, 4), "q_high_p99": round(q_high, 4)}
-        EF.VARIANTS["F14_betweenQuantilePop30"] = make_quantile(q_low, q_high)
+        cal_profile = a.f14_cal_profile or a.profiles.split(",")[0]
+        cal = calibrate_quantile(eng4, w, make_build_profile(**PROFILES[cal_profile]), TE.AS_OF, seed=a.f14_cal_seed)
+        res["F14_calibration"] = {"profile": cal_profile, **cal}
+        for name in [x for x in need if x.startswith("F14")]:
+            if name not in F14_WEIGHTS:
+                raise SystemExit(f"scorer {name!r} chưa có trọng số trong F14_WEIGHTS: {sorted(F14_WEIGHTS)}")
+            EF.VARIANTS[name] = make_quantile(cal["q_low_p10"], cal["q_high_p99"], *F14_WEIGHTS[name])
         print("calibration", res["F14_calibration"], flush=True)
-    print(f"loaded {time.time()-t0:.0f}s; parity mismatches = {res['parity_mismatch_llbo200']}", flush=True)
-    for pname in a.profiles.split(","):
-        bp = make_build_profile(**PROFILES[pname])
-        res[f"{pname}/stats"] = profile_stats(bp, splits["llbo"], eng4)
-        for sname in a.scorers.split(","):
-            UC.build_profile = bp
-            EF.set_variant(sname)
-            r = {s: EF.eval_split(sp, eng20, eng4, None, a.max_users) for s, sp in splits.items() if s in a.splits.split(",")}
-            for sc in ("between", "open", "noisy"):
-                tp, by, dests = [], collections.defaultdict(list), collections.Counter()
-                for u in [x for x in syn if x["events"] and x["uid"].startswith(f"SYN-{sc[0]}")]:
-                    rec = eng4.recommend(u["uid"], TE.AS_OF, 4, u["events"])["recommendations"]
-                    dests.update(x["destination"] for x in rec)
-                    v = TE.theme_prec(w, [w.i_of[x["productId"]] for x in rec if x["productId"] in w.i_of], u["theme"])
-                    if v is not None:
-                        tp.append(v); by[u["theme"]].append(v)
-                r[f"syn_{sc}"] = {"themePrec": round(float(np.mean(tp)), 3),
-                                  **{f"themePrec_{k}": round(float(np.mean(v)), 3) for k, v in by.items()},
-                                  "distinctDestsTotal": len(dests), "top5Dests": dests.most_common(5)}
-            res[f"{pname}+{sname}"] = r
-            print(pname, sname, json.dumps(r, ensure_ascii=False), flush=True)
-            UC.build_profile, UC.score_candidates = prod_build, prod_score
-            json.dump(res, open(a.out, "w"), ensure_ascii=False, indent=1)
+    print(f"loaded {time.time()-t0:.0f}s; parity mismatches = {res['parity_mismatch_llbo200']} {by_field or ''}",
+          flush=True)
+    pu = open(a.per_user_out, "w", encoding="utf-8") if a.per_user_out else None
+    try:
+        for pname in a.profiles.split(","):
+            bp = make_build_profile(**PROFILES[pname])
+            res[f"{pname}/stats"] = profile_stats(bp, splits["llbo"], eng4)
+            for sname in a.scorers.split(","):
+                cfg = f"{pname}+{sname}"
+                UC.build_profile = bp
+                EF.set_variant(sname)
+
+                def sink(row, _cfg=cfg):
+                    if pu is not None:
+                        pu.write(json.dumps({"config": _cfg, **row}, ensure_ascii=False) + "\n")
+
+                r = {s: EF.eval_split(sp, eng20, eng4, None, a.max_users, sink=sink if pu else None,
+                                      row_base={"stratum": s, "seed": None})
+                     for s, sp in splits.items() if s in a.splits.split(",")}
+                for sc in scenarios:
+                    tp, by, dests = [], collections.defaultdict(list), collections.Counter()
+                    for u in [x for x in syn if x["events"] and x["scenario"] == sc]:
+                        rec = eng4.recommend(u["uid"], TE.AS_OF, 4, u["events"])["recommendations"]
+                        dests.update(x["destination"] for x in rec)
+                        ids4 = [w.i_of[x["productId"]] for x in rec if x["productId"] in w.i_of]
+                        v = TE.theme_prec(w, ids4, u["theme"])
+                        if v is not None:
+                            tp.append(v); by[u["theme"]].append(v)
+                        sink({"stratum": f"syn_{sc}", "seed": u["seed"], "uid": u["uid"], "theme": u["theme"],
+                              "baseUid": u.get("base_uid"), "themePrec": v,
+                              "list4": [x["productId"] for x in rec], "dests4": [x["destination"] for x in rec]})
+                    r[f"syn_{sc}"] = {"themePrec": round(float(np.mean(tp)), 3),
+                                      **{f"themePrec_{k}": round(float(np.mean(v)), 3) for k, v in by.items()},
+                                      "distinctDestsTotal": len(dests), "top5Dests": dests.most_common(5)}
+                res[cfg] = r
+                print(pname, sname, json.dumps(r, ensure_ascii=False), flush=True)
+                UC.build_profile, UC.score_candidates = prod_build, prod_score
+                json.dump(res, open(a.out, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+                if pu is not None:
+                    pu.flush()
+    finally:
+        if pu is not None:
+            pu.close()
     print(f"done {time.time()-t0:.0f}s", flush=True)
 
 
