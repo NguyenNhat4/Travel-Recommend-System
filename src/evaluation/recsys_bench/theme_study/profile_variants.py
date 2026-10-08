@@ -2,10 +2,11 @@
 
 Dựa trên `domain.recommendation.profile.build_profile` (production) với ba công tắc độc lập:
 
-- `cap_fix`    : giới hạn lặp giữ event MỚI nhất, không bao giờ bỏ purchase / add_to_cart (production giữ 3 event CŨ nhất,
-                 bất kể loại).
-- `confidence` : u_long cộng hướng của từng chuyến × độ tin cậy của chuyến `min(1, Σ W_TYPE × suy giảm)` thay vì mọi chuyến
-                 nặng như nhau sau chuẩn hoá (một lượt xem lẻ 0,2; một lần mua 1,0; năm lượt xem 1,0).
+- `cap_fix`    : giới hạn lặp giữ event MỚI nhất (production giữ 3 event CŨ nhất). Từ 09/10/2026 production cũng không bao giờ
+                 bỏ purchase / add_to_cart khỏi vector (`CAP_EXEMPT_EVENTS`), nên công tắc này chỉ còn đổi thứ tự giữ.
+- `confidence` : u_long cộng hướng của từng chuyến × độ tin cậy của chuyến `min(1, Σ W_TYPE)` thay vì mọi chuyến nặng như
+                 nhau sau chuẩn hoá (một lượt xem lẻ 0,2; một lần mua 1,0). **Là production từ 09/10/2026 (PR-A, P2 đã ship)**
+                 → mặc định bật; `confidence=False` = công thức trước 09/10 (`P0_legacy`).
 - `session`    : gom các event không có eventGroupId (`_solo_<sản phẩm>`, mỗi sản phẩm xem là một "chuyến") thành phiên theo
                  điểm đến, cách nhau ≤ ACTIVE_TRIP_MAX_AGE_DAYS.
 
@@ -26,7 +27,7 @@ from src.backend.app.domain.recommendation.profile import (
     trip_is_open,
 )
 
-STRONG = {"purchase", "add_to_cart"}
+STRONG = {"purchase", "add_to_cart"}     # = profile.CAP_EXEMPT_EVENTS
 
 
 def _sessionize(events, destination):
@@ -50,7 +51,7 @@ def _cap(events, cap_fix: bool):
     kept = []
     order = sorted(events, key=lambda x: x.days_ago) if cap_fix else sorted(events, key=lambda x: -x.days_ago)
     for e in order:                                              # cap_fix: mới → cũ; production: cũ → mới
-        if cap_fix and e.event_name in STRONG:
+        if e.event_name in STRONG:                               # production 09/10: event mạnh không bị cap
             kept.append(e)
             continue
         seen[(e.trip_id, e.unit)] += 1
@@ -60,9 +61,9 @@ def _cap(events, cap_fix: bool):
     return sorted(kept, key=lambda x: -x.days_ago)
 
 
-def make_build_profile(cap_fix=False, confidence=False, session=False, force=False):
-    """force=True: dùng bản viết lại kể cả khi mọi công tắc tắt (để kiểm tra khớp production)."""
-    if not (cap_fix or confidence or session or force):
+def make_build_profile(cap_fix=False, confidence=True, session=False, force=False):
+    """force=True: dùng bản viết lại kể cả khi mọi công tắc ở mức production (để kiểm tra khớp production)."""
+    if not (cap_fix or session or force) and confidence:
         return build_profile
 
     def bp(events, E, taxonomy, destination, today: date | None = None) -> Profile:
@@ -106,9 +107,10 @@ def make_build_profile(cap_fix=False, confidence=False, session=False, force=Fal
 
 
 PROFILES = {
-    "P0_prod": {},
+    "P0_prod": {},                                   # production hiện hành (từ 09/10 = P2 đã ship)
+    "P0_legacy": {"confidence": False},              # production trước 09/10/2026 (mọi chuyến nặng như nhau)
     "P1_capFix": {"cap_fix": True},
-    "P2_confidence": {"confidence": True},
+    "P2_confidence": {"confidence": True},           # = P0_prod từ 09/10; giữ tên để lệnh cũ chạy được
     "P3_session": {"session": True},
     "P4_all": {"cap_fix": True, "confidence": True, "session": True},
 }

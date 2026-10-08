@@ -272,7 +272,8 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
         "listing_units": [ListingItem(p, bool(index.recommendable[i])) for i, p in enumerate(index.units)],
         "product_popularity": product_popularity,
         "recommend": RecommendForUser(
-            index, vector_search, cdp_reader, popularity, candidate_k=settings.recommend_candidate_k
+            index, vector_search, cdp_reader, popularity, candidate_k=settings.recommend_candidate_k,
+            explore_fill=settings.recommend_explore_fill,
         ),
     }
 

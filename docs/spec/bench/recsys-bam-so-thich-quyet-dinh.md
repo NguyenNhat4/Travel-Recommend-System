@@ -262,6 +262,15 @@ cả D1 lẫn theme.**
 | **(b)** | Chọn T2 (P2 + F14d pop 0,45 + destCap2): destHit +0,070, temporal không phân biệt được, nexttrip hit@20 −0,024; đổi lại theme chỉ +0,135 / +0,200 | Thận trọng hơn; phải nới tiêu chí theme ≥ 0,15 xuống ≈ 0,13 |
 | **(c)** | Giữ production ở nhánh không chuyến mở; chỉ ship PR-A (P2 + ô B + loại combo); mở nghiên cứu G6 phiên bản 2 (sở thích ở mức thuộc tính sản phẩm) rồi quay lại | Đúng phương pháp nhất, chậm nhất |
 
+### 7.7 Chốt của người dùng 09/10
+
+- **G2 = (a)**: chấp nhận C3 (P2 + F14c + destCap2) với D1 định nghĩa lại trên nexttrip **hit@4** (CI chứa 0). Chi phí hit@20 món
+  (−0,032) được ghi nhận là chưa phân biệt được giữa "bộ sinh chọn món theo pop" và dữ liệu thật; theo dõi sau deploy bằng
+  `recommendation_logs` (đơn mua trùng list gợi ý) và G6 v2 nếu cần.
+- **G5a**: chốt cả [A] (ô khám phá khi có chuyến mở) và [C] (không gợi lại món đã mua; combo ↔ thành phần). PRD
+  `requirements.md` FR-REC-02, AC-REC-02, AC-REC-03 đã cập nhật cùng ngày; hai đề xuất chuyển sang `update-archive/`.
+- Hệ quả: PR-A (P2 + loại combo + ô B) làm ngay; [B] trình chốt G5b với D1 trên hit@4 → PR-B.
+
 ## 6. Nếu chốt: những gì phải sửa trong engine (WP5.3, chưa làm)
 
 Chỉ ghi để lượng hoá công việc; **không sửa trước khi có G5**.

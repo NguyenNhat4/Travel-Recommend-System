@@ -3,8 +3,8 @@
 - Ngày: 2026-10-08 (viết lại từ `2026-10-08-recsys-bam-so-thich-va-o-kham-pha.md`; phần công thức tách sang
   `2026-10-08-recsys-chuan-hoa-so-thich-giua-hai-chuyen.md`)
 - Người đề xuất: Pham Nguyen Dang Khoi, tqanh123 / Claude Code soạn
-- Trạng thái: chờ chốt
-- Chốt bởi / ngày:
+- Trạng thái: đã áp dụng
+- Chốt bởi / ngày: tqanh123, 2026-10-09 (G5a — "chốt cả [A] và [C] như đề nghị"); PRD cập nhật 2026-10-09
 - PRD bị ảnh hưởng: `docs/prd/requirements.md` §1.3 FR-REC-02 (phần chuyến đang mở)
 - Mã FR/NFR: FR-REC-02, FR-REC-01
 

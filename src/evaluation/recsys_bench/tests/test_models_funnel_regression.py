@@ -49,6 +49,7 @@ def _gate(index, vs, kept, split, **kw):
                 or a.meta["excludedVerticals"] != (b.meta["excludedVerticals"] or []):
             mismatches.append((u, a.meta["strategy"], b.meta["strategy"], a.product_ids[:6], b.product_ids[:6]))
         c, d = arm_none.recommend(u, as_of, 20, ev), nommr.recommend(u, as_of, 20, ev)
+        assert c.meta["exploreFilled"] == 0                                   # ô khám phá chỉ ở cấu hình +mmr (≡ engine)
         assert set(c.product_ids) == set(d.product_ids[:20]), (u, c.product_ids, d.product_ids[:20])   # G2 modulo hoà
         if c.product_ids and d.product_ids:
             assert c.product_ids[0] == d.product_ids[0], u

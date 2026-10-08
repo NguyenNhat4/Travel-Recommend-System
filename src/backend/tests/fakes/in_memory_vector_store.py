@@ -17,11 +17,13 @@ import numpy as np
 from src.backend.app.application.ports import EmbedderPort, UnitIndex, VectorSearchPort
 from src.backend.app.domain.catalog import Product, UnitAttributes, build_text
 from src.backend.app.infrastructure.vectors.numpy_search import NumpyVectorSearch
+from src.backend.app.infrastructure.vectors.postgres_store import combo_kinds_of, combo_members_of
 
 
-def read_combo_kinds(path: str) -> dict[str, list[str]]:
-    """combo_items.jsonl (mỗi dòng một thành phần: combo_product_id, position, item_kind…) → combo id → item_kind theo position."""
-    rows: dict[str, list[tuple[int, str]]] = defaultdict(list)
+def read_combo_items(path: str) -> dict[str, list[dict]]:
+    """combo_items.jsonl (mỗi dòng một thành phần: combo_product_id, position, item_kind, item_product_id, confidence, source…)
+    → combo id → dòng theo position, cùng dạng `PostgresCatalogReader._combo_items`."""
+    rows: dict[str, list[dict]] = defaultdict(list)
     if not os.path.exists(path):
         return {}
     with open(path, encoding="utf-8") as f:
@@ -29,8 +31,13 @@ def read_combo_kinds(path: str) -> dict[str, list[str]]:
             if line.strip():
                 it = json.loads(line)
                 if it.get("combo_product_id") and it.get("item_kind"):
-                    rows[str(it["combo_product_id"])].append((int(it.get("position") or 0), str(it["item_kind"])))
-    return {pid: [kind for _, kind in sorted(items)] for pid, items in rows.items()}
+                    rows[str(it["combo_product_id"])].append({**it, "position": int(it.get("position") or 0)})
+    return {pid: sorted(items, key=lambda it: it["position"]) for pid, items in rows.items()}
+
+
+def read_combo_kinds(path: str) -> dict[str, list[str]]:
+    """combo id → item_kind theo position (giữ cho test cũ)."""
+    return combo_kinds_of(read_combo_items(path))
 
 
 class InMemoryVectorStore:
@@ -64,6 +71,7 @@ class InMemoryVectorStore:
         if not os.path.exists(path):
             np.save(path, E)
 
+        combo_items = read_combo_items(self.combo_items_path)
         index = UnitIndex(
             units=units,
             taxonomy=np.array([p.taxonomy for p in units]),
@@ -71,7 +79,8 @@ class InMemoryVectorStore:
             available=np.array([p.available for p in units]),
             recommendable=np.array([p.is_bookable or any(c.is_bookable and c.available for c in children.get(p.product_id, [])) for p in units]),
             parent_of=parent_of, model_version=f"{self.embedder.name}@{key}",
-            attrs=UnitAttributes.build(units, children, read_combo_kinds(self.combo_items_path)),
+            attrs=UnitAttributes.build(units, children, combo_kinds_of(combo_items)),
+            combo_members=combo_members_of(combo_items),
         )
         # Văn bản BM25 như job index ghi lên Weaviate: tên (trọng số 2) + text đã dựng.
         return index, NumpyVectorSearch([p.product_id for p in units], E,

@@ -159,11 +159,12 @@ def excluded_taxonomies(train: list[dict], index: UnitIndex, as_of: datetime) ->
 
 def _meta_for_targets(split_targets: dict[str, str], train_by_user: dict[str, list[dict]],
                       as_of_by_user: dict[str, datetime], index: UnitIndex) -> dict:
-    repeat = excluded = 0
+    repeat = excluded = combo_related = 0
     for user, target in split_targets.items():
         train = train_by_user[user]
         bought = {_unit_id(index, str(e["productId"])) for e in train if _is_valid_purchase(e, index)}
         repeat += target in bought
+        combo_related += target not in bought and index.idx[target] in index.purchase_closure({index.idx[b] for b in bought})
         excluded += str(index.taxonomy[index.idx[target]]) in excluded_taxonomies(train, index, as_of_by_user[user])
     return {
         "usersTest": len(split_targets),
@@ -171,6 +172,8 @@ def _meta_for_targets(split_targets: dict[str, str], train_by_user: dict[str, li
         "trainEventsOfTestUsers": sum(len(v) for v in train_by_user.values()),
         # target đã mua trước đó → engine loại bought_units nên không thể trúng
         "repeatTarget": repeat,
+        # target là combo chứa món đã mua / thành phần của combo đã mua → closure combo (09/10) loại, không thể trúng
+        "comboRelatedTarget": combo_related,
         # target cùng taxonomy với món đã mua trong trip đang mở → category exclusion loại
         "targetVerticalExcluded": excluded,
         "targetTaxonomy": dict(sorted(Counter(str(index.taxonomy[index.idx[t]]) for t in split_targets.values()).items())),

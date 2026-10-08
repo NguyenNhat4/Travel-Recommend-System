@@ -16,13 +16,22 @@ H_SHORT_DAYS, H_LONG_DAYS = 30.0, 365.0
 ACTIVE_TRIP_MAX_AGE_DAYS = 14
 DORMANT_AFTER_DAYS = 180
 MAX_REPEAT_PER_TRIP = 3
+#: Cap lặp chỉ đếm event yếu (view / search); purchase và add_to_cart luôn vào vector chuyến (P1 phần còn lại, 09/10/2026:
+#: `docs/spec/bench/recsys-bam-so-thich-tong-hop.md` §3.D — không đổi số đo, đúng nghiệp vụ).
+CAP_EXEMPT_EVENTS = ("purchase", "add_to_cart")
 #: Chốt 2026-10-07 (docs/prd/update-archive/2026-10-06-recsys-trong-so-ngan-han-pho-bien.md): 0,6/0,25/0,15 → 0,7/0,15/0,15.
 W_SHORT, W_POP, W_LONG = 0.7, 0.15, 0.15
 MMR_LAMBDA, MAX_PER_VERTICAL = 0.7, 2
+#: Ô khám phá khi có chuyến mở (FR-REC-02, chốt 09/10/2026, đề xuất `2026-10-08-recsys-o-kham-pha-khi-co-chuyen-mo`): ô còn trống
+#: sau khi hết món tại X được lấp bằng món ở điểm đến khác, xếp theo cos(u_long, v), mỗi điểm đến 1 món, chỉ ba loại này.
+EXPLORE_TAXONOMIES = ("hotel", "attraction", "combo")
+EXPLORE_MAX_PER_DESTINATION = 1
 #: Phiên bản luật của engine (không phải tham số): đổi khi hành vi đổi mà không có hằng nào đổi, để bench tách hai bộ số.
 #: Từ 01/10/2026 (nhãn giữ "2026-10-02" để khớp configHash của bench): trip đang mở = chưa kết thúc theo `usingDate`
 #: (FR-REC-02, spec §4.4–4.5); trước đó chỉ theo tuổi event.
-ENGINE_RULES_VERSION = "2026-10-02-trip-ended"
+#: 2026-10-09 (PR-A): độ tin cậy chuyến trong u_long (P2), purchase / cart không bị cap lặp, loại trừ combo ↔ thành phần đã
+#: mua, ô khám phá khi có chuyến mở (hai luật sau ở tầng application nhưng đổi list nên đổi nhãn).
+ENGINE_RULES_VERSION = "2026-10-09-p2-combo-explore"
 
 
 @dataclass
@@ -45,6 +54,9 @@ class Trip:
     destination: str
     ends_on: date | None = None      # max(usingDate) của trip; None khi không event nào có ngày sử dụng
     ended: bool = False              # chuyến đã diễn ra xong (spec §4.3 tripFactor): ends_on < hôm nay
+    #: Độ tin cậy của chuyến trong u_long (P2, 09/10/2026): min(1, Σ W_TYPE của event sau cap) — một lượt xem lẻ 0,2, một
+    #: lần mua 1,0; chuyến không bị chuẩn hoá thành nặng bằng nhau nữa. Vector chuyến mở (`vec`) không nhân hệ số này.
+    confidence: float = 1.0
 
 
 #: Múi giờ của `usingDate` (ngày địa phương Việt Nam, như seed và `domain/booking`); không phải tham số xếp hạng
@@ -108,9 +120,10 @@ def build_profile(events: list[ResolvedEvent], E: np.ndarray, taxonomy: np.ndarr
     seen: Counter = Counter()
     for e in sorted(events, key=lambda x: -x.days_ago):
         every[e.trip_id].append(e)
-        seen[(e.trip_id, e.unit)] += 1
-        if seen[(e.trip_id, e.unit)] > MAX_REPEAT_PER_TRIP:
-            continue
+        if e.event_name not in CAP_EXEMPT_EVENTS:
+            seen[(e.trip_id, e.unit)] += 1
+            if seen[(e.trip_id, e.unit)] > MAX_REPEAT_PER_TRIP:
+                continue
         by_trip[e.trip_id].append(e)
 
     trips: dict[str, Trip] = {}
@@ -128,12 +141,13 @@ def build_profile(events: list[ResolvedEvent], E: np.ndarray, taxonomy: np.ndarr
             purchased_taxonomies={str(taxonomy[e.unit]) for e in all_evs if e.event_name == "purchase"},
             destination=str(Counter(destination[e.unit] for e in evs).most_common(1)[0][0]),
             ends_on=ends_on, ended=ends_on is not None and today is not None and ends_on < today,
+            confidence=min(1.0, sum(W_TYPE.get(e.event_name, 0.1) for e in evs)),
         )
 
     if not trips:
         return Profile(trips={}, u_long=np.zeros(E.shape[1], dtype=np.float32), active_trip=None, n_events=0)
 
-    u_long = sum(2 ** (-t.age_days / H_LONG_DAYS) * t.vec for t in trips.values())
+    u_long = sum(2 ** (-t.age_days / H_LONG_DAYS) * t.confidence * t.vec for t in trips.values())
     u_long = u_long / (np.linalg.norm(u_long) or 1)
     active = [t for t in trips.values() if trip_is_open(t.age_days, t.ends_on, today)]
     active_trip = min(active, key=lambda t: t.age_days) if active else None
@@ -173,13 +187,16 @@ def mmr_select(score: np.ndarray, E: np.ndarray, candidates: list[int], taxonomy
     return chosen
 
 
-def explain(profile: Profile, item: int, E: np.ndarray, min_share: float = 0.15, top: int = 3) -> list[dict]:
-    """because[] = phân rã tuyến tính của u·v_item theo từng event."""
-    src = [profile.active_trip] if profile.active_trip is not None else list(profile.trips.values())
+def explain(profile: Profile, item: int, E: np.ndarray, min_share: float = 0.15, top: int = 3,
+            long_term: bool = False) -> list[dict]:
+    """because[] = phân rã tuyến tính của u·v_item theo từng event. `long_term=True`: phân rã theo u_long dù đang có chuyến mở
+    (món ở ô khám phá được chọn theo u_long nên lý do phải lấy từ mọi chuyến, không chỉ chuyến mở)."""
+    use_long = long_term or profile.active_trip is None
+    src = list(profile.trips.values()) if use_long else [profile.active_trip]
     contribs = []
     Z = 0.0
     for t in src:
-        wt = 1.0 if profile.active_trip is not None else 2 ** (-t.age_days / H_LONG_DAYS)
+        wt = 2 ** (-t.age_days / H_LONG_DAYS) * t.confidence if use_long else 1.0
         for e in t.events:
             c = wt * W_TYPE.get(e.event_name, 0.1) * 2 ** (-e.days_ago / H_SHORT_DAYS)
             contribs.append((c, e))

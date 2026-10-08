@@ -123,6 +123,8 @@ class Settings(BaseSettings):
     search_max_limit: int = 50
     search_candidate_k: int = Field(default=200, ge=1)
     recommend_candidate_k: int = 200
+    # Ô khám phá khi có chuyến mở (FR-REC-02, chốt 09/10/2026). False = rollback về list trước PR-A, không cần redeploy.
+    recommend_explore_fill: bool = True
     # Hybrid /search (HYBRID_CANDIDATE_SCORE, spec §2.4): BM25 trên nameAscii/searchTextAscii + RRF ở app.
     search_hybrid: bool = True  # False → dense-only ANN_CANDIDATE_SCORE như trước 25/09
     search_normalize: bool = True  # bước chuẩn hoá truy vấn (viết tắt, chính tả tên riêng, điểm đến, kiểu đi); False → nguyên câu

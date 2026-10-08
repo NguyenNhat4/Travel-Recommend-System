@@ -105,6 +105,7 @@ def engine_view(train: list[dict], index: UnitIndex, as_of: datetime, has_vector
                               {u for _, _, u in evs}, tid.startswith("_solo_"), trip_ends_on(e for _, e, _ in all_evs))
     if not trips:
         return EngineView(0, {}, None)
+    bought = index.purchase_closure(bought)      # combo ↔ thành phần cùng lần mua (FR-REC-02, 09/10) — như `use_cases.bought_units`
     today = local_today(as_of)
     active = [t for t, v in trips.items() if trip_is_open(v.age_days, v.ends_on, today)]
     return EngineView(sum(v.n_events for v in trips.values()), trips,
