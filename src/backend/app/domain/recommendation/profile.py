@@ -31,7 +31,9 @@ EXPLORE_MAX_PER_DESTINATION = 1
 #: (FR-REC-02, spec §4.4–4.5); trước đó chỉ theo tuổi event.
 #: 2026-10-09 (PR-A): độ tin cậy chuyến trong u_long (P2), purchase / cart không bị cap lặp, loại trừ combo ↔ thành phần đã
 #: mua, ô khám phá khi có chuyến mở (hai luật sau ở tầng application nhưng đổi list nên đổi nhãn).
-ENGINE_RULES_VERSION = "2026-10-09-p2-combo-explore"
+#: 2026-10-09 (đề xuất `update-archive/2026-10-09-recsys-uu-tien-chuyen-da-dat.md`): chuyến đã đặt còn mở được ưu tiên làm
+#: `active_trip` hơn lượt xem / giỏ lẻ đến sau (sửa I-3).
+ENGINE_RULES_VERSION = "2026-10-09-booked-first"
 
 
 @dataclass
@@ -150,7 +152,9 @@ def build_profile(events: list[ResolvedEvent], E: np.ndarray, taxonomy: np.ndarr
     u_long = sum(2 ** (-t.age_days / H_LONG_DAYS) * t.confidence * t.vec for t in trips.values())
     u_long = u_long / (np.linalg.norm(u_long) or 1)
     active = [t for t in trips.values() if trip_is_open(t.age_days, t.ends_on, today)]
-    active_trip = min(active, key=lambda t: t.age_days) if active else None
+    # FR-REC-02 (09/10): chuyến đã đặt còn mở (có purchase) đứng trước lượt xem / giỏ lẻ đến sau; nhiều chuyến đã đặt → trẻ nhất
+    booked = [t for t in active if t.purchased_taxonomies]
+    active_trip = min(booked or active, key=lambda t: t.age_days) if active else None
     bought = {e.unit for evs in every.values() for e in evs if e.event_name == "purchase"}
     return Profile(trips=trips, u_long=u_long, active_trip=active_trip,
                    n_events=sum(len(t.events) for t in trips.values()), bought_units=bought)

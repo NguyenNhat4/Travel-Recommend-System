@@ -2,7 +2,7 @@
 
 - Ngày: 2026-10-09
 - Người đề xuất: tqanh123 / Claude Code soạn
-- Trạng thái: đã chốt (chưa áp dụng — áp dụng ở Pha B của plan `docs/plan/2026-10-09-recsys-cong-thuc-oph.md`)
+- Trạng thái: đã áp dụng (2026-10-09: PRD FR-REC-02, engine `profile.build_profile`, spec §4.4, test)
 - Chốt bởi / ngày: tqanh123, 2026-10-09
 - PRD bị ảnh hưởng: `docs/prd/requirements.md` §1.3 FR-REC-02
 - Mã FR/NFR: FR-REC-02

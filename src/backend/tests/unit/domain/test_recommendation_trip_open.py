@@ -16,7 +16,7 @@ def test_trip_is_open_rules():
     assert trip_is_open(5, date(2026, 9, 21), TODAY) is True           # kết thúc hôm nay vẫn mở (usingDate >= hôm nay)
     assert trip_is_open(300, date(2026, 10, 5), TODAY) is True         # mua từ lâu, sắp đi → mở
     assert trip_is_open(5, date(2026, 9, 20), None) is True            # không có today → luật cũ theo tuổi
-    assert ENGINE_RULES_VERSION == "2026-10-09-p2-combo-explore"
+    assert ENGINE_RULES_VERSION == "2026-10-09-booked-first"
 
 
 def _world():
@@ -72,3 +72,20 @@ def test_local_today_and_parse_using_date():
     assert parse_using_date(None) is None and parse_using_date("") is None and parse_using_date("hôm qua") is None
     assert parse_using_date("2026-13-01") is None
     assert parse_using_date(20260921) == date(2026, 9, 21)      # số → chuỗi "20260921" là ISO dạng cơ bản, vẫn đọc được
+
+
+def test_booked_trip_stays_active_over_later_stray_view():
+    """FR-REC-02 (chốt 09/10, đề xuất `update-archive/2026-10-09-recsys-uu-tien-chuyen-da-dat.md`, sửa I-3): lượt xem lẻ đến
+    sau không thay chuyến đã đặt còn mở; nhiều chuyến đã đặt còn mở → chuyến đặt gần nhất."""
+    E, tax, dest = _world()
+    booked = ResolvedEvent(0, "purchase", 10.0, "T1", "R1", date(2026, 10, 1))
+    view = ResolvedEvent(2, "product_view", 1.0, "_solo_A1", "A1")
+    p = build_profile([booked, view], E, tax, dest, today=TODAY)
+    assert p.active_trip.trip_id == "T1" and p.strategy == "cross_vertical"
+    assert p.active_trip.purchased_taxonomies == {"hotel"}
+    later = ResolvedEvent(1, "purchase", 3.0, "T2", "F1", date(2026, 10, 3))
+    p2 = build_profile([booked, view, later], E, tax, dest, today=TODAY)
+    assert p2.active_trip.trip_id == "T2"
+    # không có chuyến đã đặt còn mở → như cũ: chuyến mở trẻ nhất
+    view2 = ResolvedEvent(1, "product_view", 2.0, "_solo_F1", "F1")
+    assert build_profile([view, view2], E, tax, dest, today=TODAY).active_trip.trip_id == "_solo_A1"

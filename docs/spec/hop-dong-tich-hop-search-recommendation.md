@@ -612,6 +612,12 @@ riêng, chưa có). Tuổi trip, ngày kết thúc và món đã mua xét trên 
 trọng số vector. "Hôm nay" lấy theo giờ Việt Nam (UTC+7, `profile.local_today`) để khớp `usingDate` là ngày địa phương.
 Engine ghi `ENGINE_RULES_VERSION` vào cấu hình để bench phân biệt hai luật.
 
+**Bổ sung 2026-10-09 (FR-REC-02, đề xuất `update-archive/2026-10-09-recsys-uu-tien-chuyen-da-dat.md`, đã chốt).** Khi có nhiều
+trip đang mở, trip **có purchase** (chuyến đã đặt) trẻ nhất là trip mở; chỉ khi không có trip đã đặt nào đang mở thì mới lấy trip
+mở trẻ nhất như cũ. Trước đó một view / giỏ lẻ đến sau (`_solo_<productId>`, tuổi nhỏ hơn) chiếm chỗ chuyến đã đặt nên khách mất
+`cross_vertical` và luật loại loại sản phẩm đã mua (lỗi I-3, `docs/spec/bench/recsys-offline-eval.md`). `ENGINE_RULES_VERSION =
+"2026-10-09-booked-first"`; gương harness: `ceiling.engine_view`, `splits.excluded_taxonomies`, `arms.trip_destination`.
+
 **Ràng buộc bắt buộc:**
 
 1. `cross_vertical` ⟹ `nextVertical` **và** `destination` khác `null`

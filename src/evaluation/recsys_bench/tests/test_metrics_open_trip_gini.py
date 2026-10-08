@@ -70,13 +70,14 @@ def test_evaluate_computes_views_itself_and_matches_explicit_views(world, events
     assert strip(auto) == strip(explicit)
     assert set(OPEN_TRIP_EMPTY) | {"exposure_gini"} <= set(auto)
     assert 0.0 <= auto["exposure_gini"] <= 1.0 and auto["users"] == 4
-    # Chuyến mở tại as_of (luật M6): u1 → view lẻ A1 (02/06, trẻ hơn T1) là trip mở, chưa mua gì → ∅ (I-3); u2 → T2 đã qua
+    # Chuyến mở tại as_of (luật M6): u1 → chuyến đã đặt T1 (hotel) đứng trước view lẻ A1 đến sau (FR-REC-02, 09/10; trước đó
+    # view lẻ chiếm chỗ → ∅, lỗi I-3); u2 → T2 đã qua
     # usingDate và > 14 ngày → None; u5 → T6 (G1 01/04, usingDate 16/05 ≥ as_of 10/05) mở, đã mua golf; VP0000001 → view lẻ R1.
     ot = open_trip_taxonomies(views)
-    assert ot["u1"] == set() and ot["u2"] is None and ot["u5"] == {"golf"} and ot["VP0000001"] == set()
-    assert auto["users_open_trip"] == 3 and auto["users_open_trip_bought"] == 1
+    assert ot["u1"] == {"hotel"} and ot["u2"] is None and ot["u5"] == {"golf"} and ot["VP0000001"] == set()
+    assert auto["users_open_trip"] == 3 and auto["users_open_trip_bought"] == 2
     engine_row, _ = evaluate(EngineArm(OfflineEngine(index, world["vectors"], split.train_purchases)), split, index, k=20, views=views)
-    assert (engine_row["users_open_trip"], engine_row["users_open_trip_bought"]) == (3, 1)   # mẫu số theo split, không theo arm
+    assert (engine_row["users_open_trip"], engine_row["users_open_trip_bought"]) == (3, 2)   # mẫu số theo split, không theo arm
 
 
 def test_paired_bootstrap_copy_matches_search_bench_semantics():

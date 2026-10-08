@@ -153,7 +153,8 @@ def excluded_taxonomies(train: list[dict], index: UnitIndex, as_of: datetime) ->
     open_trips = [tid for tid, age in ages.items() if trip_is_open(age, trip_ends_on(e for _, e, _ in trips[tid]), today)]
     if not open_trips:
         return set()
-    active = min(open_trips, key=lambda tid: ages[tid])
+    booked = [tid for tid in open_trips if any(e.get("eventName") == "purchase" for _, e, _ in trips[tid])]
+    active = min(booked or open_trips, key=lambda tid: ages[tid])   # chuyến đã đặt còn mở đứng trước (FR-REC-02, 09/10)
     return {str(index.taxonomy[u]) for _, e, u in trips[active] if e.get("eventName") == "purchase"}
 
 

@@ -46,7 +46,7 @@
 | Q5 [C7] `pop_h` | **Đưa vào phạm vi** (track N, bậc N1) |
 | Q2 B10 | Cho tune `W_ORIGIN` / `W_CART`. Nếu stratum temporal < 30 hit mốc thì tune trên LLBO đã loại khách target-in-cart |
 | Q1 G1-LLBO(b), Q3 G1-open′, Q9 LIMIT 500, Q10 brainstorm doc | Đồng ý các thay đổi plan đề nghị |
-| Q6 I-3 | Chấp nhận sửa. Tách **một đề xuất riêng [D]** và chốt luôn: `docs/prd/update/2026-10-09-recsys-uu-tien-chuyen-da-dat.md` |
+| Q6 I-3 | Chấp nhận sửa. Tách **một đề xuất riêng [D]** và chốt luôn: `docs/prd/update-archive/2026-10-09-recsys-uu-tien-chuyen-da-dat.md` (đã áp dụng 09/10) |
 | Q4 G7 | **Có dùng bản dự phòng OPH-prod** (B0 + các bậc O đã giữ + N1, không F14c). Tiêu chí G7 ở §7.6 |
 | Q7 ngưỡng dormant | **365 ngày** |
 | Q8 persona | Persona = **4 trạng thái cold-start** (`P1_frequent`, `P2_first_time`, `P3_dormant`, `P4_no_history`). PRD đổi persona phong cách du lịch (`P1_family`…`P4_deal`) thành một **đặc trưng của khách**: phong cách du lịch như thích biển, núi, thành phố… Đề xuất [E]: `docs/prd/update/2026-10-09-persona-trang-thai-cold-start-va-phong-cach-du-lich.md` |

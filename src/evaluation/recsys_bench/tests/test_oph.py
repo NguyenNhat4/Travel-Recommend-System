@@ -49,8 +49,9 @@ def booked_then_view():
     return [ev(0, "purchase", 10, "g1", date(2026, 10, 20)), ev(1, "product_view", 1, "_solo_p1")]
 
 
-def test_production_lets_later_view_take_over_the_booked_trip():
-    assert build(build_profile, booked_then_view()).active_trip.trip_id == "_solo_p1"
+def test_production_keeps_the_booked_trip_since_0910():
+    # Trước 09/10 production để lượt xem lẻ đến sau chiếm chuyến đã đặt (I-3); đề xuất [D] đã áp vào engine.
+    assert build(build_profile, booked_then_view()).active_trip.trip_id == "g1"
 
 
 @pytest.mark.parametrize("flag", ["booked_first", "session_agg"])
@@ -58,7 +59,7 @@ def test_booked_trip_comes_first(flag):
     state = {}
     p = build(make_layered_build_profile(build_profile, state, **{flag: True}), booked_then_view())
     assert p.active_trip.trip_id == "g1" and p.strategy == "cross_vertical"
-    assert state["ctx"] == "booked" and state["ctx0"] == "session"
+    assert state["ctx"] == state["ctx0"] == "booked"
 
 
 def test_two_browse_trips_become_one_session_trip():
