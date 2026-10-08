@@ -187,6 +187,9 @@ class ProposedOption(TypedDict):
     km_delta: float
     money_delta: int
     over_budget: int | None
+    #: Lịch đầy đủ của phương án (cùng hình dạng `Proposal`, không có `options`), để render và xem trước (chốt
+    #: 2026-10-08, hàng thẻ chọn phương án).
+    proposal: "Proposal"
 
 
 class Proposal(TypedDict, total=False):

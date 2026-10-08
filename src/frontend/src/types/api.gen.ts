@@ -1820,11 +1820,15 @@ export interface components {
             /** @description (1.18.0) Thành phố đi; chỉ gửi tên thành phố, không gửi toạ độ. */
             origin?: string;
         };
-        /** @description Baseline tích hợp 1.1.0. Cần message hoặc intentOverride; intentOverride yêu cầu conversationId khác null. */
+        /** @description Baseline tích hợp 1.1.0. Cần message, intentOverride hoặc selectStayOption (1.20.0); intentOverride và selectStayOption yêu cầu conversationId khác null. */
         ItineraryRequest: {
             conversationId?: string | null;
             message?: string | null;
             intentOverride?: components["schemas"]["TripIntentPatch"] | null;
+            /** @description (1.20.0, AC-AGT-04) Chọn một phương án trong `stayOptions` của câu trả lời gần nhất của hội thoại (người dùng bấm "Đổi sang khách sạn này"; lượt này không có message trả về). Lịch đổi đúng như phương án đã báo, không tìm lại sản phẩm. Cần conversationId; không cần message. index không còn trong phương án đã lưu thì backend xử lý như một lượt nhắn thường. */
+            selectStayOption?: {
+                index: number;
+            } | null;
             context?: {
                 /**
                  * @description Ngôn ngữ phản hồi. Khi context hoặc language vắng mặt, backend dùng vi; giá trị được lưu theo conversation.
@@ -1838,6 +1842,9 @@ export interface components {
         } | {
             conversationId: string;
             intentOverride: components["schemas"]["TripIntentPatch"];
+        } | {
+            conversationId: string;
+            selectStayOption: Record<string, never>;
         };
         ItinerarySlot: {
             slotId?: string;
@@ -1861,6 +1868,24 @@ export interface components {
             note?: string | null;
             source?: components["schemas"]["ItemSource"];
             because?: components["schemas"]["BecauseItem"][];
+        };
+        /** @description (1.20.0, AC-AGT-04) Một phương án khác của lịch trình: lịch đầy đủ khi đổi khách sạn (để client xem trước không gọi server) và đánh đổi so với lịch đang chọn. Mọi số do backend tính. */
+        ItineraryStayOption: {
+            /** @description Số thứ tự để chọn (`selectStayOption.index`, "lấy phương án N"). */
+            index: number;
+            /** @description Chênh quãng đường cả chuyến so với lịch đang chọn, km đường chim bay; âm là đi ít hơn. */
+            kmDelta: number;
+            /** @description Chênh tổng tiền so với lịch đang chọn (VND); âm là rẻ hơn. */
+            moneyDelta: number;
+            /** @description Số tiền vượt ngân sách; null khi không vượt hoặc không có ngân sách. */
+            overBudget?: number | null;
+            itinerary: components["schemas"]["ItineraryPlan"];
+        };
+        /** @description (1.20.0, AC-AGT-04) Mục "Phương án khác" dạng hàng thẻ: tổng km của lịch đang chọn và tối đa 3 phương án. Vắng mặt khi không có phương án nào. */
+        ItineraryStayOptions: {
+            /** @description Quãng đường cả chuyến của lịch đang chọn (`itinerary`), km đường chim bay. */
+            distanceKm: number;
+            options: components["schemas"]["ItineraryStayOption"][];
         };
         /**
          * @description (1.18.0) Chặng của vé trong lịch trình; ROUND_TRIP là một vé khứ hồi phủ cả hai chặng.
@@ -1944,6 +1969,7 @@ export interface components {
             message?: string;
             /** @description Gói hoặc tour nhiều ngày (vé dùng 2 ngày trở lên, tour 3N2Đ...) tìm được nhưng không xếp vào một buổi của lịch trình, để người dùng cân nhắc riêng; `message` có mục hỏi người dùng có muốn thêm không. Không tính vào `estimatedTotal`. */
             searchResults?: components["schemas"]["SearchResultsByTaxonomy"];
+            stayOptions?: components["schemas"]["ItineraryStayOptions"];
             warnings: components["schemas"]["ItineraryWarning"][];
             metadata?: components["schemas"]["ItineraryMetadata"];
         };

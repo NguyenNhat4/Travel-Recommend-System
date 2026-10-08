@@ -1,12 +1,12 @@
-# LangGraph: mười hai node và vì sao chia như vậy
+# LangGraph: mười ba node và vì sao chia như vậy
 
-Agent lập lịch trình là một LangGraph gồm mười hai node. Tài liệu này giải thích **ý đồ** của cách chia đó — đọc xong bạn nói lại được cho người khác mà không cần mở code. Xem [README](README.md) để chạy demo.
+Agent lập lịch trình là một LangGraph gồm mười ba node. Tài liệu này giải thích **ý đồ** của cách chia đó — đọc xong bạn nói lại được cho người khác mà không cần mở code. Xem [README](README.md) để chạy demo.
 
 Một lượt gọi API đi qua ba việc: **hiểu người dùng muốn gì**, **lấy sản phẩm thật từ catalog**, và **soạn câu trả lời**. Mỗi node lo một mẩu của ba việc đó, và tất cả cùng đọc/ghi vào một state chung.
 
 ## 1. Bốn giai đoạn
 
-Đừng nhớ mười hai node rời rạc. Nhớ bốn giai đoạn, mỗi giai đoạn trả lời một câu hỏi:
+Đừng nhớ mười ba node rời rạc. Nhớ bốn giai đoạn, mỗi giai đoạn trả lời một câu hỏi:
 
 | Giai đoạn | Node | Câu hỏi nó trả lời |
 |---|---|---|
@@ -252,15 +252,23 @@ backend, `compose` trả `FALLBACK` và log `itinerary.composition_failed`. Kho�
 Proposal có `criteria = "DISTANCE"`, `stays` theo đêm, `distance_km` và `options` (phương án khác) khi luật khoảng cách
 được dùng; `composed` khi đó thêm warning `PLAN_CRITERIA` và `STAY_OPTIONS` (văn bản dựng bằng code, mọi số do code tính)
 để `narrate` chèn mục "Cách mình xếp lịch" và "Phương án khác" trước mục chi phí, và ghi `stay_options` vào state để
-`finalize` lưu thành `previous_options` cho lượt "lấy phương án N".
+`finalize` lưu thành `previous_options` cho lượt "lấy phương án N". Mỗi phương án còn được dựng thành lịch đầy đủ
+(`render_proposal` + `validate_plan`, cùng vé bay) để trả trong `stayOptions` (contract 1.20.0) và để lượt chọn lấy ra.
 
-## 6. Bảng tra cứu mười hai node
+**`apply_option`** (node thứ mười ba, chốt 2026-10-08): `intake` → `route_after_intake` → `apply_option` → `finalize` khi
+request có `selectStayOption` hoặc câu "lấy phương án N" và lượt trước đã lưu lịch của phương án đó
+(`option_swap.chosen_option`). Không phân luồng, không tool, không LLM: lấy lịch đã lưu, đổi chỗ với lịch đang chọn,
+tính lại chênh km/tiền (bấm thẻ: không lời đáp, không thêm lượt hội thoại; gõ "lấy phương án N": lời đáp ngắn do code dựng), nạp sản phẩm của các lịch đã lưu làm `candidates` để `finalize`
+kiểm grounding như mọi lượt.
+
+## 6. Bảng tra cứu mười ba node
 
 Dùng khi đã nắm bức tranh chung ở trên và cần tra chi tiết một node. Tóm tắt hành vi trước, bảng field-level ở dưới cùng cho tên field thật trong `AgentState` (`agents/state.py`) — khớp `agents/nodes.py` (hàm node) và `agents/steps/` (luật chi tiết) tại thời điểm viết, `git blame`/`git log -p` mới là nguồn xác thực khi code đã đổi.
 
 | Node | Nhận vào | Trả ra | Đi tiếp |
 |---|---|---|---|
-| `intake` | Message của người dùng, `conversationId` (nếu có). | State khởi tạo: message đã chuẩn hóa, `conversationId`, intent và lịch sử chat đã lưu của hội thoại. | `classify` |
+| `intake` | Message của người dùng, `conversationId` (nếu có), `selectStayOption` (nếu bấm thẻ phương án). | State khởi tạo: message đã chuẩn hóa, `conversationId`, intent, lịch sử chat, `previous_options`/`previous_plan` đã lưu của hội thoại. | `apply_option` nếu chọn đúng một phương án có lịch đã lưu (`route_after_intake`); còn lại `classify` |
+| `apply_option` | `select_stay_option` hoặc câu "lấy phương án N", `previous_plan`, `previous_options`. **Không gọi LLM, không tool.** | `COMPLETED` với lịch đã lưu của phương án, `stayOptions` mới (lịch vừa bỏ thành một phương án), lời đáp ngắn chỉ khi gõ tay, `constraints.specific_hotel`; sản phẩm của các lịch đã lưu làm `candidates` cho `finalize`. | `finalize` |
 | `classify` | Message mới và ngữ cảnh hội thoại chung. Guardrail tất định (regex) chạy trước; khớp thì bỏ qua LLM. Còn lại **gọi LLM** (prompt ngắn, một nhãn). | `decision` (`travel`/`missing_info`/`simple`/`error`), `interaction_type` (`travel`/`conversation`/`out_of_scope`), `refusal`, `blocked_by_guardrail` (nếu guardrail chặn); với nhánh trò chuyện thêm `missing_fields` của chuyến đi đã lưu; nhãn `vague` thêm `clarification_reason="suggest_form"`, `missing_fields`, `start_date_asked`. | `extract` nếu du lịch; `clarify` nếu `vague` và còn thiếu trường bắt buộc; `converse` nếu trò chuyện hoặc ngoài phạm vi; `dead_letter` nếu LLM lỗi |
 | `extract` | Message mới, ngữ cảnh hội thoại chung, `intentOverride`, `start_date_asked`. **Gọi LLM.** | Intent/constraints (`destination`, `days`, `startDate`, `party`, `budget`...), các trường còn thiếu, `start_date_asked`. | `tool` nếu đủ `destination` + `days` và đã xử lý chi tiết chuyến đi; `clarify` nếu thiếu, chưa hỏi chi tiết, mâu thuẫn hoặc có điều kiện không xác minh được; `dead_letter` nếu intent không hợp lệ hoặc LLM lỗi |
 | `tool` | Intent/constraints và lịch sử chat; ở lượt đổi món thêm `previous_selection`. **Có thể gọi LLM** để khớp tên điểm đến với catalog hoặc lập tool plan. | Tên điểm đến đã chuẩn hóa, kết quả Search/Recommendation/ProductDetail (hoặc lỗi) trong `tool_results`; chỉ ở lượt đổi món (có `previous_selection`) mới có thêm kết quả Similar. Có nơi đi thì tra chuyến bay song song, không qua LLM (`flight_options`, spec Itinerary §2.7). Điểm đến ngoài catalog thì xoá điểm đến khỏi intent, ghi `invalid_inputs` và `decision = "invalid_input"` (chưa gọi Search; hỏi lại kèm danh sách điểm đến hỗ trợ). | `evaluate` |
@@ -275,7 +283,7 @@ Dùng khi đã nắm bức tranh chung ở trên và cần tra chi tiết một 
 
 ### 6.1. Field-level: từng node đọc field nào, ghi field nào
 
-`state.X` là field đọc từ `AgentState` khi vào node; `ghi X` là key trong dict node trả về (LangGraph merge vào state chung — `events` là append-only, còn lại bị ghi đè). Route lấy từ `routing.py`; bốn node router (`route_after_classify/extract/evaluate/retry`) không phải node, chỉ đọc field `decision` do node đứng trước nó vừa ghi.
+`state.X` là field đọc từ `AgentState` khi vào node; `ghi X` là key trong dict node trả về (LangGraph merge vào state chung — `events` là append-only, còn lại bị ghi đè). Route lấy từ `routing.py`; năm node router (`route_after_intake/classify/extract/evaluate/retry`) không phải node, chỉ đọc field `decision` do node đứng trước nó vừa ghi.
 
 | Node | Đọc (`state.*`) | Gọi LLM | Ghi | Routing tiếp theo |
 |---|---|---|---|---|

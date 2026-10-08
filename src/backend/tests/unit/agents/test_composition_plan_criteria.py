@@ -82,7 +82,7 @@ class StayOptionsTests(unittest.TestCase):
         self.assertTrue(text.startswith('Lịch trên: đi lại khoảng '))
         self.assertIn('• Phương án 1: bớt 5.000.000 ₫ — ở Catalog h-far: đi thêm khoảng ', text)
         self.assertNotIn('vượt ngân sách', text)
-        self.assertTrue(text.endswith('Muốn đổi, bạn nhắn "lấy phương án 1" hoặc tên khách sạn.'))
+        self.assertTrue(text.endswith('Bấm một thẻ khách sạn để đổi ngay, hoặc nhắn "lấy phương án 1".'))
         [option] = result['stay_options']
         self.assertEqual((option['index'], option['stays'][0]['productId']), (1, 'h-far'))
 

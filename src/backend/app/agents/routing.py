@@ -1,5 +1,13 @@
 """Conditional edges for the graph; at most one retry of a transient failure."""
 from .state import AgentState
+from .steps.option_swap import chosen_option
+
+
+def route_after_intake(state: AgentState) -> str:
+    """Chọn đúng một phương án đã hiện ở lượt trước thì đổi lịch ngay; còn lại (kể cả intake lỗi) đi `classify`."""
+    if not state.get("response") and chosen_option(state) is not None:
+        return "apply_option"
+    return "classify"
 
 
 def route_after_classify(state: AgentState) -> str:

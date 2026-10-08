@@ -3,6 +3,7 @@ import dynamic from 'next/dynamic';
 import { MapPin, Calendar, Users, Loader2, ArrowRight } from 'lucide-react';
 import { WidgetDays } from './WidgetDays';
 import { WidgetProductDetail } from './WidgetProductDetail';
+import { stayCardKey } from './widgetPlan';
 import type { FloatingWidgetController } from './useFloatingWidget';
 
 
@@ -22,8 +23,10 @@ const ItineraryMap = dynamic(
 export function WidgetPlanPanel({ widget }: { widget: FloatingWidgetController }) {
   const { activePlan, activeDayTab, setActiveDayTab, isCheckingOut,
     handleCheckoutPlan, itemActions, hoveredCoordinate, hoveredPointId,
-    selectedProduct, closeProductDetail, addSelectedToCart, selectedCanAddToCart, bookSelectedNow } = widget;
+    selectedProduct, closeProductDetail, addSelectedToCart, selectedCanAddToCart, bookSelectedNow,
+    previewedStay, cancelStayPreview, chooseStayOption } = widget;
   if (!activePlan) return null;
+  const stayKey = stayCardKey({ plan: activePlan });
   return (
 <div className="grid grid-cols-1 md:grid-cols-2 w-full h-full min-w-0 overflow-hidden divide-x divide-slate-200/70">
   {/* PHẦN Ở GIỮA: DANH SÁCH LỘ TRÌNH (CÓ HEADER) */}
@@ -92,7 +95,27 @@ export function WidgetPlanPanel({ widget }: { widget: FloatingWidgetController }
       </div>
     </div>
 
-    <WidgetDays widget={widget} />
+    {/* Xem trước một thẻ khách sạn (AC-AGT-04): chưa đổi lịch đã lưu, nên ghi rõ và cho đổi hoặc quay lại ngay tại đây. */}
+    {previewedStay && (
+      <div role="status" className="stay-swap-in flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-blue-100 bg-blue-50 px-5 py-2.5">
+        <p className="min-w-0 text-sm text-blue-900">
+          <span className="font-semibold">Đang xem trước</span> {previewedStay.card.hotels[0]?.name}
+          <span className="text-blue-700"> · chưa đổi</span>
+        </p>
+        <div className="flex gap-2">
+          <button type="button" onClick={cancelStayPreview}
+            className="min-h-9 rounded-lg px-3 text-sm font-semibold text-blue-700 hover:bg-blue-100 focus-visible:outline-2 focus-visible:outline-blue-600">
+            Quay lại
+          </button>
+          <button type="button" onClick={() => { void chooseStayOption(previewedStay.message, previewedStay.card); }}
+            className="min-h-9 rounded-lg bg-blue-600 px-3 text-sm font-semibold text-white hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
+            Đổi sang khách sạn này
+          </button>
+        </div>
+      </div>
+    )}
+    {/* Đổi khách sạn (hàng thẻ "Phương án khác"): lịch mới trượt vào thay vì thay chữ tại chỗ. */}
+    <WidgetDays key={stayKey} widget={widget} />
 
     {/* Footer của phần lịch trình: Tổng tiền & Nút Thanh Toán */}
     <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-slate-200/70 bg-white p-5">
@@ -102,7 +125,7 @@ export function WidgetPlanPanel({ widget }: { widget: FloatingWidgetController }
         </span>
         {activePlan.totalEstimatedPrice != null ? (
           <>
-            <span className="mt-1 block text-xl font-semibold tracking-tight text-slate-900 tabular-nums">
+            <span key={stayKey} className="stay-swap-in mt-1 block text-xl font-semibold tracking-tight text-slate-900 tabular-nums">
               {new Intl.NumberFormat('vi-VN').format(activePlan.totalEstimatedPrice)} ₫
             </span>
             <span className="mt-1 block text-xs leading-relaxed text-slate-500">
@@ -122,9 +145,10 @@ export function WidgetPlanPanel({ widget }: { widget: FloatingWidgetController }
         <button
           type="button"
           onClick={handleCheckoutPlan}
-          disabled={isCheckingOut}
+          disabled={isCheckingOut || Boolean(previewedStay)}
           aria-busy={isCheckingOut}
-          className="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 active:bg-blue-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:cursor-wait disabled:opacity-60"
+          title={previewedStay ? 'Đang xem trước: đổi sang khách sạn này hoặc quay lại trước khi thanh toán' : undefined}
+          className="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 active:bg-blue-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:cursor-not-allowed disabled:opacity-60"
         >
           <span>{isCheckingOut ? 'Đang mở trang thanh toán…' : 'Thanh toán tất cả'}</span>
           {isCheckingOut ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}

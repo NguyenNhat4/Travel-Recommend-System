@@ -1,4 +1,4 @@
-"""Compile the twelve-node itinerary graph with request-scoped runtime dependencies."""
+"""Compile the thirteen-node itinerary graph with request-scoped runtime dependencies."""
 
 from __future__ import annotations
 
@@ -63,6 +63,7 @@ def build_graph(checkpointer: Any | None = None, *, tools: ToolExecutorPort | No
         classify_node_async,
         extract_node,
         extract_node_async,
+        apply_option_node,
         compose_node,
         converse_node,
         converse_node_async,
@@ -81,6 +82,7 @@ def build_graph(checkpointer: Any | None = None, *, tools: ToolExecutorPort | No
         route_after_classify,
         route_after_evaluate,
         route_after_extract,
+        route_after_intake,
         route_after_retry,
     )
 
@@ -92,7 +94,7 @@ def build_graph(checkpointer: Any | None = None, *, tools: ToolExecutorPort | No
 
     graph = StateGraph(AgentState)
     for name, node in {
-        "evaluate": evaluate_node, "compose": compose_node,
+        "evaluate": evaluate_node, "compose": compose_node, "apply_option": apply_option_node,
         "retry": retry_or_fallback_node, "dead_letter": dead_letter_node,
     }.items():
         graph.add_node(name, RunnableLambda(timed(node), afunc=timed(partial(run_local, node=node))))
@@ -110,7 +112,9 @@ def build_graph(checkpointer: Any | None = None, *, tools: ToolExecutorPort | No
                                    llm_timeout_seconds=llm_timeout_seconds if llm_timeout_seconds is not None else 2)))
 
     graph.add_edge(START, "intake")
-    graph.add_edge("intake", "classify")
+    # Chọn một phương án đã hiện (hàng thẻ, AC-AGT-04): lấy lịch đã dựng, không phân luồng/tìm lại/gọi LLM.
+    graph.add_conditional_edges("intake", route_after_intake,
+                                {name: name for name in ("classify", "apply_option")})
     graph.add_conditional_edges("classify", route_after_classify,
                                 {name: name for name in ("converse", "extract", "clarify", "dead_letter")})
     graph.add_conditional_edges("extract", route_after_extract,
@@ -122,6 +126,7 @@ def build_graph(checkpointer: Any | None = None, *, tools: ToolExecutorPort | No
                                 {name: name for name in ("tool", "dead_letter", "compose")})
     graph.add_edge("converse", "finalize")
     graph.add_edge("compose", "narrate")
+    graph.add_edge("apply_option", "finalize")
     graph.add_edge("narrate", "finalize")
     graph.add_edge("clarify", "finalize")
     graph.add_edge("dead_letter", "finalize")

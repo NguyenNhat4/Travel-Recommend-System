@@ -244,8 +244,18 @@ Phục vụ FR-AGT-02, FR-AGT-03, AC-AGT-02, AC-AGT-03 (chốt 2026-10-06, đề
   - **Ngân sách và phương án khác** (chốt 2026-10-08, đề xuất
     `update-archive/2026-10-08-khach-san-theo-ngan-sach-va-phuong-an-khac.md`): có ngân sách thì chỉ chọn lịch vừa ngân
     sách (gồm vé), không lịch nào vừa thì lịch rẻ nhất. Warning mới `STAY_OPTIONS`: mục "Phương án khác" trong
-    `message` (tổng km của lịch, tối đa 3 dòng "thêm/bớt X ₫ → bớt/thêm Y km", vượt ngân sách bao nhiêu). Chỉ có trong
-    chat; contract không đổi. Người dùng chọn bằng "lấy phương án N".
+    `message` (tổng km của lịch, tối đa 3 dòng "thêm/bớt X ₫ → bớt/thêm Y km", vượt ngân sách bao nhiêu). Người dùng
+    chọn bằng "lấy phương án N".
+  - **Hàng thẻ chọn phương án** (contract 1.20.0, chốt 2026-10-08, đề xuất
+    `update-archive/2026-10-08-chon-phuong-an-bang-nut.md`): `ItineraryCompleted.stayOptions = {distanceKm, options[]}`;
+    mỗi option có `index`, `kmDelta`, `moneyDelta`, `overBudget` và `itinerary` (lịch đầy đủ, để client xem trước không
+    gọi server). Vắng mặt khi không có phương án. Khi có `stayOptions`, `message` không còn mục chữ "Phương án khác"
+    (warning `STAY_OPTIONS` vẫn giữ cho client cũ). Request `selectStayOption: {index}` (cần `conversationId`, không cần
+    `message`) đổi sang phương án đó qua node `apply_option`: không tìm lại, không gọi LLM, response `COMPLETED` với lịch
+    đã báo và `stayOptions` mới (lịch vừa bỏ thành một phương án), **không có `message`** và không thêm lượt hội thoại;
+    archive cập nhật câu trả lời gần nhất (`update_last_turn`) thay vì thêm tin nhắn (chốt 2026-10-08, đề xuất
+    `update-archive/2026-10-08-bam-the-doi-ngay.md`). Câu gõ "lấy phương án N" đi cùng node nhưng có lời đáp ngắn do code
+    dựng và thêm lượt như thường. `finalize` kiểm cả lịch của từng phương án (`option_grounding`).
 - **Vị trí trình duyệt** chỉ ở Web (spec Frontend §4.8): toạ độ không vào request, state hay log của agent.
 
 ---

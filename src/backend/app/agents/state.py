@@ -76,6 +76,12 @@ class AgentState(TypedDict, total=False):
     # án N" biết khách sạn nào (AC-AGT-04, chốt 2026-10-08).
     stay_options: list[dict[str, Any]]
     previous_options: list[dict[str, Any]]
+    # Lượt chọn phương án bằng hàng thẻ (contract 1.20.0 `selectStayOption`, chốt 2026-10-08): lựa chọn trong request,
+    # lịch đang chọn của lượt này (`composition.composed`/`option_swap.swapped`) và của lượt trước. Mỗi phương án trong
+    # `stay_options`/`previous_options` mang lịch đầy đủ (`itinerary`, `warnings`, `distanceKm`) để chọn không tìm lại.
+    select_stay_option: dict[str, Any] | None
+    current_plan: dict[str, Any] | None
+    previous_plan: dict[str, Any] | None
 
 
 def make_event(node: str, event_type: str, message: str, **metadata: Any) -> dict[str, Any]:

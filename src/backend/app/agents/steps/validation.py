@@ -23,6 +23,12 @@ def response_issues(state: dict, response: dict, http_status: int) -> list:
                 issues.append("intent")
             if unknown_links(response):
                 issues.append("message_grounding")
+            for option in (response.get("stayOptions") or {}).get("options", []):
+                # Lịch của từng phương án (hàng thẻ, AC-AGT-04) cũng được client hiển thị: cùng chốt chặn grounding.
+                if validate_plan(option["itinerary"], state["candidates"], state["sources"], state["intent"],
+                                 state.get("constraints", {}),
+                                 flight_candidates(state.get("flight_options") or {})):
+                    issues.append("option_grounding")
         if response.get("status") in ("COMPLETED", "FALLBACK") and response.get("searchResults"):
             for products in response["searchResults"].values():
                 if any(p != summary(state.get("candidates", {}).get(p["productId"], {})) for p in products):

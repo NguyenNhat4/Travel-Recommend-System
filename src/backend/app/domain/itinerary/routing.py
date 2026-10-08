@@ -93,6 +93,7 @@ class Option:
     km_delta: float
     money_delta: int
     over_budget: int | None
+    route: Route  # lịch đã giải của phương án (điểm theo ngày, khách sạn theo đêm), để dựng lịch đầy đủ
 
 
 @dataclass(frozen=True)
@@ -426,7 +427,7 @@ def _options(route: Route, cash: tuple[int, int], sequences: list[list[Product]]
             continue
         seen.add(signature)
         over = total - budget_left if budget_left is not None and total > budget_left else None
-        options.append(Option(solved.stays, km - route.cost_km, total - cash[1], over))
+        options.append(Option(solved.stays, km - route.cost_km, total - cash[1], over, solved))
     near = [o for o in options if o.km_delta < 0][:OPTIONS_PER_SIDE]
     far = [o for o in options if o.km_delta > 0][:OPTIONS_PER_SIDE]
     return (near + far)[:MAX_OPTIONS]

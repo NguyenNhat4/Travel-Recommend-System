@@ -208,17 +208,10 @@ def with_flights(plan: dict, legs: list, intent: dict) -> dict:
     return plan
 
 
-def composed(state: dict) -> dict:
-    """Build the itinerary from the retrieved candidates with fixed rules; no model is consulted.
-
-    Vé được chọn trước khi xếp lịch, để hoạt động của ngày đến và ngày về nằm trong cửa sổ giờ bay (AC-AGT-02).
-    """
-    legs, flight_reason = flight_rules.choose_flights(state.get("flight_options") or {}, state["intent"])
-    windows = day_windows(state["intent"], legs)
-    # Vé trừ vào ngân sách khi chọn khách sạn (chốt 2026-10-08); vé chưa rõ giá thì không so được với ngân sách.
-    fares = [flight_rules.flight_cost(leg) for leg in legs]
-    fixed_cost = None if any(fare is None for fare in fares) else sum(fares)
-    proposal = compose_plan(state["candidates"], state["sources"], state["intent"], windows, fixed_cost)
+def _planned(state: dict, proposal: dict, legs: list, flight_reason: str | None, windows: dict,
+             fixed_cost: int | None) -> tuple[dict, list[dict]]:
+    """Lịch trình đã kiểm và cảnh báo của một proposal (lịch chính hoặc một phương án khác), chưa có `STAY_OPTIONS`.
+    Luật tự bác đề xuất của nó thì ném `ValueError`."""
     plan = render_proposal(proposal, state["candidates"], state["sources"], state["intent"])
     plan = with_flights(plan, legs, state["intent"])
     flight_warning = _flight_warning(state, flight_reason, legs)
@@ -239,9 +232,6 @@ def composed(state: dict) -> dict:
             criteria += " " + messages.message(state, "plan_criteria_change", night=stays[1]["fromNight"],
                                                first=stays[0]["product"]["name"], second=stays[1]["product"]["name"])
         warnings.append({"code": "PLAN_CRITERIA", "message": criteria})
-    options = _stay_options(state, proposal)
-    if options:
-        warnings.append({"code": "STAY_OPTIONS", "message": _options_text(state, proposal, options)})
     if _uses_recommendation(plan):
         warnings.append({"code": "RECOMMENDATION_FALLBACK", "message": WARNINGS["RECOMMENDATION_FALLBACK"]})
     _budget_warnings(plan, state["intent"], warnings)
@@ -256,12 +246,68 @@ def composed(state: dict) -> dict:
             warnings.append({"code": "DAY_WITHOUT_PRODUCTS",
                              "message": f"Ngày {day['day']} dành cho nghỉ ngơi hoặc hoạt động chung, "
                                         "chưa có sản phẩm được chọn."})
+    return plan, warnings
+
+
+def with_options_warning(warnings: list[dict], text: str | None) -> list[dict]:
+    """Chèn cảnh báo `STAY_OPTIONS` ngay sau `PLAN_CRITERIA` (thứ tự cũ của mục "Phương án khác"); `warnings` đến từ
+    `_planned` nên chưa có `STAY_OPTIONS`."""
+    if not text:
+        return warnings
+    at = next((index + 1 for index, warning in enumerate(warnings) if warning.get("code") == "PLAN_CRITERIA"),
+              len(warnings))
+    return warnings[:at] + [{"code": "STAY_OPTIONS", "message": text}] + warnings[at:]
+
+
+def stay_options_payload(distance_km: float, options: list[dict]) -> dict:
+    """Trường `stayOptions` của response (contract 1.20.0) từ các phương án lưu trong state."""
+    return {"distanceKm": distance_km,
+            "options": [{key: option[key] for key in ("index", "kmDelta", "moneyDelta", "overBudget", "itinerary")}
+                        for option in options]}
+
+
+def composed(state: dict) -> dict:
+    """Build the itinerary from the retrieved candidates with fixed rules; no model is consulted.
+
+    Vé được chọn trước khi xếp lịch, để hoạt động của ngày đến và ngày về nằm trong cửa sổ giờ bay (AC-AGT-02).
+    Mỗi phương án khác cũng được dựng thành lịch đầy đủ (cùng luật, cùng kiểm tra) để client xem trước và lượt
+    "chọn phương án" chỉ lấy lịch đó ra, không tìm lại (AC-AGT-04, chốt 2026-10-08).
+    """
+    legs, flight_reason = flight_rules.choose_flights(state.get("flight_options") or {}, state["intent"])
+    windows = day_windows(state["intent"], legs)
+    # Vé trừ vào ngân sách khi chọn khách sạn (chốt 2026-10-08); vé chưa rõ giá thì không so được với ngân sách.
+    fares = [flight_rules.flight_cost(leg) for leg in legs]
+    fixed_cost = None if any(fare is None for fare in fares) else sum(fares)
+    proposal = compose_plan(state["candidates"], state["sources"], state["intent"], windows, fixed_cost)
+    plan, warnings = _planned(state, proposal, legs, flight_reason, windows, fixed_cost)
+    options = []
+    for option, proposed in zip(_stay_options(state, proposal), proposal.get("options") or []):
+        try:
+            option["itinerary"], option["warnings"] = _planned(
+                state, {**proposed["proposal"], "criteria": proposal.get("criteria")}, legs, flight_reason, windows,
+                fixed_cost)
+        except ValueError:
+            # Luật bác lịch của một phương án là bug backend: log, bỏ phương án đó, lịch chính vẫn trả.
+            logger.exception("itinerary.option_composition_failed requestId=%s", state.get("request_id", "unknown"))
+            continue
+        option["distanceKm"] = round(proposal["distance_km"] + option["kmDelta"], 1)
+        options.append({**option, "index": len(options) + 1})
     response = {"status": "COMPLETED", "conversationId": state["conversation_id"],
-                "intent": state["intent"], "itinerary": plan, "warnings": warnings}
+                "intent": state["intent"], "itinerary": plan,
+                "warnings": with_options_warning(warnings, options_text(state, proposal["distance_km"], options) if options else None)}
     offers = _multi_day_offers(state)
     if offers:
         response["searchResults"] = offers
-    return {"response": response, "stay_options": options}
+    current = None
+    if options:
+        response["stayOptions"] = stay_options_payload(proposal["distance_km"], options)
+        current = {"itinerary": plan, "warnings": warnings, "distanceKm": proposal["distance_km"],
+                   "stays": [{"productId": stay["product"]["productId"], "name": stay["product"]["name"],
+                              "fromNight": stay.get("fromNight", 1), "nights": stay["nights"]}
+                             for stay in plan.get("stays") or []]}
+        if offers:
+            current["searchResults"] = offers
+    return {"response": response, "stay_options": options, "current_plan": current}
 
 
 def _stay_options(state: dict, proposal: dict) -> list[dict]:
@@ -281,10 +327,10 @@ def _stay_options(state: dict, proposal: dict) -> list[dict]:
     return options
 
 
-def _options_text(state: dict, proposal: dict, options: list[dict]) -> str:
+def options_text(state: dict, distance_km: float, options: list[dict]) -> str:
     """Mục "Phương án khác" (AC-AGT-04, chốt 2026-10-08): mọi con số do code tính, LLM không viết lại."""
     language = state.get("language", "vi")
-    lines = [messages.message(state, "options_total", km=messages.distance(proposal["distance_km"], language))]
+    lines = [messages.message(state, "options_total", km=messages.distance(distance_km, language))]
     for option in options:
         names = [stay["name"] for stay in option["stays"]]
         if len(option["stays"]) > 1:

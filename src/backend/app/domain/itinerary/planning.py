@@ -354,15 +354,35 @@ def compose_plan(candidates: Candidates, sources: Sources, intent: TripIntent,
                            else _activity_order(sources, product), budget_left)
         route = planned.route
         per_day = route.days
-        options = [{"stays": [{"stay_id": stay.product["productId"], "from_night": stay.from_night,
-                               "nights": stay.nights} for stay in option.stays],
-                    "km_delta": round(option.km_delta, 1), "money_delta": option.money_delta,
-                    "over_budget": option.over_budget} for option in planned.options]
+        options = []
+        for option in planned.options:
+            option_stays = _proposed_stays(option.route.stays)
+            options.append({"stays": option_stays, "km_delta": round(option.km_delta, 1),
+                            "money_delta": option.money_delta, "over_budget": option.over_budget,
+                            "proposal": {"stay_id": option_stays[0]["stay_id"], "stays": option_stays,
+                                         "slots": _layout(option.route.days, option_stays, windows, times_of)}})
         if route.stays:
-            chosen_stays = [{"stay_id": stay.product["productId"], "from_night": stay.from_night, "nights": stay.nights}
-                            for stay in route.stays]
+            chosen_stays = _proposed_stays(route.stays)
+    proposal: Proposal = {"stay_id": chosen_stays[0]["stay_id"] if chosen_stays else None,
+                          "slots": _layout(per_day, chosen_stays, windows, times_of), "stays": chosen_stays}
+    if anchor is not None:
+        proposal["criteria"] = "DISTANCE"
+        if route.stays:
+            proposal["distance_km"] = round(route.cost_km, 1)
+            proposal["options"] = options
+    return proposal
+
+
+def _proposed_stays(stays) -> list[dict[str, Any]]:
+    return [{"stay_id": stay.product["productId"], "from_night": stay.from_night, "nights": stay.nights}
+            for stay in stays]
+
+
+def _layout(per_day: list[list[Product]], stays: list[dict[str, Any]], windows: dict[int, dict[str, Any]],
+            times_of: list[list[str]]) -> list[dict[str, Any]]:
+    """Slot của từng ngày: điểm theo buổi, dòng di chuyển theo giờ bay, dòng trả phòng ở ngày đổi khách sạn."""
     slots = []
-    changes = {stay["from_night"] for stay in chosen_stays[1:]}
+    changes = {stay["from_night"] for stay in stays[1:]}
     for index, products in enumerate(per_day):
         day_slots = [{"day": index + 1, "note_kind": "VISIT", "activity_type": None, "product_id": product["productId"],
                       "time": "MORNING" if allowed_times(product) == ["MORNING"] else times_of[index][position]}
@@ -374,14 +394,7 @@ def compose_plan(candidates: Candidates, sources: Sources, intent: TripIntent,
             day_slots.append({"day": index + 1, "note_kind": "CHANGE_STAY", "activity_type": "TRANSFER",
                               "product_id": None, "time": "MORNING"})
         slots.extend(sorted(day_slots, key=_slot_order))
-    proposal: Proposal = {"stay_id": chosen_stays[0]["stay_id"] if chosen_stays else None, "slots": slots,
-                          "stays": chosen_stays}
-    if anchor is not None:
-        proposal["criteria"] = "DISTANCE"
-        if route.stays:
-            proposal["distance_km"] = round(route.cost_km, 1)
-            proposal["options"] = options
-    return proposal
+    return slots
 
 
 def _stay_issue(stays: list[dict[str, Any]], days_count: int) -> bool:

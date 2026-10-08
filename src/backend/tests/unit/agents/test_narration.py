@@ -261,34 +261,6 @@ class PlanCriteriaTests(unittest.TestCase):
         self.assertIn('criteria_shown_separately: true', narration.narration_input(current)[1][1])
 
 
-OPTIONS = {'code': 'STAY_OPTIONS', 'message': 'Lịch trên: đi lại khoảng 12,0 km cả chuyến.\n'
-                                            '• Phương án 1: thêm 900.000 ₫ — ở Khách sạn A: bớt khoảng 4,2 km đi lại.'}
-
-
-class StayOptionsTests(unittest.TestCase):
-    """`compose` thêm `STAY_OPTIONS` (AC-AGT-04, chốt 2026-10-08): mục "Phương án khác" do hệ thống chèn, sau mục tiêu
-    chí và trước mục chi phí, ở cả bản LLM lẫn bản dựng bằng luật."""
-
-    def test_the_options_sit_after_the_criteria_in_the_llm_reply(self):
-        current = state()
-        current['response']['warnings'] += [CRITERIA, OPTIONS]
-        text = narrated(current, 'Một ngày ở Hà Nội.\n\n**Ngày 1 · 15/10/2026**\n'
-                                 '• Cả ngày — [Tour](product:t1) ([[price:t1]]): đi sớm.\n\n'
-                                 '**Chi phí dự kiến**\n• [[total]]')[0]['response']['message']
-        self.assertIn(f"{CRITERIA['message']}\n\n**Phương án khác**\n{OPTIONS['message']}\n\n**Chi phí dự kiến**", text)
-
-    def test_the_rule_based_reply_has_the_options_too(self):
-        current = state()
-        current['response']['warnings'] += [CRITERIA, OPTIONS]
-        text = narration.fallback_message(current, current['response'])
-        self.assertIn(f"{CRITERIA['message']}\n\n**Phương án khác**\n{OPTIONS['message']}\n\n**Chi phí dự kiến**", text)
-
-    def test_the_llm_is_told_not_to_write_them(self):
-        current = state()
-        current['response']['warnings'].append(OPTIONS)
-        self.assertIn('options_shown_separately: true', narration.narration_input(current)[1][1])
-
-
 class TwoStaysTests(unittest.TestCase):
     """Đổi khách sạn giữa chuyến (AC-AGT-04): mục Nơi nghỉ có từng khách sạn kèm các đêm."""
 

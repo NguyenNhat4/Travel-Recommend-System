@@ -111,7 +111,7 @@ export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
   if (!activePlan) return null;
   const focusRing = (productId?: string) => (productId && productId === focusedProductId ? ' ring-2 ring-blue-500' : '');
   return (
-<div ref={listRef} className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain bg-slate-50/70 p-5">
+<div ref={listRef} className="stay-swap-in min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain bg-slate-50/70 p-5">
   {/* Render Days (Tất cả các ngày hoặc ngày đang chọn) */}
   {activePlan.days
     .filter((d) => activeDayTab === 0 || d.day === activeDayTab)

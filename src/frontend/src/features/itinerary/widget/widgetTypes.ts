@@ -14,6 +14,22 @@ export interface WidgetChatMessage {
   products?: Record<string, Product>;
   clarificationForm?: ClarificationForm;
   suggestions?: string[];
+  /** Hàng thẻ "Phương án khác" (contract 1.20.0 `stayOptions`, AC-AGT-04): thẻ đầu là lịch đang chọn. */
+  stayOptions?: StayOptionCard[];
+}
+
+/**
+ * Một thẻ khách sạn trong hàng "Phương án khác". `index` null là lịch đang chọn; còn lại là số để chọn
+ * (`selectStayOption.index`). Chênh tiền/km do backend tính; `plan` là lịch đầy đủ để xem trước ở cột phải.
+ */
+export interface StayOptionCard {
+  index: number | null;
+  hotels: Product[];
+  distanceKm: number;
+  kmDelta: number;
+  moneyDelta: number;
+  overBudget: number | null;
+  plan: WidgetPlan;
 }
 
 /** Một dòng trong panel lịch sử: dựng từ `AssistantConversationSummary` hoặc từ cuộc đang chat chưa kịp vào archive. */

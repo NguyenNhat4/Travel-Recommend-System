@@ -52,12 +52,19 @@ Chỉ lượt trả 200 mới được lưu.
   - sản phẩm cũ vào `exclude_products`, nhưng chỉ nhận id có trong sản phẩm đã cho xem;
   - planner được mời dùng Similar với gốc là sản phẩm đó;
   - code luôn giữ một search cho loại đang đổi. Xem [tim-ung-vien.md](tim-ung-vien.md).
-- **Chọn phương án khác** (AC-AGT-04, chốt 2026-10-08):
-  - câu có "phương án N" / "option N" (so không dấu) mà N có trong `previous_options` thì `classify` đi thẳng nhánh du
-    lịch, không gọi LLM;
-  - `extract` đặt `specific_hotel` = tên khách sạn đêm 1 của phương án đó, ghi đè giá trị LLM trích; từ đó đi như lượt
-    nêu tên khách sạn (tìm lại, chỉ giữ khách sạn trùng tên);
-  - N không có trong danh sách thì câu đi như mọi câu khác;
+- **Chọn phương án khác** (AC-AGT-04, chốt 2026-10-08; hàng thẻ chốt 2026-10-08, đề xuất
+  `update-archive/2026-10-08-chon-phuong-an-bang-nut.md`):
+  - `compose` dựng sẵn lịch đầy đủ của từng phương án (cùng luật, cùng `validate_plan`); `finalize` lưu chúng vào
+    `previous_options` cùng lịch đang chọn (`previous_plan`);
+  - bấm "Dùng phương án này" (`selectStayOption.index`) hoặc nhắn "phương án N" / "option N" (so không dấu) mà N có lịch
+    đã lưu thì graph đi `intake → apply_option → finalize`: lấy đúng lịch đã báo, không phân luồng, không tìm lại, không
+    gọi LLM. Bấm thẻ thì không có lời đáp và không thêm lượt hội thoại (archive cập nhật câu trả lời gần nhất); gõ
+    "lấy phương án N" thì có lời đáp ngắn do code dựng (đổi sang khách sạn nào, chênh tiền, chênh km, tổng km);
+  - lịch vừa bỏ thành một phương án để quay lại; chênh km tính lại từ km tuyệt đối, chênh tiền tính lại tuyến tính, vượt
+    ngân sách tính lại từ `estimatedTotal`; phương án còn lại chênh dưới 2 km bị bỏ; tối đa 3;
+  - `constraints.specific_hotel` = tên khách sạn đêm 1 của phương án đã chọn, để các lượt sau giữ khách sạn đó;
+  - grounding của lượt chọn: sản phẩm trong các lịch đã lưu phía server (đã kiểm với kết quả tool lúc `compose`);
+  - N không có lịch đã lưu (hội thoại cũ, số không tồn tại) thì câu đi như mọi câu khác (luồng `specific_hotel` cũ);
   - người dùng nêu thẳng tên khách sạn thì đi luồng `specific_hotel` sẵn có.
 - **Ràng buộc tồn tại qua các lượt** cho tới khi người dùng bỏ (`clear_fields`). Loại hàng mà Recommendation tạm loại thì
   không được lưu.

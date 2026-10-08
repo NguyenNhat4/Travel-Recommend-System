@@ -9,6 +9,8 @@ import { WidgetOpening } from './WidgetOpening';
 import { WidgetNarration } from './WidgetNarration';
 import { WidgetComposer } from './WidgetComposer';
 import { WidgetProgress } from './WidgetProgress';
+import { WidgetStayOptions } from './WidgetStayOptions';
+import { stayCardKey } from './widgetPlan';
 import type { FloatingWidgetController } from './useFloatingWidget';
 
 function AssistantHeader() {
@@ -24,7 +26,8 @@ function AssistantHeader() {
 
 export function WidgetChat({ widget }: { widget: FloatingWidgetController }) {
   const { messages, assistantState, isRunning, isExpanded, setIsExpanded, chatScrollRef,
-    inputVal, setInputVal, handleSendMessage, handleConfirmTripDetails, retry, abort, openProductDetail, addPlanItemToCart } = widget;
+    inputVal, setInputVal, handleSendMessage, handleConfirmTripDetails, retry, abort, openProductDetail, addPlanItemToCart,
+    selectingStay, chooseStayOption, previewedStay, previewStayOption } = widget;
   const isInitial = messages.length === 0 && !isRunning;
   const lastMessageId = messages.length > 0 ? messages[messages.length - 1].id : null;
 
@@ -34,7 +37,7 @@ export function WidgetChat({ widget }: { widget: FloatingWidgetController }) {
         {isInitial && <WidgetOpening value={inputVal} onChange={setInputVal} onSend={handleSendMessage} busy={isRunning} />}
         <div className="space-y-7" role="log" aria-label="Hội thoại với trợ lý du lịch" aria-live="polite">
           {messages.map((message) => (
-            <div key={message.id} className={`flex min-w-0 ${message.sender === 'user' ? 'justify-end' : 'flex-col gap-3'}`}>
+            <div key={message.id} data-message-id={message.id} className={`flex min-w-0 ${message.sender === 'user' ? 'justify-end' : 'flex-col gap-3'}`}>
               {message.sender === 'assistant' && <AssistantHeader />}
               <div className={`min-w-0 whitespace-pre-wrap break-words text-sm leading-7 sm:text-base ${message.sender === 'user' ? 'message-send-in max-w-[88%] rounded-2xl rounded-tr-md bg-blue-600 px-4 py-3 text-white' : 'w-full text-slate-700'}`}>
                 {message.sender === 'assistant'
@@ -43,7 +46,20 @@ export function WidgetChat({ widget }: { widget: FloatingWidgetController }) {
                         onOpen={(productId) => openProductDetail(productId, message)}
                         quickAddIds={message.plan ? new Set(message.plan.cartItems.filter((item) => isCartEligible(item.product.taxonomy)).map((item) => item.product.productId)) : undefined}
                         cartAddStates={widget.cartAddStates}
-                        onQuickAdd={message.plan ? (productId) => addPlanItemToCart(message.plan!, productId) : undefined} />
+                        onQuickAdd={message.plan ? (productId) => addPlanItemToCart(message.plan!, productId) : undefined}
+                        stays={message.stayOptions ? {
+                          // Hàng thẻ "Phương án khác" là nội dung mục "Nơi nghỉ": thay dòng chữ và thẻ của mọi khách sạn
+                          // trong hàng (kể cả khách sạn cũ mà lời diễn giải còn nhắc sau khi đã đổi).
+                          ids: new Set(message.stayOptions.flatMap((card) => card.hotels.map((hotel) => hotel.id))),
+                          node: (
+                            <WidgetStayOptions cards={message.stayOptions}
+                              interactive={message.id === lastMessageId && !isRunning}
+                              selectingKey={message.id === lastMessageId ? selectingStay : null}
+                              previewKey={previewedStay?.message.id === message.id ? stayCardKey(previewedStay.card) : null}
+                              onPreview={(card) => previewStayOption(message, card)}
+                              onSelect={(card) => { void chooseStayOption(message, card); }} />
+                          ),
+                        } : undefined} />
                     : <AssistantText text={message.text} />)
                   : message.text}
                 {message.plan && !isExpanded && (

@@ -222,9 +222,6 @@ there are none; do not mention flights, airlines or plane tickets, and do not wr
 When criteria_shown_separately is true the system adds its own section explaining how the plan was arranged (nearby
 places grouped to keep the total travel short, the hotel or hotels chosen near them); do not write that section or
 restate it, and never claim distances or travel times.
-When options_shown_separately is true the system adds its own **Phương án khác** section listing other hotels with how
-much more or less they cost and how many km they save or add; do not write that section, mention other hotels or
-repeat any of its numbers.
 Always include the **Chi phí dự kiến** section, even when the total is not known.
 An item with activityType TRANSFER is the airport transfer the system placed by the flight times on the arrival or
 departure day: write it as one line with its time and its note, add no flight detail and no activity around it.

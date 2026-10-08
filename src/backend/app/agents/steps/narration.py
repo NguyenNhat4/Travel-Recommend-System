@@ -120,7 +120,8 @@ def _label(product: dict) -> str:
     return " ".join(re.sub(r"[\[\]]", " ", product["name"]).split()) or product["productId"]
 
 
-def _link(product: dict) -> str:
+def product_link(product: dict) -> str:
+    """`[Tên](product:id)` của một sản phẩm, tên đã qua `_label`; dùng chung cho mọi câu do code dựng."""
     return f"[{_label(product)}](product:{product['productId']})"
 
 
@@ -154,7 +155,6 @@ def narration_input(state: dict) -> list:
                "no_stay_explained": _no_stay_block(state, response) is not None,
                "flights_shown_separately": _flights_block(state, response) is not None,
                "criteria_shown_separately": _criteria_block(state, response) is not None,
-               "options_shown_separately": _options_block(state, response) is not None,
                "has_budget": state["intent"].get("budget") is not None}
     return [("system", NARRATE_PROMPT + f"\nReply in {language}."), ("human", prompt_yaml(payload))]
 
@@ -175,7 +175,7 @@ def _cost_line(state: dict, itinerary: dict) -> str:
 
 
 def _offers_block(state: dict, offers) -> str:
-    lines = [f"• {_link(product)} — {message(state, 'offer_days', days=multi_day_span(product) or 2)} · "
+    lines = [f"• {product_link(product)} — {message(state, 'offer_days', days=multi_day_span(product) or 2)} · "
              f"{_price(state, product)}" for product in offers]
     return f"**{message(state, 'section_offers')}**\n" + "\n".join(lines) + f"\n{message(state, 'offers_question')}"
 
@@ -208,7 +208,7 @@ def _flights_block(state: dict, response: dict) -> str | None:
             bits.append(message(state, "flight_nonstop"))
         bits.append(message(state, "flight_passengers", price=_money(product["unitPrice"], language),
                             count=leg["passengers"]))
-        lines.append(f"• {message(state, 'flight_' + leg['direction'])} — {_link(product)} · {' · '.join(bits)}")
+        lines.append(f"• {message(state, 'flight_' + leg['direction'])} — {product_link(product)} · {' · '.join(bits)}")
     lines += [warning["message"] for warning in response.get("warnings", [])
               if str(warning.get("code", "")).startswith("FLIGHT_")]
     return f"**{message(state, 'section_flights')}**\n" + "\n".join(lines) if lines else None
@@ -234,14 +234,6 @@ def _criteria_block(state: dict, response: dict) -> str | None:
     return f"**{message(state, 'section_criteria')}**\n{note}" if note else None
 
 
-def _options_block(state: dict, response: dict) -> str | None:
-    """Mục "Phương án khác" (cảnh báo `STAY_OPTIONS` của `compose`, AC-AGT-04 chốt 2026-10-08): chênh tiền và chênh km
-    do code tính; None khi không có phương án nào."""
-    note = next((warning["message"] for warning in response.get("warnings", [])
-                 if warning.get("code") == "STAY_OPTIONS"), None)
-    return f"**{message(state, 'section_options')}**\n{note}" if note else None
-
-
 def fallback_message(state: dict, response: dict) -> str:
     """Bản dựng bằng luật, cùng bố cục với câu LLM: tiêu đề, ghi nhận thay đổi, nơi nghỉ, từng ngày, chi phí, lưu ý."""
     itinerary = response["itinerary"]
@@ -252,16 +244,16 @@ def fallback_message(state: dict, response: dict) -> str:
     stays = _stays(itinerary)
     if len(stays) == 1:
         stay = stays[0]
-        blocks.append(f"**{message(state, 'section_stay')}**\n• {_link(stay['product'])} — "
+        blocks.append(f"**{message(state, 'section_stay')}**\n• {product_link(stay['product'])} — "
                       f"{message(state, 'stay_nights', nights=stay.get('nights', 1))} · {_price(state, stay['product'])}")
     elif stays:
         # Đổi khách sạn giữa chuyến (AC-AGT-04): mỗi khách sạn một dòng, kèm các đêm ở đó.
         blocks.append(f"**{message(state, 'section_stay')}**\n" + "\n".join(
-            f"• {_nights_label(state, stay)} — {_link(stay['product'])} · {_price(state, stay['product'])}"
+            f"• {_nights_label(state, stay)} — {product_link(stay['product'])} · {_price(state, stay['product'])}"
             for stay in stays))
     for day in itinerary.get("days", []):
         # Slot đã theo thứ tự buổi; dòng di chuyển ngày đến/ngày về (AC-AGT-02) in bằng ghi chú của nó.
-        lines = [f"• {_time_label(state, slot)} — " + (f"{_link(slot['product'])} · {_price(state, slot['product'])}"
+        lines = [f"• {_time_label(state, slot)} — " + (f"{product_link(slot['product'])} · {_price(state, slot['product'])}"
                                                        if slot.get("product") else slot["note"])
                  for slot in day.get("slots", []) if slot.get("product") or slot.get("activityType") == "TRANSFER"]
         blocks.append(f"**{_day_heading(state, day)}**\n" + ("\n".join(lines) or message(state, "free_day")))
@@ -274,9 +266,6 @@ def fallback_message(state: dict, response: dict) -> str:
     criteria = _criteria_block(state, response)
     if criteria:
         blocks.append(criteria)
-    options = _options_block(state, response)
-    if options:
-        blocks.append(options)
     blocks.append(f"**{message(state, 'section_cost')}**\n{_cost_line(state, itinerary)}")
     blocks.append(f"**{message(state, 'section_notes')}**\n{message(state, 'narrate_notes')}\n"
                   f"{message(state, 'narrate_outro')}")
@@ -298,7 +287,7 @@ def _repair_links(body: str, products: dict[str, dict]) -> str:
     for product_id, product in products.items():
         for name in sorted({product["name"], _label(product)}, key=len, reverse=True):
             pattern = re.compile(r"\[?" + re.escape(name) + r"\]?\s*\(product:" + re.escape(product_id) + r"\)")
-            body = pattern.sub(lambda _match, product=product: _link(product), body)
+            body = pattern.sub(lambda _match, product=product: product_link(product), body)
     return STRAY_PRODUCT.sub(lambda match: "" if match.group(1) in products else match.group(0), body)
 
 
@@ -314,7 +303,7 @@ def _link_plain_mention(body: str, product: dict) -> str | None:
             end = match.start() if match else len(body)
             position = body.find(name, start, end)
             if position >= 0:
-                return body[:position] + _link(product) + body[position + len(name):]
+                return body[:position] + product_link(product) + body[position + len(name):]
             if match:
                 start = match.end()
     return None
@@ -349,7 +338,7 @@ def render(state: dict, response: dict, narration: ItineraryNarration) -> tuple[
         return _money(budget, language) if budget is not None else message(state, "no_budget")
 
     body = "\n".join(line.rstrip() for line in body.splitlines())
-    body = PRODUCT_LINK.sub(lambda match: _link(products[match.group(2)]), body)
+    body = PRODUCT_LINK.sub(lambda match: product_link(products[match.group(2)]), body)
     body = PLACEHOLDER.sub(fill, body)
     missing = []
     for product_id, product in scheduled.items():
@@ -362,7 +351,7 @@ def render(state: dict, response: dict, narration: ItineraryNarration) -> tuple[
             body = linked_inline
     if missing:
         # Mọi sản phẩm đã xếp đều phải bấm được từ khung chat, kể cả khi LLM quên nhắc.
-        body += f"\n\n**{message(state, 'section_more')}**\n" + "\n".join(f"• {_link(product)}" for product in missing)
+        body += f"\n\n**{message(state, 'section_more')}**\n" + "\n".join(f"• {product_link(product)}" for product in missing)
     if offers:
         # Gói nhiều ngày luôn được hỏi riêng bằng câu cố định (LLM hay quên câu hỏi): chèn trước mục chi phí.
         body = _with_offers(state, body, offers.values())
@@ -374,10 +363,6 @@ def render(state: dict, response: dict, narration: ItineraryNarration) -> tuple[
     if criteria:
         # Tiêu chí xếp lịch là luật của hệ thống, không để LLM tự diễn đạt (AC-AGT-04): chèn trước mục chi phí.
         body = _before_cost(state, body, criteria)
-    options = _options_block(state, response)
-    if options:
-        # Chênh tiền/km của phương án khác là số do code tính (grounding): chèn sau mục tiêu chí, trước mục chi phí.
-        body = _before_cost(state, body, options)
     flights = _flights_block(state, response)
     if flights:
         # Vé và lý do thiếu vé lấy từ dữ liệu catalog, không để LLM diễn đạt: chèn trước mục đầu tiên.

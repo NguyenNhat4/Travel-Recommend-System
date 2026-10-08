@@ -101,8 +101,9 @@ Không bao giờ chọn cả phòng lẫn khách sạn cha của nó, và hai kh
 - **Câu trả lời:**
   - mục "Cách mình xếp lịch" (warning `PLAN_CRITERIA`): câu có vế ngân sách khi có ngân sách và biết giá vé; thêm câu
     nêu đêm đổi và hai khách sạn khi có đổi;
-  - mục "Phương án khác" ngay sau đó, trước mục chi phí. Cả hai mục do code chèn, LLM không viết lại (prompt có
-    `criteria_shown_separately`, `options_shown_separately`);
+  - mục do code chèn, LLM không viết lại (prompt có `criteria_shown_separately`);
+  - "Phương án khác" không còn là đoạn chữ: từ contract 1.20.0 là hàng thẻ `stayOptions` ở mục "Nơi nghỉ" của widget
+    (`docs/spec/hop-dong-tich-hop-frontend.md`); warning `STAY_OPTIONS` vẫn giữ cho client cũ;
   - lịch chưa hiện số km từng ngày; tổng km và chênh km chỉ có trong mục Phương án khác.
 - **Đổi khách sạn:** ngày đổi có dòng `TRANSFER` "Trả phòng, chuyển sang khách sạn mới." (`note_kind = CHANGE_STAY`) ở
   buổi sáng. `itinerary.stays` liệt kê khách sạn theo đêm (`fromNight`, `nights`); `itinerary.stay` = `stays[0]`.

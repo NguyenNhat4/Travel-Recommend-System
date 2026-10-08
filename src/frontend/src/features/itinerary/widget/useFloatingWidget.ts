@@ -1,11 +1,11 @@
-import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
 import { useTravel } from '../../../context/TravelContext';
 import { useAssistant } from '../../../context/AssistantProvider';
 import { useAssistantCart, useBookItinerary } from '../../../hooks/useAssistantCart';
 import { isCartEligible } from '../../../services/booking';
 import { listAssistantConversations, type AssistantConversationList } from '../../../services/assistantHistory';
-import { convertItineraryCompletedToGroundedPlan, locateProduct, narrationProducts } from './widgetPlan';
-import type { WidgetPlan, WidgetChatMessage, ConversationSession } from './widgetTypes';
+import { convertItineraryCompletedToGroundedPlan, locateProduct, narrationProducts, stayCardKey, stayOptionCards } from './widgetPlan';
+import type { WidgetPlan, WidgetChatMessage, ConversationSession, StayOptionCard } from './widgetTypes';
 import type { Product } from '../../../types/travel';
 import { useWidgetCart } from './useWidgetCart';
 
@@ -42,6 +42,7 @@ export function useFloatingWidget() {
   const {
     state: assistantState,
     sendMessage,
+    selectStayOption,
     retry,
     abort,
     resetConversation,
@@ -66,6 +67,11 @@ export function useFloatingWidget() {
   const [focusedProductId, setFocusedProductId] = useState<string | null>(null);
   // Panel chi tiết ở cột phải (PRD user-flow.md §4.2); null thì cột phải là lịch trình + bản đồ.
   const [selectedProduct, setSelectedProduct] = useState<SelectedProduct | null>(null);
+  // Khoá (`stayCardKey`) của thẻ khách sạn đang lưu lên server (AC-AGT-04), trong lúc đó hàng thẻ tạm khoá; khoá theo
+  // khách sạn vì số phương án đánh lại sau khi đổi.
+  const [selectingStay, setSelectingStay] = useState<string | null>(null);
+  // Thẻ khách sạn đang xem trước ở cột phải (chưa đổi, chưa lưu) và câu trả lời chứa nó.
+  const [stayPreview, setStayPreview] = useState<{ messageId: string; key: string } | null>(null);
   // History Conversation & Drawer States
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
   // Lịch sử lấy từ archive của backend (FR-AGT-01, spec Frontend §9.6); khách không có lịch sử lâu dài.
@@ -133,6 +139,8 @@ export function useFloatingWidget() {
       setActivePlan(plan);
       setActiveDayTab(1);
     }
+    // Response mới (lượt mới, hoặc vừa đổi khách sạn) thì cột phải là lịch đã lưu, không còn xem trước.
+    setStayPreview(null);
   }, [assistantState.response]);
 
   // Derive messages from the provider transcript
@@ -144,9 +152,11 @@ export function useFloatingWidget() {
     return assistantState.transcript.map((item) => {
       let plan: WidgetPlan | undefined = undefined;
       let products: Record<string, Product> | undefined = undefined;
+      let stayOptions: StayOptionCard[] | undefined = undefined;
       if (item.response?.status === 'COMPLETED') {
         plan = convertItineraryCompletedToGroundedPlan(item.response);
         products = narrationProducts(item.response);
+        stayOptions = stayOptionCards(item.response, plan);
       } else if (item.response?.status === 'FALLBACK') {
         // Câu FALLBACK mời xem các ứng viên "bên dưới": thẻ dựng từ `searchResults`.
         products = narrationProducts(item.response);
@@ -158,6 +168,7 @@ export function useFloatingWidget() {
         text: item.text,
         plan,
         products,
+        stayOptions,
         clarificationForm: item.response?.status === 'NEEDS_CLARIFICATION' ? item.response.clarificationForm : undefined,
         suggestions: item.response?.status === 'NO_RESULTS' || item.response?.status === 'NEEDS_CLARIFICATION'
           ? item.response.suggestions
@@ -176,13 +187,30 @@ export function useFloatingWidget() {
     return [{ id: currentId, title: truncateTitle(firstUserText), timestamp: 'Đang trò chuyện' }, ...archivedConversations];
   }, [archivedConversations, assistantState.conversationId, messages]);
 
-  // Scroll to the latest message
+  // Cuộn xuống tin mới nhất khi có tin nhắn mới hoặc chữ của tin cuối dài thêm (đang stream). Không cuộn khi chỉ đổi
+  // `response` (bấm thẻ khách sạn): người dùng đang bấm ở giữa bong bóng, kéo xuống cuối là bị "giật".
+  const lastMessage = messages[messages.length - 1];
   useEffect(() => {
     if (isOpen && messages.length) {
       chatScrollRef.current?.scrollTo({ top: chatScrollRef.current.scrollHeight, behavior: 'smooth' });
-
     }
-  }, [isOpen, messages, isExpanded]);
+  }, [isOpen, messages.length, lastMessage?.id, lastMessage?.text]);
+
+  // Thu gọn và mở rộng là hai cây DOM khác nhau (`FloatingWidget`), nên khung chat dựng lại và mất vị trí cuộn. Mở rộng vì
+  // chạm thẻ khách sạn thì giữ hàng thẻ đó ở giữa khung; còn lại về tin mới nhất như trước. Cuộn tức thì, trước khi vẽ.
+  const keepInViewRef = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    const chat = chatScrollRef.current;
+    if (!isOpen || !chat) return;
+    const anchor = keepInViewRef.current ? chat.querySelector<HTMLElement>(keepInViewRef.current) : null;
+    keepInViewRef.current = null;
+    if (!anchor) {
+      chat.scrollTop = chat.scrollHeight;
+      return;
+    }
+    const offset = anchor.getBoundingClientRect().top - chat.getBoundingClientRect().top;
+    chat.scrollTop += offset - (chat.clientHeight - anchor.offsetHeight) / 2;
+  }, [isExpanded]);
 
   // Handle ESC key to close or minimize
   useEffect(() => {
@@ -264,6 +292,60 @@ export function useFloatingWidget() {
 
   const closeProductDetail = () => setSelectedProduct(null);
 
+  const canChangeStay = (message: WidgetChatMessage) =>
+    !isRunning && selectingStay === null && message.id === messages[messages.length - 1]?.id;
+
+  // Dải "Đang xem trước" ở cột phải: thẻ đang xem và câu trả lời chứa nó.
+  const previewedStay = (() => {
+    if (!stayPreview) return null;
+    const message = messages.find((item) => item.id === stayPreview.messageId);
+    const card = message?.stayOptions?.find((item) => stayCardKey(item) === stayPreview.key);
+    return message && card ? { message, card } : null;
+  })();
+
+  /** Cột phải hiện `plan` của một thẻ khách sạn; widget đang thu gọn thì mở rộng và giữ hàng thẻ đó trong khung chat. */
+  const showStayPlan = (message: WidgetChatMessage, plan: WidgetPlan | undefined) => {
+    setSelectedProduct(null);
+    setFocusedProductId(null);
+    if (!isExpanded) keepInViewRef.current = `[data-message-id="${CSS.escape(message.id)}"] [data-stay-row]`;
+    setIsExpanded(true);
+    if (plan) setActivePlan(plan);
+    setActiveDayTab(1);
+  };
+
+  /**
+   * Chạm một thẻ khách sạn trong hàng "Phương án khác" (AC-AGT-04, chốt 2026-10-08): cột phải, bản đồ và tổng tiền xem
+   * trước lịch của thẻ đó, chưa đổi lịch đã lưu. Chạm thẻ đang chọn thì thôi xem trước.
+   */
+  const previewStayOption = (message: WidgetChatMessage, card: StayOptionCard) => {
+    if (card.index !== null && !canChangeStay(message)) return;
+    showStayPlan(message, card.plan);
+    setStayPreview(card.index === null ? null : { messageId: message.id, key: stayCardKey(card) });
+  };
+
+  const cancelStayPreview = () => {
+    if (previewedStay?.message.plan) setActivePlan(previewedStay.message.plan);
+    setStayPreview(null);
+  };
+
+  /**
+   * Nút "Đổi sang khách sạn này": lịch, bản đồ và tổng tiền ở cột phải đổi ngay; lựa chọn được lưu lên server ở nền, không
+   * thêm tin nhắn. Server trả về thì hàng thẻ tính lại chênh tiền/km theo lịch mới; lỗi thì quay về lịch cũ. Chỉ hàng thẻ
+   * của câu trả lời mới nhất đổi được (server chỉ giữ phương án của lượt gần nhất).
+   */
+  const chooseStayOption = async (message: WidgetChatMessage, card: StayOptionCard) => {
+    if (card.index === null || !canChangeStay(message)) return;
+    showStayPlan(message, card.plan);
+    setStayPreview(null);
+    setSelectingStay(stayCardKey(card));
+    const saved = await selectStayOption(card.index);
+    setSelectingStay(null);
+    if (!saved) {
+      if (message.plan) setActivePlan(message.plan);
+      showToast('Chưa đổi được khách sạn, bạn thử lại nhé.');
+    }
+  };
+
   const addSelectedToCart = selectedProduct?.plan?.cartItems.some((item) => item.product.productId === selectedProduct.productId)
     ? () => addPlanItemToCart(selectedProduct.plan!, selectedProduct.productId)
     : undefined;
@@ -341,6 +423,7 @@ export function useFloatingWidget() {
     isSignedIn, historyStatus, loadHistory,
     selectedProduct, openProductDetail, closeProductDetail, addPlanItemToCart, addSelectedToCart, cartAddStates,
     selectedCanAddToCart, bookSelectedNow, itemActions,
+    selectingStay, chooseStayOption, previewStayOption, cancelStayPreview, previewedStay,
     assistantState, isRunning, messages, inputVal, setInputVal, chatScrollRef, retry, abort,
     handleSendMessage, handleQuickPrompt, handleConfirmTripDetails, handleCheckoutPlan,
     handleStartNewChat, handleSelectConversation };
