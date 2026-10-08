@@ -58,7 +58,6 @@ export function useFloatingWidget() {
   const [inputVal, setInputVal] = useState<string>('');
   const [activePlan, setActivePlan] = useState<WidgetPlan | null>(null);
   const [activeDayTab, setActiveDayTab] = useState<number>(1);
-  const [isCheckingOut, setIsCheckingOut] = useState<boolean>(false);
   const [isChatCollapsed, setIsChatCollapsed] = useState<boolean>(false);
   const [hoveredCoordinate, setHoveredCoordinate] = useState<{ lat: number; lng: number } | null>(null);
   const [hoveredPointId, setHoveredPointId] = useState<string | null>(null);
@@ -271,22 +270,7 @@ export function useFloatingWidget() {
   // Panel chi tiết: khách sạn và vé máy bay chỉ có Đặt ngay; tour, golf, combo có thêm Thêm vào giỏ (R-DIR-02).
   const selectedItem = selectedProduct?.plan?.cartItems.find((item) => item.product.productId === selectedProduct.productId);
   const selectedCanAddToCart = Boolean(selectedItem && isCartEligible(selectedItem.product.taxonomy));
-  const bookSelectedNow = selectedItem ? () => { void bookItinerary([selectedItem]); } : undefined;
-
-  const handleCheckoutPlan = (e?: React.MouseEvent) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    if (!activePlan || isCheckingOut) return;
-    if (!activePlan.cartItems.length) {
-      showToast('Lịch trình chưa có dịch vụ nào đặt được.');
-      return;
-    }
-    // Thanh toán tất cả: một đơn nháp gồm mọi mục đặt được của lịch trình (lưu trú và hoạt động), thanh toán một lần.
-    setIsCheckingOut(true);
-    void bookItinerary(activePlan.cartItems).finally(() => setIsCheckingOut(false));
-  };
+  const bookSelectedNow = selectedItem ? () => { void bookItinerary(selectedItem); } : undefined;
 
   /**
    * Nút riêng của từng sản phẩm trong lịch trình (thẻ và ghim bản đồ): khách sạn, vé máy bay chỉ có Đặt ngay; tour, golf,
@@ -298,7 +282,7 @@ export function useFloatingWidget() {
     if (!item) return null;
     return {
       canAddToCart: isCartEligible(item.product.taxonomy),
-      bookNow: () => { void bookItinerary([item]); },
+      bookNow: () => { void bookItinerary(item); },
       addToCart: () => { void addItineraryToCart([item]); },
     };
   };
@@ -336,13 +320,13 @@ export function useFloatingWidget() {
   };
 
   return { isOpen, setIsOpen, isExpanded, setIsExpanded, activePlan, activeDayTab, setActiveDayTab,
-    isCheckingOut, isChatCollapsed, setIsChatCollapsed, hoveredCoordinate, hoveredPointId,
+    isChatCollapsed, setIsChatCollapsed, hoveredCoordinate, hoveredPointId,
     setHoveredCoordinate, setHoveredPointId, focusedProductId, isHistoryOpen, setIsHistoryOpen, conversations, activeSessionId,
     isSignedIn, historyStatus, loadHistory,
     selectedProduct, openProductDetail, closeProductDetail, addPlanItemToCart, addSelectedToCart, cartAddStates,
     selectedCanAddToCart, bookSelectedNow, itemActions,
     assistantState, isRunning, messages, inputVal, setInputVal, chatScrollRef, retry, abort,
-    handleSendMessage, handleQuickPrompt, handleConfirmTripDetails, handleCheckoutPlan,
+    handleSendMessage, handleQuickPrompt, handleConfirmTripDetails,
     handleStartNewChat, handleSelectConversation };
 }
 

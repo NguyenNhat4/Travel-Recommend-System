@@ -24,7 +24,7 @@ import {
   travelerLabel, displayName, fixLead, type Allocation, type CartState, type FlightDraft, type RoomDraft, type TravelerDraft,
 } from './allocation';
 import {
-  MAX_PARTY, checkContact, checkItems, checkParty, fareTypeOn, formatDmy, isInfantOn, maskDmy, messageFor, normalizeName,
+  MAX_ROOMS, checkContact, checkItems, checkParty, fareTypeOn, formatDmy, isInfantOn, maskDmy, messageFor, normalizeName, orderPartyCap,
   parseDmy, splitFullName, type Violation,
 } from './checkoutRules';
 import { useCheckoutSource } from './checkoutSource';
@@ -219,6 +219,8 @@ export function useCheckout() {
   const travelers = useMemo(() => drafts.map(draftToTraveler), [drafts]);
   const earliest = useMemo(() => items.reduce<string | null>((min, i) => (min === null || i.usingDate < min ? i.usingDate : min), null), [items]);
   const facts = useMemo(() => items.map(cartFactsOf), [items]);
+  // Trần của đoàn: theo mục lớn nhất trong đơn (khách sạn 9 khách mỗi phòng, loại khác 9 khách; FR-BKG-08).
+  const partyCap = useMemo(() => orderPartyCap(facts), [facts]);
   const adult1 = drafts.find((d) => d.type === 'ADULT');
   const contactFullName = syncContact && adult1 ? normalizeName(`${adult1.surname} ${adult1.givenNames}`) : contactName;
   const labels = useMemo(() => Object.fromEntries(drafts.map((d) => [d.ref, travelerLabel(d, drafts)])), [drafts]);
@@ -234,14 +236,14 @@ export function useCheckout() {
   }, [flightDates]);
 
   const partyViolations = useCallback((): Violation[] => {
-    const party = checkParty(toTravelerInputs(latest.current.drafts, hasFlight), { earliest, today: todayVn(), flightDates });
+    const party = checkParty(toTravelerInputs(latest.current.drafts, hasFlight), { earliest, today: todayVn(), flightDates, maxParty: partyCap });
     // Thứ tự hiển thị trên màn hình (thẻ hành khách rồi tới người liên hệ) quyết định lỗi nào được đưa con trỏ tới trước.
     const contact = checkContact(contactInputOf(contactFullName, phone, email));
     // Khách chưa đăng nhập chưa có email: email nhận thông tin lấy theo tài khoản, và tạo đơn luôn cần đăng nhập (R-CHK-06),
     // nên chỉ kiểm email khi đã có tài khoản. Nhờ vậy khách điền được cả ba bước trước khi đăng nhập.
     const signedIn = Boolean(currentPersona);
     return [...party.violations, ...contact.filter((v) => signedIn || v.field !== 'contact.email')];
-  }, [earliest, flightDates, hasFlight, contactFullName, phone, email, currentPersona]);
+  }, [earliest, flightDates, hasFlight, partyCap, contactFullName, phone, email, currentPersona]);
 
   /**
    * Lỗi từng thẻ dịch vụ, tính trực tiếp từ phân bổ hiện tại (bước ②). Trong lúc PATCH của một mục còn chờ hoặc đang chạy thì
@@ -295,7 +297,7 @@ export function useCheckout() {
 
   const addTraveler = (type: 'ADULT' | 'CHILD') => {
     const counts = partyCounts(drafts);
-    if (counts.adults + counts.children >= MAX_PARTY) return;
+    if (counts.adults + counts.children >= orderPartyCap(latest.current.items.map(cartFactsOf))) return;
     const ref = `t${seq + 1}`;
     setSeq(seq + 1);
     const draft: TravelerDraft = { ref, type, surname: '', givenNames: '', birthText: '', flight: blankFlight() };
@@ -448,7 +450,7 @@ export function useCheckout() {
   }));
 
   const addRoom = (cartItemId: string) => editAlloc(cartItemId, (alloc, item) => {
-    if (alloc.rooms.length >= MAX_PARTY) return alloc;
+    if (alloc.rooms.length >= MAX_ROOMS) return alloc;
     // Phòng mới nhận người lớn chưa đứng tên phòng nào (nút chỉ hiện khi còn người lớn như vậy).
     const leads = new Set(alloc.rooms.map((r) => r.lead));
     const spare = latest.current.drafts.find((d) => fareTypeOn(draftToTraveler(d), item.usingDate) === 'ADULT'
@@ -723,7 +725,7 @@ export function useCheckout() {
 
   return {
     // dữ liệu
-    cart, items, email, currentPersona, authReady, earliest, facts,
+    cart, items, email, currentPersona, authReady, earliest, facts, partyCap,
     sourceKind: source.kind, sourceStatus: source.status, draftId: source.draftId, draftExpiresAt: source.expiresAt,
     expiredItems: source.expiredItems, leave,
     drafts, travelers, hasFlight, flightDates, isInfant, contactFullName, phone, syncContact, allocs, special, confirmRemove,

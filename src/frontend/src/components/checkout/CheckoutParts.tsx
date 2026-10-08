@@ -8,7 +8,7 @@ import type { Step, SummaryEntry } from './serverErrors';
 
 export const cardClass = 'bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4';
 export const inputClass = (invalid: boolean) =>
-  `w-full px-3 h-10 text-sm rounded-lg border outline-hidden focus:ring-2 focus:ring-blue-500 transition-colors ${
+  `w-full px-3 h-10 text-sm rounded-lg border outline-hidden focus:ring-2 focus:ring-brand-500 transition-colors ${
     invalid ? 'border-rose-400 bg-rose-50' : 'border-slate-300 bg-white'}`;
 
 export const SectionTitle: React.FC<{ title: string; extra?: React.ReactNode }> = ({ title, extra }) => (
@@ -49,7 +49,7 @@ export const Stepper: React.FC<{ ctl: CheckoutController }> = ({ ctl }) => {
           const dot = done ? (
             <span className="w-7 h-7 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0"><Check className="w-4 h-4" aria-hidden="true" /></span>
           ) : (
-            <span className={`w-7 h-7 rounded-full text-xs font-bold flex items-center justify-center shrink-0 ${isCurrent ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-500'}`}>{i + 1}</span>
+            <span className={`w-7 h-7 rounded-full text-xs font-bold flex items-center justify-center shrink-0 ${isCurrent ? 'bg-brand-600 text-white' : 'bg-slate-200 text-slate-500'}`}>{i + 1}</span>
           );
           const text = (
             <span className={`${isCurrent ? '' : 'sr-only lg:not-sr-only'} text-xs sm:text-sm whitespace-nowrap ${isCurrent ? 'font-bold text-slate-900' : done ? 'font-semibold text-slate-700' : 'text-slate-500'}`}>
@@ -92,7 +92,7 @@ export const ErrorSummaryBox: React.FC<{ entries: SummaryEntry[]; onJump: (targe
 };
 
 export const Notice: React.FC<{ tone?: 'info' | 'warn'; children: React.ReactNode }> = ({ tone = 'warn', children }) => (
-  <div role="status" className={`rounded-xl border px-4 py-3 text-sm flex items-start gap-2 ${tone === 'warn' ? 'border-amber-300 bg-amber-50 text-amber-900' : 'border-blue-100 bg-blue-50 text-blue-900'}`}>
+  <div role="status" className={`rounded-xl border px-4 py-3 text-sm flex items-start gap-2 ${tone === 'warn' ? 'border-amber-300 bg-amber-50 text-amber-900' : 'border-brand-100 bg-brand-50 text-brand-900'}`}>
     <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
     <span>{children}</span>
   </div>
@@ -103,7 +103,7 @@ export const CounterRow: React.FC<{
   label: string; hint: string; value: number; canDec: boolean; canInc: boolean; decLabel: string; incLabel: string;
   onDec: () => void; onInc: () => void; id?: string;
 }> = ({ label, hint, value, canDec, canInc, decLabel, incLabel, onDec, onInc, id }) => {
-  const button = 'w-9 h-9 rounded-full border border-slate-300 text-slate-700 flex items-center justify-center hover:border-blue-500 hover:text-blue-600 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-slate-300 disabled:hover:text-slate-700';
+  const button = 'w-9 h-9 rounded-full border border-slate-300 text-slate-700 flex items-center justify-center hover:border-brand-500 hover:text-brand-600 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-slate-300 disabled:hover:text-slate-700';
   return (
     <div className="flex items-center justify-between gap-4 py-3" id={id}>
       <div>
@@ -124,7 +124,7 @@ export const PrimaryButton: React.FC<{
 }> = ({ onClick, disabled, busy, children, full, type = 'button' }) => (
   <button
     type={type} onClick={onClick} disabled={disabled || Boolean(busy)}
-    className={`${full ? 'w-full' : 'px-6'} py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold text-sm rounded-xl shadow-md transition-colors inline-flex items-center justify-center gap-2`}
+    className={`${full ? 'w-full' : 'px-6'} py-3 bg-brand-600 hover:bg-brand-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold text-sm rounded-xl shadow-md transition-colors inline-flex items-center justify-center gap-2`}
   >
     {busy ? (<><Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /><span>{busy}</span></>) : children}
   </button>

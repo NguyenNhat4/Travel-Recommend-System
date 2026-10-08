@@ -2,7 +2,8 @@
  * Ngữ cảnh chuyến đi (ngày, số khách, số phòng) mang qua URL từ tấm tìm kiếm ở trang danh mục
  * tới `/search` rồi tới hộp đặt ở trang chi tiết (docs/plan/2026-09-29-ui-trang-danh-muc-va-header.md §6).
  *
- * Đây là ngữ cảnh điền sẵn, không phải bộ lọc phòng trống: Backend chưa lọc theo ngày. Giá trị sai bị bỏ im lặng.
+ * Ngữ cảnh này điền sẵn hộp đặt ở trang chi tiết, và ở trang danh mục còn là bộ lọc của kết quả (`travelContext`, contract 1.19.0).
+ * Giá trị sai bị bỏ im lặng.
  * Không đưa họ tên, token hay dữ liệu cá nhân vào URL.
  */
 
@@ -18,8 +19,13 @@ export interface TripContext {
 
 export const TRIP_PARAM_KEYS = ['checkIn', 'checkOut', 'adults', 'children', 'rooms'] as const;
 
-/** Đoàn tối đa 9 người mỗi mục (FR-BKG-08). */
+/** Tối đa 9 khách mỗi mục, và 9 khách mỗi phòng với khách sạn (FR-BKG-08). */
 export const MAX_PARTY_SIZE = 9;
+/** Tối đa 9 phòng mỗi lần đặt khách sạn (FR-BKG-08). */
+export const MAX_ROOMS = 9;
+
+/** Số khách tối đa của một lần đặt: 9 khách mỗi phòng (rooms = 1 với vé, golf, combo, chuyến bay). */
+export const maxGuestsFor = (rooms: number): number => MAX_PARTY_SIZE * Math.max(rooms, 1);
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const DAY_MS = 24 * 3600 * 1000;
@@ -55,15 +61,18 @@ export function parseTripContext(params: ParamSource, today: string = todayVN())
     const checkOut = validDate(params.get('checkOut'));
     if (checkOut && checkOut > checkIn) ctx.checkOut = checkOut;
   }
-  const adults = validInt(params.get('adults'), 1, MAX_PARTY_SIZE);
-  if (adults !== undefined) {
-    ctx.adults = adults;
-    const children = validInt(params.get('children'), 0, MAX_PARTY_SIZE - 1);
-    if (children !== undefined && adults + children <= MAX_PARTY_SIZE) ctx.children = children;
-  }
-  const rooms = validInt(params.get('rooms'), 1, MAX_PARTY_SIZE);
+  const adults = validInt(params.get('adults'), 1, maxGuestsFor(MAX_ROOMS));
+  const rooms = validInt(params.get('rooms'), 1, MAX_ROOMS);
   // Mỗi phòng ít nhất một người lớn (FR-BKG-08): số phòng vượt số người lớn là giá trị sai.
-  if (rooms !== undefined && (ctx.adults === undefined || rooms <= ctx.adults)) ctx.rooms = rooms;
+  const validRooms = rooms !== undefined && (adults === undefined || rooms <= adults) ? rooms : undefined;
+  // Không có số phòng hợp lệ thì trần là 9 khách; có thì 9 khách mỗi phòng.
+  const cap = maxGuestsFor(validRooms ?? 1);
+  if (adults !== undefined && adults <= cap) {
+    ctx.adults = adults;
+    const children = validInt(params.get('children'), 0, cap - 1);
+    if (children !== undefined && adults + children <= cap) ctx.children = children;
+  }
+  if (validRooms !== undefined) ctx.rooms = validRooms;
   return ctx;
 }
 

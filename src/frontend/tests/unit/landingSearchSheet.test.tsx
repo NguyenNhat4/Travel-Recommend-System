@@ -44,8 +44,8 @@ describe('LandingSearchSheet', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Tìm kiếm' }));
 
     const url = lastHref();
-    expect(url.pathname).toBe('/search');
-    expect(url.searchParams.get('type')).toBe('hotel');
+    expect(url.pathname).toBe('/hotels');
+    expect(url.searchParams.get('type')).toBeNull();
     expect(url.searchParams.get('q')).toBe('khách sạn');
     expect(url.searchParams.get('checkIn')).toBe(tomorrow());
     expect(url.searchParams.get('checkOut')).toBe(addDaysIso(tomorrow(), 1));
@@ -86,6 +86,36 @@ describe('LandingSearchSheet', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Tìm kiếm' }));
     expect(lastHref().searchParams.get('destination')).toBe('Phú Quốc');
     expect(lastHref().searchParams.get('q')).toBe('vé tham quan');
+  });
+
+  it('experiences: the golf tab searches /experiences with type=golf; combos go to /combos', () => {
+    const config = VERTICALS.experiences;
+    const { unmount } = render(<LandingSearchSheet config={config} tab={resolveTab(config, 'golf')} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Tìm kiếm' }));
+    expect(lastHref().pathname).toBe('/experiences');
+    expect(lastHref().searchParams.get('type')).toBe('golf');
+    expect(lastHref().searchParams.get('q')).toBe('sân golf');
+    unmount();
+
+    renderSheet('combos');
+    fireEvent.click(screen.getByRole('button', { name: 'Tìm kiếm' }));
+    expect(lastHref().pathname).toBe('/combos');
+    expect(lastHref().searchParams.get('type')).toBeNull();
+  });
+
+  it('prefills dates, party, rooms and free text from the search in the URL', () => {
+    renderSheet('hotels', {
+      initialText: 'resort yên tĩnh',
+      initialSearch: { origin: '', trip: { checkIn: '2026-10-20', checkOut: '2026-10-23', adults: 3, children: 1, rooms: 2 } },
+    });
+    expect((screen.getByRole('combobox') as HTMLInputElement).value).toBe('resort yên tĩnh');
+    expect(screen.getByText('2 phòng, 3 người lớn, 1 trẻ em')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Tìm kiếm' }));
+    const url = lastHref();
+    expect(url.searchParams.get('q')).toBe('resort yên tĩnh');
+    expect(url.searchParams.get('checkIn')).toBe('2026-10-20');
+    expect(url.searchParams.get('checkOut')).toBe('2026-10-23');
+    expect(url.searchParams.get('rooms')).toBe('2');
   });
 
   it('guests: never exceeds 9 people or more rooms than adults (FR-BKG-08)', () => {

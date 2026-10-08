@@ -65,7 +65,7 @@ export function AssistantText({ text, onProduct, plainIds }: {
         if (part.kind === 'text') return <React.Fragment key={index}>{part.text}</React.Fragment>;
         return onProduct && !plainIds?.has(part.productId) ? (
           <button key={index} type="button" onClick={() => onProduct(part.productId)}
-            className="inline text-left font-semibold text-blue-700 underline decoration-blue-300 underline-offset-2 hover:text-blue-900">
+            className="inline text-left font-semibold text-brand-700 underline decoration-brand-300 underline-offset-2 hover:text-brand-900">
             {part.text}
           </button>
         ) : <span key={index} className="font-semibold">{part.text}</span>;

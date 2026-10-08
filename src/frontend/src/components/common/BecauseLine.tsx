@@ -32,7 +32,7 @@ export const BecauseLine: React.FC<BecauseLineProps> = ({
       case 'purchase':
         return <Luggage className="w-3.5 h-3.5 text-emerald-600 shrink-0" />;
       case 'add_to_cart':
-        return <ShoppingBag className="w-3.5 h-3.5 text-blue-600 shrink-0" />;
+        return <ShoppingBag className="w-3.5 h-3.5 text-brand-600 shrink-0" />;
       case 'product_view':
         return <Eye className="w-3.5 h-3.5 text-amber-600 shrink-0" />;
       case 'search':
@@ -75,7 +75,7 @@ export const BecauseLine: React.FC<BecauseLineProps> = ({
   return (
     <>
       <div 
-        className={`inline-flex items-center gap-1.5 text-xs text-slate-600 hover:text-blue-700 cursor-pointer transition-colors py-0.5 group ${className}`}
+        className={`inline-flex items-center gap-1.5 text-xs text-slate-600 hover:text-brand-700 cursor-pointer transition-colors py-0.5 group ${className}`}
         onClick={(e) => {
           e.stopPropagation();
           setShowPopover(true);
@@ -84,12 +84,12 @@ export const BecauseLine: React.FC<BecauseLineProps> = ({
       >
         {renderEventIcon(primary.event)}
         <span className="truncate">
-          Vì bạn {getVerb(primary.event)} <strong className="font-medium text-slate-800 group-hover:text-blue-800">{truncatedSource}</strong> · {formatDaysAgo(primary.daysAgo)}
+          Vì bạn {getVerb(primary.event)} <strong className="font-medium text-slate-800 group-hover:text-brand-800">{truncatedSource}</strong> · {formatDaysAgo(primary.daysAgo)}
           {countOther > 0 && (
             <span className="text-slate-400 font-normal ml-1">và {countOther} lý do khác</span>
           )}
         </span>
-        <span className="text-[10px] text-blue-600 underline font-medium ml-0.5 shrink-0 opacity-80 group-hover:opacity-100">
+        <span className="text-[10px] text-brand-600 underline font-medium ml-0.5 shrink-0 opacity-80 group-hover:opacity-100">
           [Vì sao?]
         </span>
       </div>

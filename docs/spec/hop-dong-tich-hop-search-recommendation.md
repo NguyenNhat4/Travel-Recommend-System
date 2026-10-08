@@ -318,7 +318,8 @@ chạy offline trong test).
 | **Soft** | `starRatingMin` | 51% | Thiếu dữ liệu **không bị loại**, chỉ xếp sau |
 | **Hard** suy từ câu (05/10, sau cờ, §2.2 QUERY PLAN) | `taxonomy` (F4), `origin` / `destinationCity` tuyến bay (F5), `mustNotAmenities` (F3), `priceMin/priceMax` (F6) | taxonomy 100 % · tuyến 100 % · amenities 99 % property · giá 100 % | Loại thẳng; `mustNot` chỉ loại unit **có ghi nhận** tiện ích, không cam kết "chắc chắn không có" ([C2]); giá null bị loại khi có lọc giá |
 | **Soft** suy từ câu (05/10) | `starRatingMin` (F6) | 70 % property | Unit khai sao thấp hơn bị loại; không khai → giữ, xếp sau |
-| **Hard** số khách (06/10) | `minOccupancy` — `travelContext.guests` (luôn áp) hoặc "N người" (cờ `SEARCH_PARTY_FILTER`) | sức chứa biết ở 1.807/2.321 khách sạn | Loại unit có sức chứa tối đa < tổng; không khai → giữ ([C2]); cùng lọc giá → một phòng con phải thoả cả hai |
+| **Hard** số khách (06/10) | `minOccupancy` — `travelContext.guests` (luôn áp) hoặc "N người" (cờ `SEARCH_PARTY_FILTER`) | sức chứa biết ở 1.807/2.321 khách sạn | Loại unit có sức chứa tối đa < tổng; không khai → giữ ([C2]); cùng lọc giá hoặc ngày → MỘT phòng con đang bán phải thoả đồng thời tất cả (1.19.0, kiểm ngay ở mask) |
+| **Hard** ngày (07/10, contract 1.19.0) | `travelContext.checkIn` / `checkOut` (luôn áp, chỉ từ request; `domain/catalog/stay_dates.py`, `UnitIndex._stay_mask`) | khách sạn: lịch có ở mọi hạng phòng; vé tham quan / golf: lịch + cửa sổ; combo: cửa sổ | Khách sạn: nhận trong [hôm nay, +3 tháng], 1–30 đêm, và còn ≥ 1 hạng phòng đang bán (`available` + có giá) không có đêm kín (`0`) trong [checkIn, checkOut), cùng phòng đó phải thoả số khách và giá đang áp; vé / golf: `checkIn` trong cửa sổ mở bán và ngày đó không kín; combo: `checkIn` trong cửa sổ; route bay: không lọc. Không biết (không lịch, đêm ngoài 30 ngày lịch, không cửa sổ) → giữ ([C2]). Lịch KHÔNG chặn đặt chỗ (FR-CAT-03) |
 | **Hard** loại trừ suy từ câu (06/10, F3) | `mustNotTaxonomies` ("vé lẻ", "không lấy combo"), `mustNotFlags` (`includesFlight` / `includesHotel` của combo) | taxonomy 100 % · cờ combo 39/39 combo vé+phòng | Loại thẳng; không loại chính loại câu đang hỏi |
 
 Response echo `appliedFilters.hard` và `.soft`. Agent **phải đọc** khối này: nếu
@@ -355,7 +356,7 @@ Chỉ hiển thị `score` cho khách ở chế độ debug.
 | Từ | Không được kết luận |
 |---|---|
 | `score: 0.81` | "81% phù hợp" |
-| `available: true` | "còn phòng ngày 15/10" — đó là `bookable` |
+| `available: true` | "còn phòng ngày 15/10" — đó là `bookable`. Có `travelContext.checkIn` thì kết quả đã qua bộ lọc ngày (§2.5) nhưng vẫn là snapshot lịch, không phải xác nhận còn phòng |
 | `because[]` | Bằng chứng nhân quả. Đó là đóng góp vào điểm số, không phải lý do khách mua |
 | `total: 87` | Kích thước catalog. Đó là `|R|` sau filter và cutoff |
 | Thuộc tính vắng mặt | `false`. Vắng mặt nghĩa là **không biết** — xem `[C2]` |

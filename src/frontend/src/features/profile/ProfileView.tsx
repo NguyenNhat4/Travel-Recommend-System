@@ -10,9 +10,9 @@ import {
   type PasswordErrors, type PasswordForm, type ProfileForm,
 } from './profileModel';
 
-const INPUT = 'min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 hover:border-slate-500 focus-visible:border-blue-600 focus-visible:outline-2 focus-visible:outline-blue-300 aria-[invalid=true]:border-rose-600 read-only:cursor-not-allowed read-only:border-slate-200 read-only:bg-slate-100 read-only:text-slate-500';
-const BTN_PRIMARY = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-blue-600 px-5 text-[13px] font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-45';
-const BTN_SECONDARY = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-5 text-[13px] font-semibold text-slate-800 hover:border-blue-600 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-45';
+const INPUT = 'min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 hover:border-slate-500 focus-visible:border-brand-600 focus-visible:outline-2 focus-visible:outline-brand-300 aria-[invalid=true]:border-rose-600 read-only:cursor-not-allowed read-only:border-slate-200 read-only:bg-slate-100 read-only:text-slate-500';
+const BTN_PRIMARY = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-brand-600 px-5 text-[13px] font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-45';
+const BTN_SECONDARY = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-5 text-[13px] font-semibold text-slate-800 hover:border-brand-600 hover:text-brand-700 disabled:cursor-not-allowed disabled:opacity-45';
 
 const Card: React.FC<{ id: string; title: string; children: React.ReactNode }> = ({ id, title, children }) => (
   <section aria-labelledby={id} className="rounded-2xl border border-slate-200 bg-white">
@@ -164,7 +164,7 @@ export const ProfileView: React.FC = () => {
         />
         <button
           type="button" onClick={() => setReveal((r) => ({ ...r, [key]: !r[key] }))} aria-pressed={Boolean(reveal[key])}
-          className="absolute right-1 top-1/2 min-h-9 -translate-y-1/2 rounded-lg px-3 text-xs font-semibold text-blue-700 hover:bg-blue-50"
+          className="absolute right-1 top-1/2 min-h-9 -translate-y-1/2 rounded-lg px-3 text-xs font-semibold text-brand-700 hover:bg-brand-50"
         >
           {reveal[key] ? 'Ẩn' : 'Hiện'}<span className="sr-only"> {label.toLowerCase()}</span>
         </button>

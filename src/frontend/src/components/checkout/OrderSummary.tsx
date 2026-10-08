@@ -35,7 +35,7 @@ const SummaryBody: React.FC<{ ctl: CheckoutController }> = ({ ctl }) => {
       <div className="flex items-center justify-between border-b border-slate-100 pb-3">
         <h3 className="text-sm font-bold text-slate-900">Đơn của bạn ({ctl.items.length} dịch vụ)</h3>
         {ctl.sourceKind === 'cart' && (
-          <button type="button" onClick={() => ctl.navigate('/cart')} className="text-xs text-blue-600 hover:underline inline-flex items-center gap-1">
+          <button type="button" onClick={() => ctl.navigate('/cart')} className="text-xs text-brand-600 hover:underline inline-flex items-center gap-1">
             <PenLine className="w-3 h-3" aria-hidden="true" />Sửa giỏ hàng
           </button>
         )}
@@ -60,7 +60,7 @@ const SummaryBody: React.FC<{ ctl: CheckoutController }> = ({ ctl }) => {
       </div>
       <div className="pt-3 border-t border-slate-200 flex justify-between items-baseline gap-3">
         <span className="text-sm font-bold text-slate-900">Tổng thanh toán</span>
-        {ctl.anyPending ? <Skeleton width={110} /> : <span className="text-lg font-extrabold text-blue-900 tabular-nums" data-testid="summary-total">{formatVnd(ctl.cart.total)}</span>}
+        {ctl.anyPending ? <Skeleton width={110} /> : <span className="text-lg font-extrabold text-brand-900 tabular-nums" data-testid="summary-total">{formatVnd(ctl.cart.total)}</span>}
       </div>
       {/* Đặt ngay chép tour, trải nghiệm, tiện ích vào giỏ (R-CPY): nói trước để khách biết chúng còn đó nếu chưa thanh toán xong. */}
       {ctl.sourceKind === 'draft' && ctl.items.some((item) => isCartEligible(item.product.taxonomy)) && (
@@ -88,7 +88,7 @@ export const MobileBar: React.FC<{ ctl: CheckoutController }> = ({ ctl }) => {
       <div className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t border-slate-200 shadow-[0_-6px_20px_-8px_rgba(15,23,42,0.18)] px-4 pt-3 pb-3 space-y-2.5" data-testid="mobile-bar">
         <button type="button" onClick={() => setOpen(true)} aria-label="Xem tóm tắt đơn" className="w-full flex items-center justify-between gap-3 text-left">
           <span className="text-xs font-semibold text-slate-600 flex items-center gap-1.5"><Users className="w-3.5 h-3.5" aria-hidden="true" />{partyText(ctl.drafts)}</span>
-          <span className="flex items-center gap-1 text-base font-extrabold text-blue-900 tabular-nums">
+          <span className="flex items-center gap-1 text-base font-extrabold text-brand-900 tabular-nums">
             {ctl.anyPending ? <Skeleton width={100} /> : formatVnd(ctl.cart.total)}<ChevronUp className="w-4 h-4 text-slate-500" aria-hidden="true" />
           </span>
         </button>

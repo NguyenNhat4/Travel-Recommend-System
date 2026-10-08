@@ -20,12 +20,12 @@ function ItemActions({ actions }: { actions: ReturnType<FloatingWidgetController
     <div className="flex items-center justify-end gap-2 pt-1" data-testid="itinerary-item-actions">
       {actions.canAddToCart && (
         <button type="button" onClick={stop(actions.addToCart)}
-          className="min-h-11 px-3 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 text-xs font-bold hover:bg-blue-100 transition-colors">
+          className="min-h-11 px-3 rounded-xl border border-brand-200 bg-brand-50 text-brand-700 text-xs font-bold hover:bg-brand-100 transition-colors">
           Thêm vào giỏ
         </button>
       )}
       <button type="button" onClick={stop(actions.bookNow)}
-        className="min-h-11 px-4 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition-colors">
+        className="min-h-11 px-4 rounded-xl bg-brand-600 text-white text-xs font-bold hover:bg-brand-700 transition-colors">
         Đặt ngay
       </button>
     </div>
@@ -109,7 +109,7 @@ export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
     card?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [focusedProductId, activeDayTab, activePlan]);
   if (!activePlan) return null;
-  const focusRing = (productId?: string) => (productId && productId === focusedProductId ? ' ring-2 ring-blue-500' : '');
+  const focusRing = (productId?: string) => (productId && productId === focusedProductId ? ' ring-2 ring-brand-500' : '');
   return (
 <div ref={listRef} className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain bg-slate-50/70 p-5">
   {/* Render Days (Tất cả các ngày hoặc ngày đang chọn) */}
@@ -139,19 +139,19 @@ export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
         <div key={dayItem.day} className="space-y-4 pt-1">
           {/* Day Header Badge */}
           <div className="flex items-center pt-1">
-            <span className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-800">
+            <span className="rounded-lg border border-brand-100 bg-brand-50 px-3 py-1.5 text-sm font-semibold text-brand-800">
               Ngày {dayItem.day}
             </span>
           </div>
 
           {/* Vertical Timeline Track */}
-          <div className="relative pl-6 sm:pl-7 border-l-2 border-dashed border-blue-200 ml-3.5 sm:ml-4 space-y-4 my-2">
+          <div className="relative pl-6 sm:pl-7 border-l-2 border-dashed border-brand-200 ml-3.5 sm:ml-4 space-y-4 my-2">
             {flightsBefore.map(renderFlight)}
             {/* Khách sạn lưu trú trong lộ trình ngày: ảnh, tag và ghi chú chỉ lấy từ dữ liệu sản phẩm thật */}
             {stayForThisDay?.product && (
               <div className="relative group">
                 {/* Timeline Step Node với Icon Khách Sạn */}
-                <div className="absolute -left-[31px] sm:-left-[35px] top-3.5 w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-blue-600 text-white border-2 border-white shadow-xs flex items-center justify-center z-10">
+                <div className="absolute -left-[31px] sm:-left-[35px] top-3.5 w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-brand-600 text-white border-2 border-white shadow-xs flex items-center justify-center z-10">
                   <Hotel className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                 </div>
 
@@ -176,8 +176,8 @@ export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
                 >
                   {/* Row 1: Header / Giá phòng */}
                   <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100">
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 text-xs font-semibold">
-                      <Hotel className="w-3.5 h-3.5 text-blue-600" />
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-brand-50 text-brand-700 text-xs font-semibold">
+                      <Hotel className="w-3.5 h-3.5 text-brand-600" />
                       Khách sạn lưu trú {'dayRange' in stayForThisDay && stayForThisDay.dayRange ? `(${stayForThisDay.dayRange})` : ''}
                     </span>
                     <span className="text-sm font-semibold text-slate-900 tabular-nums">
@@ -242,7 +242,7 @@ export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
               return (
                 <div key={sIdx} className="relative">
                   {/* Timeline Step Node */}
-                  <div className="absolute -left-[31px] sm:-left-[35px] top-3.5 w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-blue-600 text-white border-2 border-white shadow-xs flex items-center justify-center text-[11px] sm:text-xs font-black z-10">
+                  <div className="absolute -left-[31px] sm:-left-[35px] top-3.5 w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-brand-600 text-white border-2 border-white shadow-xs flex items-center justify-center text-[11px] sm:text-xs font-black z-10">
                     {stepNumber}
                   </div>
 
@@ -270,8 +270,8 @@ export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
                     {/* Row 1: Buổi + Phân loại dịch vụ + Địa điểm */}
                     <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100 flex-wrap">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-blue-50 text-blue-700 text-xs font-bold">
-                          <Clock className="w-3.5 h-3.5 text-blue-600" />
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-brand-50 text-brand-700 text-xs font-bold">
+                          <Clock className="w-3.5 h-3.5 text-brand-600" />
                           {slotPeriod}
                         </span>
                         {slot.product && (

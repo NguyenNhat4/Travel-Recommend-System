@@ -79,7 +79,7 @@ Seed / job ── X-Service-Token ───────────────�
 | `product_view` | `POST /api/v1/events` | `productId` có trong catalog | Nền | Bỏ event, ghi log; Web vẫn nhận `202` |
 | `search` | `POST /api/v1/search` | Có JWT, `offset = 0`, `query` không rỗng | Nền | Bỏ event, ghi log; response search không đổi |
 | `add_to_cart` | `POST /api/v1/cart/items` | Sau khi thêm giỏ thành công (người đã đăng nhập) | Nền | Bỏ event, ghi log; response giỏ không đổi |
-| `add_to_cart` | `POST /api/v1/booking-drafts` (Đặt ngay, "Thanh toán tất cả", đặt lại đơn) | Một event cho mỗi mục được nhận vào đơn nháp, kể cả khách sạn và vé máy bay (người đã đăng nhập) | Nền | Như trên |
+| `add_to_cart` | `POST /api/v1/booking-drafts` (Đặt ngay, đặt lại đơn) | Một event cho mỗi mục được nhận vào đơn nháp, kể cả khách sạn và vé máy bay (người đã đăng nhập) | Nền | Như trên |
 | `add_to_cart` | `POST /api/v1/guest-bookings/merge` | Khi gộp giỏ và đơn nháp của khách vào tài khoản: chỉ mục **thực sự được chép sang**; mục trùng với giỏ tài khoản không ghi | Nền | Như trên |
 | `purchase` | `POST /api/v1/bookings` | Trước khi commit booking | Đồng bộ | Không tạo booking, trả `500 INTERNAL_ERROR` `retryable: true` |
 

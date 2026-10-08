@@ -23,7 +23,8 @@ GuestCounts:
   type: object
   description: >-
     Số người lớn và số trẻ em của một mục giỏ, tính theo loại giá tại ngày sử dụng của mục (trẻ em đã tròn 12 tuổi tính là
-    người lớn). Không chứa tên. Tối đa 9 khách mỗi mục.
+    người lớn). Không chứa tên. Tối đa 9 khách mỗi mục; khách sạn tối đa 9 khách mỗi phòng và 9 phòng mỗi mục (tổng cao nhất
+    81 khách), nên maximum của adults và children là trần chung, luật theo loại dịch vụ do Backend kiểm.
   required:
   - adults
   - children
@@ -31,11 +32,11 @@ GuestCounts:
     adults:
       type: integer
       minimum: 1
-      maximum: 9
+      maximum: 81
     children:
       type: integer
       minimum: 0
-      maximum: 8
+      maximum: 80
 FareLine:
   type: object
   description: Một loại giá trong một dịch vụ. Thành tiền của mục bằng tổng amount các dòng giá của mục.
@@ -225,7 +226,7 @@ AddCartItemRequest:
   type: object
   description: >-
     Thêm trùng productId và usingDate thì cộng dồn quantity và guests; kết quả sau khi cộng vẫn phải đạt luật (tối đa 9 khách,
-    mỗi phòng một người lớn, không vượt maxOccupancy). Không gửi guests (client cũ): khách sạn và dịch vụ tính theo người mặc
+    khách sạn tối đa 9 khách mỗi phòng và 9 phòng, mỗi phòng một người lớn, không vượt maxOccupancy). Không gửi guests (client cũ): khách sạn và dịch vụ tính theo người mặc
     định mỗi phòng/vé một người lớn; combo mặc định 1 người lớn.
   required:
   - productId

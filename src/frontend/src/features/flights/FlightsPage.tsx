@@ -29,7 +29,7 @@ export function missingFlightInput(input: FlightSearchInput): string | null {
 export const FlightSearchPrompt: React.FC<{ notice: string | null }> = ({ notice }) => (
   <section aria-label="Kết quả vé máy bay" className="relative z-10 -mt-8 rounded-t-4xl bg-white px-4 pb-8 pt-8 sm:px-6 lg:px-8">
     <div className="mx-auto flex max-w-3xl flex-col items-center gap-3 rounded-[20px] border border-slate-200 bg-slate-50 px-6 py-10 text-center">
-      <span className="grid h-12 w-12 place-items-center rounded-full bg-blue-100 text-blue-700"><PlaneTakeoff className="h-6 w-6" aria-hidden="true" /></span>
+      <span className="grid h-12 w-12 place-items-center rounded-full bg-brand-100 text-brand-700"><PlaneTakeoff className="h-6 w-6" aria-hidden="true" /></span>
       <h2 className="font-display text-xl text-slate-900">Nhập chuyến đi để xem chuyến bay</h2>
       <p className="max-w-lg text-sm text-slate-600">
         Điền điểm đi, điểm đến và ngày bay ở ô tìm kiếm phía trên rồi bấm Tìm kiếm. Chuyến bay còn mở bán sẽ hiện ngay tại đây.
