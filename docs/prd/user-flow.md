@@ -31,10 +31,10 @@ Hệ thống được tối ưu hóa cho 4 luồng trải nghiệm chính tươn
 | Tuyến đường (Route) | Tên màn hình | Mục đích chính | Thành phần cốt lõi |
 |---|---|---|---|
 | `/` | **Trang chủ (Home)** | Khám phá ban đầu, tìm kiếm nhanh, khối gợi ý cá nhân hóa | Hero Search Bar (gợi ý tức thì khi gõ), Category Nav, Personalized Carousels, Trending Destinations |
-| `/hotels` | **Khách sạn & resort** | Duyệt và bắt đầu tìm khách sạn theo điểm đến, ngày, số phòng và số khách | Hero, Search Sheet, Product Shelves (phổ biến, giá tốt), Destination Tiles |
+| `/hotels` | **Khách sạn & resort** | Duyệt và tìm khách sạn theo điểm đến, ngày, số phòng và số khách; kết quả hiện ngay dưới tấm tìm kiếm | Hero, Search Sheet, Kết quả tìm kiếm (Filter Sidebar hạng sao và giá, Sort popup, Product Row Cards, Xem thêm) khi đã tìm; chưa tìm thì Product Shelves (phổ biến, giá tốt), Destination Tiles |
 | `/flights` | **Vé máy bay** | Tìm vé theo điểm đi, điểm đến, ngày, hành khách và chọn chuyến bay ngay tại trang; chưa nhập đủ thì trang nhắc nhập | Hero, Search Sheet, Kết quả chuyến bay (Filter Sidebar, Date Strip, Sort popup, Flight Cards, Vé của tôi) hoặc lời nhắc nhập, Destination Tiles |
-| `/experiences` | **Tour và trải nghiệm** | Duyệt vé tham quan, vui chơi và sân golf (`?type=attraction\|golf`) | Hero, Search Sheet, Tab loại, Product Shelves, Destination Tiles |
-| `/combos` | **Combo du lịch** | Duyệt gói kết hợp | Hero, Search Sheet, Product Shelves, Destination Tiles |
+| `/experiences` | **Tour và trải nghiệm** | Duyệt và tìm vé tham quan, vui chơi và sân golf (`?type=attraction\|golf`); kết quả hiện ngay dưới tấm tìm kiếm, chỉ trong tab đang chọn | Hero, Search Sheet, Tab loại, Kết quả tìm kiếm (Sort popup, Product Row Cards, Xem thêm) khi đã tìm; chưa tìm thì Product Shelves, Destination Tiles |
+| `/combos` | **Combo du lịch** | Duyệt và tìm gói kết hợp; kết quả hiện ngay dưới tấm tìm kiếm | Hero, Search Sheet, Kết quả tìm kiếm (Sort popup, Product Row Cards, Xem thêm) khi đã tìm; chưa tìm thì Product Shelves, Destination Tiles |
 | `/search` | **Kết quả tìm kiếm** | Hiển thị kết quả tìm kiếm ngữ nghĩa và bộ lọc đa chiều | Query Header, ô tìm kiếm có gợi ý tức thì, Tab nhóm (Tất cả · Lưu trú · Tour và trải nghiệm · Tiện ích khác), Hàng cuộn ngang theo nhóm (tab Tất cả), Filter Sidebar (chỉ Lưu trú), Sort popup (mọi tab trừ Tất cả), Product Row Cards, Xem thêm |
 | `/products/:id` | **Chi tiết sản phẩm** | Thông tin đầy đủ về phòng, vé, tour; trạng thái khả dụng | Image Gallery, Attribute Badges, Availability Calendar, Pricing, Book-now CTA; Add-to-Cart CTA (chỉ tour, trải nghiệm, tiện ích khác) |
 | `/checkout` (từ giỏ), `/checkout?draft=<mã đơn nháp>` (từ Đặt ngay) | **Thanh toán / Đặt chỗ** | Ba bước: khai đoàn khách và người liên hệ; chọn ai dùng từng dịch vụ (khách sạn xếp phòng); xem lại, chọn phương thức, bấm Thanh toán để chuyển sang trang Stripe | Stepper, Party Counter, Traveler Forms, Service Allocation Cards, Order Summary (sticky; bottom bar trên mobile), Payment Method Selector, Pay CTA |
@@ -60,6 +60,9 @@ flowchart TD
     D --> F[Hợp nhất kết quả & Reranking]
     E --> F
     F --> G[Hiển thị trang /search]
+    L[Người dùng ở trang danh mục: /hotels, /experiences, /combos] --> M[Nhập điểm đến, ngày, số khách rồi bấm Tìm]
+    M --> N[Kết quả hiện ngay tại trang đó, cùng URL thêm ?q=]
+    N --> J
     G --> H[Người dùng tinh chỉnh bộ lọc: Giá, Sao, Vị trí]
     H --> I[Cập nhật kết quả tức thì]
     I --> J[Chọn sản phẩm -> Mở /products/:id]
