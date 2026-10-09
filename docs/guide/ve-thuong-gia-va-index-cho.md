@@ -1,6 +1,6 @@
 # Vé thương gia thật và index đang chờ quota
 
-Phục vụ FR-CAT-01, FR-CAT-03, FR-SRC-02 và NFR-REL-01. Giữ Cohere `embed-multilingual-v3.0` và Weaviate `Product`; không đổi model hoặc schema.
+Phục vụ FR-CAT-01, FR-CAT-03, FR-SRC-02 và NFR-REL-01. Lúc viết (30/09/2026) task giữ Cohere `embed-multilingual-v3.0` và Weaviate `Product`, không đổi model hoặc schema. Từ 06/10/2026 (FR-SRC-02) bước index dùng model local `intfloat/multilingual-e5-small` (384 chiều, collection `ProductE5`); Cohere chỉ còn là đường lui (`EMBED_PROVIDER=cohere` + `WEAVIATE_COLLECTION=Product`).
 
 ## Cào cùng luồng hiện có
 
@@ -51,7 +51,9 @@ cd src && CLOUD_SEED_DATABASE_URL=<dsn> python -m data_collection.seed.simulated
 
 Tắt hẳn: `SIMULATED_BUSINESS_FARES=0` trong env của job. Chỉ chạy `--disable` mà env chưa tắt thì lượt nạp sau bật lại.
 
-## Khi Agoda timeout hoặc Cohere 429
+## Khi Agoda timeout hoặc index bị 429 (Cohere)
+
+Với model local mặc định, bước index không gọi API ngoài nên không có 429/quota; phần về 429 dưới đây chỉ áp khi chạy đường lui `EMBED_PROVIDER=cohere`.
 
 Nguồn timeout được giữ cảnh báo và checkpoint; các nguồn độc lập tiếp tục. Nếu catalog hợp lệ đã commit, `fresh_catalog` trả `exit=0`, report vẫn `status=partial` và có `incompleteSources`. Lỗi kiểm tra dữ liệu, DB hoặc lỗi index khác 429 vẫn là lỗi thực sự; không chuyển toàn bộ lỗi thành thành công.
 

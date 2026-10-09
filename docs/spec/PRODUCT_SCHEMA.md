@@ -19,9 +19,9 @@ Tài liệu này là **schema quan hệ trong PostgreSQL của V-OTA**; `SCHEMA.
 |---|---|---|---|
 | **`cdp`** (contract) | `products` (13 trường + attributes); sau này `profiles`, `events`, `users`, `bookings` | Loader, từ `products.jsonl` | `CdpClient` (role `cdp_reader`, chỉ USAGE trên `cdp`); Search dùng cột để lọc |
 | **`catalog`** (riêng V-OTA) | view `product_meta`, bảng `combo_items`, view `product_parents`, view `search_rows` | Loader (`combo_items`) | Backend V-OTA (role `vota_app`), Search, Recsys |
-| **Weaviate** (dịch vụ riêng) | collection `Product`: vector 1024 chiều + `productId`, `modelVersion`, `textHash` | job `embed_products`: text builder → Cohere → Weaviate | Search, Recsys |
+| **Weaviate** (dịch vụ riêng) | collection `ProductE5`: vector 384 chiều + `productId`, `modelVersion`, `textHash` (đường lui Cohere: collection `Product`, 1024 chiều) | job `embed_products`: text builder → model local `intfloat/multilingual-e5-small` (Cohere khi `EMBED_PROVIDER=cohere`) → Weaviate | Search, Recsys |
 
-Handbook gọi PostgreSQL này là "CDP clone" vì nó chứa cả bảng mirror CDP lẫn bảng demo-only; ranh giới thật nằm ở cấp schema. Khi lên CDP production, adapter `CdpClient` và job đồng bộ collection `Product` nối hai phía qua `productId`; Weaviate không giữ field hiển thị và không có FK sang PostgreSQL.
+Handbook gọi PostgreSQL này là "CDP clone" vì nó chứa cả bảng mirror CDP lẫn bảng demo-only; ranh giới thật nằm ở cấp schema. Khi lên CDP production, adapter `CdpClient` và job đồng bộ collection `ProductE5` nối hai phía qua `productId`; Weaviate không giữ field hiển thị và không có FK sang PostgreSQL.
 
 ## 3. ERD
 
@@ -68,7 +68,7 @@ erDiagram
     weaviate_product {
         uuid object_id PK "Weaviate UUID xác định từ productId"
         uuid product_id "khóa nối logic, chỉ is_search_unit = true"
-        vector embedding "1024 chiều · Cohere embed-multilingual-v3.0"
+        vector embedding "384 chiều · intfloat/multilingual-e5-small (đường lui: 1024 chiều Cohere)"
         text model_version "model + phiên bản text builder"
         text text_hash "chỉ re-embed khi đổi"
     }
@@ -87,7 +87,7 @@ erDiagram
     products ||--o{ events : "product_id"
 ```
 
-Bốn quan hệ logic: `products` ↔ `product_meta` (1:1, view); `products` → Weaviate `Product` (0..1, chỉ search unit, không FK); `products` (combo) → `combo_items` (1:N); `combo_items` → `products` (thành phần, 0..1 vì có thể chưa map). Cha–con hạng phòng → khách sạn, chuyến → tuyến đi qua `attributes.parentProductId`, có index biểu thức và view `product_parents`. `events` vẽ để thấy khoá nối cho Recsys; thiết kế `events`/`bookings` nằm ngoài tài liệu này.
+Bốn quan hệ logic: `products` ↔ `product_meta` (1:1, view); `products` → Weaviate `ProductE5` (0..1, chỉ search unit, không FK); `products` (combo) → `combo_items` (1:N); `combo_items` → `products` (thành phần, 0..1 vì có thể chưa map). Cha–con hạng phòng → khách sạn, chuyến → tuyến đi qua `attributes.parentProductId`, có index biểu thức và view `product_parents`. `events` vẽ để thấy khoá nối cho Recsys; thiết kế `events`/`bookings` nằm ngoài tài liệu này.
 
 ## 4. Vai trò sản phẩm: `variant`, `is_bookable`, `is_search_unit`
 
@@ -123,7 +123,7 @@ Property và route là nơi chứa sản phẩm, không phải thứ khách tr�
 | `catalog.combo_items` | position 1 · "2 đêm phòng Deluxe Ocean View" · item_kind `hotel` · item_product_id = *hạng phòng R…* · quantity 2 · unit `đêm` |
 | `catalog.combo_items` | position 2 · "Vé VinWonders 1 ngày" · item_kind `attraction` · item_product_id = *vé VW00466* · quantity 1 · unit `vé` |
 | `catalog.combo_items` | position 3 · "Buffet sáng" · item_kind `meal` · item_product_id `NULL` · quantity 2 · unit `suất` |
-| Weaviate `Product` | `productId = C…`; vector của text "Combo 3N2Đ … Nha Trang. Gồm: 2 đêm phòng Deluxe Ocean View, vé VinWonders 1 ngày, buffet sáng. <description>"; kèm `modelVersion`, `textHash` |
+| Weaviate `ProductE5` | `productId = C…`; vector của text "Combo 3N2Đ … Nha Trang. Gồm: 2 đêm phòng Deluxe Ocean View, vé VinWonders 1 ngày, buffet sáng. <description>"; kèm `modelVersion`, `textHash` |
 
 ### Quy tắc
 
@@ -147,7 +147,7 @@ AND    item_kind IN ('hotel','flight','attraction','golf');   -- {attraction, ho
 | `products` | cdp | bảng | Catalog CDP, đúng 13 trường, mọi taxonomy; `attributes` JSONB giữ mọi thuộc tính theo loại | PK `product_id` · UNIQUE `source_ref` · UNIQUE `(product_id, taxonomy)` · index cột: taxonomy, (destination, taxonomy), available; GIN attributes; index biểu thức: level, parentProductId, province, starRating |
 | `product_meta` | catalog | view | variant, is_bookable, is_search_unit, parent_product_id, toạ độ, province, sao, review — suy từ products. Nơi duy nhất định nghĩa hai cờ | — |
 | `combo_items` | catalog | bảng | Thành phần combo, có thứ tự, số lượng, đơn vị; link tuỳ chọn sang sản phẩm thật | PK `(combo_product_id, position)` · FK combo → products (…, 'combo') · FK `(item_product_id, item_kind)` → products |
-| `Product` | Weaviate | collection | Vector 1024 chiều + `productId`, `modelVersion`, `textHash`; HNSW cosine, `vectorizer: none`; chỉ nạp search unit | UUID xác định từ `productId`; nối logic, không FK |
+| `ProductE5` | Weaviate | collection | Vector 384 chiều (`intfloat/multilingual-e5-small`) + `productId`, `modelVersion`, `textHash`; HNSW cosine, `vectorizer: none`; chỉ nạp search unit. Collection `Product` (1024 chiều, Cohere) chỉ giữ cho đường lui | UUID xác định từ `productId`; nối logic, không FK |
 | `product_parents` | catalog | view | Cặp (con, cha) — roll-up event phòng → khách sạn, chuyến → tuyến | — |
 | `search_rows` | catalog | view | Dòng phẳng 13 trường + meta cho Search, không JSON | — |
 
@@ -180,7 +180,7 @@ Không tách cột nên câu hỏi là "khoá này truy vấn bằng gì": cột
 
 ## 8. Search & Recsys dùng catalog thế nào
 
-**Cái gì được index.** Chỉ dòng `is_search_unit = true` vào collection `Product` của Weaviate: property, route, attraction, combo, golf — snapshot 11.387 sản phẩm hiện có 3.183 search unit. Phòng và chuyến bay hiện ở trang cha; khi tính user vector từ event mua phòng/chuyến, map con → cha qua `product_parents` rồi lấy vector của cha.
+**Cái gì được index.** Chỉ dòng `is_search_unit = true` vào collection `ProductE5` của Weaviate: property, route, attraction, combo, golf — snapshot 11.387 sản phẩm hiện có 3.183 search unit. Phòng và chuyến bay hiện ở trang cha; khi tính user vector từ event mua phòng/chuyến, map con → cha qua `product_parents` rồi lấy vector của cha.
 
 **Text builder theo variant** — mỗi biến thể một công thức; dùng hay bỏ mô tả tự sinh (`description_is_derived`) là quyết định của Search, ghi vào `model_version`.
 
@@ -192,7 +192,7 @@ Không tách cột nên câu hỏi là "khoá này truy vấn bằng gì": cột
 | `combo` | name · destination · "N đêm" · **label của mọi combo_items** · description |
 | `golf` | name · venue · destination · description |
 
-**Ba luồng truy xuất.** Search embed câu hỏi bằng Cohere `input_type=search_query`, lấy ứng viên HNSW cosine từ Weaviate rồi hydrate card theo `productId` từ PostgreSQL. Similar lấy vector của search unit (phòng/chuyến resolve về cha) và hỏi near-vector. Recommendation dựng user vector từ event CDP, loại taxonomy đã mua rồi xếp hạng/MMR trên ứng viên. Weaviate không phải nguồn cho tên, giá, ảnh hay availability.
+**Ba luồng truy xuất.** Search embed câu hỏi bằng model local e5-small với tiền tố `query: ` (text catalog được embed với tiền tố `passage: `; đường lui Cohere dùng `input_type=search_query`/`search_document`), lấy ứng viên HNSW cosine từ Weaviate rồi hydrate card theo `productId` từ PostgreSQL. Similar lấy vector của search unit (phòng/chuyến resolve về cha) và hỏi near-vector. Recommendation dựng user vector từ event CDP, loại taxonomy đã mua rồi xếp hạng/MMR trên ứng viên. Weaviate không phải nguồn cho tên, giá, ảnh hay availability.
 
 Contract hiện vẫn yêu cầu `EXACT_FILTER_SCORE`, `total` và facet chính xác; trong khi Weaviate là HNSW-first. Theo `hop-dong-tich-hop-search-recommendation.md` S8, chưa được tự đổi contract: runtime hiện tải 3.183 vector đã persist từ Weaviate vào snapshot bộ nhớ để giữ semantics exact; bước chuyển search sang top-K HNSW + facet SQL cần team Search chốt trước.
 
@@ -211,7 +211,7 @@ Kết quả test: view `product_meta` cho đúng cờ với 6 bản ghi mẫu (p
 | # | Câu hỏi | Ảnh hưởng | Ai chốt |
 |---|---|---|---|
 | 1 | ~~Nguồn dữ liệu thành phần combo~~ — **đã chốt: parse từ description** (18/09), spec ở DATABASE_SCHEMA.md §8 | — | — |
-| 2 | ~~Kích thước vector D và model~~ — đã chốt 22/09/2026 | Cohere `embed-multilingual-v3.0`, 1024 chiều; đổi model/text builder = re-index collection | — |
+| 2 | ~~Kích thước vector D và model~~ — đã chốt 22/09/2026; đổi ngày 06/10/2026 (FR-SRC-02) | 22/09: Cohere `embed-multilingual-v3.0`, 1024 chiều. Từ 06/10: model local `intfloat/multilingual-e5-small`, 384 chiều, collection `ProductE5`; Cohere giữ làm đường lui. Đổi model/text builder = re-index collection | — |
 | 3 | ~~Ngữ nghĩa ngày bay~~ — đã chốt 20/09: `available_from = available_to = ngày bay`, giờ ở `attributes.departureAt`; quy tắc chung: from/to = ngày sớm nhất–muộn nhất được chọn usingDate; lịch 30 ngày ở `attributes.availability` {from, days, calendar "1/0"} đọc-only | — | — |
 | 4 | ~~243 khách sạn không có hạng phòng~~ — đã chốt 20/09: chỉ hiển thị, không đặt; `is_recommendable` loại khỏi gợi ý | — | — |
 | 5 | ~~`priceBasis` mặc định~~ — đã chốt 20/09: `per_package`; parser đổi sang `per_person` khi description/attributes nói giá theo khách | — | — |
@@ -231,4 +231,4 @@ DDL chính thức (đã gộp cả `combo_items` bản có `source`/`confidence`
 
 1. `cdp.products` ← `products.jsonl`, đúng 13 trường, `attributes` giữ nguyên; loader gán thêm `nights`/`priceBasis`/`minPax` cho combo khi parse được.
 2. `catalog.combo_items` ← nguồn thành phần combo (việc mở #1); có thể nạp trước chỉ với `label` + `item_kind`.
-3. `python -m src.backend.jobs.embed_products`: text builder cho `is_search_unit = true` → Cohere v2 `search_document` → collection Weaviate `Product`; chỉ re-embed khi `textHash` hoặc `modelVersion` đổi, đồng thời xoá vector mồ côi.
+3. `python -m src.backend.jobs.embed_products`: text builder cho `is_search_unit = true` → model local e5-small (tiền tố `passage: `; đường lui Cohere v2 `search_document`) → collection Weaviate `ProductE5` (đường lui: `Product`); chỉ re-embed khi `textHash` hoặc `modelVersion` đổi, đồng thời xoá vector mồ côi.

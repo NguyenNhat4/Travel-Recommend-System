@@ -67,7 +67,8 @@ COVERAGE_FIELDS = ("unitPrice", "description", "imageUrl", "coordinates")
 #   seed    : kết nối cho `python -m data_collection.seed --catalog-only` (cần INSERT/UPDATE cdp.products, DELETE/INSERT
 #             catalog.combo_items)
 #   db      : kết nối job embed đọc catalog (mặc định = seed)
-#   weaviate: collection Product của đích đó; COHERE_API_KEY dùng chung
+#   weaviate: Weaviate của đích đó; job embed ghi vào collection e5-small của backend (VECTOR_COLLECTION). Model chạy trong
+#             tiến trình nên không cần khoá embedding nào (FR-SRC-02; đã bỏ đường lui Cohere) — xem index_missing()
 TARGETS = {
     "local": {"seed": "SEED_DATABASE_URL", "db": "DATABASE_URL", "weaviate": "WEAVIATE_URL", "weaviate_key": "WEAVIATE_API_KEY"},
     "cloud": {"seed": "CLOUD_SEED_DATABASE_URL", "db": "CLOUD_DATABASE_URL", "weaviate": "CLOUD_WEAVIATE_URL",
@@ -476,6 +477,12 @@ def target_env(target: str) -> tuple[dict[str, str], list[str]]:
     return env, missing
 
 
+def index_missing(env) -> list[str]:
+    """Biến còn thiếu để chạy bước embed (chỉ tên, không bao giờ giá trị). e5-small chạy trong tiến trình (FR-SRC-02) nên
+    chỉ cần WEAVIATE_URL; COHERE_API_KEY không còn dùng (đã bỏ đường lui Cohere, update-archive/2026-10-06-bo-duong-lui-cohere)."""
+    return [] if env.get("WEAVIATE_URL") else ["WEAVIATE_URL"]
+
+
 def _with_scheme(url: str) -> str:
     return url if not url or url.startswith(("http://", "https://")) else "https://" + url  # Weaviate Cloud cho URL không scheme
 
@@ -510,8 +517,9 @@ def load_targets(run: Run, targets: list[str], index: bool, today: date, retire_
             code = subprocess.call(argv, cwd=HERE.parent, env=env, stdout=log, stderr=subprocess.STDOUT)
             res["seedExit"] = code
             if code == 0 and index:
-                if not env["WEAVIATE_URL"] or not env.get("COHERE_API_KEY"):
-                    res["index"] = "skipped: thiếu WEAVIATE_URL/COHERE_API_KEY"
+                index_gap = index_missing(env)
+                if index_gap:
+                    res["index"] = f"skipped: thiếu {'/'.join(index_gap)}"
                 else:
                     log.write(f"\n=== {now_local()} embed_products\n")
                     log.flush()

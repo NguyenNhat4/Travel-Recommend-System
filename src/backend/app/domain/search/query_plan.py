@@ -2,10 +2,13 @@
 "QUERY PLAN"; contract 1.15.0 `diagnostics.queryPlan`): gom mọi hard constraint parse từ câu thành một giá trị có cấu trúc
 để tầng application dựng mask filter-first, chứ không để vector quyết định phủ định / loại sản phẩm / chiều bay / giá.
 
-Thứ tự parse: giá & sao (F6) → số khách (bỏ qua span đã thành số) → phủ định (F3, bỏ qua span đã thành số) → loại sản phẩm
-(F4, bỏ cue trong scope phủ định) → tuyến bay (F5, chỉ câu vé máy bay) → điểm đến (F1, tái dùng `decide_destination`). Tham
-số request luôn thắng giá trị suy ra. Mỗi họ một cờ (`PlanFlags`); cờ tắt thì vẫn parse để khai ở `queryPlan` nhưng không vào
-mask và không đổi text BM25 — nhờ đó mọi cờ tắt ≡ hành vi cũ. Text đưa vào embed KHÔNG đổi (khoá cache vector); chỉ
+Thứ tự parse: giá & sao (F6) → thời lượng (F7, bỏ qua span đã thành số) → số khách (bỏ qua span đã thành số) → phủ định (F3,
+bỏ qua span đã thành số) → loại sản phẩm (F4, bỏ cue trong scope phủ định) → entity điểm vui chơi (vai trò gate / location, bỏ
+cụm trong scope phủ định) → tuyến bay (F5, chỉ câu vé máy bay) → địa danh gazetteer (POI → điểm đến catalog) → điểm đến (F1,
+tái dùng `decide_destination`). Tham số request luôn thắng giá trị suy ra. Mỗi họ một cờ (`PlanFlags`); với F1, F3–F6 và số
+khách, cờ tắt thì vẫn parse để khai ở `queryPlan` nhưng không vào mask và không đổi text BM25 — nhờ đó mọi cờ tắt ≡ hành vi
+cũ. Ba họ 1.18.0 (`duration`, `poi`, `entity`; spec `docs/spec/bench/tong-hop-chinh-sua-luong-search-ota.md`) đi xa hơn: cờ
+tắt thì KHÔNG parse, không khai — response y hệt 1.17.0. Text đưa vào embed KHÔNG đổi (khoá cache vector); chỉ
 `lexical_text` (BM25 + độ phủ vớt) bỏ các cụm đã thành filter.
 
 Router confidence (kiến trúc §5, giai đoạn 3) chỉ là con số khai báo, tính tất định từ các tín hiệu parse (`fallback_reasons`);
@@ -13,8 +16,8 @@ PRD không cho gọi LLM ở thanh tìm kiếm nên không có nhánh fallback L
 """
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import dataclass, field
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass, field, replace
 
 from ..catalog.stay_dates import StayDates
 from .constraints import (
@@ -23,11 +26,13 @@ from .constraints import (
     SKIPPED_MULTI,
     STRONG,
     WEAK,
+    DurationParse,
     FlightRoles,
     NegationParse,
     NumericParse,
     PartyParse,
     VerticalParse,
+    parse_duration,
     parse_flight_roles,
     parse_negation,
     parse_numeric,
@@ -36,6 +41,7 @@ from .constraints import (
     remove_spans,
 )
 from .destination import SOURCE_PARAM, SOURCE_QUERY, DestinationDecision, decide_destination, is_flight_query
+from .gazetteer import ENTITY_TAXONOMIES, MAX_ALIAS_TOKENS, Place, entity_table, place_table
 from .lexical import fold, tokens
 from .normalize import DESTINATION_ALIASES, NormalizedQuery, find_phrases, spans
 
@@ -43,6 +49,11 @@ TAXONOMY_FLIGHT = "flight"
 #: Họ filter suy từ câu (giá trị của `queryPlan.applied` và `queryPlan.emptyReason`).
 APPLIED_TAXONOMY, APPLIED_ROUTE, APPLIED_MUST_NOT, APPLIED_PRICE, APPLIED_STAR = "taxonomy", "route", "mustNot", "price", "star"
 APPLIED_PARTY = "party"
+#: 1.18.0: `duration` chỉ tác động lên `lexical_text` (không vào mask → `emptyReason = duration` không bao giờ phát; khai trong
+#: enum cho đủ họ); `entity` = gate cứng vào mask.
+APPLIED_DURATION, APPLIED_ENTITY = "duration", "entity"
+#: Vai trò entity (`queryPlan.entity.role`): gate = lọc chỉ còn attraction/combo có tên chứa entity; location = chỉ định vị.
+ROLE_GATE, ROLE_LOCATION = "gate", "location"
 APPLIED_DATE = "date"          # travelContext.checkIn/checkOut — chỉ từ tham số request, không suy từ câu
 EMPTY_DESTINATION, EMPTY_PARAM = "destination", "param"
 SKIPPED_NOT_FLIGHT = "not_flight"
@@ -82,6 +93,10 @@ class PlanFlags:
     numeric: bool = False
     taxonomy_strong_only: bool = False   # F4 chỉ lọc khi câu có cue loại MẠNH (`constraints.VERTICAL_CUE_STRENGTH`)
     party: bool = False                  # số khách suy từ câu → occupancy tối thiểu
+    # 1.18.0 — tắt thì KHÔNG parse (không như các họ trên): response y hệt 1.17.0.
+    duration: bool = False               # F7 "3 ngày 2 đêm" → bỏ cụm khỏi lexical_text, khai queryPlan.duration
+    poi: bool = False                    # địa danh gazetteer ("Hồ Hoàn Kiếm") → điểm đến catalog vào F1
+    entity: bool = False                 # điểm vui chơi (VinWonders…) → gate cứng attraction/combo có tên chứa entity
 
 
 @dataclass(frozen=True)
@@ -93,6 +108,44 @@ class PlanGazetteers:
     # Thành phố đi/đến của tuyến bay (`attributes.originCity/destinationCity`): nơi đi thường KHÔNG phải điểm đến du lịch của
     # catalog ("Hà Nội" chỉ là originCity) nên gazetteer điểm đến của QueryNormalizer không nhận ra — F5 tra thêm bảng này.
     flight_cities: tuple[str, ...] = ()
+    # 1.18.0 (`gazetteer.py`): alias (fold) → khoá entity điểm vui chơi; alias → `Place` có điểm đến catalog. Mặc định = bảng
+    # đầy đủ (test domain không cần fixture); use case thu hẹp theo catalog: `place_table(destinations)` và chỉ khoá entity có
+    # mặt trong `UnitAttributes.entities` (entity không có sản phẩm không bao giờ gate).
+    entities: Mapping[str, str] = field(default_factory=entity_table)
+    places: Mapping[str, Place] = field(default_factory=place_table)
+
+    def entity_keys(self, text: str, excluded: Iterable[tuple[int, int]] = ()) -> tuple[str, ...]:
+        """Khoá entity trong câu: khớp dài nhất trên token đã fold, thứ tự xuất hiện, không lặp; bỏ cụm nằm trong `excluded`
+        (span phủ định — "không lấy VinWonders, vé Safari" → chỉ safari)."""
+        if not self.entities:
+            return ()
+        toks = spans(text)
+        ex = tuple(excluded)
+        out: list[str] = []
+        for i, n, key in find_phrases(toks, self.entities.__contains__, MAX_ALIAS_TOKENS):
+            start, end = toks[i][0], toks[i + n - 1][1]
+            if any(s < end and start < e for s, e in ex):
+                continue
+            k = self.entities[key]
+            if k not in out:
+                out.append(k)
+        return tuple(out)
+
+    def place_hits(self, text: str, known: tuple[tuple[int, int, str], ...],
+                   excluded: Iterable[tuple[int, int]] = ()) -> tuple[tuple[int, int, Place], ...]:
+        """Địa danh gazetteer trong câu → (bắt đầu, kết thúc, Place), theo thứ tự xuất hiện; bỏ cụm chồng span điểm đến mà bước
+        chuẩn hoá đã nhận ("Phố cổ Hội An" đã có "Hội An") hoặc nằm trong `excluded` (phủ định)."""
+        if not self.places:
+            return ()
+        toks = spans(text)
+        taken = [(s, e) for s, e, _ in known] + list(excluded)
+        out: list[tuple[int, int, Place]] = []
+        for i, n, key in find_phrases(toks, self.places.__contains__, MAX_ALIAS_TOKENS):
+            start, end = toks[i][0], toks[i + n - 1][1]
+            if any(s < end and start < e for s, e in taken):
+                continue
+            out.append((start, end, self.places[key]))
+        return tuple(out)
 
     def city_spans(self, text: str, known: tuple[tuple[int, int, str], ...]) -> tuple[tuple[int, int, str], ...]:
         """`known` (span điểm đến của normalizer) + span thành phố bay / alias ("sg", "hn") tìm thêm trong `text`, không chồng."""
@@ -146,6 +199,21 @@ class QueryPlan:
     confidence: float = 1.0                      # router confidence (kiến trúc §5), chỉ khai
     fallback_reasons: tuple[str, ...] = ()
     stay: StayDates | None = None                # contract 1.19.0: bộ lọc ngày của request (nguồn luôn là `param`)
+    # 1.18.0 — chỉ có giá trị khi cờ họ đó bật (tắt = mặc định, không khai)
+    duration_days: int | None = None
+    duration_nights: int | None = None
+    duration_source: str | None = None           # query | None
+    entity_keys: tuple[str, ...] = ()            # khoá entity trong câu (cả hai vai trò)
+    entity_role: str | None = None               # gate | location | None
+    location: Place | None = None                # địa danh gazetteer đầu tiên trong câu
+    poi_destinations: tuple[str, ...] = ()       # điểm đến suy từ địa danh gazetteer (không phải tên thành phố trong câu)
+
+    @property
+    def destination_via_poi(self) -> bool:
+        """Điểm đến đang lọc đến từ địa danh gazetteer (→ `appliedFilters.hard.destinationSource = poi`). So với
+        `poi_destinations` chứ không phải "không có trong nq.destinations": đích tuyến bay suy từ IATA ("HAN DAD") cũng không
+        nằm trong `nq.destinations` nhưng không phải POI."""
+        return self.destination.source == SOURCE_QUERY and self.destination.value in self.poi_destinations
 
     # ------------------------------------------------------------------ giá trị hiệu lực cho mask
     @property
@@ -198,13 +266,20 @@ class QueryPlan:
             kw["stay"] = self.stay
         if APPLIED_MUST_NOT in self.applied:
             kw.update(self._must_not_kwargs())
+        if APPLIED_ENTITY in self.applied:
+            kw["require_entities"] = self.entity_keys
         return kw
 
     def families_in_order(self) -> tuple[tuple[str, dict], ...]:
-        """(họ, kwargs cộng dồn) theo thứ tự áp — use case dò họ đầu tiên làm F rỗng (`emptyReason`)."""
+        """(họ, kwargs cộng dồn) theo thứ tự áp — use case dò họ đầu tiên làm F rỗng (`emptyReason`).
+
+        `entity` đứng ngay sau loại suy từ câu: tab Web gửi `taxonomy=hotel` cho câu VinWonders → mask gốc (hotel) chưa rỗng,
+        bước entity làm rỗng → `emptyReason = entity` (không phải `param`). `duration` không có bước (không vào mask)."""
         steps: list[tuple[str, dict]] = []
         if self.mask_taxonomy and self.taxonomy_source == SOURCE_QUERY:
             steps.append((APPLIED_TAXONOMY, {"taxonomy": self.mask_taxonomy}))
+        if APPLIED_ENTITY in self.applied:
+            steps.append((APPLIED_ENTITY, {"require_entities": self.entity_keys}))
         if self.mask_origin:
             steps.append((APPLIED_ROUTE, {"origin_city": self.mask_origin}))
         if self.price_active:
@@ -261,6 +336,14 @@ class QueryPlan:
         if extended and self.party_source:
             out["party"] = {"adults": self.party_adults, "children": self.party_children, "total": self.party_total,
                             "source": self.party_source}
+        # 1.18.0: ba khối chỉ có giá trị khi cờ bật (tắt không parse) → có là khai, không cần `extended`
+        if self.duration_source:
+            out["duration"] = {"days": self.duration_days, "nights": self.duration_nights, "source": self.duration_source}
+        if self.entity_keys:
+            out["entity"] = {"keys": list(self.entity_keys), "role": self.entity_role}
+        if self.location is not None:
+            out["location"] = {"key": self.location.key, "name": self.location.name, "kind": self.location.kind,
+                               "destination": self.location.destination}
         if extended and self.stay is not None:
             out["date"] = {"checkIn": self.stay.check_in.isoformat(),
                            "checkOut": self.stay.check_out.isoformat() if self.stay.check_out else None,
@@ -290,7 +373,9 @@ class QueryPlan:
                 hard["taxonomySource"] = SOURCE_QUERY
         if self.destination.value and not destination_fallback:
             hard["destination"] = self.destination.value
-            hard["destinationSource"] = self.destination.source
+            hard["destinationSource"] = "poi" if self.destination_via_poi else self.destination.source
+        if APPLIED_ENTITY in self.applied:
+            hard["entity"] = list(self.entity_keys)
         if self.mask_origin:
             hard["origin"] = self.mask_origin
             hard["originSource"] = self.route_source
@@ -404,6 +489,16 @@ def build_query_plan(nq: NormalizedQuery | None, raw_query: str, params: PlanPar
         applied.append(APPLIED_PARTY)
         consumed.extend(party.spans)
 
+    # F7 — thời lượng (1.18.0): CHỈ parse khi cờ bật; số trong span giá ("2 triệu/đêm") và số khách không phải thời lượng.
+    # Chỉ tiêu cụm khỏi câu BM25 (hotel "ngay … Chợ Đêm" không còn được vớt vì "ngay"/"dem"); không vào mask (catalog chưa có
+    # trường thời lượng — P1). Dense vẫn dùng câu đầy đủ.
+    duration = (parse_duration(text, protected=(*numeric.spans, *party.spans))
+                if flags.duration and nq is not None else DurationParse())
+    duration_source = SOURCE_QUERY if (duration.days is not None or duration.nights is not None) else None
+    if duration_source:
+        applied.append(APPLIED_DURATION)
+        consumed.extend(duration.spans)
+
     # F3 — phủ định (scope không chạm span số) và F4 — loại sản phẩm (bỏ cue trong scope phủ định / trong tên thương hiệu).
     # Parse F4 trước khi chốt must-not loại sản phẩm: không bao giờ loại chính loại câu (hoặc tham số) đang hỏi.
     negation = parse_negation(text, protected=tuple(numeric.spans)) if nq is not None else NegationParse()
@@ -433,6 +528,20 @@ def build_query_plan(nq: NormalizedQuery | None, raw_query: str, params: PlanPar
         consumed.extend(sp for sp in vertical.spans if fold(text[sp[0]:sp[1]]) not in POI_BRAND_CUES)
     taxonomy_eff = taxonomy if (taxonomy_source == SOURCE_PARAM or APPLIED_TAXONOMY in applied) else params.taxonomy
 
+    # Entity điểm vui chơi (1.18.0, gate cứng): CHỈ khi cờ bật. Vai trò theo cue loại CỦA CÂU (tham số taxonomy của request —
+    # tab Web — không đổi vai trò, chỉ giao với mask): câu không nêu loại, hoặc nêu attraction/combo → gate (chỉ giữ unit
+    # attraction/combo có tên chứa entity); câu nêu loại khác (khách sạn/vé máy bay/golf — kể cả cue yếu "phòng gần Grand
+    # World") hoặc ≥ 2 loại → location (entity chỉ định vị, c0697). Cụm entity không bị tiêu (là tên sản phẩm, BM25 cần).
+    entity_keys: tuple[str, ...] = ()
+    entity_role: str | None = None
+    if flags.entity and nq is not None:
+        entity_keys = gaz.entity_keys(text, excluded=tuple(negation.spans))
+        if entity_keys:
+            gate = vertical.skipped != SKIPPED_MULTI and (vertical.taxonomy is None or vertical.taxonomy in ENTITY_TAXONOMIES)
+            entity_role = ROLE_GATE if gate else ROLE_LOCATION
+            if gate:
+                applied.append(APPLIED_ENTITY)
+
     # F5 — tuyến bay: chỉ câu vé máy bay (taxonomy hiệu lực = flight hoặc cụm bay) hoặc khi có tham số origin
     # câu đã có MỘT loại khác flight (tham số, hoặc combo đứng đầu "combo vé máy bay và khách sạn Đà Lạt") không phải câu vé
     # máy bay dù chứa cụm bay: không parse tuyến, điểm đến lọc như câu thường (c0706)
@@ -460,8 +569,24 @@ def build_query_plan(nq: NormalizedQuery | None, raw_query: str, params: PlanPar
     elif roles is not None and roles.skipped:
         route_skipped = roles.skipped
 
+    # Địa danh gazetteer (1.18.0): CHỈ khi cờ bật. "Hồ Hoàn Kiếm" → Hà Nội được thêm vào danh sách địa danh của câu rồi đi qua
+    # đúng luật F1 (một nơi → lọc với source = query, giữ FR-SRC-04 fallback + drop_tokens; ≥ 2 nơi → multi; câu bay → flight).
+    # Bỏ cụm chồng span điểm đến normalizer đã nhận ("Phố cổ Hội An") và cụm trong scope phủ định. `_fallback_reasons` vẫn
+    # nhận `nq` gốc → confidence và trigger LLM không đổi.
+    location: Place | None = None
+    poi_destinations: tuple[str, ...] = ()
+    nq_dest = nq
+    if flags.poi and nq is not None:
+        hits = gaz.place_hits(text, nq.destination_spans, excluded=tuple(negation.spans))
+        if hits:
+            location = hits[0][2]
+            poi_destinations = tuple(dict.fromkeys(p.destination for _, _, p in hits
+                                                   if p.destination and p.destination not in nq.destinations))
+            if poi_destinations:
+                nq_dest = replace(nq, destinations=(*nq.destinations, *poi_destinations))
+
     # F1 — điểm đến (tái dùng luật 05/10); câu bay có vai trò đích rõ ràng → điểm đến = đích của tuyến
-    decision = decide_destination(nq, params.destination, taxonomy_eff, flags.destination, query=raw_query,
+    decision = decide_destination(nq_dest, params.destination, taxonomy_eff, flags.destination, query=raw_query,
                                   flight=flight_context)
     if (decision.source is None and route_destination and APPLIED_ROUTE in applied):
         decision = DestinationDecision(route_destination, SOURCE_QUERY, None, decision.candidates)
@@ -488,5 +613,7 @@ def build_query_plan(nq: NormalizedQuery | None, raw_query: str, params: PlanPar
         must_not_taxonomies=must_not_taxonomies, must_not_flags=must_not_flags,
         party_adults=party_adults, party_children=party_children, party_total=party_total, party_source=party_source,
         confidence=round(max(0.0, 1.0 - _REASON_PENALTY * len(reasons)), 2), fallback_reasons=reasons,
+        duration_days=duration.days, duration_nights=duration.nights, duration_source=duration_source,
+        entity_keys=entity_keys, entity_role=entity_role, location=location, poi_destinations=poi_destinations,
         stay=params.stay,
     )

@@ -26,6 +26,25 @@ def test_entry_takes_hard_filters_confidence_and_request_filters():
         latency_ms=42, cdp_user_id="cdp-1", session_id="s-1")
 
 
+def test_entry_copies_entity_gate_and_poi_destination_source_verbatim():
+    """Contract 1.18.0: `appliedFilters.hard.entity` (danh sách khoá) và `destinationSource = poi` đi nguyên vào
+    `app.search_logs.filters` (jsonb) — không đổi tên, không chạm khoá `confidence` / `llm`."""
+    response = {
+        "results": [{"productId": "A1"}], "total": 1,
+        "appliedFilters": {"hard": {"destination": "Hà Nội", "destinationSource": "poi", "entity": ["vinwonders"]},
+                           "soft": {}},
+        "diagnostics": {"modelVersion": "e5s", "latencyMs": 7,
+                        "queryPlan": {"confidence": 1.0, "entity": {"keys": ["vinwonders"], "role": "gate"},
+                                      "location": {"key": "ho_hoan_kiem", "name": "Hồ Hoàn Kiếm", "kind": "landmark",
+                                                   "destination": "Hà Nội"}}},
+    }
+    e = search_log_entry("vé VinWonders gần Hồ Hoàn Kiếm", response, request_filters={"taxonomy": "attraction"})
+    assert e.filters == {"taxonomy": "attraction", "destination": "Hà Nội", "destinationSource": "poi",
+                         "entity": ["vinwonders"], "confidence": 1.0}
+    assert e.result_count == 1 and e.result_product_ids == ("A1",) and e.latency_ms == 7
+    assert not {"llm"} & set(e.filters) and "location" not in e.filters    # khối queryPlan chỉ góp `confidence`
+
+
 def test_entry_without_any_filter_is_null_filters():
     e = search_log_entry("biển", {"results": [], "total": 0, "diagnostics": {"modelVersion": "m"}})
     assert e.filters is None and e.result_product_ids == () and e.latency_ms is None and e.cdp_user_id is None

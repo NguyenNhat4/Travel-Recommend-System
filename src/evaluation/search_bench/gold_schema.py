@@ -57,6 +57,11 @@ SLICES: tuple[str, ...] = (
     # nối CUỐI để `split` giữ nguyên luồng RNG theo SLICES.index của 13 slice cũ.
     "taxonomy_collision",
     "flight_direction",
+    # gold_v6 (07/10, plan docs/plan/2026-10-07-search-duration-entity-poi.md §5): cũng nối CUỐI vì lý do trên.
+    # duration_false_positive: "3 ngày 2 đêm" / "chợ đêm" / "2 triệu/đêm" — F7 phải parse đúng và không vớt nhầm hotel "Chợ Đêm";
+    # poi_resolution: địa danh gazetteer (Hồ Hoàn Kiếm, Cầu Rồng, Nội Bài…) phải quy về đúng điểm đến catalog.
+    "duration_false_positive",
+    "poi_resolution",
 )
 PARENT_CHILD_SLICE = "parent_child"
 OUT_OF_CATALOG_SLICE = "out_of_catalog"
