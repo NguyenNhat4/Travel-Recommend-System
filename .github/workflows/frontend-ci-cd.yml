@@ -141,7 +141,10 @@ jobs:
 
       - name: Install Chromium
         working-directory: src/frontend
-        run: npx playwright install --with-deps chromium
+        # Runner tự host không có sudo không cần mật khẩu: --with-deps cần root để cài thư viện hệ thống.
+        # Có sudo (GitHub-hosted) thì cài đủ phụ thuộc; không có thì chỉ cài binary, thư viện phải có sẵn trên runner.
+        run: |
+          if sudo -n true 2>/dev/null; then npx playwright install --with-deps chromium; else npx playwright install chromium; fi
 
       - name: Run Playwright smoke tests
         working-directory: src/frontend
