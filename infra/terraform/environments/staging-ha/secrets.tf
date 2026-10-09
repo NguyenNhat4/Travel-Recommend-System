@@ -42,3 +42,15 @@ data "google_secret_manager_secret_version" "weaviate_api_key" {
   count  = var.require_secret_versions && var.create_weaviate ? 1 : 0
   secret = google_secret_manager_secret.weaviate_api_key[0].id
 }
+
+# Cloudflare Origin CA certificate cho HTTPS origin (Cloudflare SSL mode Full (strict)). Nạp tay vào Secret Manager,
+# không nằm trong Terraform. Bật bằng origin_tls_enabled = true.
+data "google_secret_manager_secret_version" "origin_cert" {
+  count  = var.origin_tls_enabled ? 1 : 0
+  secret = var.origin_cert_secret
+}
+
+data "google_secret_manager_secret_version" "origin_key" {
+  count  = var.origin_tls_enabled ? 1 : 0
+  secret = var.origin_key_secret
+}

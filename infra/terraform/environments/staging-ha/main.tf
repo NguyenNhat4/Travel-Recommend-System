@@ -117,9 +117,12 @@ resource "google_compute_region_instance_group_manager" "app" {
   }
 
   update_policy {
-    type                  = "PROACTIVE"
-    minimal_action        = "REPLACE"
-    replacement_method    = "SUBSTITUTE"
+    type               = "PROACTIVE"
+    minimal_action     = "REPLACE"
+    replacement_method = "SUBSTITUTE"
+    # Regional MIG 3 zone: maxSurge fixed chỉ nhận 0 hoặc >= 3; percent cần size >= 10 (API 400, 2026-10-09).
+    # Quota là CPUS_ALL_REGIONS (toàn project, mọi region; 18 ở 2026-10-09). Surge 3 thêm 3 VM app (6 vCPU với
+    # e2-standard-2) trước khi xoá VM cũ. scripts/deploy-staging-ha-app.sh kiểm quota trước khi apply (APP_SURGE, APP_VM_VCPUS).
     max_surge_fixed       = 3
     max_unavailable_fixed = 0
     # Health check của MIG chỉ là liveness (tiến trình trả lời), nên không có min_ready_sec thì MIG coi VM mới là
@@ -210,6 +213,23 @@ resource "google_compute_backend_service" "app" {
 resource "google_compute_url_map" "app" {
   name            = "${var.name_prefix}-app"
   default_service = google_compute_backend_service.app.id
+
+  # Dashboard job cào (chỉ đọc) theo host riêng; xem crawler_monitor.tf. Host khác vẫn vào app như trước.
+  dynamic "host_rule" {
+    for_each = local.monitor_enabled ? [1] : []
+    content {
+      hosts        = [var.monitor_host]
+      path_matcher = "crawler-monitor"
+    }
+  }
+
+  dynamic "path_matcher" {
+    for_each = local.monitor_enabled ? [1] : []
+    content {
+      name            = "crawler-monitor"
+      default_service = google_compute_backend_service.monitor[0].id
+    }
+  }
 }
 
 resource "google_compute_managed_ssl_certificate" "app" {
@@ -257,4 +277,32 @@ resource "google_redis_instance" "shared" {
   redis_configs = {
     maxmemory-policy = "noeviction"
   }
+}
+
+# HTTPS origin cho Cloudflare (Full strict): chứng chỉ Origin CA tự quản, cùng backend vota-ha-app và URL map với HTTP.
+resource "google_compute_ssl_certificate" "origin" {
+  count       = var.origin_tls_enabled ? 1 : 0
+  name_prefix = "${var.name_prefix}-origin-"
+  certificate = data.google_secret_manager_secret_version.origin_cert[0].secret_data
+  private_key = data.google_secret_manager_secret_version.origin_key[0].secret_data
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "google_compute_target_https_proxy" "origin" {
+  count            = var.origin_tls_enabled ? 1 : 0
+  name             = "${var.name_prefix}-origin-https"
+  url_map          = google_compute_url_map.app.id
+  ssl_certificates = [google_compute_ssl_certificate.origin[0].id]
+}
+
+resource "google_compute_global_forwarding_rule" "origin_https" {
+  count                 = var.origin_tls_enabled ? 1 : 0
+  name                  = "${var.name_prefix}-origin-fr"
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+  ip_address            = google_compute_global_address.lb.id
+  port_range            = "443"
+  target                = google_compute_target_https_proxy.origin[0].id
 }
