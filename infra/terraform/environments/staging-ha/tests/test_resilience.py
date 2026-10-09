@@ -30,19 +30,29 @@ def default(name):
 class RollingUpdate(unittest.TestCase):
     """Use case (plan §5.1): đổi image khi có 3 VM; MIG chỉ có health check liveness nên coi VM mới là xong ngay khi tiến trình lên."""
 
-    def test_mig_waits_min_ready_sec_at_least_boot_to_ready(self):
+    def test_mig_does_not_wait_past_liveness_and_gates_on_lb_health_instead(self):
+        # Chốt 2026-10-09 (docs/prd/update-archive/2026-10-09-rut-ngan-cd-chap-nhan-downtime.md): không chờ min_ready_sec;
+        # cổng sẵn sàng là bước Verify của workflow CD (test ở test_cd_waits_for_lb_healthy_before_last_good).
         mig = block(MAIN, "google_compute_region_instance_group_manager", "app")
-        self.assertRegex(mig, r"min_ready_sec\s*=\s*var\.boot_to_ready_seconds")
-        self.assertGreaterEqual(default("boot_to_ready_seconds"), 360)
+        self.assertRegex(mig, r"min_ready_sec\s*=\s*0\b")
+        self.assertGreaterEqual(default("boot_to_ready_seconds"), 240)
 
     def test_mig_uses_the_provider_that_supports_min_ready_sec(self):
         mig = block(MAIN, "google_compute_region_instance_group_manager", "app")
         self.assertIn("provider                  = google-beta", mig)
 
-    def test_surge_never_removes_capacity(self):
+    def test_rollout_replaces_all_vms_at_once_without_surge(self):
+        # Chấp nhận downtime khi thay VM (chốt 2026-10-09): không surge; unavailable = 3 vì regional MIG 3 zone chỉ nhận 0 hoặc >= 3.
         mig = block(MAIN, "google_compute_region_instance_group_manager", "app")
         self.assertRegex(mig, r'replacement_method\s*=\s*"SUBSTITUTE"')
-        self.assertIn("max_unavailable_fixed = 0", mig)
+        self.assertRegex(mig, r"max_surge_fixed\s*=\s*0\b")
+        self.assertRegex(mig, r"max_unavailable_fixed\s*=\s*3\b")
+
+    def test_cd_waits_for_lb_healthy_before_last_good(self):
+        # Không có min_ready_sec thì MIG báo stable trước khi LB thấy VM HEALTHY; Verify phải chờ, nếu không sẽ rollback nhầm.
+        for wf in ("staging-ha-backend-cd.yml", "staging-ha-frontend-cd.yml"):
+            text = (D.parents[3] / ".github" / "workflows" / wf).read_text()
+            self.assertIn('[ "$healthy" = "$target_size" ] && break', text, wf)
 
     def test_autohealing_initial_delay_covers_boot(self):
         mig = block(MAIN, "google_compute_region_instance_group_manager", "app")

@@ -24,9 +24,9 @@ die() {
 : "${TFVARS_FILE:?TFVARS_FILE là bắt buộc}"
 TF_ROOT="${TF_ROOT:-infra/terraform/environments/staging-ha}"
 # Preflight quota (chỉ khi plan có rolling update của MIG app). Rollout tạo max_surge VM mới trước khi xoá VM cũ,
-# nên cần thêm APP_SURGE × vCPU của một VM app. Giữ APP_SURGE đồng bộ với max_surge_fixed trong main.tf.
+# nên cần thêm APP_SURGE × vCPU của một VM app. Giữ APP_SURGE đồng bộ với max_surge_fixed trong main.tf (0 từ 2026-10-09: thay VM không surge, chấp nhận downtime, không cần thêm quota).
 GCP_PROJECT_ID="${GCP_PROJECT_ID:-}"
-APP_SURGE="${APP_SURGE:-3}"
+APP_SURGE="${APP_SURGE:-0}"
 APP_VM_VCPUS="${APP_VM_VCPUS:-2}"   # e2-standard-2
 
 [[ "$BACKEND_REF" =~ ^[a-z0-9][a-z0-9._/-]*@sha256:[a-f0-9]{64}$ ]] || die 'BACKEND_REF phải là image@sha256:<64 hex>'
