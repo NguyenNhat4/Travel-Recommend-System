@@ -21,6 +21,7 @@ NAME="${CONTAINER_NAME:-vota-daily}"
 PULL="${PULL:-1}"                                # 1 = kéo IMAGE mới trước mỗi lượt (lỗi kéo thì dùng image đã có)
 MONITOR_HOST="${MONITOR_HOST:-127.0.0.1}"        # monitor chỉ nghe loopback mặc định
 MONITOR_PUBLIC="${MONITOR_PUBLIC:-0}"            # 1 = chấp nhận Host public; chỉ bật tạm thời khi cần
+MONITOR_READ_ONLY="${MONITOR_READ_ONLY:-0}"      # 1 = chỉ GET (dashboard công khai); POST bị từ chối
 MANUAL_IN_IMAGE=/app/src/data_collection/snapshots/2026-09-23/combo_items_manual.jsonl
 FRESH_IMAGE="${FRESH_IMAGE:-vota-fresh-catalog:latest}"
 FRESH_DATA_DIR="${FRESH_DATA_DIR:-/srv/vota/fresh-catalog-data}"
@@ -28,7 +29,7 @@ FRESH_ENV_FILE="${CATALOG_ENV_FILE:-/etc/vota/fresh-catalog.env}"
 FRESH_NETWORK="${FRESH_NETWORK:-${DOCKER_NETWORK:-host}}"
 FRESH_NAME="${FRESH_CONTAINER_NAME:-vota-fresh-catalog}"
 FRESH_LOG_DIR="${CATALOG_LOG_DIR:-/srv/vota/fresh-catalog-logs}"
-BACKEND_URL="${BACKEND_URL:-http://127.0.0.1:8000}"    # backend docker compose trên cùng VM
+BACKEND_URL="${BACKEND_URL-http://127.0.0.1:8000}"     # backend docker compose trên cùng VM; BACKEND_URL= (trống) tắt realtime (staging-ha)
 BACKEND_CONTAINER="${BACKEND_CONTAINER:-}"             # trống: tìm container có nhãn compose service=backend
 
 die() { echo "$(date -Is) $*" >&2; exit 1; }
@@ -141,6 +142,11 @@ monitor_flags() {
     1|true|yes) monitor_args+=(--allow-public-host) ;;
     0|false|no) ;;
     *) die "MONITOR_PUBLIC phải là 0/1, true/false hoặc yes/no" ;;
+  esac
+  case "$MONITOR_READ_ONLY" in
+    1|true|yes) monitor_args+=(--read-only) ;;
+    0|false|no) ;;
+    *) die "MONITOR_READ_ONLY phải là 0/1, true/false hoặc yes/no" ;;
   esac
 }
 
@@ -283,7 +289,8 @@ cmd_backend() {
   fi
   [ "$#" -eq 0 ] || die 'cách dùng: backend [logs [-f] [-n SỐ_DÒNG]]'
   echo "== Backend $BACKEND_URL"
-  if ! command -v curl >/dev/null 2>&1; then echo 'health: không có curl trên máy này'
+  if [ -z "$BACKEND_URL" ]; then echo 'health: bỏ qua, BACKEND_URL trống (môi trường này không gọi backend)'
+  elif ! command -v curl >/dev/null 2>&1; then echo 'health: không có curl trên máy này'
   elif body="$(curl -fsS -m 5 "$BACKEND_URL/health" 2>&1)"; then echo "health: $body"
   else echo "health: KHÔNG PHẢN HỒI — $body"
   fi

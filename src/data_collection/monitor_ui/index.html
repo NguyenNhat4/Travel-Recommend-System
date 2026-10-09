@@ -526,12 +526,13 @@ function rtRender(d){const R=S.rt;const c=d.catalog||{};
  $('#rtHead').innerHTML=head;$('#rtSummary').innerHTML=sum;$('#rtTitle').textContent=`Lần gọi gần nhất (hiện 100 / ${num(R.events.length)})`;$('#rtRows').innerHTML=rtRows()}
 async function realtimePage(){S.rt=S.rt||{lastSeq:0,events:[],source:''};const R=S.rt;
  const tick=async()=>{if(S.view!=='realtime')return;const d=await api('/api/calls',{after:R.lastSeq,limit:500});
+  R.disabled=!!d.disabled;if(R.disabled){clearInterval(S.rtTimer);S.rtTimer=null;if(S.view==='realtime')main.innerHTML=card('Realtime đang tắt',`<p class="minus">${esc(d.reason||'Không có nguồn telemetry')}</p><p class="muted">Monitor này không đọc realtime từ backend (BACKEND_URL trống). Các tab khác không bị ảnh hưởng.</p>`);return}
   if(d.lastSeq<R.lastSeq){R.events=[];R.lastSeq=0;return tick()}  // backend restart: đếm lại từ đầu
   const fresh=(d.events||[]).length>0||!$('#rtRows');
   R.events=R.events.concat(d.events||[]).slice(-500);R.lastSeq=d.lastSeq;R.last=d;
   if(fresh&&S.view==='realtime'&&!$('#detail').open)rtRender(d)};  // không có lần gọi mới: không vẽ lại
  try{await tick()}catch(e){main.innerHTML=card('Web và agent đang lấy dữ liệu',`<p class="minus">${esc(e.message)}</p><p class="muted">Monitor gọi backend qua BACKEND_URL (mặc định http://127.0.0.1:8000). Backend cần bản có /internal/calls.</p>`)}
- clearInterval(S.rtTimer);S.rtTimer=setInterval(()=>tick().catch(()=>{}),2000)}
+ if(R.disabled)return;clearInterval(S.rtTimer);S.rtTimer=setInterval(()=>tick().catch(()=>{}),2000)}
 document.addEventListener('change',e=>{if(e.target.id==='rtSource'){S.rt.source=e.target.value;if(S.rt.last)rtRender(S.rt.last)}});
 
 // ------------------------------------------------------------------ hành động

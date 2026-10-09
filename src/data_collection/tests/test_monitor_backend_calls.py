@@ -67,5 +67,14 @@ class BackendCallsTests(unittest.TestCase):
                 self.monitor.backend_calls()
 
 
+    def test_empty_backend_url_disables_realtime_without_calling_anything(self):
+        Backend.seen = []
+        with mock.patch.dict(os.environ, {"BACKEND_URL": "  "}):
+            data = self.monitor.backend_calls(after=0)
+        self.assertTrue(data["disabled"])
+        self.assertEqual(data["events"], [])
+        self.assertEqual(Backend.seen, [])
+
+
 if __name__ == "__main__":
     unittest.main()
