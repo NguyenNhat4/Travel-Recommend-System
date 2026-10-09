@@ -88,7 +88,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=crawler
 
   publish:
-    name: Publish fresh crawler SHA and latest image
+    name: Publish fresh crawler SHA image
     if: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
     needs: build
     runs-on: [self-hosted, vota-staging-ha]
@@ -145,7 +145,6 @@ jobs:
           push: true
           tags: |
             ${{ env.CRAWLER_IMAGE }}:${{ github.sha }}
-            ${{ env.CRAWLER_IMAGE }}:latest
           cache-from: type=gha,scope=crawler-publish
           cache-to: type=gha,mode=max,scope=crawler-publish
 

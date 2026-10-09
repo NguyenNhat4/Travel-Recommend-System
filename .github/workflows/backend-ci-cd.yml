@@ -113,9 +113,9 @@ jobs:
           cache-to: type=gha,mode=max,scope=backend
 
   publish:
-    name: Publish SHA and latest images
+    name: Publish SHA image
     # Tắt: image staging-ha do staging-ha-backend-build.yml build một lần mỗi push; job này build lại từ đầu và chỉ
-    # phục vụ tag :latest của VM cũ đã ngừng nhận deploy. Giữ job vì scripts/tests/test-backend-vm-cd-sync.sh kiểm chuỗi
+    # phục vụ VM cũ đã ngừng nhận deploy. Không đẩy tag latest: mọi nơi tham chiếu image dùng digest. Giữ job vì scripts/tests/test-backend-vm-cd-sync.sh kiểm chuỗi
     # needs.publish.outputs.backend_digest trong file này.
     if: ${{ false }}
     needs: build
@@ -176,9 +176,7 @@ jobs:
           context: .
           file: ./Dockerfile.backend
           push: true
-          tags: |
-            ${{ env.BACKEND_IMAGE }}:${{ github.sha }}
-            ${{ env.BACKEND_IMAGE }}:latest
+          tags: ${{ env.BACKEND_IMAGE }}:${{ github.sha }}
           # Chỉ đọc cache của job build (đã export xong trong cùng run). Không export lại và không build từ đầu khi cache miss.
           cache-from: type=gha,scope=backend
 
@@ -299,7 +297,7 @@ jobs:
           instance: ${{ secrets.GCE_INSTANCE }}
           zone: ${{ secrets.GCE_ZONE }}
 
-      - name: Deploy latest Backend image
+      - name: Deploy Backend image by digest
         env:
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           GCE_INSTANCE: ${{ secrets.GCE_INSTANCE }}
