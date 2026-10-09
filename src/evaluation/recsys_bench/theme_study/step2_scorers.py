@@ -12,6 +12,15 @@ import random
 import numpy as np
 
 from src.backend.app.domain.recommendation import score_candidates as prod_score
+from src.backend.app.domain.recommendation.profile import origin_mismatch
+
+
+def engine_origin_mask(score, context):
+    """Luật của engine (FR-REC-04, 09/10) cho nhánh không có chuyến mở: route bay sai điểm xuất phát bị loại (−∞). Công thức
+    thử nghiệm ở nhánh này tự tính điểm nên phải áp lại để vẫn là "engine + công thức mới"."""
+    if context is None or context.origin is None:
+        return score
+    return np.where(origin_mismatch(context), -np.inf, score)
 
 
 def _unit(x):
@@ -22,25 +31,25 @@ def _unit(x):
 def make_centered(mean_vec, ws, wp, wl):
     m = np.asarray(mean_vec, dtype=np.float32)
 
-    def score(profile, E, pop):
+    def score(profile, E, pop, context=None):
         if profile.active_trip is not None:
-            return prod_score(profile, E, pop)
+            return prod_score(profile, E, pop, context)
         u = profile.u_long
         Ec, uc = _unit(E - m), _unit(u - m)
         c = Ec @ uc                                   # không chuyến mở: u_short = u_long
-        return ws * c + wp * pop + wl * c, u
+        return engine_origin_mask(ws * c + wp * pop + wl * c, context), u
     return score
 
 
 def make_quantile(q_low, q_high, ws=0.55, wp=0.30, wl=0.15):
     span = max(q_high - q_low, 1e-6)
 
-    def score(profile, E, pop):
+    def score(profile, E, pop, context=None):
         if profile.active_trip is not None:
-            return prod_score(profile, E, pop)
+            return prod_score(profile, E, pop, context)
         u = profile.u_long
         s = np.clip((E @ u - q_low) / span, 0.0, 1.0)
-        return ws * s + wp * pop + wl * s, u
+        return engine_origin_mask(ws * s + wp * pop + wl * s, context), u
     return score
 
 
@@ -57,10 +66,10 @@ def calibrate_quantile(eng4, world, build_profile, as_of, seed=99, n_per_theme=4
 
     vals: list = []
 
-    def rec_score(profile, E, pop):
+    def rec_score(profile, E, pop, context=None):
         if profile.active_trip is None:
             vals.append(np.asarray(E @ profile.u_long, dtype=np.float64))
-        return prod_score(profile, E, pop)
+        return prod_score(profile, E, pop, context)
 
     UC.build_profile, UC.score_candidates = build_profile, rec_score
     try:

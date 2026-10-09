@@ -2,6 +2,9 @@
 §4, §5.1). Engine không sửa: mọi thứ là monkeypatch trên `use_cases` / `Popularity` + bọc `VectorSearchPort` và hậu xử lý ô B.
 
 Từ 09/10 engine production đã gồm PR-A (P2 + loại combo + ô khám phá B), nên `P0` / `B0` = production hiện hành.
+Từ khi áp đề xuất [F] (09/10, `ENGINE_RULES_VERSION = 2026-10-09-origin-session`) engine cũng đã có O1 (điểm xuất phát, w 0,15),
+O3 (chuyến đã đặt ưu tiên) và O4 (chuyến ảo): `B0` = chuỗi F_O cũ (parity nDiscordant = 0 trên toàn bộ khách). Các token `orig`,
+`book`, `sess` (và bí danh O1–O5) trên engine này **áp lần hai** — chỉ dùng chúng để tái lập số trên engine cũ.
 
 Tên cấu hình = các token nối bằng `+` (bí danh mở rộng đệ quy):
 

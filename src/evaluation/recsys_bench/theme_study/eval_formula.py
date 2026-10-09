@@ -22,6 +22,8 @@ import numpy as np
 
 import src.backend.app.application.recommendation.use_cases as UC
 from src.backend.app.domain.recommendation import score_candidates as prod_score
+from src.backend.app.domain.recommendation.profile import W_ORIGIN, origin_mismatch
+from src.evaluation.recsys_bench.theme_study.step2_scorers import engine_origin_mask
 from src.evaluation.recsys_bench import splits as SP
 from src.evaluation.recsys_bench.theme_study.theme_exp import AS_OF, THEME_OF, World, make_user, theme_prec, load_events, load_index, OfflineEngine, parse_ts
 
@@ -37,9 +39,9 @@ def _rank(x):
 
 
 def make_scorer(kind, ws=0.7, wp=0.15, wl=0.15, only_between=False):
-    def score(profile, E, pop):
+    def score(profile, E, pop, context=None):
         if only_between and profile.active_trip is not None:
-            return prod_score(profile, E, pop)
+            return prod_score(profile, E, pop, context)
         u = profile.active_trip.vec if profile.active_trip is not None else profile.u_long
         s_short, s_long = E @ u, E @ profile.u_long
         if kind == "minmax":
@@ -48,7 +50,9 @@ def make_scorer(kind, ws=0.7, wp=0.15, wl=0.15, only_between=False):
             s_short, s_long, pop = _mm(s_short), _mm(s_long), _mm(np.asarray(pop, dtype=np.float64))
         elif kind == "rank":
             s_short, s_long = _rank(s_short), _rank(s_long)
-        return ws * s_short + wp * pop + wl * s_long, u
+        s = ws * s_short + wp * pop + wl * s_long
+        return (engine_origin_mask(s, context) if profile.active_trip is None
+                else (s - W_ORIGIN * origin_mismatch(context) if context is not None and context.origin is not None else s)), u
     return score
 
 

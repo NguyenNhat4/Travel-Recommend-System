@@ -16,7 +16,7 @@ from time import perf_counter
 import numpy as np
 
 from src.backend.app.application.ports import UnitIndex
-from src.backend.app.domain.recommendation.profile import MAX_REPEAT_PER_TRIP, local_today, trip_is_open
+from src.backend.app.domain.recommendation.profile import CAP_EXEMPT_EVENTS, MAX_REPEAT_PER_TRIP, W_TYPE, local_today, trip_is_open
 
 from .engine import POPULARITY_WINDOW_DAYS, OfflineEngine   # cửa sổ 90 ngày khai một chỗ, vào configHash (B3)
 from .events import parse_ts, trip_ends_on
@@ -61,9 +61,17 @@ def trip_destination(index: UnitIndex, events: list[dict], as_of: datetime) -> s
         rows.append((days_ago, e, unit, e.get("eventGroupId") or f"_solo_{e['productId']}"))
     trips: dict[str, list[tuple[float, int]]] = defaultdict(list)     # sau cap lặp: điểm đến, như build_profile
     raw: dict[str, list[tuple[float, dict]]] = defaultdict(list)      # mọi event: tuổi, ngày kết thúc
+    conf: dict[str, float] = defaultdict(float)                       # Σ W_TYPE sau cap của engine (miễn CAP_EXEMPT_EVENTS)
     seen: Counter = Counter()
+    seen_x: Counter = Counter()
     for days_ago, e, unit, tid in sorted(rows, key=lambda r: -r[0]):     # cũ trước; mỗi (trip, unit) giữ MAX_REPEAT như build_profile
         raw[tid].append((days_ago, e))
+        if e.get("eventName") in CAP_EXEMPT_EVENTS:
+            conf[tid] += W_TYPE.get(str(e.get("eventName")), 0.1)
+        else:
+            seen_x[(tid, unit)] += 1
+            if seen_x[(tid, unit)] <= MAX_REPEAT_PER_TRIP:
+                conf[tid] += W_TYPE.get(str(e.get("eventName")), 0.1)
         seen[(tid, unit)] += 1
         if seen[(tid, unit)] > MAX_REPEAT_PER_TRIP:
             continue
@@ -74,8 +82,15 @@ def trip_destination(index: UnitIndex, events: list[dict], as_of: datetime) -> s
     today = local_today(as_of)
     open_trips = [tid for tid, age in ages.items() if trip_is_open(age, trip_ends_on(e for _, e in raw[tid]), today)]
     booked = [tid for tid in open_trips if any(e.get("eventName") == "purchase" for _, e in raw[tid])]
+    browse = [tid for tid in open_trips if tid not in booked]
+    dest_of = {tid: Counter(str(index.destination[u]) for _, u in trips[tid]).most_common(1)[0][0] for tid in trips}
+    if not booked and len(browse) >= 2:                  # chuyến ảo (FR-REC-02, 09/10) — như `profile.session_trip`
+        from .ceiling import TripView, session_view
+        views = [TripView(tid, ages[tid], len(trips[tid]), set(), dest_of[tid], set(), True, None, min(1.0, conf[tid]))
+                 for tid in browse]
+        return session_view(views).destination
     chosen = min(booked or open_trips or ages, key=lambda tid: ages[tid])   # chuyến đã đặt còn mở đứng trước (09/10)
-    return Counter(str(index.destination[u]) for _, u in trips[chosen]).most_common(1)[0][0]
+    return dest_of[chosen]
 
 
 class MostPopularArm:
