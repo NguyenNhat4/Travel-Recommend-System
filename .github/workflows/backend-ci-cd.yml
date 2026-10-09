@@ -178,8 +178,7 @@ jobs:
 
   deploy:
     name: Deploy application VM in place
-    # Tắt: VM staging cũ không nhận deploy nữa. Triển khai lên staging-ha qua
-    # staging-ha-backend-cd.yml, staging-ha-frontend-cd.yml, staging-ha-crawler-cd.yml.
+    # Tắt: VM staging cũ không nhận deploy nữa. Triển khai lên staging-ha qua các workflow staging-ha-*-cd.yml.
     if: ${{ false }}
     needs: publish
     runs-on: ubuntu-latest
