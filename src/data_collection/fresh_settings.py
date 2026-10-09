@@ -1,8 +1,8 @@
 """Cấu hình chỉnh được của job cào mới (`fresh_catalog.py`) và lịch chạy tự động.
 
 Thứ tự ưu tiên của từng khoá: giá trị lưu từ monitor (`<CATALOG_STATE_DIR>/settings.json`) → biến môi trường cũ (nếu khoá
-có biến env, vd. `TRIP_DAILY_HOTELS`) → mặc định trong code. Secret và kết nối (DB, Weaviate, key Cohere của đường lui)
-**không** nằm ở đây: chúng chỉ ở file env của VM; monitor chỉ cho biết đã đặt hay chưa.
+có biến env, vd. `TRIP_DAILY_HOTELS`) → mặc định trong code. Secret và kết nối (DB, Weaviate, Cohere) **không** nằm ở đây:
+chúng chỉ ở file env của VM; monitor chỉ cho biết đã đặt hay chưa.
 
 Giới hạn tốc độ (chỉ áp cho giá trị lưu từ monitor; env giữ hành vi cũ):
 - Nguồn tuân robots.txt (Vinpearl, trip.com vé máy bay/điểm tham quan, booking.com, agoda.com): tối thiểu 2 giây giữa hai
@@ -137,8 +137,7 @@ FIELDS: tuple[Field, ...] = (
           help="Chỉ áp khi nguồn còn đang cào: nguồn đã cào xong (checkpoint đã chốt) được nạp dù ít bản ghi hơn. "
                "Tỉ lệ bản ghi lỗi vẫn phải dưới ngưỡng của normalize."),
     Field("stream.index", "stream", "Chạy liên tục – index Weaviate theo phần (sau mỗi lần nạp DB có dòng mới)", "bool",
-          False, help="Cần bật nạp DB theo phần. Chỉ nhúng dòng mới hoặc đổi text (model local e5-small; "
-                      "Cohere khi EMBED_PROVIDER=cohere)."),
+          False, help="Cần bật nạp DB theo phần. Chỉ nhúng dòng mới hoặc đổi text (gọi Cohere)."),
     Field("stream.indexSeconds", "stream", "Chạy liên tục – giây giữa hai lần index theo phần", "int", 300,
           minimum=30, maximum=7200),
     Field("tripHotels.initialPerCity", "strategy", "Khách sạn Trip – số ID lấy mỗi thành phố ở lượt đầu", "int", 30,
@@ -181,7 +180,7 @@ FIELDS: tuple[Field, ...] = (
     Field("retry.transientDelay", "reliability", "Lỗi tạm thời – giây chờ trước lần thử lại đầu", "float", 30.0,
           minimum=1, maximum=600, help="Mỗi lần sau chờ gấp đôi lần trước."),
     Field("retry.infraAttempts", "reliability", "Lỗi hạ tầng – số lần thử lại", "int", 3, minimum=0, maximum=10,
-          help="Postgres, Weaviate (và Cohere khi EMBED_PROVIDER=cohere) không kết nối được."),
+          help="Postgres, Weaviate, Cohere không kết nối được."),
     Field("retry.infraDelay", "reliability", "Lỗi hạ tầng – giây chờ trước lần thử lại đầu", "float", 60.0,
           minimum=1, maximum=1800, help="Mỗi lần sau chờ gấp đôi lần trước."),
     # ---- hạn giờ (P4, docs/plan/2026-09-29-bo-cho-doi-giua-cac-buoc.md): quá hạn thì dừng riêng bước đó, giữ phần đã cào,
@@ -236,12 +235,11 @@ FIELDS: tuple[Field, ...] = (
 )
 BY_KEY = {f.key: f for f in FIELDS}
 
-# Biến env chỉ báo "đã đặt hay chưa" trên monitor, không bao giờ trả giá trị (trừ các biến không bí mật trong ENV_PUBLIC).
-# COHERE_API_KEY chỉ cần khi EMBED_PROVIDER=cohere (đường lui); mặc định `local` chạy e5-small trong tiến trình.
+# Biến env chỉ báo "đã đặt hay chưa" trên monitor, không bao giờ trả giá trị (trừ DB_TARGET và WEAVIATE_VECTOR_INDEX_TYPE).
 ENV_STATUS = ("DB_TARGET", "SEED_DATABASE_URL", "DATABASE_URL", "WEAVIATE_URL", "WEAVIATE_API_KEY",
               "CLOUD_SEED_DATABASE_URL", "CLOUD_DATABASE_URL", "CLOUD_WEAVIATE_URL", "CLOUD_WEAVIATE_API_KEY",
-              "EMBED_PROVIDER", "WEAVIATE_COLLECTION", "COHERE_API_KEY", "WEAVIATE_VECTOR_INDEX_TYPE")
-ENV_PUBLIC = {"DB_TARGET", "EMBED_PROVIDER", "WEAVIATE_COLLECTION", "WEAVIATE_VECTOR_INDEX_TYPE"}
+              "COHERE_API_KEY", "WEAVIATE_VECTOR_INDEX_TYPE")
+ENV_PUBLIC = {"DB_TARGET", "WEAVIATE_VECTOR_INDEX_TYPE"}
 
 
 class SettingsError(ValueError):

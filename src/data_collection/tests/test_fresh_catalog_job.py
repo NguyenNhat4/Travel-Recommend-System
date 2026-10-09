@@ -735,14 +735,6 @@ class IndexSettingsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.settings(DB_TARGET='local', SEED_DATABASE_URL='postgresql://seed', WEAVIATE_URL='ftp://weaviate')
 
-    def test_local_provider_needs_no_cohere_key(self):
-        settings = self.settings(DB_TARGET='cloud', CLOUD_SEED_DATABASE_URL='postgresql://seed', EMBED_PROVIDER='local',
-                                 CLOUD_WEAVIATE_URL='https://abc.weaviate.cloud', COHERE_API_KEY='')
-        self.assertEqual((settings.embed_provider, settings.embed_dimension), ('local', 384))
-        local = self.settings(DB_TARGET='local', SEED_DATABASE_URL='postgresql://seed', EMBED_PROVIDER='local',
-                              WEAVIATE_URL='http://localhost:8080', COHERE_API_KEY='')
-        self.assertEqual(local.embed_provider, 'local')
-
 
 class ManualComboMappingTests(unittest.TestCase):
     def test_run_dir_gets_the_reviewed_combo_mapping_once(self):

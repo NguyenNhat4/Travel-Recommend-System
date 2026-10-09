@@ -1,8 +1,4 @@
-"""Durable quota cooldown for indexing, separate from successful catalog writes.
-
-The embedder follows EMBED_PROVIDER (backend Settings): `local` e5-small runs in-process and never hits a quota, so the
-cooldown only engages for the `cohere` rollback provider (HTTP 429).
-"""
+"""Durable quota cooldown for indexing, separate from successful catalog writes."""
 from __future__ import annotations
 
 import fcntl

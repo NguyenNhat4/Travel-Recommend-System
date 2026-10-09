@@ -1,8 +1,8 @@
 # Job daily.py cho VPS; Chromium phục vụ báo giá thương gia từ UI Trip.com.
 # Build từ repository root:  docker build -f Dockerfile.daily -t vota-daily .
 # Chạy qua src/data_collection/run_daily_docker.sh; dữ liệu làm việc (interim, cache, sqlite tiến độ, catalog, version)
-# nằm trên ổ VPS, mount vào /data. Image không chứa data/, .env hay secret — kết nối DB/Weaviate (và key Cohere khi chạy
-# đường lui EMBED_PROVIDER=cohere) đến từ --env-file. Embedding mặc định: model local e5-small có sẵn trong image.
+# nằm trên ổ VPS, mount vào /data. Image không chứa data/, .env hay secret — kết nối DB/Weaviate đến từ --env-file.
+# Embedding: model local e5-small có sẵn trong image (FR-SRC-02), không cần khoá embedding.
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -45,7 +45,6 @@ RUN python -m pip install --no-cache-dir --index-url https://download.pytorch.or
 
 # Tải sẵn model lúc build (đúng revision ghim trong backend core/config.py, cùng giá trị với Dockerfile.backend) để job
 # index không tải gì lúc chạy; sau bước này HF chạy offline. Thêm ~0,7 GB torch CPU + transformers và ~0,47 GB model.
-# Đường lui Cohere (EMBED_PROVIDER=cohere + WEAVIATE_COLLECTION=Product + COHERE_API_KEY trong --env-file) không cần build lại.
 ARG EMBED_MODEL=intfloat/multilingual-e5-small
 ARG EMBED_MODEL_REVISION=614241f622f53c4eeff9890bdc4f31cfecc418b3
 RUN python -c "from huggingface_hub import snapshot_download; snapshot_download('${EMBED_MODEL}', revision='${EMBED_MODEL_REVISION}', allow_patterns=['config.json', 'model.safetensors', 'tokenizer.json', 'tokenizer_config.json', 'special_tokens_map.json', 'sentencepiece.bpe.model'])" \
@@ -58,7 +57,7 @@ COPY src/backend /app/src/backend
 COPY src/data_collection /app/src/data_collection
 
 # Kiểm ngay lúc build: model nạp được offline từ cache và embed thử một câu ra đúng 384 chiều.
-RUN python -c "from src.backend.app.infrastructure.embeddings.local_e5_embedder import LocalE5Embedder; LocalE5Embedder('${EMBED_MODEL}', revision='${EMBED_MODEL_REVISION}').warmup()"
+RUN python -c "from src.backend.app.infrastructure.embeddings.local_e5_embedder import LocalE5Embedder; v = LocalE5Embedder('${EMBED_MODEL}', revision='${EMBED_MODEL_REVISION}').embed_query('kiểm tra'); assert v.shape == (384,), v.shape"
 
 WORKDIR /app/src/data_collection
 USER app

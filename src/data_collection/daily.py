@@ -67,9 +67,8 @@ COVERAGE_FIELDS = ("unitPrice", "description", "imageUrl", "coordinates")
 #   seed    : kết nối cho `python -m data_collection.seed --catalog-only` (cần INSERT/UPDATE cdp.products, DELETE/INSERT
 #             catalog.combo_items)
 #   db      : kết nối job embed đọc catalog (mặc định = seed)
-#   weaviate: Weaviate của đích đó, ghi vào WEAVIATE_COLLECTION (mặc định ProductE5). Embedding theo EMBED_PROVIDER dùng
-#             chung mọi đích: local (mặc định, e5-small chạy trong tiến trình, không cần key) · cohere (đường lui, cần
-#             COHERE_API_KEY, đi cùng WEAVIATE_COLLECTION=Product) — xem index_missing()
+#   weaviate: Weaviate của đích đó; job embed ghi vào collection e5-small của backend (VECTOR_COLLECTION). Model chạy trong
+#             tiến trình nên không cần khoá embedding nào (FR-SRC-02; đã bỏ đường lui Cohere) — xem index_missing()
 TARGETS = {
     "local": {"seed": "SEED_DATABASE_URL", "db": "DATABASE_URL", "weaviate": "WEAVIATE_URL", "weaviate_key": "WEAVIATE_API_KEY"},
     "cloud": {"seed": "CLOUD_SEED_DATABASE_URL", "db": "CLOUD_DATABASE_URL", "weaviate": "CLOUD_WEAVIATE_URL",
@@ -478,18 +477,10 @@ def target_env(target: str) -> tuple[dict[str, str], list[str]]:
     return env, missing
 
 
-def embed_provider(env) -> str:
-    """EMBED_PROVIDER của job embed, cùng mặc định với backend Settings (`local`, FR-SRC-02 chốt 06/10/2026)."""
-    return (env.get("EMBED_PROVIDER") or "local").strip().lower() or "local"
-
-
 def index_missing(env) -> list[str]:
-    """Biến còn thiếu để chạy bước embed (chỉ tên, không bao giờ giá trị). Provider `local` chạy model trong tiến trình nên
-    chỉ cần WEAVIATE_URL; `cohere` (đường lui) cần thêm COHERE_API_KEY. Provider lạ để job embed tự báo lỗi cấu hình."""
-    missing = [] if env.get("WEAVIATE_URL") else ["WEAVIATE_URL"]
-    if embed_provider(env) == "cohere" and not env.get("COHERE_API_KEY"):
-        missing.append("COHERE_API_KEY")
-    return missing
+    """Biến còn thiếu để chạy bước embed (chỉ tên, không bao giờ giá trị). e5-small chạy trong tiến trình (FR-SRC-02) nên
+    chỉ cần WEAVIATE_URL; COHERE_API_KEY không còn dùng (đã bỏ đường lui Cohere, update-archive/2026-10-06-bo-duong-lui-cohere)."""
+    return [] if env.get("WEAVIATE_URL") else ["WEAVIATE_URL"]
 
 
 def _with_scheme(url: str) -> str:

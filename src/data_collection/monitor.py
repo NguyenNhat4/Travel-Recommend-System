@@ -655,8 +655,6 @@ class FreshMonitor:
         self._tallies: dict[str, InterimTally] = {}
         self._vectors: dict = {}
         self._vector_lock = threading.Lock()
-        self._embedder: tuple | None = None  # (cấu hình, embedder) của ô thử truy vấn
-        self._embedder_lock = threading.Lock()
 
     # -- lượt đang chạy
     def running(self) -> dict | None:
@@ -780,7 +778,7 @@ class FreshMonitor:
         db_target = os.environ.get("DB_TARGET", "local")
         url = os.environ.get("SEED_DATABASE_URL" if db_target == "local" else "CLOUD_SEED_DATABASE_URL") or ""
         out = {"dbTarget": db_target, "localOnly": os.environ.get("CATALOG_LOCAL_ONLY") == "1",
-               "db": _where(url) if url else None, "weaviate": None, "collection": None, "embed": None, "error": None}
+               "db": _where(url) if url else None, "weaviate": None, "collection": None, "error": None}
         try:
             settings = self._index_settings()
             out.update(weaviate=_where(settings.weaviate_url), collection=settings.vector_collection)
@@ -2055,24 +2053,12 @@ class FreshMonitor:
             self._vectors = {key: cached}
             return cached
 
-    def _query_embedder(self, settings):
-        """Embedder theo EMBED_PROVIDER của job index (backend `build_embedder`), giữ lại giữa các lần thử: model local nạp
-        ~0,5 GB nên chỉ nạp lại khi cấu hình đổi. Gọi trong `_embedder_lock`."""
-        from src.backend.app.infrastructure.embeddings import factory
-        key = (settings.embed_provider, settings.embed_model, getattr(settings, "embed_model_revision", ""),
-               settings.embed_dimension, getattr(settings, "cohere_api_key", ""))
-        if self._embedder is None or self._embedder[0] != key:
-            if self._embedder is not None:
-                self._embedder[1].close()
-                self._embedder = None
-            self._embedder = (key, factory.build_embedder(settings))
-        return self._embedder[1]
-
     def embed_query(self, run_id: str, query: str, k: int = 10, refresh: bool = False) -> dict:
-        """Thử truy vấn: Cohere `search_query` → xếp hạng cosine trên mọi vector của collection đích (đọc qua REST)."""
+        """Thử truy vấn: e5-small (tiền tố `query: `) → xếp hạng cosine trên mọi vector của collection đích (đọc qua REST).
+        Model nạp một lần ở lần bấm đầu (vài giây), giữ cho các lần sau."""
         ensure_backend_path()
         import numpy as np
-        from src.backend.app.infrastructure.embeddings.cohere_embedder import CohereEmbedder
+        from src.backend.app.infrastructure.embeddings.factory import build_embedder
         from src.backend.jobs.embed_products import vector_preview
         query = (query or "").strip()
         if not query or len(query) > EMBED_QUERY_MAX:
@@ -2080,16 +2066,13 @@ class FreshMonitor:
         k = max(1, min(int(k), 50))
         settings = self._index_settings()
         started = time.monotonic()
-        embedder = CohereEmbedder(settings.cohere_api_key, settings.embed_model, base_url=settings.cohere_base_url,
-                                  dimension=settings.embed_dimension, timeout_seconds=settings.cohere_timeout_seconds)
-        try:
-            vector = np.asarray(embedder.embed_query(query), dtype=np.float32).reshape(-1)
-        finally:
-            embedder.close()
-        cohere_ms = round((time.monotonic() - started) * 1000)
+        if getattr(self, "_query_embedder", None) is None:
+            self._query_embedder = build_embedder(settings)
+        vector = np.asarray(self._query_embedder.embed_query(query), dtype=np.float32).reshape(-1)
+        embed_ms = round((time.monotonic() - started) * 1000)
         data = self._collection_vectors(settings, refresh)
         if not data["ids"]:
-            raise ValueError(f"Collection {settings.weaviate_collection} chưa có vector nào")
+            raise ValueError(f"Collection {settings.vector_collection} chưa có vector nào")
         scores = data["matrix"] @ vector / np.maximum(data["norms"] * float(np.linalg.norm(vector)), 1e-12)
         order = np.argsort(-scores)[:k]
         names: dict[str, dict] = {}
