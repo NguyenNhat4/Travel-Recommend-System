@@ -85,6 +85,58 @@ class RouteCostTests(unittest.TestCase):
         self.assertAlmostEqual(route_cost([[a, None], [None]], [h]), haversine_km(a, h))
 
 
+class AirportTests(unittest.TestCase):
+    """Km tính cả chặng sân bay (AC-AGT-04, chốt 2026-10-09): ngày 1 sân bay → khách sạn → các điểm → khách sạn, ngày cuối
+    khách sạn → các điểm → sân bay."""
+
+    AIRPORT = (round(LAT0 - 20 / 111.195, 6), LNG0)  # 20 km về phía Nam của gốc
+
+    def test_the_airport_legs_are_added_at_both_ends(self):
+        h, a, b, arrive, leave = (10.0, 104.0), (10.0, 104.1), (10.1, 104.1), (9.8, 104.0), (9.7, 104.0)
+        cost = route_cost([[a, b], [a, b]], [h], (arrive, leave))
+        expected = (haversine_km(arrive, h)
+                    + haversine_km(h, a) + haversine_km(a, b) + haversine_km(b, h)
+                    + haversine_km(h, a) + haversine_km(a, b) + haversine_km(b, leave))
+        self.assertAlmostEqual(cost, expected)
+
+    def test_without_a_hotel_the_first_day_starts_at_the_airport(self):
+        a, b, airport = (10.0, 104.1), (10.1, 104.1), (9.8, 104.0)
+        self.assertAlmostEqual(route_cost([[a], [b]], [], (airport, airport)),
+                               haversine_km(airport, a) + haversine_km(b, airport))
+
+    def test_a_one_day_trip_ends_at_its_hotel(self):
+        h, a, airport = (10.0, 104.0), (10.0, 104.1), (9.8, 104.0)
+        self.assertAlmostEqual(route_cost([[a]], [h], (airport, airport)),
+                               haversine_km(airport, h) + 2 * haversine_km(h, a))
+
+    def compose_with(self, airports):
+        products = [place('a', 0, 0), place('b', 0, 1), hotel('h-north', 0, 3), hotel('h-south', 0, -3)]
+        candidates = catalog(*products)
+        sources = {pid: 'search' for pid in candidates}
+        return compose_plan(candidates, sources, trip(2), None, 0, airports)
+
+    def test_the_hotel_on_the_way_from_the_airport_wins_only_when_there_is_a_flight(self):
+        # Không vé: khách sạn Bắc ≈ 7 km, Nam ≈ 10 km. Sân bay 20 km phía Nam: Bắc ≈ 50 km, Nam ≈ 48 km.
+        self.assertEqual(self.compose_with((None, None))['stay_id'], 'h-north')
+        proposal = self.compose_with((self.AIRPORT, self.AIRPORT))
+        self.assertEqual(proposal['stay_id'], 'h-south')
+        self.assertAlmostEqual(proposal['distance_km'], 48.0, delta=0.2)
+
+    def test_the_result_is_the_true_minimum_with_the_airport(self):
+        rng = random.Random(11)
+        for _ in range(5):
+            places = [place(f'p{i}', rng.uniform(-15, 15), rng.uniform(-15, 15)) for i in range(6)]
+            only = hotel('h', rng.uniform(-5, 5), rng.uniform(-5, 5))
+            airports = (self.AIRPORT, (round(LAT0 + 25 / 111.195, 6), LNG0))
+            candidates = catalog(*places, only)
+            proposal = compose_plan(candidates, {pid: 'search' for pid in candidates}, trip(3), None, 0, airports)
+            points = {p['productId']: point(p) for p in places}
+            best = min(route_cost([[points[x] for x in order[0:2]], [points[x] for x in order[2:4]],
+                                   [points[x] for x in order[4:6]]], [point(only)] * 2, airports)
+                       for order in permutations(points))
+            self.assertAlmostEqual(proposal['distance_km'], round(best, 1), places=6)
+
+
 class RoutingComposeTests(unittest.TestCase):
     def test_the_morning_and_afternoon_follow_the_way_to_and_from_the_hotel(self):
         # Ngày 1 kết thúc ở khách sạn: điểm gần khách sạn đi sau. Ngày cuối xuất phát từ khách sạn: điểm gần đi trước.

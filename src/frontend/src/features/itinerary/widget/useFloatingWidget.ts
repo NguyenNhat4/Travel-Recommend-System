@@ -355,6 +355,12 @@ export function useFloatingWidget() {
   const selectedCanAddToCart = Boolean(selectedItem && isCartEligible(selectedItem.product.taxonomy));
   const bookSelectedNow = selectedItem ? () => { void bookItinerary([selectedItem]); } : undefined;
 
+  /** "Đặt ngay" trên thẻ trong khung chat (vé máy bay): đặt đúng mục đó của lịch trong câu trả lời chứa thẻ. */
+  const bookPlanItem = (plan: WidgetPlan, productId: string) => {
+    const item = plan.cartItems.find((candidate) => candidate.product.productId === productId);
+    if (item) void bookItinerary([item]);
+  };
+
   const handleCheckoutPlan = (e?: React.MouseEvent) => {
     if (e) {
       e.preventDefault();
@@ -421,7 +427,7 @@ export function useFloatingWidget() {
     isCheckingOut, isChatCollapsed, setIsChatCollapsed, hoveredCoordinate, hoveredPointId,
     setHoveredCoordinate, setHoveredPointId, focusedProductId, isHistoryOpen, setIsHistoryOpen, conversations, activeSessionId,
     isSignedIn, historyStatus, loadHistory,
-    selectedProduct, openProductDetail, closeProductDetail, addPlanItemToCart, addSelectedToCart, cartAddStates,
+    selectedProduct, openProductDetail, closeProductDetail, addPlanItemToCart, addSelectedToCart, cartAddStates, bookPlanItem,
     selectedCanAddToCart, bookSelectedNow, itemActions,
     selectingStay, chooseStayOption, previewStayOption, cancelStayPreview, previewedStay,
     assistantState, isRunning, messages, inputVal, setInputVal, chatScrollRef, retry, abort,

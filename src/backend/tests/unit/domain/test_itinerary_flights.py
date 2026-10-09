@@ -1,6 +1,7 @@
 """Chặng bay của lịch trình (AC-AGT-02): luật chọn vé, tổng tiền và grounding (`domain/itinerary/flights.py`)."""
 from src.backend.app.domain.itinerary import flights as rules
-from src.backend.app.domain.itinerary.planning import day_windows, summary, totals, validate_plan
+from src.backend.app.domain.itinerary.planning import (cost_breakdown, day_windows, price_plan, summary, totals,
+                                                       validate_plan)
 
 INTENT = {"destination": "Nha Trang", "origin": "Hà Nội", "startDate": "2026-10-15", "days": 3,
           "party": {"type": "FAMILY_WITH_KIDS", "adults": 2, "children": 1}, "budget": None, "interests": [], "pace": None}
@@ -99,12 +100,41 @@ def test_ticket_price_times_passengers_counts_in_the_total_and_budget():
     assert totals(plan, {**INTENT, "budget": 5_000_000}) == (5_400_000, "OVER_BUDGET")
 
 
+def test_the_cost_breakdown_splits_the_total_into_flights_stays_and_activities():
+    # "Ngân sách dự tính" (user-flow §4.2, chốt 2026-10-09): ba nhóm từ giá sản phẩm, cộng đúng bằng tổng.
+    legs, _ = rules.choose_flights(options([flight("o1", "2026-10-15", price=1_000_000)],
+                                           [flight("b1", "2026-10-17", destination="Hà Nội", price=800_000)]), INTENT)
+    plan = plan_with(legs)
+    hotel = {"productId": "h1", "name": "Venus", "taxonomy": "hotel", "unitPrice": 959_000, "priceUnit": "PER_NIGHT",
+             "currency": "VND", "available": True, "attributes": {}}
+    ticket = {"productId": "t1", "name": "Cáp Treo Hòn Thơm", "taxonomy": "attraction", "unitPrice": 850_000,
+              "priceUnit": "PER_PERSON", "currency": "VND", "available": True, "attributes": {}}
+    free = {"productId": "f1", "name": "Bãi Sao", "taxonomy": "attraction", "unitPrice": None, "currency": "VND",
+            "available": True, "attributes": {"ticketed": False}}
+    plan["stays"] = [{"product": hotel, "nights": 2, "fromNight": 1}]
+    plan["days"][0]["slots"] = [{"product": ticket}, {"product": free}]
+    price_plan(plan, INTENT)
+    assert plan["costBreakdown"] == {"flights": 5_400_000, "stays": 1_918_000, "activities": 2_550_000}
+    assert sum(plan["costBreakdown"].values()) == plan["estimatedTotal"]
+    assert "total" not in validate_plan(plan, {}, {}, INTENT, {}, {})
+    plan["costBreakdown"]["stays"] += 1
+    assert "total" in validate_plan(plan, {}, {}, INTENT, {}, {})
+
+
+def test_no_cost_breakdown_when_a_price_is_unknown():
+    plan = plan_with([])
+    plan["stays"] = [{"product": {"productId": "h1", "taxonomy": "hotel", "unitPrice": None, "priceUnit": "PER_NIGHT",
+                                  "attributes": {}}, "nights": 2, "fromNight": 1}]
+    assert cost_breakdown(plan, INTENT) is None
+    price_plan(plan, INTENT)
+    assert plan["estimatedTotal"] is None and "costBreakdown" not in plan
+
+
 def test_flights_are_grounded_against_the_looked_up_flights_only():
     out, back = flight("o1", "2026-10-15"), flight("b1", "2026-10-17", destination="Hà Nội")
     found = options([out], [back])
     legs, _ = rules.choose_flights(found, INTENT)
-    plan = plan_with(legs)
-    plan["estimatedTotal"], plan["budgetStatus"] = totals(plan, INTENT)
+    plan = price_plan(plan_with(legs), INTENT)
     candidates = rules.flight_candidates(found)
     # Chặng về đến Hà Nội và bay ngày cuối: không vi phạm luật điểm đến của lịch trình.
     assert validate_plan(plan, {}, {}, INTENT, {}, candidates) == []
@@ -188,8 +218,39 @@ def test_validate_plan_rejects_an_activity_scheduled_before_the_landing():
                                              "product_id": "a1"}]}
     plan = render_proposal(proposal, candidates, sources, INTENT)
     plan["flights"] = [{**leg, "product": summary(leg["product"])} for leg in legs]
-    plan["estimatedTotal"], plan["budgetStatus"] = totals(plan, INTENT)
+    price_plan(plan, INTENT)
     found = rules.flight_candidates(options([late]))
     assert validate_plan(plan, candidates, sources, INTENT, {}, found) == ["schedule"]
     plan["days"][0]["slots"], plan["days"][1]["slots"] = [], plan["days"][0]["slots"]
     assert validate_plan(plan, candidates, sources, INTENT, {}, found) == []
+
+
+def _located(product, lat, lng, origin=None):
+    product["attributes"].update({"latitude": lat, "longitude": lng})
+    if origin:
+        product["attributes"].update({"originLatitude": origin[0], "originLongitude": origin[1]})
+    return product
+
+
+PQC, SGN = (10.169783, 103.99353), (10.8188, 106.652)
+
+
+def test_airports_come_from_the_arrival_of_the_outbound_and_the_origin_of_the_return():
+    going = {"product": _located(flight("o", "2026-10-15"), *PQC, origin=SGN), "direction": "OUTBOUND"}
+    coming = {"product": _located(flight("b", "2026-10-17"), *SGN, origin=PQC), "direction": "RETURN"}
+    assert rules.airports([going, coming]) == (PQC, PQC)
+
+
+def test_a_round_trip_lands_and_leaves_at_the_same_airport():
+    leg = {"product": _located(flight("rt", "2026-10-15", trip="roundTrip"), *PQC, origin=SGN), "direction": "ROUND_TRIP"}
+    assert rules.airports([leg]) == (PQC, PQC)
+
+
+def test_one_direction_only_is_used_for_both_ends():
+    coming = {"product": _located(flight("b", "2026-10-17"), *SGN, origin=PQC), "direction": "RETURN"}
+    assert rules.airports([coming]) == (PQC, PQC)
+
+
+def test_no_flight_or_no_coordinates_gives_no_airport():
+    assert rules.airports([]) == (None, None)
+    assert rules.airports([{"product": flight("o", "2026-10-15"), "direction": "OUTBOUND"}]) == (None, None)

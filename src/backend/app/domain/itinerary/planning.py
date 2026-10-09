@@ -9,7 +9,7 @@ from typing import Any
 
 from .flights import flight_cost, flight_times
 from .geo import Point, band, haversine_km, located, medoid
-from .routing import DayShape, STAY_CHANGE_MIN_DAYS, STAY_MIN_NIGHTS, optimize
+from .routing import NO_AIRPORTS, Airports, DayShape, STAY_CHANGE_MIN_DAYS, STAY_MIN_NIGHTS, optimize
 from .normalization import strip_accents
 from .types import Candidates, Constraints, Party, Plan, Product, Proposal, Sources, TripIntent
 
@@ -37,7 +37,9 @@ SUMMARY_ATTRIBUTE_KEYS = frozenset({"oceanView", "privateBeach", "pool", "ticket
                                     # Thẻ chặng bay (AC-AGT-02, user-flow §4.2): hãng, số hiệu, giờ đi/đến, bay thẳng.
                                     "airline", "flightNumber", "departureAt", "arrivalAt", "departureTimeLocal",
                                     "arrivalTimeLocal", "nonstop", "tripType", "returnDate", "returnFlight",
-                                    "originCity", "destinationCity", "originAirport", "destinationAirport"})
+                                    "originCity", "destinationCity", "originAirport", "destinationAirport",
+                                    # Toạ độ sân bay đi của chặng về: bản đồ vẽ chặng ra sân bay (chốt 2026-10-09).
+                                    "originLatitude", "originLongitude"})
 # Flights and combos have no confirmed slot mapping, so they can be retrieved but never scheduled.
 STAY_TAXONOMY = "hotel"
 SLOT_TAXONOMIES = frozenset({"attraction", "golf"})
@@ -155,21 +157,43 @@ def _known_cost(product: Product, *, nights: int, party: Party | None) -> int | 
     return int(price) if unit == "PER_PACKAGE" else None
 
 
+def cost_breakdown(plan: Plan, intent: TripIntent) -> dict[str, int] | None:
+    """Tổng tiền chia theo nhóm (user-flow §4.2 "Ngân sách dự tính", chốt 2026-10-09): vé máy bay, lưu trú, vui chơi
+    (tham quan tự do 0 đ). Ba nhóm cộng lại bằng tổng; một khoản chưa biết giá thì None như tổng. Chỉ gồm sản phẩm trong
+    lịch, không có khoản ước tính nào khác (ăn uống, đi lại)."""
+    party = intent.get("party")
+    groups = {
+        "flights": [flight_cost(leg) for leg in plan.get("flights", [])],
+        "stays": [_known_cost(stay["product"], nights=stay["nights"], party=party)
+                  for stay in plan.get("stays") or ([plan["stay"]] if plan.get("stay") else [])],
+        "activities": [_known_cost(slot["product"], nights=1, party=party) for day in plan.get("days", [])
+                       for slot in day.get("slots", []) if slot.get("product") is not None],
+    }
+    if any(amount is None for amounts in groups.values() for amount in amounts):
+        return None
+    return {name: sum(amounts) for name, amounts in groups.items()}
+
+
 def totals(plan: Plan, intent: TripIntent) -> tuple[int | None, str]:
-    products: list[tuple[Product, int]] = []
-    for stay in plan.get("stays") or ([plan["stay"]] if plan.get("stay") else []):
-        products.append((stay["product"], stay["nights"]))
-    products.extend((slot["product"], 1) for day in plan.get("days", [])
-                    for slot in day.get("slots", []) if slot.get("product") is not None)
-    amounts = [_known_cost(product, nights=nights, party=intent.get("party")) for product, nights in products]
-    amounts.extend(flight_cost(leg) for leg in plan.get("flights", []))
-    if any(amount is None for amount in amounts):
+    breakdown = cost_breakdown(plan, intent)
+    if breakdown is None:
         return None, "UNKNOWN"
-    total = sum(amounts)
+    total = sum(breakdown.values())
     budget = intent.get("budget")
     if budget is None:
         return total, "NO_BUDGET"
     return total, "WITHIN_BUDGET" if total <= budget else "OVER_BUDGET"
+
+
+def price_plan(plan: Plan, intent: TripIntent) -> Plan:
+    """Gắn tổng tiền, trạng thái ngân sách và phần chia theo nhóm (`costBreakdown`, vắng khi tổng chưa biết)."""
+    plan["estimatedTotal"], plan["budgetStatus"] = totals(plan, intent)
+    breakdown = cost_breakdown(plan, intent)
+    if breakdown is None:
+        plan.pop("costBreakdown", None)
+    else:
+        plan["costBreakdown"] = breakdown
+    return plan
 
 
 def _parent_key(product: Product) -> str:
@@ -206,9 +230,10 @@ def _activity_order(sources: Sources, product: Product, distance: float = 0.0) -
 
 
 def keep_rank(sources: Sources, product: Product) -> tuple[Any, ...]:
-    """Thứ tự giữ lại một trong các điểm trùng nhau (AC-AGT-04, node `filter`): Search trước Recommendation, rẻ hơn, mã
-    nhỏ hơn. Không xét vị trí: lúc lọc chưa có mốc của chuyến."""
-    return (_source_rank(sources, product), *_price_key(product), product["productId"])
+    """Thứ tự giữ lại một trong các điểm trùng nhau (AC-AGT-04, node `filter`): vé có phí trước tham quan tự do (chốt
+    2026-10-09: giữ "Cáp Treo Hòn Thơm", bỏ "hòn Thơm" — tự do tính 0 đ nên không được thắng vì rẻ hơn), rồi Search trước
+    Recommendation, rẻ hơn, mã nhỏ hơn. Không xét vị trí: lúc lọc chưa có mốc của chuyến."""
+    return (free_to_visit(product), _source_rank(sources, product), *_price_key(product), product["productId"])
 
 
 def _period_at(moment: datetime) -> str:
@@ -264,7 +289,8 @@ def _km(positions: dict[str, Point], product_id: str, point: Point | None) -> fl
 
 
 def compose_plan(candidates: Candidates, sources: Sources, intent: TripIntent,
-                 windows: dict[int, dict[str, Any]] | None = None, fixed_cost: int | None = 0) -> Proposal:
+                 windows: dict[int, dict[str, Any]] | None = None, fixed_cost: int | None = 0,
+                 airports: Airports = NO_AIRPORTS) -> Proposal:
     """Choose products and lay them out on days with fixed rules. No model is involved.
 
     Ordering is total and depends only on product data and source, so the same candidates always
@@ -284,6 +310,9 @@ def compose_plan(candidates: Candidates, sources: Sources, intent: TripIntent,
     Ngân sách (chốt 2026-10-08): `fixed_cost` là tiền vé máy bay đã chọn (None khi chưa rõ giá). Có ngân sách và biết
     tiền vé thì chỉ xét các lịch có tổng tiền không vượt ngân sách; không lịch nào vừa thì lấy lịch rẻ nhất. Proposal
     khi đó có thêm `distance_km` và `options` (phương án khác, `routing.Option`) để câu trả lời nêu "thêm X ₫ → bớt Y km".
+
+    `airports` (`flights.airports`, chốt 2026-10-09): sân bay đến và sân bay đi của chặng bay đã chọn; quãng đường tính cả
+    chặng sân bay → khách sạn ngày 1 và điểm cuối → sân bay ngày cuối, nên khách sạn gần sân bay được lợi.
     """
     windows = windows or {}
     days_count = intent.get("days")
@@ -357,7 +386,7 @@ def compose_plan(candidates: Candidates, sources: Sources, intent: TripIntent,
                                      for index, products in enumerate(per_day)],
                            [p for p in activities if p["productId"] not in placed], hotels, positions, days_count, money,
                            lambda product: _stay_order(sources, product) if product.get("taxonomy") == STAY_TAXONOMY
-                           else _activity_order(sources, product), budget_left)
+                           else _activity_order(sources, product), budget_left, airports)
         route = planned.route
         per_day = route.days
         options = []
@@ -484,8 +513,7 @@ def render_proposal(proposal: Proposal, candidates: Candidates,
     plan: Plan = {**({"stay": stay, "stays": stays} if stay else {}), "days": days,
         "bookableCount": len(used), "estimatedTotal": None, "currency": "VND",
         "budgetStatus": "UNKNOWN", "priceAsOf": None}
-    plan["estimatedTotal"], plan["budgetStatus"] = totals(plan, intent)
-    return plan
+    return price_plan(plan, intent)
 
 
 def validate_plan(plan: Plan, candidates: Candidates,
@@ -549,7 +577,8 @@ def validate_plan(plan: Plan, candidates: Candidates,
     if constraints.get("require_hotel") and not plan.get("stay"):
         issues.append("required_hotel")
     expected_total, expected_status = totals(plan, intent)
-    if plan.get("estimatedTotal") != expected_total or plan.get("budgetStatus") != expected_status:
+    if (plan.get("estimatedTotal") != expected_total or plan.get("budgetStatus") != expected_status
+            or plan.get("costBreakdown") != cost_breakdown(plan, intent)):
         issues.append("total")
     return sorted(set(issues))
 

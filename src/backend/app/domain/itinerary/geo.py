@@ -31,13 +31,17 @@ def _number(value) -> float | None:
     return float(value)
 
 
-def coords(product: Product) -> Point | None:
-    """Toạ độ catalog của sản phẩm; None khi thiếu, không phải số hoặc ngoài phạm vi."""
-    attributes = product.get("attributes") or {}
-    lat, lng = _number(attributes.get("latitude")), _number(attributes.get("longitude"))
+def point_at(attributes: Mapping, lat_key: str = "latitude", lng_key: str = "longitude") -> Point | None:
+    """Toạ độ ở hai khoá của `attributes`; None khi thiếu, không phải số hoặc ngoài phạm vi."""
+    lat, lng = _number(attributes.get(lat_key)), _number(attributes.get(lng_key))
     if lat is None or lng is None or not (-90 <= lat <= 90 and -180 <= lng <= 180):
         return None
     return lat, lng
+
+
+def coords(product: Product) -> Point | None:
+    """Toạ độ catalog của sản phẩm; None khi thiếu, không phải số hoặc ngoài phạm vi."""
+    return point_at(product.get("attributes") or {})
 
 
 def _decimals(value: float) -> int:

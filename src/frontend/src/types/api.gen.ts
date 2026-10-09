@@ -1887,6 +1887,15 @@ export interface components {
             distanceKm: number;
             options: components["schemas"]["ItineraryStayOption"][];
         };
+        /** @description (1.21.0, user-flow §4.2 "Ngân sách dự tính") estimatedTotal chia theo nhóm sản phẩm; flights + stays + activities = estimatedTotal. Có khi estimatedTotal khác null, vắng mặt khi tổng chưa biết. Chỉ gồm sản phẩm trong lịch: không có khoản ăn uống hay đi lại ước tính. */
+        ItineraryCostBreakdown: {
+            /** @description Vé máy bay, unitPrice × passengers của từng vé. */
+            flights: number;
+            /** @description Khách sạn, giá × số đêm của từng khách sạn. */
+            stays: number;
+            /** @description Tour, điểm tham quan, golf trong các ngày; điểm tham quan tự do tính 0. */
+            activities: number;
+        };
         /**
          * @description (1.18.0) Chặng của vé trong lịch trình; ROUND_TRIP là một vé khứ hồi phủ cả hai chặng.
          * @enum {string}
@@ -1929,6 +1938,7 @@ export interface components {
             bookableCount?: number;
             /** @description Backend tính tổng khi đủ đơn vị/số lượng; thiếu thì null, budgetStatus UNKNOWN và warning. Không bỏ qua khoản chưa biết. Điểm tham quan tự do (attraction/golf có ticketed=false hoặc unitPrice null) tính 0 vào tổng, kèm warning FREE_ENTRY_ASSUMED. */
             estimatedTotal: number | null;
+            costBreakdown?: components["schemas"]["ItineraryCostBreakdown"];
             currency: components["schemas"]["Currency"];
             budgetStatus: components["schemas"]["BudgetStatus"];
             /**

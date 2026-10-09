@@ -53,9 +53,25 @@ describe('WidgetStayOptions', () => {
   it('shows the trade-off of each option', () => {
     render(row());
     expect(screen.getByText('Đang chọn')).toBeTruthy();
-    expect(screen.getByText(/Đi lại ~33,1 km/)).toBeTruthy();
+    expect(screen.getByText(/Đi lại ≈33,1 km/)).toBeTruthy();
     expect(screen.getByText('−5.000.000 ₫')).toBeTruthy();
-    expect(screen.getByText('+9,2 km')).toBeTruthy();
+    expect(screen.getByText('≈+9,2 km')).toBeTruthy();
+  });
+
+  it('notes that the km is an estimate, including the airport legs only when the plan has a flight', () => {
+    render(row());
+    expect(screen.getByText('Số km là ước tính quãng đường di chuyển cả hành trình.')).toBeTruthy();
+    cleanup();
+    const flight = {
+      product: { productId: 'vn-rt', name: 'VN1823', taxonomy: 'flight', destination: 'Phú Quốc', unitPrice: 1_730_362,
+        priceUnit: 'PER_PERSON', currency: 'VND', available: true,
+        attributes: { latitude: 10.169783, longitude: 103.99353, destinationAirport: 'PQC' } },
+      direction: 'ROUND_TRIP', date: '2026-10-20', returnDate: '2026-10-22', passengers: 2, source: 'SEARCH',
+    };
+    const withFlight = { ...response, itinerary: { ...response.itinerary, flights: [flight] } } as unknown as
+      components['schemas']['ItineraryCompleted'];
+    render(row({ cards: stayOptionCards(withFlight)! }));
+    expect(screen.getByText('Số km là ước tính quãng đường di chuyển cả hành trình, gồm cả đường sân bay.')).toBeTruthy();
   });
 
   it('only previews on a tap of the card; the switch button is what changes the hotel', () => {

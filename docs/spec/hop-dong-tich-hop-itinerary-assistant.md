@@ -417,6 +417,8 @@ người dùng có muốn thêm không. Bấm link của gói thì mở trang ch
 
 Nếu `estimatedTotal=null`, `budgetStatus` bắt buộc là `UNKNOWN` và cần warning. Backend tính tổng khi đủ căn cứ; LLM không tính hoặc sửa giá. Điểm tham quan tự do tính 0 đ, không phải "thiếu căn cứ".
 
+Từ 1.21.0 (chốt 2026-10-09, `docs/prd/update-archive/2026-10-09-ngan-sach-du-tinh.md`): khi `estimatedTotal` khác `null`, `itinerary.costBreakdown = {flights, stays, activities}` chia tổng theo vé máy bay, khách sạn và hoạt động (tự do 0 đ), cộng lại đúng bằng `estimatedTotal`; vắng khi tổng chưa biết. Backend tính cùng chỗ với tổng (`planning.price_plan`) và `validate_plan` kiểm cả phần chia. Không có khoản ước tính ngoài sản phẩm.
+
 ### 4.3. Response cần hỏi thêm
 
 ```json

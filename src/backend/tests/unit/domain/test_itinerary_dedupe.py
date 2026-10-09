@@ -50,10 +50,23 @@ class ApplyPairsTests(unittest.TestCase):
     def test_every_pair_of_one_place_leaves_one_product(self):
         pairs = [('cap', 'hon'), ('sun', 'cap'), ('hon', 'sun')]
         kept, dropped = apply_pairs(self.candidates, {}, pairs, 'llm')
-        self.assertEqual(sorted(kept), ['hon', 'hotel', 'kiss'])  # tham quan tự do tính 0 đ nên rẻ nhất
-        self.assertEqual({item['productId'] for item in dropped}, {'sun', 'cap'})
-        self.assertTrue(all(item['duplicateOf'] == 'hon' and item['by'] == 'llm' for item in dropped))
+        self.assertEqual(sorted(kept), ['cap', 'hotel', 'kiss'])  # vé có phí trước tự do; cùng giá thì mã nhỏ hơn
+        self.assertEqual({item['productId'] for item in dropped}, {'sun', 'hon'})
+        self.assertTrue(all(item['duplicateOf'] == 'cap' and item['by'] == 'llm' for item in dropped))
         self.assertEqual(apply_pairs(self.candidates, {}, list(reversed(pairs)), 'llm'), (kept, dropped))
+
+    def test_a_ticket_is_kept_over_a_free_place_even_from_recommendation(self):
+        # Trace 09/10/2026 (chốt 2026-10-09): "hòn Thơm" tự do từng thắng "Cáp Treo Hòn Thơm" vì tính 0 đ.
+        kept, dropped = apply_pairs(self.candidates, {'cap': 'recommendation'}, [('hon', 'cap')], 'llm')
+        self.assertIn('cap', kept)
+        self.assertNotIn('hon', kept)
+        self.assertEqual(dropped[0]['duplicateOfName'], 'Cáp Treo Hòn Thơm')
+
+    def test_two_free_places_keep_the_searched_one(self):
+        candidates = catalog(product('beach-a', 'Bãi Sao', None, ticketed=False),
+                             product('beach-b', 'Bãi tắm Sao', None, ticketed=False))
+        kept, _ = apply_pairs(candidates, {'beach-a': 'recommendation'}, [('beach-a', 'beach-b')], 'llm')
+        self.assertEqual(list(kept), ['beach-b'])
 
     def test_a_bundle_does_not_join_the_two_tickets_it_contains(self):
         # Trace 08/10/2026: (Bảo tàng Gấu, combo) và (combo, Water Taxi) từng làm Bảo tàng Gấu bị bỏ vì "trùng" Water Taxi.

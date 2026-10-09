@@ -79,8 +79,8 @@ class StayOptionsTests(unittest.TestCase):
         result = composition.composed(square_trip())
         self.assertEqual(result['response']['itinerary']['stay']['product']['productId'], 'h-close')
         [text] = options_text(result)
-        self.assertTrue(text.startswith('Lịch trên: đi lại khoảng '))
-        self.assertIn('• Phương án 1: bớt 5.000.000 ₫ — ở Catalog h-far: đi thêm khoảng ', text)
+        self.assertTrue(text.startswith('Lịch trên: đi lại ≈'))
+        self.assertIn('• Phương án 1: bớt 5.000.000 ₫ — ở Catalog h-far: đi thêm ≈', text)
         self.assertNotIn('vượt ngân sách', text)
         self.assertTrue(text.endswith('Bấm một thẻ khách sạn để đổi ngay, hoặc nhắn "lấy phương án 1".'))
         [option] = result['stay_options']
@@ -92,12 +92,12 @@ class StayOptionsTests(unittest.TestCase):
         self.assertEqual(result['response']['itinerary']['budgetStatus'], 'WITHIN_BUDGET')
         self.assertIn('ngân sách của bạn', criteria(result)[0])
         [text] = options_text(result)
-        self.assertIn('• Phương án 1: thêm 5.000.000 ₫ — ở Catalog h-close: bớt khoảng ', text)
+        self.assertIn('• Phương án 1: thêm 5.000.000 ₫ — ở Catalog h-close: bớt ≈', text)
         self.assertIn(' km đi lại (vượt ngân sách 3.400.000 ₫).\n', text)
 
     def test_english_wording(self):
         [text] = options_text(composition.composed(square_trip(budget=3_000_000, language='en')))
-        self.assertIn('• Option 1: 5,000,000 VND more — stay at Catalog h-close: about ', text)
+        self.assertIn('• Option 1: 5,000,000 VND more — stay at Catalog h-close: ≈', text)
         self.assertIn('(3,400,000 VND over budget)', text)
 
     def test_no_section_when_there_is_no_other_hotel(self):

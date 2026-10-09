@@ -10,6 +10,7 @@ import { WidgetNarration } from './WidgetNarration';
 import { WidgetComposer } from './WidgetComposer';
 import { WidgetProgress } from './WidgetProgress';
 import { WidgetStayOptions } from './WidgetStayOptions';
+import { WidgetBudget } from './WidgetBudget';
 import { stayCardKey } from './widgetPlan';
 import type { FloatingWidgetController } from './useFloatingWidget';
 
@@ -27,7 +28,7 @@ function AssistantHeader() {
 export function WidgetChat({ widget }: { widget: FloatingWidgetController }) {
   const { messages, assistantState, isRunning, isExpanded, setIsExpanded, chatScrollRef,
     inputVal, setInputVal, handleSendMessage, handleConfirmTripDetails, retry, abort, openProductDetail, addPlanItemToCart,
-    selectingStay, chooseStayOption, previewedStay, previewStayOption } = widget;
+    selectingStay, chooseStayOption, previewedStay, previewStayOption, bookPlanItem } = widget;
   const isInitial = messages.length === 0 && !isRunning;
   const lastMessageId = messages.length > 0 ? messages[messages.length - 1].id : null;
 
@@ -47,6 +48,9 @@ export function WidgetChat({ widget }: { widget: FloatingWidgetController }) {
                         quickAddIds={message.plan ? new Set(message.plan.cartItems.filter((item) => isCartEligible(item.product.taxonomy)).map((item) => item.product.productId)) : undefined}
                         cartAddStates={widget.cartAddStates}
                         onQuickAdd={message.plan ? (productId) => addPlanItemToCart(message.plan!, productId) : undefined}
+                        flights={message.plan?.flights}
+                        bookableIds={message.plan ? new Set(message.plan.cartItems.map((item) => item.product.productId)) : undefined}
+                        onBookNow={message.plan ? (productId) => bookPlanItem(message.plan!, productId) : undefined}
                         stays={message.stayOptions ? {
                           // Hàng thẻ "Phương án khác" là nội dung mục "Nơi nghỉ": thay dòng chữ và thẻ của mọi khách sạn
                           // trong hàng (kể cả khách sạn cũ mà lời diễn giải còn nhắc sau khi đã đổi).
@@ -62,6 +66,9 @@ export function WidgetChat({ widget }: { widget: FloatingWidgetController }) {
                         } : undefined} />
                     : <AssistantText text={message.text} />)
                   : message.text}
+                {message.plan?.budgetSummary && (
+                  <WidgetBudget summary={message.plan.budgetSummary} days={message.plan.intent.days} />
+                )}
                 {message.plan && !isExpanded && (
                   <button onClick={() => setIsExpanded(true)} className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-blue-600 hover:bg-blue-50">
                     <Sparkles className="h-4 w-4" aria-hidden="true" />Xem lộ trình & Bản đồ song song<Maximize2 className="h-4 w-4" aria-hidden="true" />

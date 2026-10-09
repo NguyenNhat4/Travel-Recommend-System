@@ -418,6 +418,8 @@ ItineraryPlan:
       description: Backend tính tổng khi đủ đơn vị/số lượng; thiếu thì null, budgetStatus UNKNOWN và warning.
         Không bỏ qua khoản chưa biết. Điểm tham quan tự do (attraction/golf có ticketed=false hoặc unitPrice null)
         tính 0 vào tổng, kèm warning FREE_ENTRY_ASSUMED.
+    costBreakdown:
+      $ref: ../openapi.yaml#/components/schemas/ItineraryCostBreakdown
     currency:
       $ref: ../openapi.yaml#/components/schemas/Currency
     budgetStatus:
@@ -532,6 +534,29 @@ ItineraryStayOptions:
       maxItems: 3
       items:
         $ref: ../openapi.yaml#/components/schemas/ItineraryStayOption
+ItineraryCostBreakdown:
+  type: object
+  required:
+  - flights
+  - stays
+  - activities
+  description: >-
+    (1.21.0, user-flow §4.2 "Ngân sách dự tính") estimatedTotal chia theo nhóm sản phẩm; flights + stays + activities =
+    estimatedTotal. Có khi estimatedTotal khác null, vắng mặt khi tổng chưa biết. Chỉ gồm sản phẩm trong lịch: không có
+    khoản ăn uống hay đi lại ước tính.
+  properties:
+    flights:
+      type: integer
+      minimum: 0
+      description: Vé máy bay, unitPrice × passengers của từng vé.
+    stays:
+      type: integer
+      minimum: 0
+      description: Khách sạn, giá × số đêm của từng khách sạn.
+    activities:
+      type: integer
+      minimum: 0
+      description: Tour, điểm tham quan, golf trong các ngày; điểm tham quan tự do tính 0.
 ItineraryCompleted:
   type: object
   required:

@@ -155,6 +155,7 @@ class Plan(TypedDict, total=False):
     days: list[DayPlan]
     bookableCount: int
     estimatedTotal: int | None
+    costBreakdown: dict[str, int]  # flights, stays, activities; vắng khi estimatedTotal là None
     currency: str
     budgetStatus: str
     priceAsOf: str | None

@@ -1,6 +1,6 @@
 # Xếp lịch và tính tiền
 
-Phục vụ FR-AGT-03, FR-AGT-04, AC-AGT-02, AC-AGT-04. Mô tả theo code tại 2026-10-08; khi lệch, PRD và contract thắng.
+Phục vụ FR-AGT-02, FR-AGT-03, FR-AGT-04, AC-AGT-02, AC-AGT-04. Mô tả theo code tại 2026-10-09; khi lệch, PRD và contract thắng.
 
 ## Mục đích
 
@@ -37,8 +37,9 @@ flowchart LR
   trả mọi cặp mã trùng (mỗi cặp có lý do rồi kết luận `duplicate`; chỉ cặp `duplicate=true` được áp). Cặp có mã lạ hoặc
   không phải điểm tham quan bị bỏ qua. Không bắc cầu: gói "Water Taxi + Bảo Tàng Gấu" trùng với từng vé lẻ nhưng hai vé lẻ
   vẫn là hai hoạt động.
-- Mỗi cặp giữ: nguồn Search trước Recommendation, rồi giá thấp (tham quan tự do 0 đ), rồi `productId`; duyệt theo thứ tự
-  này, một mã chỉ bị bỏ khi nó cặp với một mã đang được giữ. Mã bị bỏ ra khỏi
+- Mỗi cặp giữ: vé có phí trước [tham quan tự do](glossary.md#tham-quan-tu-do) (chốt 2026-10-09: giữ "Cáp Treo Hòn Thơm",
+  bỏ "hòn Thơm"), rồi nguồn Search trước Recommendation, rồi giá thấp, rồi `productId`; duyệt theo thứ tự này, một mã chỉ
+  bị bỏ khi nó cặp với một mã đang được giữ. Mã bị bỏ ra khỏi
   ứng viên nên không vào lịch lẫn phương án khác, và có cảnh báo `PRODUCT_DROPPED_DUPLICATE` ("Bỏ "X" vì trùng với "Y".").
 - Khách sạn, vé máy bay, combo, gói nhiều ngày không qua bước này. LLM lỗi hoặc quá `ITINERARY_LLM_TIMEOUT_SECONDS`: chỉ dùng luật cùng tên.
 
@@ -75,10 +76,15 @@ Không bao giờ chọn cả phòng lẫn khách sạn cha của nó, và hai kh
   trở xuống **và** dùng chung cho từ 5 ứng viên trở lên của cùng điểm đến trong lượt.
 - **[Mốc](glossary.md#moc):** medoid của các hoạt động rõ vị trí nguồn Search (không có thì mọi nguồn). Dùng để chọn
   hoạt động nào được xếp khi có nhiều hơn số chỗ.
-- **[Quãng đường của chuyến](glossary.md#quang-duong-chuyen)**, với H_d là khách sạn đêm d:
-  - ngày 1: A → B → H₁ (chưa tính chặng sân bay);
+- **[Quãng đường của chuyến](glossary.md#quang-duong-chuyen)**, với H_d là khách sạn đêm d, S_đến/S_đi là sân bay
+  (chốt 2026-10-09, `flights.airports`, `routing.day_ends`):
+  - ngày 1: S_đến → H₁, rồi H₁ → A → B → H₁ (về nhận phòng trước); không có khách sạn thì S_đến → A → B;
   - ngày d giữa chuyến: H(d−1) → A → B → H_d;
-  - ngày cuối: H(n−1) → A → B. Chuyến 1 ngày có 1 đêm nên kết thúc ở khách sạn.
+  - ngày cuối: H(n−1) → A → B → S_đi. Chuyến 1 ngày có 1 đêm nên kết thúc ở khách sạn (chỉ thêm S_đến → H₁).
+  - Sân bay: S_đến = `latitude`/`longitude` của chặng đi hoặc vé khứ hồi; S_đi = `originLatitude`/`originLongitude`
+    của chặng về (vé khứ hồi: chính S_đến). Chỉ có một chiều thì dùng sân bay đó cho cả hai đầu. Không có vé, hoặc vé
+    không có toạ độ (catalog tổng hợp), thì ngày 1 bắt đầu ở điểm đầu và ngày cuối dừng ở điểm cuối như trước.
+  - Chặng sân bay nằm trong chi phí nên ảnh hưởng khách sạn được chọn và chênh km của phương án khác.
 
   Điểm chưa rõ vị trí bị bỏ qua khi cộng chặng.
 - **Chi phí** = quãng đường + 15 km cho mỗi lần [đổi khách sạn](glossary.md#doi-khach-san).
@@ -117,7 +123,9 @@ Không bao giờ chọn cả phòng lẫn khách sạn cha của nó, và hai kh
   - mục do code chèn, LLM không viết lại (prompt có `criteria_shown_separately`);
   - "Phương án khác" không còn là đoạn chữ: từ contract 1.20.0 là hàng thẻ `stayOptions` ở mục "Nơi nghỉ" của widget
     (`docs/spec/hop-dong-tich-hop-frontend.md`); warning `STAY_OPTIONS` vẫn giữ cho client cũ;
-  - lịch chưa hiện số km từng ngày; tổng km và chênh km chỉ có trong mục Phương án khác.
+  - lịch chưa hiện số km từng ngày; tổng km và chênh km chỉ có trong mục Phương án khác, luôn có dấu "≈" (chốt
+    2026-10-09); hàng thẻ có dòng lưu ý "Số km là ước tính quãng đường di chuyển cả hành trình, gồm cả đường sân bay."
+    (không có chặng bay thì bỏ vế sau).
 - **Đổi khách sạn:** ngày đổi có dòng `TRANSFER` "Trả phòng, chuyển sang khách sạn mới." (`note_kind = CHANGE_STAY`) ở
   buổi sáng. `itinerary.stays` liệt kê khách sạn theo đêm (`fromNight`, `nights`); `itinerary.stay` = `stays[0]`.
 - **Chọn phương án ở lượt sau:** xem [sua-lich-qua-nhieu-luot.md](sua-lich-qua-nhieu-luot.md).
@@ -166,6 +174,9 @@ timeline
   (xem [chọn lịch](#gom-theo-khoang-cach)).
 - Nhiều khách sạn: mỗi khách sạn giá × số đêm ở đó.
 - Tổng chỉ gồm sản phẩm trong lịch, chưa gồm ăn uống, đi lại (`PRODUCT_COST_ONLY`, `BUDGET_ON_PRODUCT_COST`).
+- `costBreakdown` (contract 1.21.0, "Ngân sách dự tính" chốt 2026-10-09, `planning.cost_breakdown`/`price_plan`): tổng
+  chia thành `flights` (vé), `stays` (khách sạn), `activities` (tour, điểm tham quan, golf; tự do 0 đ), cộng lại bằng
+  `estimatedTotal`; vắng khi tổng chưa biết. `validate_plan` kiểm cả phần chia. Không có khoản ăn uống ước tính.
 
 ## Edge case
 
@@ -177,11 +188,10 @@ timeline
 - ⚠️ cần xác nhận: nhận diện toạ độ tâm thành phố là cách tạm. Staging 07/10/2026 có khoảng 270/953 điểm tham quan dùng
   toạ độ tâm thành phố (Vũng Tàu 48/48, Huế 64/80). Số ứng viên chung toạ độ được đếm trong lượt, nên khi ít hơn 5 tour
   về cùng một điểm, chúng vẫn bị coi là rõ vị trí. Cần nguồn đánh dấu độ chính xác (ví dụ `attributes.geoPrecision`).
-- ⚠️ cần xác nhận: km là đường chim bay, nên chênh km của phương án khác chỉ là ước lượng (câu chữ ghi "khoảng"). Ở
-  đảo, đường thật có thể dài hơn nhiều; OSRM là việc sau.
+- ⚠️ cần xác nhận: km là đường chim bay, nên chênh km của phương án khác chỉ là ước lượng (câu chữ ghi "≈"). Ở đảo,
+  đường thật có thể dài hơn nhiều; OSRM là việc sau.
 - ⚠️ cần xác nhận: bước LLM của `filter` không tất định, nên cùng một câu có thể ra lịch khác nhau giữa các lần chạy;
-  `compose` vẫn tất định với cùng tập ứng viên đã lọc. Giữ mã rẻ hơn có thể giữ điểm tự do ("hòn Thơm") thay cho vé cáp
-  treo.
+  `compose` vẫn tất định với cùng tập ứng viên đã lọc. Từ 2026-10-09 vé có phí được giữ trước điểm tự do.
 - ⚠️ cần xác nhận: khung buổi chỉ dùng khi có vé. Không có vé thì buổi chỉ là nhãn, không kiểm thời lượng hoạt động (vd
   hoạt động 5 giờ vẫn có thể nằm ở buổi chiều).
 
@@ -191,6 +201,7 @@ timeline
 - [`domain/itinerary/routing.py`](../../../../src/backend/app/domain/itinerary/routing.py) — `route_cost`, `optimize` (chuỗi khách sạn, gán ngày, ngân sách, phương án khác)
 - [`domain/itinerary/dedupe.py`](../../../../src/backend/app/domain/itinerary/dedupe.py) — `same_name_pairs`, `apply_pairs` (node `filter`)
 - [`agents/steps/filtering.py`](../../../../src/backend/app/agents/steps/filtering.py) — luật trước, payload LLM, cảnh báo `PRODUCT_DROPPED_DUPLICATE`
+- [`domain/itinerary/flights.py`](../../../../src/backend/app/domain/itinerary/flights.py) — `airports` (toạ độ sân bay của chặng đã chọn)
 - [`domain/itinerary/geo.py`](../../../../src/backend/app/domain/itinerary/geo.py) — `located`, `medoid`, `band`, `haversine_km`
 - [`agents/steps/composition.py`](../../../../src/backend/app/agents/steps/composition.py) — ghép vé, tiền vé trừ vào ngân sách, cảnh báo (`PLAN_CRITERIA`, `STAY_OPTIONS`), `NO_RESULTS`/`FALLBACK`
 - [`agents/steps/explanations.py`](../../../../src/backend/app/agents/steps/explanations.py) — câu "chưa có khách sạn"

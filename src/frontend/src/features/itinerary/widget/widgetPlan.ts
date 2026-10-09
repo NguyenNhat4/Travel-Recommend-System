@@ -4,7 +4,7 @@ import type { Product, ItineraryDay, ItinerarySlot } from '../../../types/travel
 import { itineraryCartItems, itineraryStays } from '../../../components/assistant/AssistantResultPanel';
 import { ACTIVITY_TYPE_LABEL, PARTY_TYPE_LABEL } from '../../../components/assistant/assistantLabels';
 import { SLOT_TIME_FROM_API } from '../../../services/assistant';
-import type { StayOptionCard, WidgetPlan } from './widgetTypes';
+import type { StayOptionCard, WidgetBudgetSummary, WidgetPlan } from './widgetTypes';
 
 /**
  * Điểm tham quan tự do: điểm tham quan/golf có `ticketed=false` hoặc chưa có giá. Backend tính 0 đ vào tổng
@@ -132,6 +132,7 @@ export function convertItineraryCompletedToGroundedPlan(
       interests: response.intent?.interests || [],
     },
     partyLabel: partyLabel(response.intent?.party),
+    budgetSummary: budgetSummary(response),
     title: response.itinerary.title || `Lịch trình ${daysCount} ngày tại ${dest}`,
     stay: stayItem,
     stays: stayItems.length > 0 ? stayItems : undefined,
@@ -140,6 +141,20 @@ export function convertItineraryCompletedToGroundedPlan(
     totalEstimatedPrice: response.itinerary.estimatedTotal ?? null,
     bookableProductsCount: response.itinerary.bookableCount ?? days.reduce((acc, cur) => acc + cur.slots.filter(s => !!s.product).length, 0),
     cartItems: itineraryCartItems(response.itinerary, response.intent?.party),
+  };
+}
+
+/** Khối "Ngân sách dự tính" của lịch: chỉ khi backend gửi `costBreakdown` (tổng đã biết) và trạng thái ngân sách đã rõ. */
+function budgetSummary(response: components['schemas']['ItineraryCompleted']): WidgetBudgetSummary | null {
+  const { costBreakdown, estimatedTotal, budgetStatus } = response.itinerary;
+  if (!costBreakdown || estimatedTotal == null || budgetStatus === 'UNKNOWN') return null;
+  return {
+    total: estimatedTotal,
+    flights: costBreakdown.flights,
+    stays: costBreakdown.stays,
+    activities: costBreakdown.activities,
+    budget: response.intent?.budget ?? null,
+    status: budgetStatus,
   };
 }
 

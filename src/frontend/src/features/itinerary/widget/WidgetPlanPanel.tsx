@@ -175,6 +175,7 @@ export function WidgetPlanPanel({ widget }: { widget: FloatingWidgetController }
       itemActions={(p) => itemActions(p.id)}
       focusedCoordinate={hoveredCoordinate}
       focusedPointId={hoveredPointId}
+      overview={Boolean(previewedStay)}
       className="w-full h-full flex-1"
     />
     </div>

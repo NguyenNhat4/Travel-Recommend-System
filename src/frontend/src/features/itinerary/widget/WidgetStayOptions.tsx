@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight, Check, Loader2, Star } from 'lucide-react';
+import { getAirportPoints } from '../../../services/routeGeometry';
 import { placeholderOnError } from './widgetVisuals';
 import { stayCardKey } from './widgetPlan';
 import type { StayOptionCard } from './widgetTypes';
@@ -56,6 +57,9 @@ export function WidgetStayOptions({ cards, interactive, selectingKey, previewKey
   // Trượt hàng tới thẻ đang xem trước hoặc đang lưu, kể cả khi hàng vừa dựng lại (widget mở rộng là cây DOM khác). Hàng
   // là `relative` nên `offsetLeft` của thẻ tính từ mép hàng.
   const focusKey = previewKey ?? selectingKey;
+  // Km của backend gồm chặng sân bay khi lịch có chặng bay có toạ độ (AC-AGT-04, chốt 2026-10-09).
+  const activeCard = cards.find((card) => stayCardKey(card) === activeKey) ?? cards[0];
+  const withAirport = Boolean(activeCard && getAirportPoints(activeCard.plan).arrival);
   useEffect(() => {
     const row = rowRef.current;
     const card = focusKey ? row?.querySelector<HTMLElement>(`[data-stay-key="${CSS.escape(focusKey)}"]`) : null;
@@ -128,14 +132,14 @@ export function WidgetStayOptions({ cards, interactive, selectingKey, previewKey
                 </div>
                 <div className="mt-auto flex flex-wrap gap-1.5">
                   {card.index === null ? (
-                    <span className="text-xs text-slate-600 tabular-nums">Đi lại ~{km.format(card.distanceKm)} km cả chuyến</span>
+                    <span className="text-xs text-slate-600 tabular-nums">Đi lại ≈{km.format(card.distanceKm)} km cả chuyến</span>
                   ) : (
                     <>
                       <Chip good={card.moneyDelta <= 0}>
                         {card.moneyDelta === 0 ? 'Giá như cũ' : `${card.moneyDelta < 0 ? '−' : '+'}${money(card.moneyDelta)}`}
                       </Chip>
                       <Chip good={card.kmDelta <= 0}>
-                        {`${card.kmDelta < 0 ? '−' : '+'}${km.format(Math.abs(card.kmDelta))} km`}
+                        {`≈${card.kmDelta < 0 ? '−' : '+'}${km.format(Math.abs(card.kmDelta))} km`}
                       </Chip>
                       {card.overBudget != null && (
                         <span className="inline-flex items-center rounded-full bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700 tabular-nums">
@@ -171,6 +175,11 @@ export function WidgetStayOptions({ cards, interactive, selectingKey, previewKey
           );
         })}
       </div>
+      <p className="mt-1 text-xs text-slate-500">
+        {withAirport
+          ? 'Số km là ước tính quãng đường di chuyển cả hành trình, gồm cả đường sân bay.'
+          : 'Số km là ước tính quãng đường di chuyển cả hành trình.'}
+      </p>
     </section>
   );
 }

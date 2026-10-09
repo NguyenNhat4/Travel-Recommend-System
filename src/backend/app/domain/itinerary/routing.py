@@ -1,11 +1,12 @@
 """Tối ưu tổng quãng đường của chuyến và đổi khách sạn giữa chuyến (AC-AGT-04, chốt 2026-10-07). Thuần Python.
 
-Quãng đường của chuyến (`route_cost`), với `H_d` là khách sạn đêm thứ d:
-- ngày 1: A → B → H₁ (chưa tính chặng sân bay);
+Quãng đường của chuyến (`route_cost`), với `H_d` là khách sạn đêm thứ d và S_đến/S_đi là sân bay của chặng bay đã chọn
+(`flights.airports`, chốt 2026-10-09):
+- ngày 1: S_đến → H₁, rồi H₁ → A → B → H₁ (về nhận phòng trước khi đi chơi); không có sân bay thì A → B → H₁;
 - ngày d giữa chuyến: H(d−1) → A → B → H_d;
-- ngày cuối: H(n−1) → A → B (không còn đêm nào sau nó).
-Chuyến 1 ngày vẫn có 1 đêm (`max(1, days − 1)`) nên ngày đó kết thúc ở khách sạn: A → B → H₁.
-Điểm chưa rõ vị trí bị bỏ qua khi cộng chặng (không cộng, không đoán).
+- ngày cuối: H(n−1) → A → B → S_đi (không còn đêm nào sau nó); không có sân bay thì dừng ở B.
+Chuyến 1 ngày vẫn có 1 đêm (`max(1, days − 1)`) nên ngày đó kết thúc ở khách sạn: A → B → H₁ (có sân bay đến thì thêm
+S_đến → H₁ ở đầu ngày). Điểm chưa rõ vị trí bị bỏ qua khi cộng chặng (không cộng, không đoán).
 
 `optimize` chọn khách sạn từng đêm, điểm nào đi ngày nào và thứ tự buổi để chi phí = quãng đường + phạt đổi khách sạn
 nhỏ nhất; có ngân sách thì chỉ trong các lịch vừa ngân sách (chốt 2026-10-08). Kèm tối đa `MAX_OPTIONS` phương án khác
@@ -46,13 +47,37 @@ OPTIONS_PER_SIDE = 2
 _EPS = 1e-9
 
 
-def route_cost(days: Sequence[Sequence[Point | None]], nights: Sequence[Point | None]) -> float:
+Airports = tuple[Point | None, Point | None]
+NO_AIRPORTS: Airports = (None, None)
+
+
+def day_ends(nights: Sequence[Point | None], days_count: int,
+             airports: Airports = NO_AIRPORTS) -> tuple[list[tuple[Point | None, Point | None]], float]:
+    """(điểm đầu và điểm cuối của từng ngày, km cố định của chặng sân bay → khách sạn đêm 1).
+
+    Ngày 1 có sân bay đến và khách sạn đêm 1 thì xuất phát từ khách sạn (đã về nhận phòng), chặng sân bay → khách sạn cộng
+    riêng vì không phụ thuộc điểm nào đi ngày 1; không có khách sạn thì xuất phát từ sân bay. Ngày cuối không có đêm sau
+    thì kết thúc ở sân bay đi."""
+    arrival, departure = airports
+    ends = [(nights[index - 1] if 1 <= index <= len(nights) else None,
+             nights[index] if index < len(nights) else None) for index in range(days_count)]
+    fixed = 0.0
+    if ends and arrival is not None:
+        hotel = nights[0] if nights else None
+        if hotel is not None:
+            fixed = haversine_km(arrival, hotel)
+        ends[0] = (hotel if hotel is not None else arrival, ends[0][1])
+    if ends and departure is not None and ends[-1][1] is None:
+        ends[-1] = (ends[-1][0], departure)
+    return ends, fixed
+
+
+def route_cost(days: Sequence[Sequence[Point | None]], nights: Sequence[Point | None],
+               airports: Airports = NO_AIRPORTS) -> float:
     """Quãng đường (km) của chuyến; `days[d]` là toạ độ các điểm của ngày d theo thứ tự buổi, `nights[j]` là khách sạn
-    đêm j (đêm của ngày j + 1). Toạ độ None bị bỏ qua."""
-    total = 0.0
-    for index, points in enumerate(days):
-        start = nights[index - 1] if 1 <= index <= len(nights) else None
-        end = nights[index] if index < len(nights) else None
+    đêm j (đêm của ngày j + 1), `airports` là (sân bay đến, sân bay đi). Toạ độ None bị bỏ qua."""
+    ends, total = day_ends(nights, len(days), airports)
+    for (start, end), points in zip(ends, days):
         legs = [p for p in (start, *points, end) if p is not None]
         total += sum(haversine_km(a, b) for a, b in zip(legs, legs[1:]))
     return total
@@ -276,14 +301,16 @@ def _stays(sequence: list[Product]) -> list[Stay]:
 
 def optimize(initial: list[list[Product]], shapes: list[DayShape], spare: list[Product], hotels: list[Product],
              positions: dict[str, Point], days_count: int, money: Callable[[list[Stay], list[Product]], tuple[int, int]],
-             rank: Callable[[Product], tuple], budget_left: int | None = None) -> Planned:
+             rank: Callable[[Product], tuple], budget_left: int | None = None,
+             airports: Airports = NO_AIRPORTS) -> Planned:
     """Lịch tốt nhất và các phương án khác; so bằng khoá tất định để cùng ứng viên luôn ra cùng lịch.
 
     `initial`: điểm đã chọn theo ngày (cách xếp của luật rải ngày); `shapes`: số chỗ mỗi ngày; `spare`: điểm bị bỏ, theo
     thứ tự ưu tiên, được thử thay vào nếu đỡ đi ít nhất `SWAP_MIN_GAIN_KM`; `hotels`: khách sạn rõ vị trí cùng mức nguồn
     tốt nhất (rỗng thì lịch không có khách sạn); `money(stays, activities)`: `(số sản phẩm chưa rõ giá, tổng tiền đã
     biết)`; `rank(product)`: thứ tự ưu tiên cũ (nguồn, giá, sao, mã) để phá hoà; `budget_left`: ngân sách trừ vé máy bay,
-    None khi không có ngân sách.
+    None khi không có ngân sách; `airports`: (sân bay đến, sân bay đi) của chặng bay đã chọn, cộng vào quãng đường nên
+    cũng ảnh hưởng khách sạn được chọn và chênh km của phương án khác.
 
     Khoá: không có ngân sách thì (mức khoảng cách, tiền, mã) — gần trước, rẻ sau. Có ngân sách thì lịch vừa ngân sách
     (giá biết đủ và tổng ≤ `budget_left`) đứng trước và so như trên; không lịch nào vừa thì lịch rẻ nhất thắng.
@@ -297,11 +324,9 @@ def optimize(initial: list[list[Product]], shapes: list[DayShape], spare: list[P
     def scored(selected: list[list[Product]], sequence: list[Product], *,
                exact: bool) -> tuple[tuple, Route, tuple[int, int]]:
         """Chấm một chuỗi khách sạn; `solver` phải đã `load` đúng các điểm của `selected`."""
-        night_points = [positions[h["productId"]] for h in sequence]
-        ends = [(night_points[d - 1] if 1 <= d <= len(night_points) else None,
-                 night_points[d] if d < len(night_points) else None)
-                for d in range(days_count)]
+        ends, fixed = day_ends([positions[h["productId"]] for h in sequence], days_count, airports)
         km, days = solver.solve(ends, shapes, selected, exact=exact)
+        km += fixed
         stays = _stays(sequence)
         cost = km + STAY_CHANGE_PENALTY_KM * max(0, len(stays) - 1)
         cash = money(stays, [p for day in days for p in day])
@@ -338,11 +363,10 @@ def optimize(initial: list[list[Product]], shapes: list[DayShape], spare: list[P
     for _ in range(SWAP_ROUNDS):
         selected = [list(day) for day in route.days]
         sequence = [s.product for s in route.stays for _ in range(s.nights)]
-        night_points = [positions[h["productId"]] for h in sequence]
+        ends, _ = day_ends([positions[h["productId"]] for h in sequence], days_count, airports)
         changed = False
         for day_index in range(len(selected)):
-            start = night_points[day_index - 1] if 1 <= day_index <= len(night_points) else None
-            end = night_points[day_index] if day_index < len(night_points) else None
+            start, end = ends[day_index]
             for position in range(len(selected[day_index])):
                 for candidate in list(spare):
                     current = selected[day_index][position]
@@ -433,5 +457,6 @@ def _options(route: Route, cash: tuple[int, int], sequences: list[list[Product]]
     return (near + far)[:MAX_OPTIONS]
 
 
-__all__ = ["DayShape", "EXACT_LIMIT", "MAX_OPTIONS", "OPTION_MIN_KM", "Option", "Planned", "Route",
-           "STAY_CHANGE_MIN_DAYS", "STAY_CHANGE_PENALTY_KM", "STAY_MIN_NIGHTS", "Stay", "optimize", "route_cost"]
+__all__ = ["Airports", "DayShape", "EXACT_LIMIT", "MAX_OPTIONS", "NO_AIRPORTS", "OPTION_MIN_KM", "Option", "Planned",
+           "Route", "STAY_CHANGE_MIN_DAYS", "STAY_CHANGE_PENALTY_KM", "STAY_MIN_NIGHTS", "Stay", "day_ends", "optimize",
+           "route_cost"]

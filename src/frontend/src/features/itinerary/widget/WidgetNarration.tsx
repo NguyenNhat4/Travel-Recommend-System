@@ -1,8 +1,9 @@
 import React from 'react';
 import { AssistantText, parseAssistantText } from '../../../components/assistant/inlineBold';
 import { ProductCard } from '../../../components/common/ProductCard';
-import type { Product } from '../../../types/travel';
+import type { ItineraryFlightItem, Product } from '../../../types/travel';
 import { isFreeToVisit } from './widgetPlan';
+import { WidgetFlightCard } from './WidgetFlightCard';
 import type { CartAddState } from './useWidgetCart';
 
 export type NarrationBlock =
@@ -75,10 +76,16 @@ interface WidgetNarrationProps {
    * các khách sạn `ids`. Lời diễn giải không nhắc khách sạn nào trong `ids` thì hàng thẻ nằm cuối bong bóng.
    */
   stays?: { ids: ReadonlySet<string>; node: React.ReactNode };
+  /** Vé máy bay của lịch: sản phẩm là vé thì dùng thẻ vé (giờ đi/đến, chặng, giá × số khách) thay thẻ gọn. */
+  flights?: ItineraryFlightItem[];
+  /** "Đặt ngay" của vé; chỉ vé có trong `cartItems` của lịch mới có nút. */
+  onBookNow?: (productId: string) => void;
+  bookableIds?: ReadonlySet<string>;
 }
 
 /** Lời diễn giải lịch trình trong bong bóng chat, kèm thẻ gọn của từng sản phẩm. */
-export function WidgetNarration({ text, products, onOpen, quickAddIds, onQuickAdd, cartAddStates, stays }: WidgetNarrationProps) {
+export function WidgetNarration({ text, products, onOpen, quickAddIds, onQuickAdd, cartAddStates, stays, flights, onBookNow,
+  bookableIds }: WidgetNarrationProps) {
   const known = (productId: string) => Object.prototype.hasOwnProperty.call(products, productId);
   const slotIds = stays?.ids ?? new Set<string>();
   // Sản phẩm có thẻ thì tên không cần link nữa; id lạ và khách sạn của hàng thẻ (không có thẻ gọn) vẫn là link.
@@ -100,6 +107,15 @@ export function WidgetNarration({ text, products, onOpen, quickAddIds, onQuickAd
           );
         }
         const product = products[block.productId];
+        const flight = flights?.find((item) => item.productId === block.productId);
+        if (flight) {
+          return (
+            <div key={index} className="my-4 whitespace-normal">
+              <WidgetFlightCard flight={flight} onOpen={() => onOpen(flight.productId)}
+                onBookNow={onBookNow && bookableIds?.has(flight.productId) ? () => onBookNow(flight.productId) : undefined} />
+            </div>
+          );
+        }
         return (
           <div key={index} className="my-4 whitespace-normal">
             <ProductCard

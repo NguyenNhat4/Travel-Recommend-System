@@ -7,7 +7,7 @@ import logging
 
 from src.backend.app.domain.itinerary import flights as flight_rules
 from src.backend.app.domain.itinerary.planning import (SCHEDULABLE_TAXONOMIES, compose_plan, day_windows, free_to_visit, multi_day_offers,
-                                                        render_proposal, summary, totals, validate_plan)
+                                                        price_plan, render_proposal, summary, validate_plan)
 
 from . import messages
 from .explanations import missing_stay_note
@@ -204,7 +204,7 @@ def with_flights(plan: dict, legs: list, intent: dict) -> dict:
     if legs:
         plan["flights"] = [{**leg, "product": summary(leg["product"])} for leg in legs]
         plan["bookableCount"] = plan.get("bookableCount", 0) + len(legs)
-        plan["estimatedTotal"], plan["budgetStatus"] = totals(plan, intent)
+        price_plan(plan, intent)
     return plan
 
 
@@ -278,7 +278,8 @@ def composed(state: dict) -> dict:
     # Vé trừ vào ngân sách khi chọn khách sạn (chốt 2026-10-08); vé chưa rõ giá thì không so được với ngân sách.
     fares = [flight_rules.flight_cost(leg) for leg in legs]
     fixed_cost = None if any(fare is None for fare in fares) else sum(fares)
-    proposal = compose_plan(state["candidates"], state["sources"], state["intent"], windows, fixed_cost)
+    proposal = compose_plan(state["candidates"], state["sources"], state["intent"], windows, fixed_cost,
+                            flight_rules.airports(legs))
     plan, warnings = _planned(state, proposal, legs, flight_reason, windows, fixed_cost)
     options = []
     for option, proposed in zip(_stay_options(state, proposal), proposal.get("options") or []):
