@@ -591,11 +591,11 @@ def graph_strip_detail(nodes: list[dict]) -> dict[str, list[list[str]]]:
     return out
 
 
-# Số bước con của các bước lớn khi đang chạy (để tô tiến độ = số bước con đã xong / tổng): fresh_catalog_db.maintain_catalog,
-# load_into_db, fresh_catalog.validate_step; chuẩn hoá / gộp theo normalise.StepClock (SUBSTEP_INFO, phần bước Gộp). Vé
-# thương gia mô phỏng là dữ liệu demo, không phải bước xử lý nên không có bước con.
-EXPECTED_SUBSTEPS = {"maintain": 6, "validate": 6, "db": 7, "normalise": 11}
+# Số bước con của các bước lớn khi đang chạy (để tô tiến độ = số bước con đã xong / tổng), theo danh sách khai báo ở
+# pipeline_graph.SUBSTEPS. Vé thương gia mô phỏng / dữ liệu demo không phải bước xử lý nên không có bước con.
+EXPECTED_SUBSTEPS = {name: len(plan) for name, plan in graph.SUBSTEPS.items()}
 GOOD_STATUSES = ("ok", "partial", "skipped")
+PENDING_STATUSES = ("waiting", "notRun", "notInMode", "disabled")  # ô chưa chạy / không chạy ở lượt này
 
 
 def percent(ok, total) -> float | None:
@@ -616,6 +616,28 @@ def substep_view(entry: dict) -> dict:
             "changed": entry.get("changed"),
             "ok": entry.get("ok"), "total": entry.get("total"), "note": entry.get("note"), "error": entry.get("error"),
             "ramMb": entry.get("peakRssMb"), "percent": pct, "description": SUBSTEP_INFO.get(entry.get("name"))}
+
+
+def with_plan(views: list[dict], plan: tuple[str, ...], node_status: str) -> list[dict]:
+    """Chuỗi bước con theo thứ tự `plan` (pipeline_graph.SUBSTEPS) để bước chưa chạy không bị ẩn: bước đã chạy giữ số liệu
+    thật; bước chưa có số liệu là ô mờ (`planned`) mang trạng thái của ô lớn nếu ô chưa chạy (Chờ tới lượt / Không chạy /
+    Không thuộc lượt / Đã tắt), "waiting" nếu nằm sau bước con mới nhất của ô đang chạy, còn lại "notRun" (lượt này không
+    chạy bước con đó). Bước con ngoài kế hoạch (vd. index bị hoãn) giữ ở cuối."""
+    if not plan:
+        return views
+    done = {v["name"] for v in views}
+    reached = max((plan.index(v["name"]) for v in views if v["name"] in plan), default=-1)
+    out = []
+    for index, name in enumerate(plan):
+        if name in done:
+            out.extend(v for v in views if v["name"] == name)
+            continue
+        if node_status in PENDING_STATUSES:
+            status = node_status
+        else:
+            status = "waiting" if node_status in ("running", "draft") and index > reached else "notRun"
+        out.append({**substep_view({"name": name, "status": status}), "planned": True})
+    return out + [v for v in views if v["name"] not in plan]
 
 
 def node_progress(node: dict, *, done=None, total=None, running: bool = False) -> None:
@@ -911,6 +933,11 @@ class FreshMonitor:
             out["variants"] = list(found)
             chosen = variant if variant in found else ("official" if "official" in found else next(iter(found), None))
             out.update(variant=chosen, steps=found.get(chosen) or [])
+            if not out["steps"]:  # chưa gộp lần nào: hiện sẵn các bước con sẽ chạy (mờ), kèm mô tả
+                status = ("notInMode" if data.get("mode") not in (GRAPH_MODES["normalise"] or (data.get("mode"),))
+                          else "waiting" if data.get("status") == "running" else "notRun")
+                out["steps"] = [{"name": name, "status": status, "planned": True}
+                                for name in graph.planned_substeps("normalise")]
         else:
             raise ValueError("Ô này không có bước con")
         out["steps"] = [dict(st, description=SUBSTEP_INFO.get(st.get("name"))) for st in out["steps"]]
@@ -1113,21 +1140,24 @@ class FreshMonitor:
                     node["substeps"] = [substep_view(e) for e in sub]
             elif node["id"] == "normalise":
                 sub = (read_json(path / "normalise_stages" / "steps.json") or {}).get("steps") or []
-                if not sub and node["status"] in ("running", "draft"):
+                draft = not sub and node["status"] in ("running", "draft")
+                if draft:  # bản nháp chỉ gộp từ checkpoint: không có bước đọc interim / ánh xạ nguồn
                     folder = "preview.next" if (path / "preview.next").is_dir() else "preview"
                     sub = (read_json(path / folder / "normalise_stages" / "steps.json") or {}).get("steps") or []
-                self._big(node, sub, running)
+                self._big(node, sub, running, graph.planned_substeps("normalise", merge_only=draft))
             elif node["id"] in ("maintain", "validate", "db", "index"):
-                self._big(node, info.get("substeps") or [], running)
+                self._big(node, info.get("substeps") or [], running, graph.planned_substeps(node["id"]))
             else:
                 node_progress(node, running=running)
 
     @staticmethod
-    def _big(node: dict, sub: list[dict], running: bool) -> None:
-        """Ô lớn có bước con: đang chạy tô theo số bước con đã xong; xong thì tô theo luật/tỉ lệ của bước con chính."""
+    def _big(node: dict, sub: list[dict], running: bool, plan: tuple[str, ...] = ()) -> None:
+        """Ô lớn có bước con: đang chạy tô theo số bước con đã xong; xong thì tô theo luật/tỉ lệ của bước con chính. Chuỗi
+        bước con hiện đủ `plan` (kể cả bước chưa / không chạy, with_plan); % chỉ tính trên bước con đã có số liệu."""
         views = [substep_view(e) for e in sub]
-        if views:
-            node["substeps"] = views
+        chain = with_plan(views, plan, node["status"])
+        if chain:
+            node["substeps"] = chain
         finished = [v for v in views if v["status"] != "running"]
         if running:
             expected = max(EXPECTED_SUBSTEPS.get(node["id"], len(views) or 1), len(views))

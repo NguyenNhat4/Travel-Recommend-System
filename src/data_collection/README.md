@@ -251,6 +251,18 @@ chú; bấm lại để thu. Bước con ghi ở `detail.substeps` của bước
 `normalise_stages/steps.json`) và một dòng log `catalog.substep name=<bước>:<bước con> …`: tab Log của ô lớn lọc theo
 `name=<bước>`, bấm một ô con mở tab Log lọc đúng bước con đó.
 
+**Bước con chưa chạy và log theo bước (09/10/2026):** danh sách bước con của từng bước lớn khai báo ở
+`pipeline_graph.SUBSTEPS` (test đối chiếu với code), nên ô chưa chạy vẫn bung được; bước con chưa có số liệu là ô mờ viền đứt
+mang trạng thái "Chờ tới lượt" (sau bước con đang chạy, hoặc cả ô đang chờ) hoặc "Không chạy" (lượt này không chạy bước con
+đó). Bản gộp nháp trong lúc cào chỉ có chuỗi từ "đọc checkpoint". Mỗi bước con (`stage_log.Stages`) ghi một dòng
+`status=running` lúc bắt đầu và một dòng kết quả lúc xong. Tab Log của ô Gộp và các ô con của nó lấy thêm dòng
+`normalise.step.*` (gộp chính thức, và bản nháp có tiền tố `[preview]`) nên xem được ngay trong lúc gộp; ô Gộp (không chọn
+ô con) còn hiện toàn bộ log "Catalog đang gộp" (mọi dòng `[preview]`, `catalog.preview.*`), kể cả khi bước Gộp chính thức
+chưa chạy, và mọi dòng không tiền tố giữa `catalog.step.start name=normalise` và mốc bước kế tiếp (log của bước Gộp chính
+thức chạy trong tiến trình job: đọc interim, gộp trùng, "Đã ghi …", cảnh báo). Lọc `name=<bước>` khớp đúng tên bước, không lẫn `normalise.source:…` / `normalise.preview`; đầu tab Log ghi
+đang lọc theo bước nào, kèm nút bỏ lọc. Tab "DB" có nút "Tải lại" và ô "Tự làm mới mỗi 10 giây" (mặc định bật khi đang có
+lượt chạy; mỗi lần đếm lại số dòng mọi bảng).
+
 **Dung lượng (tab "Dung lượng" của monitor, 06/10/2026):** hiện đĩa VM (đã dùng / còn trống của filesystem chứa thư mục dữ
 liệu), dung lượng từng thư mục con và từng lượt cào còn giữ; nút "Xoá các lượt cũ hơn" giữ N lượt mới nhất (lượt đang chạy
 luôn được giữ; state và dữ liệu đã nạp DB không bị đụng). API: `GET /api/storage`, `POST /api/storage/cleanup {"keepRuns": N}`.
