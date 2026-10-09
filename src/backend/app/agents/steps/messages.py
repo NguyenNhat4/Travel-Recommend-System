@@ -154,6 +154,7 @@ MESSAGES = {
         "unmet_ask_relax": "Bạn muốn nới yêu cầu này, hay lập lịch không kèm {noun}?",
         "unmet_ask_other": "Bạn muốn lập lịch không kèm {noun}, hay chọn điểm đến khác?",
         "dropped_date": "Chỉ mở bán từ {start} đến {end}, không khớp ngày khởi hành.",
+        "dropped_duplicate": "Bỏ \"{name}\" vì trùng với \"{kept}\".",
         "section_no_stay": "Chưa có khách sạn",
         "change_field_origin": "nơi đi",
         "change_to_origin": "nơi đi thành {value}",
@@ -219,6 +220,29 @@ MESSAGES = {
         "cost_UNKNOWN": "Mình chưa cộng thành một con số tổng vì lịch có mục chưa có giá; "
                         "giá từng mục có vé bạn xem ở khung lịch trình bên phải nhé.",
         "narrate_notes": "Giá là giá tham khảo, chưa gồm ăn uống và đi lại; cần kiểm tra lại khi đặt.",
+        "section_criteria": "Cách mình xếp lịch",
+        "plan_criteria": "Mình chọn điểm, ghép các ngày và chọn nơi ở để tổng quãng đường bạn phải đi là ít nhất; nếu "
+                         "hai cách xếp gần ngang nhau thì mình chọn cách rẻ hơn.",
+        "plan_criteria_change": "Các điểm nằm ở hai khu cách xa nhau, nên từ đêm {night} bạn chuyển từ {first} sang "
+                                "{second}: đỡ đi lại hơn nhiều so với ở một chỗ cả chuyến.",
+        "plan_criteria_budget": "Mình chọn điểm, ghép các ngày và chọn nơi ở để tổng quãng đường bạn phải đi là ít "
+                                "nhất mà tổng chi phí vẫn nằm trong ngân sách của bạn; nếu hai cách xếp gần ngang nhau "
+                                "thì mình chọn cách rẻ hơn, và nếu không cách nào vừa ngân sách thì mình chọn cách rẻ "
+                                "nhất.",
+        "stay_nights_range": "Đêm {first}–{last}",
+        "stay_night_single": "Đêm {first}",
+        "options_total": "Lịch trên: đi lại ≈{km} km cả chuyến.",
+        "option_closer": "• Phương án {n}: thêm {money} — ở {hotels}: bớt ≈{km} km đi lại",
+        "option_cheaper": "• Phương án {n}: bớt {money} — ở {hotels}: đi thêm ≈{km} km",
+        "option_over_budget": " (vượt ngân sách {money})",
+        "options_pick": "Bấm một thẻ khách sạn để đổi ngay, hoặc nhắn \"lấy phương án 1\".",
+        "options_swap_title": "Lịch trình đã đổi khách sạn",
+        "swap_done": "Mình đã đổi sang {hotels}: {money}, {km} so với lịch trước. Cả chuyến đi lại ≈{total_km} km.",
+        "swap_money_more": "thêm {money}",
+        "swap_money_less": "bớt {money}",
+        "swap_money_same": "tổng tiền không đổi",
+        "swap_km_less": "bớt ≈{km} km đi lại",
+        "swap_km_more": "đi thêm ≈{km} km",
         "narrate_outro": "Bấm vào tên sản phẩm để xem chi tiết ở khung lịch trình bên phải, hoặc nhắn mình nếu muốn "
                          "đổi ngày, khách sạn hay hoạt động.",
     },
@@ -354,6 +378,7 @@ MESSAGES = {
         "unmet_ask_relax": "Would you like to relax this requirement, or plan without a {noun}?",
         "unmet_ask_other": "Would you like to plan without a {noun}, or pick another destination?",
         "dropped_date": "Only on sale from {start} to {end}, which does not match the departure date.",
+        "dropped_duplicate": "Left out \"{name}\" because it duplicates \"{kept}\".",
         "section_no_stay": "No hotel yet",
         "change_field_origin": "the departure city",
         "change_to_origin": "departure city changed to {value}",
@@ -419,6 +444,29 @@ MESSAGES = {
         "cost_UNKNOWN": "I haven't added a single total because the plan includes items without a price yet; "
                         "check the price of each ticketed item in the panel on the right.",
         "narrate_notes": "Prices are for reference only and exclude meals and transport; check them again when booking.",
+        "section_criteria": "How I arranged the plan",
+        "plan_criteria": "I picked the places, grouped the days and chose where to stay so that your total travel is as "
+                         "short as possible; when two arrangements are about as short, I chose the cheaper one.",
+        "plan_criteria_change": "The places sit in two areas far apart, so from night {night} you move from {first} to "
+                                "{second}: much less travel than staying in one place.",
+        "plan_criteria_budget": "I picked the places, grouped the days and chose where to stay so that your total "
+                                "travel is as short as possible while the total cost stays within your budget; when "
+                                "two arrangements are about as short, I chose the cheaper one, and when none fits the "
+                                "budget, I chose the cheapest.",
+        "stay_nights_range": "Nights {first}–{last}",
+        "stay_night_single": "Night {first}",
+        "options_total": "The plan above: ≈{km} km of travel for the whole trip.",
+        "option_closer": "• Option {n}: {money} more — stay at {hotels}: ≈{km} km less travel",
+        "option_cheaper": "• Option {n}: {money} less — stay at {hotels}: ≈{km} km more travel",
+        "option_over_budget": " ({money} over budget)",
+        "options_pick": "Tap a hotel card to switch right away, or reply \"take option 1\".",
+        "options_swap_title": "Itinerary with a new hotel",
+        "swap_done": "Switched to {hotels}: {money}, {km} compared with the previous plan. ≈{total_km} km of travel for the whole trip.",
+        "swap_money_more": "{money} more",
+        "swap_money_less": "{money} less",
+        "swap_money_same": "same total cost",
+        "swap_km_less": "≈{km} km less travel",
+        "swap_km_more": "≈{km} km more travel",
         "narrate_outro": "Tap a product name to see its details in the itinerary panel on the right, or tell me if you "
                          "want to change the date, hotel or activities.",
     },
@@ -486,6 +534,12 @@ def display_date(iso: str) -> str:
     """Ngày ISO `yyyy-mm-dd` thành `dd/mm/yyyy` để hiện cho người dùng."""
     year, month, day = iso.split("-")
     return f"{day}/{month}/{year}"
+
+
+def distance(value: float, language: str) -> str:
+    """Số km một chữ số thập phân; tiếng Việt dùng dấu phẩy thập phân."""
+    text = f"{value:.1f}"
+    return text.replace(".", ",") if language == "vi" else text
 
 
 def money(value: int, language: str) -> str:

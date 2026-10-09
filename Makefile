@@ -30,7 +30,7 @@ tunnel:
 		if (exec 3<>/dev/tcp/127.0.0.1/$$2) 2>/dev/null; then echo "$$1: cổng $$2 đã mở, bỏ qua"; return; fi
 		PW="$$(sed -n "s/^$$3=//p" .env.tunnel | tail -n 1)"
 		if [[ -z "$$PW" ]]; then echo "$$1: thiếu $$3 trong .env.tunnel"; exit 1; fi
-		TUNNEL_PW="$$PW" SSH_ASKPASS="$$ASKPASS" SSH_ASKPASS_REQUIRE=force setsid ssh -f -N \
+		TUNNEL_PW="$$PW" SSH_ASKPASS="$$ASKPASS" SSH_ASKPASS_REQUIRE=force setsid ssh -C -f -N \
 			-o PreferredAuthentications=password -o PubkeyAuthentication=no \
 			-o ExitOnForwardFailure=yes -o StrictHostKeyChecking=accept-new \
 			-o ServerAliveInterval=30 -L $$4

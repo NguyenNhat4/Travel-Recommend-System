@@ -9,7 +9,8 @@ import unittest
 
 from src.backend.app.agents import nodes, routing
 from src.backend.app.agents.graph import build_graph
-from src.backend.app.agents.models import ConversationalAnswer, DestinationChoice, Extraction, ItineraryNarration, TurnRoute
+from src.backend.app.agents.models import (ConversationalAnswer, DestinationChoice, DuplicatePairs, Extraction,
+                                           ItineraryNarration, TurnRoute)
 from src.backend.app.agents.steps.prompts import SIMILAR_HINT, TOOL_PLAN_PROMPT
 from src.backend.app.infrastructure.persistence.langgraph_checkpointer import build_checkpointer
 from src.backend.app.agents.tools.itinerary_gateway import ItineraryToolGateway
@@ -75,6 +76,8 @@ class ScriptedLlm:
                 return ConversationalAnswer(title=self.conversational_title, message=self.conversational_message)
             if schema is ItineraryNarration:
                 return self.narration
+            if schema is DuplicatePairs:
+                return DuplicatePairs()
             raise AssertionError(f'the itinerary path must not call the model for {schema.__name__}')
         return SimpleNamespace(ainvoke=invoke)
 
@@ -166,7 +169,8 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['validation_issues'], [])
         # The itinerary is built by `compose`; `converse` only handles chit-chat and never sees products.
         self.assertEqual([event['node'] for event in result['events']],
-                         ['intake', 'classify', 'extract', 'tool', 'evaluate', 'compose', 'narrate', 'finalize'])
+                         ['intake', 'classify', 'extract', 'tool', 'evaluate', 'filter', 'compose', 'narrate',
+                          'finalize'])
         # `narrate` adds the chat text; it survives `finalize` and links only scheduled products.
         self.assertTrue(result['response']['message'].startswith('**Chuyến đi Nha Trang**\n'))
         self.assertIn('[Catalog a](product:a)', result['response']['message'])
@@ -827,13 +831,13 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_all_transient_failures_terminate_without_fake_results(self):
         # Kể cả get_recommendations là lời gọi duy nhất của planner, lưới an toàn category mặc định (§2.6) vẫn
-        # thêm search hotel/attraction/golf; search cũng phải lỗi tạm thời để lượt này thực sự không còn ứng
-        # viên nào, nếu không kết quả search thật sẽ hợp lệ thành FALLBACK thay vì lỗi.
+        # thêm search hotel/attraction (golf chỉ khi người dùng nhắc tới); search cũng phải lỗi tạm thời để lượt này
+        # thực sự không còn ứng viên nào, nếu không kết quả search thật sẽ hợp lệ thành FALLBACK thay vì lỗi.
         error = ToolError('TOOL_TIMEOUT', retryable=True)
         clients = Clients(rec_error=error, search_error=error)
         llm = ScriptedLlm(plan=[{'name': 'get_recommendations', 'args': {}}])
         result = await self.run_graph(llm, clients)
-        self.assertEqual(clients.calls, ['rec', 'search', 'search', 'search'] * 2)
+        self.assertEqual(clients.calls, ['rec', 'search', 'search'] * 2)
         self.assertEqual(result['http_status'], 503)
         self.assertEqual(result['response']['error']['code'], 'SEARCH_UNAVAILABLE')
 

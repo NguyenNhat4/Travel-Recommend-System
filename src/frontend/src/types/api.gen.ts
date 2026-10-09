@@ -1884,11 +1884,15 @@ export interface components {
             /** @description (1.18.0) Thành phố đi; chỉ gửi tên thành phố, không gửi toạ độ. */
             origin?: string;
         };
-        /** @description Baseline tích hợp 1.1.0. Cần message hoặc intentOverride; intentOverride yêu cầu conversationId khác null. */
+        /** @description Baseline tích hợp 1.1.0. Cần message, intentOverride hoặc selectStayOption (1.20.0); intentOverride và selectStayOption yêu cầu conversationId khác null. */
         ItineraryRequest: {
             conversationId?: string | null;
             message?: string | null;
             intentOverride?: components["schemas"]["TripIntentPatch"] | null;
+            /** @description (1.20.0, AC-AGT-04) Chọn một phương án trong `stayOptions` của câu trả lời gần nhất của hội thoại (người dùng bấm "Đổi sang khách sạn này"; lượt này không có message trả về). Lịch đổi đúng như phương án đã báo, không tìm lại sản phẩm. Cần conversationId; không cần message. index không còn trong phương án đã lưu thì backend xử lý như một lượt nhắn thường. */
+            selectStayOption?: {
+                index: number;
+            } | null;
             context?: {
                 /**
                  * @description Ngôn ngữ phản hồi. Khi context hoặc language vắng mặt, backend dùng vi; giá trị được lưu theo conversation.
@@ -1902,6 +1906,9 @@ export interface components {
         } | {
             conversationId: string;
             intentOverride: components["schemas"]["TripIntentPatch"];
+        } | {
+            conversationId: string;
+            selectStayOption: Record<string, never>;
         };
         ItinerarySlot: {
             slotId?: string;
@@ -1920,9 +1927,38 @@ export interface components {
         ItineraryStay: {
             product: components["schemas"]["ProductSummary"];
             nights: number;
+            /** @description (1.19.0, AC-AGT-04) Đêm đầu tiên ở khách sạn này, đếm từ 1 (đêm của ngày 1). Khách sạn ở các đêm fromNight .. fromNight + nights − 1. Backend luôn gửi từ 1.19.0; client coi vắng mặt là 1. */
+            fromNight?: number;
             note?: string | null;
             source?: components["schemas"]["ItemSource"];
             because?: components["schemas"]["BecauseItem"][];
+        };
+        /** @description (1.20.0, AC-AGT-04) Một phương án khác của lịch trình: lịch đầy đủ khi đổi khách sạn (để client xem trước không gọi server) và đánh đổi so với lịch đang chọn. Mọi số do backend tính. */
+        ItineraryStayOption: {
+            /** @description Số thứ tự để chọn (`selectStayOption.index`, "lấy phương án N"). */
+            index: number;
+            /** @description Chênh quãng đường cả chuyến so với lịch đang chọn, km đường chim bay; âm là đi ít hơn. */
+            kmDelta: number;
+            /** @description Chênh tổng tiền so với lịch đang chọn (VND); âm là rẻ hơn. */
+            moneyDelta: number;
+            /** @description Số tiền vượt ngân sách; null khi không vượt hoặc không có ngân sách. */
+            overBudget?: number | null;
+            itinerary: components["schemas"]["ItineraryPlan"];
+        };
+        /** @description (1.20.0, AC-AGT-04) Mục "Phương án khác" dạng hàng thẻ: tổng km của lịch đang chọn và tối đa 3 phương án. Vắng mặt khi không có phương án nào. */
+        ItineraryStayOptions: {
+            /** @description Quãng đường cả chuyến của lịch đang chọn (`itinerary`), km đường chim bay. */
+            distanceKm: number;
+            options: components["schemas"]["ItineraryStayOption"][];
+        };
+        /** @description (1.21.0, user-flow §4.2 "Ngân sách dự tính") estimatedTotal chia theo nhóm sản phẩm; flights + stays + activities = estimatedTotal. Có khi estimatedTotal khác null, vắng mặt khi tổng chưa biết. Chỉ gồm sản phẩm trong lịch: không có khoản ăn uống hay đi lại ước tính. */
+        ItineraryCostBreakdown: {
+            /** @description Vé máy bay, unitPrice × passengers của từng vé. */
+            flights: number;
+            /** @description Khách sạn, giá × số đêm của từng khách sạn. */
+            stays: number;
+            /** @description Tour, điểm tham quan, golf trong các ngày; điểm tham quan tự do tính 0. */
+            activities: number;
         };
         /**
          * @description (1.18.0) Chặng của vé trong lịch trình; ROUND_TRIP là một vé khứ hồi phủ cả hai chặng.
@@ -1957,6 +1993,8 @@ export interface components {
         ItineraryPlan: {
             title?: string;
             stay?: components["schemas"]["ItineraryStay"] | null;
+            /** @description (1.19.0, AC-AGT-04) Khách sạn theo đêm, sắp theo fromNight; hai mục khi lịch trình đổi khách sạn giữa chuyến (chuyến từ 5 ngày, mỗi khách sạn ít nhất 2 đêm). Tổng nights = max(1, days − 1). `stay` luôn bằng stays[0] để client cũ vẫn chạy; vắng mặt khi không có khách sạn. estimatedTotal cộng giá × nights của từng khách sạn. */
+            stays?: components["schemas"]["ItineraryStay"][];
             /** @description (1.18.0, AC-AGT-02) Vé máy bay của chuyến: một vé ROUND_TRIP, hoặc OUTBOUND và/hoặc RETURN. Vắng mặt hoặc rỗng khi không đủ điều kiện có chặng bay; lý do nằm trong warnings (mã FLIGHT_*). */
             flights?: components["schemas"]["ItineraryFlight"][];
             days: components["schemas"]["ItineraryDay"][];
@@ -1964,6 +2002,7 @@ export interface components {
             bookableCount?: number;
             /** @description Backend tính tổng khi đủ đơn vị/số lượng; thiếu thì null, budgetStatus UNKNOWN và warning. Không bỏ qua khoản chưa biết. Điểm tham quan tự do (attraction/golf có ticketed=false hoặc unitPrice null) tính 0 vào tổng, kèm warning FREE_ENTRY_ASSUMED. */
             estimatedTotal: number | null;
+            costBreakdown?: components["schemas"]["ItineraryCostBreakdown"];
             currency: components["schemas"]["Currency"];
             budgetStatus: components["schemas"]["BudgetStatus"];
             /**
@@ -2004,6 +2043,7 @@ export interface components {
             message?: string;
             /** @description Gói hoặc tour nhiều ngày (vé dùng 2 ngày trở lên, tour 3N2Đ...) tìm được nhưng không xếp vào một buổi của lịch trình, để người dùng cân nhắc riêng; `message` có mục hỏi người dùng có muốn thêm không. Không tính vào `estimatedTotal`. */
             searchResults?: components["schemas"]["SearchResultsByTaxonomy"];
+            stayOptions?: components["schemas"]["ItineraryStayOptions"];
             warnings: components["schemas"]["ItineraryWarning"][];
             metadata?: components["schemas"]["ItineraryMetadata"];
         };

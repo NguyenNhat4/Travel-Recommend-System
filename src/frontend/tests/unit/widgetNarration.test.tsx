@@ -86,3 +86,49 @@ describe('WidgetNarration', () => {
     expect(onOpen).not.toHaveBeenCalled();
   });
 });
+
+describe('WidgetNarration stays', () => {
+  afterEach(cleanup);
+  const stayText = [
+    '**Nơi nghỉ**',
+    '• Đêm 1 — [Khách sạn A](product:hotel) (544.000 ₫/đêm): dành thời gian nghỉ ngơi.',
+    'Khách sạn gần các điểm tham quan.',
+    '',
+    '**Ngày 1**',
+    '• Buổi sáng — [Văn Miếu](product:vanmieu).',
+    '• Buổi tối — về [Khách sạn A](product:hotel) nghỉ.',
+  ].join('\n');
+  const withHotels = {
+    ...products,
+    hotel: product('hotel', 'Khách sạn A', { taxonomy: 'hotel' }),
+    other: product('other', 'Khách sạn B', { taxonomy: 'hotel' }),
+  };
+  const ids = new Set(['hotel', 'other']);
+  const order = (container: HTMLElement) => Array.from(container.querySelectorAll('h3, [data-testid="row"]'))
+    .map((node) => node.getAttribute('data-testid') ?? node.textContent);
+
+  it('makes the stay options row the content of "Nơi nghỉ": no hotel line, no hotel card', () => {
+    const { container } = render(<WidgetNarration text={stayText} products={withHotels} onOpen={vi.fn()}
+      stays={{ ids, node: <div data-testid="row" /> }} />);
+    expect(order(container)).toEqual(['Nơi nghỉ', 'row', 'Ngày 1']);
+    expect(screen.queryByText(/dành thời gian nghỉ ngơi/)).toBeNull();
+    expect(screen.getByText('Khách sạn gần các điểm tham quan.')).toBeTruthy();
+    // Không thẻ gọn nào cho khách sạn của hàng thẻ, kể cả khách sạn lời diễn giải không nhắc (không nối ở cuối).
+    expect(screen.queryByRole('heading', { level: 4, name: /Khách sạn/ })).toBeNull();
+    expect(screen.getAllByRole('heading', { level: 4 })).toHaveLength(2);
+  });
+
+  it('keeps day lines that mention the hotel, with the name as a link to its detail', () => {
+    const onOpen = vi.fn();
+    render(<WidgetNarration text={stayText} products={withHotels} onOpen={onOpen}
+      stays={{ ids, node: <div data-testid="row" /> }} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Khách sạn A' }));
+    expect(onOpen).toHaveBeenCalledWith('hotel');
+  });
+
+  it('puts the row at the end when the narration never mentions those hotels', () => {
+    const { container } = render(<WidgetNarration text={stayText} products={withHotels} onOpen={vi.fn()}
+      stays={{ ids: new Set(['ghost-hotel']), node: <div data-testid="row" /> }} />);
+    expect(order(container)).toEqual(['Nơi nghỉ', 'Ngày 1', 'row']);
+  });
+});

@@ -106,7 +106,7 @@ def test_contract_declares_every_llm_constant():
     stage = DOC["components"]["schemas"]["EngineDiagnostics"]["properties"]["stageMs"]["properties"]
     assert "llm" in stage
     assert set(hypothesis.CONTRACT_TAXONOMIES) == set(DOC["components"]["schemas"]["Taxonomy"]["enum"])
-    assert DOC["info"]["version"] == "1.20.0"
+    assert DOC["info"]["version"] == "1.22.0"
 
 
 @pytest.mark.parametrize("mode", ["off", "shadow", "on"])

@@ -1,6 +1,7 @@
 import unittest
 
 from collectors.plan import Destination
+from collectors.textutil import day_month_iso, trip_combo_dates
 from collectors.trip_combos import combo_routes, parse_combo_hotels, parse_flight_card
 
 FLIGHT_HTML = """
@@ -109,6 +110,35 @@ class ParseComboHotelsTests(unittest.TestCase):
     def test_duplicate_hotel_ids_deduped(self):
         recs = parse_combo_hotels(HOTEL_HTML + HOTEL_HTML, None, ORIGIN, DEST, "u", "t")
         self.assertEqual(len(recs), 1)
+
+
+class ComboDatesTests(unittest.TestCase):
+    """Trang ghi "15/10" không có năm; hợp đồng `ProductAttributes.returnDate` là date (lỗi INVALID_TOOL_RESPONSE 08/10)."""
+
+    URL = "https://vn.trip.com/packages/list?dCityCode=SGN&dDate=2026-10-15&rDate=2026-10-18&locale=vi-VN"
+
+    def test_day_month_takes_year_from_full_date_and_never_guesses(self):
+        self.assertEqual(day_month_iso("15/10", "2026-10-15"), "2026-10-15")
+        self.assertEqual(day_month_iso("T5, 2/1", "2027-01-02"), "2027-01-02")  # qua năm: năm theo URL
+        self.assertEqual(day_month_iso("2026-10-15", None), "2026-10-15")      # đã ISO thì giữ
+        self.assertIsNone(day_month_iso("16/10", "2026-10-15"))                 # lệch ngày URL
+        self.assertIsNone(day_month_iso("15/10", None))
+        self.assertIsNone(day_month_iso(None, "2026-10-15"))
+
+    def test_trip_combo_dates_converts_or_drops_and_leaves_other_combos(self):
+        attrs = {"comboKind": "trip_real_flight_hotel", "url": self.URL, "departDate": "15/10", "returnDate": "19/10"}
+        self.assertEqual(trip_combo_dates(attrs), {"comboKind": "trip_real_flight_hotel", "url": self.URL,
+                                                   "departDate": "2026-10-15"})
+        done = {"comboKind": "trip_real_flight_hotel", "url": self.URL, "departDate": "2026-10-15"}
+        self.assertIs(trip_combo_dates(done), done)  # chạy lại không đổi gì
+        vinpearl = {"comboKind": "flight_hotel", "returnDate": "15/10"}
+        self.assertIs(trip_combo_dates(vinpearl), vinpearl)
+
+    def test_normalised_trip_combo_has_iso_dates(self):
+        import normalise
+        recs = parse_combo_hotels(HOTEL_HTML, parse_flight_card(FLIGHT_HTML), ORIGIN, DEST, self.URL, "2026-09-23T00:00:00Z")
+        attrs = normalise.trip_combo_product(recs[0])["attributes"]
+        self.assertEqual((attrs["departDate"], attrs["returnDate"]), ("2026-10-15", "2026-10-18"))
 
 
 class ComboRoutesTests(unittest.TestCase):

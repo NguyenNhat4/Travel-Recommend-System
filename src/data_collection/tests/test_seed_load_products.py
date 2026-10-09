@@ -97,6 +97,14 @@ class LoaderTests(unittest.TestCase):
         self.rows, self.stats = lc.convert(fixture(), {"c1": {"attributes": {"priceBasis": "per_person", "nights": 2}}}, AS_OF)
         self.by = {r["product_id"]: r for r in self.rows}
 
+    def test_trip_combo_dates_from_old_snapshot_become_iso(self):
+        url = "https://vn.trip.com/packages/list?dDate=2026-10-14&rDate=2026-10-15"
+        rows, stats = lc.convert([product("c2", "Combo trip", "combo", comboKind="trip_real_flight_hotel", url=url,
+                                          departDate="14/10", returnDate="15/10")], {}, AS_OF)
+        attrs = rows[0]["attributes"]
+        self.assertEqual((attrs["departDate"], attrs["returnDate"]), ("2026-10-14", "2026-10-15"))
+        self.assertEqual(stats["combo trip: ngày bay về ISO"], 1)
+
     def test_clip_rules(self):
         lo, hi = date(2026, 9, 20), date(2026, 10, 19)
         self.assertEqual(lc.clip(None, None, lo, hi), ("2026-09-20", "2026-10-19"))                 # nguồn không có → cả cửa sổ

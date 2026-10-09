@@ -160,6 +160,7 @@ products = [json.loads(line) for line in open("products.jsonl", encoding="utf-8"
 | `fixedDepartureDate` | boolean | Báo giá có ngày | `true`: job cào và seed demo giữ ngày thật khi nằm trong cửa sổ, ngày đi ngoài cửa sổ (đã bay, sau cửa sổ, hết hạn báo giá) thì dời cả hai chặng vào cửa sổ (`docs/prd/data-model.md` §3.1, `docs/spec/MOCK_DATA_SPEC.md` §2.1) |
 | `returnFlight` | object | Khứ hồi | Số hiệu, hãng, sân bay đi/đến, `departureAt`, `arrivalAt` của chặng về |
 | `returnDate`, `stayDays` | date, integer | Khứ hồi | Ngày về và khoảng ngày; không dùng để nhân giá hoặc ghi `using_date_to` |
+| `departDate`, `returnDate` (combo) | date | Combo bay + ở trip.com | Ngày bay đi/về thật của combo (`comboKind: trip_real_flight_hotel`), ISO `YYYY-MM-DD` như hợp đồng `ProductAttributes.returnDate`. Trang ghi "14/10"; năm lấy từ `dDate`/`rDate` của `url`, không khớp thì bỏ khoá. Không dời vào cửa sổ như vé ngày cố định |
 | `priceValidUntil`, `priceObservedAt` | date, datetime | Khi nguồn cung cấp | Hạn báo giá và thời điểm quan sát; hết hạn không đồng nghĩa hết chỗ |
 | `simulated` | boolean | Vé mô phỏng | `true`: vé Thương gia "(giá minh hoạ)" sinh khi nạp DB, `sourceRef` `demo:business:…`, `fieldSources.unitPrice = "mô phỏng"`; không phải giá nguồn (`docs/prd/data-model.md` §3). Normalizer không sinh khoá này |
 

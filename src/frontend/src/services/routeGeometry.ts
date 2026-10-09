@@ -4,7 +4,7 @@ export type RouteStatus = 'routed' | 'unavailable';
 
 export interface RoutePoint {
   id: string;
-  type: 'stay' | 'slot';
+  type: 'stay' | 'slot' | 'airport';
   coordinates: Coordinates;
   title: string;
   day?: number;
@@ -126,6 +126,50 @@ function pointFromSlot(slot: ItinerarySlot, day: number, order: number): RoutePo
   };
 }
 
+function coordinatesAt(attributes: Record<string, unknown> | undefined, latKey: string, lngKey: string): Coordinates | null {
+  const lat = attributes?.[latKey];
+  const lng = attributes?.[lngKey];
+  if (typeof lat !== 'number' || typeof lng !== 'number' || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  return { lat, lng };
+}
+
+export interface AirportPoints {
+  /** Sân bay đến ở điểm đến: chặng đi hoặc vé khứ hồi. */
+  arrival: RoutePoint | null;
+  /** Sân bay đi khi về: chặng về, hoặc chính sân bay đến với vé khứ hồi. */
+  departure: RoutePoint | null;
+}
+
+/**
+ * Sân bay của lịch trình, theo đúng luật backend tính km (`flights.airports`, AC-AGT-04, chốt 2026-10-09): catalog ghi sân
+ * bay đến của chuyến ở `latitude`/`longitude` và sân bay đi ở `originLatitude`/`originLongitude`. Chỉ có một chiều thì dùng
+ * sân bay đó cho cả hai đầu; không có chặng bay hoặc toạ độ thì không có sân bay.
+ */
+export function getAirportPoints(plan: GroundedPlan): AirportPoints {
+  let arrival: { coordinates: Coordinates; code?: unknown } | null = null;
+  let departure: { coordinates: Coordinates; code?: unknown } | null = null;
+  for (const leg of plan.flights ?? []) {
+    const attributes = leg.product.attributes as Record<string, unknown> | undefined;
+    if (leg.direction === 'OUTBOUND' || leg.direction === 'ROUND_TRIP') {
+      const coordinates = coordinatesAt(attributes, 'latitude', 'longitude');
+      arrival = coordinates ? { coordinates, code: attributes?.destinationAirport } : null;
+      if (leg.direction === 'ROUND_TRIP') departure = arrival;
+    }
+    if (leg.direction === 'RETURN') {
+      const coordinates = coordinatesAt(attributes, 'originLatitude', 'originLongitude');
+      departure = coordinates ? { coordinates, code: attributes?.originAirport } : null;
+    }
+  }
+  const point = (id: string, found: { coordinates: Coordinates; code?: unknown } | null): RoutePoint | null => found && {
+    id,
+    type: 'airport',
+    coordinates: found.coordinates,
+    title: typeof found.code === 'string' && found.code ? `Sân bay ${found.code}` : 'Sân bay',
+  };
+  return { arrival: point('airport-arrival', arrival ?? departure), departure: point('airport-departure', departure ?? arrival) };
+}
+
 function isAirportPoint(point: RoutePoint): boolean {
   const text = `${point.title} ${point.address ?? ''}`.toLowerCase();
   return text.includes('sân bay') || text.includes('airport') || text.includes('cam ranh');
@@ -200,9 +244,17 @@ export function detectTransitMode(point: { title?: string; transitInfo?: string;
   return 'driving';
 }
 
+/**
+ * Các chặng cần vẽ, theo thứ tự đi. Mỗi ngày: khách sạn → các điểm → khách sạn. Có chặng bay thì như backend tính km
+ * (AC-AGT-04, chốt 2026-10-09): ngày đầu bắt đầu ở sân bay đến rồi về khách sạn (sân bay → khách sạn → các điểm → khách
+ * sạn), ngày cuối (chuyến từ 2 ngày) đi từ khách sạn qua các điểm rồi ra sân bay; ngày không có điểm vẫn có chặng sân bay.
+ */
 export function buildRouteRequests(plan: GroundedPlan, filterDay = 0): RouteRequest[] {
   const days = filterDay === 0 ? plan.days.map((day) => day.day) : [filterDay];
   const requests: RouteRequest[] = [];
+  const { arrival, departure } = getAirportPoints(plan);
+  const firstDay = plan.days[0]?.day;
+  const lastDay = plan.days.length > 1 ? plan.days[plan.days.length - 1].day : undefined;
 
   for (const dayNumber of days) {
     const day = plan.days.find((candidate) => candidate.day === dayNumber);
@@ -216,11 +268,15 @@ export function buildRouteRequests(plan: GroundedPlan, filterDay = 0): RouteRequ
       slotOrder += 1;
       return [point];
     });
-    if (slotPoints.length === 0) continue;
+    const start = dayNumber === firstDay && arrival ? arrival : null;
+    const end = dayNumber === lastDay && departure ? departure : null;
+    if (slotPoints.length === 0 && !start && !end) continue;
 
-    const orderedPoints = stayPoint ? [stayPoint, ...slotPoints] : slotPoints;
+    const orderedPoints = [...(start ? [start] : []), ...(stayPoint ? [stayPoint] : []), ...slotPoints];
     const lastPoint = slotPoints[slotPoints.length - 1];
-    if (stayPoint && !isAirportPoint(lastPoint) && !sameCoordinate(lastPoint.coordinates, stayPoint.coordinates)) {
+    if (end) {
+      orderedPoints.push(end);
+    } else if (stayPoint && lastPoint && !isAirportPoint(lastPoint) && !sameCoordinate(lastPoint.coordinates, stayPoint.coordinates)) {
       orderedPoints.push(stayPoint);
     }
 
@@ -230,7 +286,8 @@ export function buildRouteRequests(plan: GroundedPlan, filterDay = 0): RouteRequ
       if (sameCoordinate(from.coordinates, to.coordinates)) continue;
 
       // Ưu tiên transitMode chỉ định, hoặc detect từ thông tin chặng
-      const inferredMode = to.type === 'slot' 
+      // Chặng sân bay đi bằng xe như mọi chặng về khách sạn.
+      const inferredMode = to.type === 'slot'
         ? (to.transitMode ?? detectTransitMode(to))
         : (from.transitMode === 'cable' || from.transitMode === 'ferry' ? from.transitMode : 'driving');
 

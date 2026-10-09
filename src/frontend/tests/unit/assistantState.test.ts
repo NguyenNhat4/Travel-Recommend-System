@@ -35,6 +35,21 @@ describe('assistant reducer', () => {
     expect(state.transcript.map((message) => message.sender)).toEqual(['user', 'assistant']);
   });
 
+  it('a tapped hotel option swaps the latest plan without adding a message or touching its text', () => {
+    let state = createInitialAssistantState();
+    state = assistantReducer(state, { type: 'request-started', request, userText: 'Plan trip', appendUser: true });
+    const first = { status: 'COMPLETED', conversationId: 'c1', message: '**Lịch**\nNơi nghỉ: Sunny', warnings: [],
+      itinerary: { title: 'Lịch', days: [], estimatedTotal: 1, currency: 'VND', budgetStatus: 'NO_BUDGET' } } as unknown as AssistantResponse;
+    state = assistantReducer(state, { type: 'response-received', response: first });
+    const swapped = { ...first, message: undefined, itinerary: { ...(first as any).itinerary, estimatedTotal: 2 } } as unknown as AssistantResponse;
+    state = assistantReducer(state, { type: 'stay-option-applied', response: swapped });
+    expect(state.transcript.map((message) => message.sender)).toEqual(['user', 'assistant']);
+    expect(state.transcript[1].text).toBe('**Lịch**\nNơi nghỉ: Sunny');
+    expect(state.transcript[1].response).toBe(swapped);
+    expect(state.response).toBe(swapped);
+    expect(state.phase).toBe('completed');
+  });
+
   it('clears expired conversation but preserves the exact request for explicit retry', () => {
     let state = createInitialAssistantState('expired-id');
     state = assistantReducer(state, { type: 'request-started', request, userText: 'Plan trip', appendUser: true });

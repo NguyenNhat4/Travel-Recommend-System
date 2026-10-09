@@ -331,15 +331,19 @@ def test_result_is_a_copy_not_the_engine_index(services):
     assert "injected" not in index.units[index.idx[item["productId"]]].attributes
 
 
-def test_search_forwards_only_the_engine_filters_and_never_identity():
+def test_search_forwards_every_engine_filter_and_the_guests_but_never_identity():
+    # Trace 2026-10-08 (gia đình 2 lớn 1 bé ở TP.HCM): số khách không tới engine nên sức chứa phòng không được lọc.
+    # Cùng bộ tham số với route POST /search; `sort`, `includeVariants`, ngày trong travelContext engine chưa nhận.
     engine = Spy({"results": [], "total": 0})
     request = {"query": "  khách sạn gia đình ", "destination": "Nha Trang", "taxonomy": None, "limit": 5,
                "offset": 0, "priceMax": 2_000_000, "starRatingMin": 4, "availableOnly": True,
-               "sort": "relevance", "includeVariants": False}
+               "sort": "relevance", "includeVariants": False,
+               "travelContext": {"checkIn": "2026-10-15", "guests": {"adults": 2, "children": 1}}}
     run(tools_with(search=engine).search_products(request))
     run(tools_with(search=engine).search_products({"query": "golf", "taxonomy": "golf"}))
     assert engine.calls == [
-        (("khách sạn gia đình",), {"destination": "Nha Trang", "limit": 5, "offset": 0}),
+        (("khách sạn gia đình",), {"destination": "Nha Trang", "limit": 5, "offset": 0, "price_max": 2_000_000,
+                                   "star_min": 4, "available_only": True, "adults": 2, "children": 1}),
         (("golf",), {"taxonomy": "golf"}),
     ]
 

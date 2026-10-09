@@ -11,7 +11,7 @@ from src.backend.app.application.itinerary.contracts import enum_values
 from src.evaluation.agent.golden import (
     Case, Turn, conversation_of, dataset_findings, expected_tool_call, gate_no_booking_claim,
     gate_no_tool_before_info, gate_schema, gate_secrets, judge_findings, load_dataset, progress_writer,
-    resolve_dates, run_case, schedule_findings,
+    TurnResult, build_report, render_markdown, resolve_dates, run_case, schedule_findings,
 )
 
 DATASET_PATH = Path(__file__).resolve().parents[1] / "datasets" / "agent_test_cases_nhat.yaml"
@@ -233,6 +233,15 @@ class ScheduleFindingsTests(unittest.TestCase):
         findings = schedule_findings(response, {})
         self.assertTrue(any("lặp lại" in f for f in findings))
 
+    def test_two_products_with_the_same_name_are_flagged(self):
+        # Trace 08/10/2026: hai vé Water Taxi khác mã, cùng tên (AC-AGT-04, node `filter`).
+        name = "[Grand World Phú Quốc] - Vé đi thuyền Venice (Water Taxi)"
+        slots = [{"time": "MORNING", "product": {**_product("e35d"), "name": name}},
+                 {"time": "AFTERNOON", "product": {**_product("f540"), "name": name.upper()}}]
+        response = {"status": "COMPLETED", "intent": {"days": 1},
+                    "itinerary": {"days": [{"day": 1, "slots": slots}]}, "warnings": []}
+        self.assertTrue(any("tên" in f and "lặp lại" in f for f in schedule_findings(response, {})))
+
     def test_cheapest_hotel_not_selected_flagged(self):
         expensive = _product("hotel-expensive", taxonomy="hotel", price=2_000_000)
         cheap = _product("hotel-cheap", taxonomy="hotel", price=500_000)
@@ -408,7 +417,7 @@ class FormMatchesAnswerTests(unittest.TestCase):
 class AgentTestCasesDatasetTests(unittest.TestCase):
     def test_the_user_reported_cases_load_and_every_placeholder_resolves(self):
         cases = load_dataset(AGENT_CASES_PATH)
-        self.assertEqual([case.id for case in cases], ["TC-01", "TC-02", "TC-03", "TC-04", "TC-10"])
+        self.assertEqual([case.id for case in cases], ["TC-01", "TC-02", "TC-03", "TC-04", "TC-10", "TC-11"])
         for case in cases:
             for turn in case.turns:
                 resolved = json.dumps([resolve_dates(turn.message, date(2026, 10, 2)),
@@ -465,6 +474,29 @@ class ReportSlugTests(unittest.TestCase):
         from src.evaluation.agent.golden import DEFAULT_DATASET, report_slug
         self.assertEqual(report_slug(DEFAULT_DATASET), "agent-test-cases")
         self.assertEqual(report_slug("x/my_cases.yaml"), "my-cases")
+
+
+class DroppedReportTests(unittest.TestCase):
+    """Mục "Đã loại" của biên bản: mã node `filter` bỏ vì trùng (AC-AGT-04, chốt 2026-10-08)."""
+
+    def report(self, dropped):
+        result = TurnResult("TC-11", 1, "Phú Quốc 3 ngày", 200, "COMPLETED", 10, 0, True, True, [], dropped)
+        settings = SimpleNamespace(itinerary_llm_model="m")
+        report = build_report([result], settings, "golden", None)
+        return report
+
+    def test_dropped_products_are_listed_with_what_they_duplicate_and_who_dropped_them(self):
+        report = self.report([{"productId": "fdb01f88-87d1", "name": "Cáp Treo Hòn Thơm", "duplicateOf": "76da210a-c70c",
+                               "duplicateOfName": "Sun World Hòn Thơm", "by": "llm"}])
+        self.assertEqual(report["turns"][0]["dropped"][0]["by"], "llm")
+        markdown = render_markdown(report, "abc")
+        self.assertIn("## Đã loại", markdown)
+        self.assertIn("| TC-11 | 1 | Cáp Treo Hòn Thơm (`fdb01f88`) | Sun World Hòn Thơm (`76da210a`) | llm |", markdown)
+
+    def test_no_dropped_product_says_so(self):
+        markdown = render_markdown(self.report([]), "abc")
+        self.assertIn("## Đã loại", markdown)
+        self.assertIn("Không có.", markdown.split("## Đã loại")[1])
 
 
 class _StubPlanner:

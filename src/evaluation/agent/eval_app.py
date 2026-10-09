@@ -121,6 +121,10 @@ def render_turn(turn: dict) -> None:
         st.error("**Kiểm tra tất định không đạt**\n\n" + "\n".join(f"- {f}" for f in rules))
     if judged:
         st.warning("**LLM giám khảo chấm không đạt** (tiêu chí: lý do)\n\n" + "\n".join(f"- {f}" for f in judged))
+    if turn.get("dropped"):
+        st.info("**Đã loại** (trùng trước khi xếp lịch)\n\n" + "\n".join(
+            f"- {item.get('name')} → trùng với {item.get('duplicateOfName')} (`{item.get('by')}`)"
+            for item in turn["dropped"]))
     details = []
     if turn.get("intent"):
         intent = {k: v for k, v in turn["intent"].items() if v not in (None, [], {})}

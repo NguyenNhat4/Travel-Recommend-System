@@ -161,7 +161,9 @@ export interface ItineraryStayItem {
   productId: string;
   product: Product;
   nights: number;
-  dayRange?: string; // e.g. "Đêm 1 - 2 (Ngày 1 - 2)"
+  /** Đêm đầu tiên ở khách sạn này, đếm từ 1 (contract 1.19.0); vắng mặt coi là 1. */
+  fromNight?: number;
+  dayRange?: string; // e.g. "Đêm 1–2"
   note?: string;
   source?: 'recommendation' | 'search';
   because?: BecauseItem[];

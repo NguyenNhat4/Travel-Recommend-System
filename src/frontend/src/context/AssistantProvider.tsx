@@ -18,7 +18,7 @@ import {
   type AssistantStreamEvent,
 } from '../services/assistantStream';
 import { getAssistantConversation } from '../services/assistantHistory';
-import { ApiError } from '../services/http';
+import { ApiError, apiJson } from '../services/http';
 
 const CONVERSATION_STORAGE_KEY = 'vota.assistant.conversationId';
 type IntentOverride = components['schemas']['TripIntentPatch'];
@@ -28,6 +28,11 @@ interface AssistantContextValue {
   state: AssistantState;
   sendMessage: (message: string, context?: AssistantContextData) => void;
   submitIntentOverride: (intentOverride: IntentOverride, context?: AssistantContextData) => void;
+  /**
+   * Bấm thẻ khách sạn trong hàng "Phương án khác" (contract 1.20.0): lưu lựa chọn lên server ở nền, không thêm tin nhắn.
+   * `true` khi server đã đổi lịch (câu trả lời gần nhất mang lịch mới), `false` khi lỗi.
+   */
+  selectStayOption: (index: number) => Promise<boolean>;
   retry: () => void;
   abort: () => void;
   resetConversation: () => void;
@@ -264,6 +269,27 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     executeRequest(request, intentDescription(intentOverride), true);
   }, [currentLocale, executeRequest, state.conversationId]);
 
+  const selectStayOption = useCallback(async (index: number) => {
+    if (!state.conversationId) return false;
+    const request: AssistantRequest = {
+      message: null,
+      conversationId: state.conversationId,
+      intentOverride: null,
+      selectStayOption: { index },
+      context: { language: currentLocale === 'en' ? 'en' : 'vi' },
+    };
+    try {
+      const response = await apiJson<AssistantResponse>('/api/v1/assistant/itineraries', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request), cache: 'no-store',
+      });
+      if (!isAssistantResponse(response) || response.status !== 'COMPLETED') return false;
+      dispatch({ type: 'stay-option-applied', response });
+      return true;
+    } catch {
+      return false;
+    }
+  }, [currentLocale, state.conversationId]);
+
   const retry = useCallback(() => {
     if (state.lastRequest) {
       executeRequest(state.lastRequest, state.lastRequest.message || 'Tiếp tục cập nhật lịch trình', false);
@@ -300,6 +326,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     state,
     sendMessage,
     submitIntentOverride,
+    selectStayOption,
     retry,
     abort,
     resetConversation,
@@ -309,7 +336,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     closeFloatingWidget: () => dispatch({ type: 'close-floating' }),
     closeHeaderDrawer: () => dispatch({ type: 'close-header-drawer' }),
     consumeFloatingInitialMessage: () => dispatch({ type: 'consume-floating-initial-message' }),
-  }), [state, sendMessage, submitIntentOverride, retry, abort, resetConversation, loadConversation]);
+  }), [state, sendMessage, submitIntentOverride, selectStayOption, retry, abort, resetConversation, loadConversation]);
 
   return <AssistantContext.Provider value={value}>{children}</AssistantContext.Provider>;
 }

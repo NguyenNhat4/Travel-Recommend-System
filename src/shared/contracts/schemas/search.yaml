@@ -17,6 +17,8 @@
 #   appliedFilters.hard.checkIn / checkOut / dateSource; queryPlan.date; "date" trong applied và emptyReason.
 # 1.20.0 (2026-10-08, additive): gộp 1.18.0 (fix/search-production) và 1.19.0 (release-mvp-v2); không thêm field mới.
 #   applied: [..., date, duration, entity]; emptyReason: [..., date, ..., entity, duration]; queryPlan có đủ date / duration / location / entity.
+# 1.22.0 (2026-10-09): gộp release-mvp-v2 (1.20.0: search 1.18.0 + filter ngày 1.19.0) với feat/agent (1.20.0–1.21.0 của Itinerary Agent,
+#   xem schemas/itinerary-agent.yaml); không thêm field mới ở search. Số 1.20.0 của hai nhánh là hai thay đổi khác nhau, đã gộp lên 1.22.0.
 
 # [Q1] Ngữ cảnh chuyến đi. KHÔNG phải xác nhận availability nếu
 # availabilityMode là CATALOG_ONLY.

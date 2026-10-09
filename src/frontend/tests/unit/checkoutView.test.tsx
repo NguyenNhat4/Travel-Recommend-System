@@ -139,6 +139,9 @@ async function open(draft: any, accountName?: string, signedIn = true) {
   store.draft = draft;
   const view = render(<Harness accountName={accountName} signedIn={signedIn} />);
   await screen.findByRole('heading', { level: 2 });
+  // Heading hiện ngay khi đơn nháp tải xong, còn đoàn mặc định được dựng trong effect sau đó: chờ thẻ Người lớn 1,
+  // không thì trên máy chậm (CI) test có thể bấm Tiếp tục với đoàn rỗng.
+  if (screen.queryByRole('heading', { level: 2, name: 'Hành khách' })) await screen.findByLabelText('Họ (Người lớn 1)');
   return view;
 }
 

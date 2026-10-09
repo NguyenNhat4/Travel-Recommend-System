@@ -19,13 +19,14 @@ stateDiagram-v2
     extract --> clarify: thiếu / sai / mâu thuẫn
     extract --> tool: đủ thông tin
     tool --> evaluate
-    evaluate --> compose: có ứng viên, không có kết quả, hoặc FALLBACK
+    evaluate --> filter: có ứng viên, không có kết quả, hoặc FALLBACK
     evaluate --> clarify: điều kiện bắt buộc không ai đáp ứng, điểm đến ngoài catalog
     evaluate --> retry: lỗi tạm thời
     evaluate --> dead_letter: lỗi vĩnh viễn / lỗi đăng nhập
     retry --> tool: còn lượt thử
-    retry --> compose: hết lượt, đã có ứng viên (FALLBACK)
+    retry --> filter: hết lượt, đã có ứng viên (FALLBACK)
     retry --> dead_letter: hết lượt, không có gì
+    filter --> compose: bỏ điểm tham quan trùng (luật cùng tên, rồi LLM chỉ ra cặp)
     compose --> narrate
     converse --> finalize
     clarify --> finalize
@@ -37,11 +38,12 @@ stateDiagram-v2
 | Giai đoạn | Node | Làm gì | Chi tiết |
 |---|---|---|---|
 | Hiểu người dùng | `intake`, `classify`, `extract` | Nạp hội thoại cũ, phân luồng, trích ý định | [hieu-y-dinh-va-hoi-lai.md](hieu-y-dinh-va-hoi-lai.md) |
-| Lấy dữ liệu thật | `tool`, `evaluate`, `retry` | Gọi Search/Recommendation/Similar, tra vé, lọc ứng viên | [tim-ung-vien.md](tim-ung-vien.md), [ve-may-bay.md](ve-may-bay.md) |
+| Lấy dữ liệu thật | `tool`, `evaluate`, `retry`, `filter` | Gọi Search/Recommendation/Similar, tra vé, lọc ứng viên, bỏ điểm tham quan trùng | [tim-ung-vien.md](tim-ung-vien.md), [ve-may-bay.md](ve-may-bay.md) |
 | Soạn câu trả lời | `compose`, `narrate`, `clarify`, `converse`, `dead_letter` | Xếp lịch bằng luật, viết lời, hỏi lại, báo lỗi | [xep-lich.md](xep-lich.md), [dien-giai-va-kiem-tra.md](dien-giai-va-kiem-tra.md) |
 | Cửa ra chung | `finalize` | Kiểm contract + grounding, lưu hội thoại | [dien-giai-va-kiem-tra.md](dien-giai-va-kiem-tra.md) |
 
-LLM chỉ được gọi ở `classify`, `extract`, `tool` (chọn tên điểm đến, lập tool plan), `clarify`, `converse`, `narrate`.
+LLM chỉ được gọi ở `classify`, `extract`, `tool` (chọn tên điểm đến, lập tool plan), `filter` (chỉ ra cặp điểm tham quan
+trùng; giữ cái nào do luật), `clarify`, `converse`, `narrate`.
 `compose`, `evaluate`, `retry`, `finalize` là luật thuần.
 
 ## Các kết quả của một lượt
@@ -76,7 +78,8 @@ Lỗi không ghi status riêng mặc định 503 (`messages.failure`).
 
 - Tin nhắn rỗng mà có chip sửa tay (`intentOverride`): coi là lượt du lịch, bỏ qua LLM của `classify`.
 - `conversationId` lạ, hoặc của người khác: 404, không lộ nội dung.
-- LLM của `clarify`/`converse`/`narrate` lỗi hoặc quá giờ: không lỗi lượt, mà dùng câu cố định dựng bằng luật.
+- LLM của `clarify`/`converse`/`narrate` lỗi hoặc quá giờ: không lỗi lượt, mà dùng câu cố định dựng bằng luật. LLM của
+  `filter` lỗi hoặc quá giờ: chỉ dùng phần lọc bằng luật (cùng tên).
 
 ## Code liên quan
 
