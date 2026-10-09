@@ -13,7 +13,7 @@ from src.backend.app.application.itinerary.tool_contracts import (
 from src.backend.app.application.ports.itinerary_tools import ToolError, ToolExecutorPort
 from src.backend.app.core.logging_config import log_event
 from src.backend.app.domain.itinerary.normalization import fold, match_destination
-from src.backend.app.domain.itinerary.planning import SCHEDULABLE_TAXONOMIES
+from src.backend.app.domain.itinerary.planning import SCHEDULABLE_TAXONOMIES, room_guests
 from src.backend.app.domain.itinerary.search_hints import retrieval_hints, search_query_text
 
 from ..models import DestinationChoice
@@ -264,12 +264,13 @@ def _validated_args(state: dict, call: dict) -> dict:
         if removed:
             logger.info("itinerary.tool_plan.query_sanitized requestId=%s taxonomy=%s removed=%d",
                         state.get("request_id", "unknown"), args.get("taxonomy"), removed)
-        # Số khách là filter sức chứa phòng (contract 1.16.0): lấy từ intent đã chốt, không từ LLM, và chỉ cho khách
-        # sạn; loại khác không có sức chứa nên bỏ cả `travelContext` (ngày trong đó engine chưa dùng).
+        # Số khách là filter sức chứa của MỘT phòng (contract 1.16.0): lấy từ intent đã chốt, không từ LLM, và chỉ cho
+        # khách sạn; gửi số khách mỗi phòng khi cả đoàn chia tối đa 9 phòng (FR-AGT-01, chốt 2026-10-09), không gửi cả
+        # đoàn. Loại khác không có sức chứa nên bỏ cả `travelContext` (ngày trong đó engine chưa dùng).
         args.pop("travelContext", None)
-        party = intent.get("party") or {}
-        if args.get("taxonomy") == "hotel" and isinstance(party.get("adults"), int) and party["adults"] >= 1:
-            args["travelContext"] = {"guests": {"adults": party["adults"], "children": int(party.get("children") or 0)}}
+        guests = room_guests(intent.get("party"))
+        if args.get("taxonomy") == "hotel" and guests is not None:
+            args["travelContext"] = {"guests": guests}
         if args.get("taxonomy") == "hotel":
             for source, target in (("hotel_price_max", "priceMax"), ("star_rating_min", "starRatingMin")):
                 if constraints.get(source) is not None:

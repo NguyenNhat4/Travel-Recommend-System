@@ -752,13 +752,23 @@ class HotelSearchArgsTests(unittest.TestCase):
         plan = tool_planning.validated_plan(self._state(family), raw)
         hotel, attraction = plan
         # Số khách của LLM (9 người lớn) bị thay bằng intent; ngày trong travelContext engine chưa dùng nên bỏ.
-        self.assertEqual(hotel['args']['travelContext'], {'guests': {'adults': 2, 'children': 1}})
+        # Lọc theo một phòng (chốt 2026-10-09): đoàn 3 người ở vừa 9 phòng thì mỗi phòng chỉ cần chứa 1.
+        self.assertEqual(hotel['args']['travelContext'], {'guests': {'adults': 1, 'children': 0}})
         self.assertEqual(hotel['args']['limit'], tool_planning.HOTEL_SEARCH_LIMIT)
         self.assertEqual(tool_planning.HOTEL_SEARCH_LIMIT,
                          contracts()['search_products']['arguments']['properties']['limit']['maximum'])
         self.assertNotIn('travelContext', attraction['args'])
         self.assertEqual(attraction['args']['limit'], tool_planning.SEARCH_LIMIT)
         self.assertEqual(tool_planning.validated_plan(self._state(family), copy.deepcopy(plan)), plan)
+
+    def test_a_large_group_is_filtered_by_the_guests_of_one_room(self):
+        # 10 người lớn không cần một phòng 10 chỗ: ở vừa tối đa 9 phòng (FR-BKG-08) khi mỗi phòng chứa 2.
+        group = {'type': 'FRIENDS', 'adults': 10, 'children': 0}
+        plan = tool_planning.validated_plan(self._state(group), [search(taxonomy='hotel')])
+        self.assertEqual(plan[0]['args']['travelContext'], {'guests': {'adults': 2, 'children': 0}})
+        mixed = {'type': 'FAMILY_WITH_KIDS', 'adults': 9, 'children': 9}
+        plan = tool_planning.validated_plan(self._state(mixed), [search(taxonomy='hotel')])
+        self.assertEqual(plan[0]['args']['travelContext'], {'guests': {'adults': 1, 'children': 1}})
 
     def test_unknown_party_sends_no_guests(self):
         plan = tool_planning.validated_plan(self._state(None), [search(taxonomy='hotel',

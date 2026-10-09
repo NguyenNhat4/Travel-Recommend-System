@@ -59,6 +59,11 @@ export function partyLabel(party: components['schemas']['Party'] | null | undefi
   return party.type ? PARTY_TYPE_LABEL[party.type] : null;
 }
 
+/** Hậu tố số phòng sau giá một đêm (AC-AGT-04, chốt 2026-10-09): chỉ ghi khi đoàn ở từ 2 phòng. */
+export function roomsSuffix(rooms: number | undefined): string {
+  return rooms != null && rooms > 1 ? ` × ${rooms} phòng` : '';
+}
+
 export function convertItineraryCompletedToGroundedPlan(
   response: components['schemas']['ItineraryCompleted']
 ): WidgetPlan {
@@ -76,6 +81,7 @@ export function convertItineraryCompletedToGroundedPlan(
       product: adaptProductSummaryToProduct(stay.product),
       nights,
       fromNight,
+      rooms: stay.rooms ?? 1,
       dayRange: lastNight > fromNight ? `Đêm ${fromNight}–${lastNight}` : `Đêm ${fromNight}`,
       note: stay.note ?? '',
       source: (stay.source as any) || 'search',
