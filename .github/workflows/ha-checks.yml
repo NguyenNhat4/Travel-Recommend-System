@@ -31,7 +31,7 @@ concurrency:
 jobs:
   terraform-staging-ha:
     name: Terraform staging-ha
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
@@ -53,10 +53,14 @@ jobs:
 
   db-scripts-and-patroni:
     name: Patroni, promote script, probe (Docker)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+      # Runner self-hosted: Python hệ thống (Ubuntu 23.04+) chặn pip install (PEP 668) → dùng Python riêng của job.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
       - name: Probe tests
         run: python3 -m pip install -q pytest && python3 -m pytest -q ops/tests/test_cluster_probe.py
       - name: Promote script on a real primary/replica pair
@@ -70,14 +74,15 @@ jobs:
 
   crawler-lock:
     name: Crawler DB run lock (real Postgres)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     services:
       postgres:
         image: postgres:16
         env:
           POSTGRES_PASSWORD: pw
+        # Cổng host ngẫu nhiên: runner self-hosted có thể đã có Postgres ở 5432.
         ports:
-          - 5432:5432
+          - 5432
         options: >-
           --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
@@ -90,11 +95,11 @@ jobs:
       - name: Install
         # Như Dockerfile.fresh-catalog: bước index import cấu hình backend nên cần pydantic, pydantic-settings, numpy.
         run: |
-          grep -E '^(pydantic|pydantic-settings|numpy|argon2-cffi)[<>=]' src/backend/requirements.txt | sed 's/[[:space:]]*#.*//' > /tmp/job-extra.txt
-          python -m pip install -r src/data_collection/requirements.txt -r /tmp/job-extra.txt pytest
+          grep -E '^(pydantic|pydantic-settings|numpy|argon2-cffi)[<>=]' src/backend/requirements.txt | sed 's/[[:space:]]*#.*//' > "$RUNNER_TEMP/job-extra.txt"
+          python -m pip install -r src/data_collection/requirements.txt -r "$RUNNER_TEMP/job-extra.txt" pytest
       - name: Lock and job tests
         working-directory: src/data_collection
         env:
           PYTHONPATH: ..:.
-          CATALOG_TEST_DATABASE_URL: postgresql://postgres:pw@127.0.0.1:5432/postgres
+          CATALOG_TEST_DATABASE_URL: postgresql://postgres:pw@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/postgres
         run: python -m pytest -q tests/test_catalog_run_lock.py tests/test_fresh_catalog_job.py tests/test_pipeline_graph.py tests/test_alerts.py
