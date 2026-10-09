@@ -30,19 +30,25 @@ def default(name):
 class RollingUpdate(unittest.TestCase):
     """Use case (plan §5.1): đổi image khi có 3 VM; MIG chỉ có health check liveness nên coi VM mới là xong ngay khi tiến trình lên."""
 
-    def test_mig_waits_min_ready_sec_at_least_boot_to_ready(self):
+    def test_rollout_does_not_wait_past_liveness(self):
+        # Chốt 2026-10-09 (docs/prd/update-archive/2026-10-09-rut-ngan-cd-chap-nhan-downtime.md): không chờ thêm sau
+        # liveness; cổng sẵn sàng là bước Verify của CD (LB báo đủ VM HEALTHY).
         mig = block(MAIN, "google_compute_region_instance_group_manager", "app")
-        self.assertRegex(mig, r"min_ready_sec\s*=\s*var\.boot_to_ready_seconds")
+        self.assertRegex(mig, r"min_ready_sec\s*=\s*0\b")
         self.assertGreaterEqual(default("boot_to_ready_seconds"), 360)
 
     def test_mig_uses_the_provider_that_supports_min_ready_sec(self):
         mig = block(MAIN, "google_compute_region_instance_group_manager", "app")
         self.assertIn("provider                  = google-beta", mig)
 
-    def test_surge_never_removes_capacity(self):
+    def test_rollout_replaces_all_vms_without_surge(self):
+        # Chốt 2026-10-09: không dùng VM surge; thay toàn bộ VM một lượt và chấp nhận downtime ngắn
+        # (max_unavailable >= max_replicas để không kẹt khi nhóm đủ 2 VM).
         mig = block(MAIN, "google_compute_region_instance_group_manager", "app")
         self.assertRegex(mig, r'replacement_method\s*=\s*"SUBSTITUTE"')
-        self.assertIn("max_unavailable_fixed = 0", mig)
+        self.assertRegex(mig, r"max_surge_fixed\s*=\s*0\b")
+        self.assertIn("max_unavailable_fixed = 3", mig)
+        self.assertGreaterEqual(3, default("max_replicas"))
 
     def test_autohealing_initial_delay_covers_boot(self):
         mig = block(MAIN, "google_compute_region_instance_group_manager", "app")
