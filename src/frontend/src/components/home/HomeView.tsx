@@ -7,6 +7,7 @@ import { useTravel } from '../../context/TravelContext';
 import { fetchRecommendations } from '../../services/recsys';
 import type { RecommendationResponse, Taxonomy } from '../../types/travel';
 import { ProductCard } from '../common/ProductCard';
+import { GuestRecommendationBanner } from './GuestRecommendationBanner';
 import { WhyPopover } from '../common/WhyPopover';
 import { NavIcon } from '../layout/nav/NavIcon';
 import { VerticalChips } from '../layout/nav/VerticalChips';
@@ -16,17 +17,17 @@ import { DestinationTiles } from '../../features/catalog/landing/DestinationTile
 import { InstantSearchPanel } from '../../features/search/instant/InstantSearchPanel';
 import { useInstantSearchBox } from '../../features/search/instant/useInstantSearchBox';
 
-/** Gợi ý cá nhân hóa quá 3 giây thì ẩn khối và hiện dòng "Thử lại" (frontend §6.4 RECOMMENDATION_TIMEOUT_MS). */
-const RECOMMENDATION_TIMEOUT_MS = 3000;
+/** Gợi ý cá nhân hóa quá 10 giây thì ẩn khối và hiện dòng "Thử lại" (frontend §6.4 RECOMMENDATION_TIMEOUT_MS). */
+const RECOMMENDATION_TIMEOUT_MS = 10000;
 
 const AI_PLACEHOLDERS = [
-  'Tìm resort V-OTA view biển cho gia đình 4 người, ngân sách 10 triệu...',
+  'Tìm resort X-OTA view biển cho gia đình 4 người, ngân sách 10 triệu...',
   'Combo Phú Quốc 3N2Đ vé máy bay + khách sạn + vui chơi VinWonders...',
-  'Tư vấn khách sạn V-OTA Nha Trang gần bãi biển, có bể bơi vô cực...',
+  'Tư vấn khách sạn X-OTA Nha Trang gần bãi biển, có bể bơi vô cực...',
   'Gợi ý lịch trình 4N3Đ Đà Nẵng - Hội An nghỉ dưỡng cao cấp...',
 ];
 
-const AI_CHIPS = ['Resort V-OTA Nha Trang cho gia đình', 'Combo Phú Quốc 3N2Đ giá tốt', 'Villa ven biển view hoàng hôn'];
+const AI_CHIPS = ['Resort X-OTA Nha Trang cho gia đình', 'Combo Phú Quốc 3N2Đ giá tốt', 'Villa ven biển view hoàng hôn'];
 
 /** Tab của khối "Phổ biến": chỉ tab đang chọn mới gọi API. `Tất cả` không lọc danh mục (gồm cả sân golf). */
 const POPULAR_TABS: Array<{ id: string; label: string; taxonomy?: Taxonomy }> = [
@@ -76,7 +77,7 @@ function useTypewriterPlaceholder(): string {
  * gợi ý cá nhân hóa (K1/K2), phổ biến theo tab và điểm đến. Các khối dưới màn hình chỉ tải khi cuộn tới.
  */
 export const HomeView: React.FC = () => {
-  const { currentPersona, activeEvents, navigate, showToast } = useTravel();
+  const { currentPersona, activeEvents, navigate, showToast, authReady, openLoginModal } = useTravel();
   const placeholder = useTypewriterPlaceholder();
   const [aiQuery, setAiQuery] = useState('');
   const [popularTab, setPopularTab] = useState(POPULAR_TABS[0]);
@@ -143,7 +144,7 @@ export const HomeView: React.FC = () => {
 
   const submitAi = (event: React.FormEvent) => {
     event.preventDefault();
-    instant.search(aiQuery.trim() || placeholder || 'Resort V-OTA');
+    instant.search(aiQuery.trim() || placeholder || 'Resort X-OTA');
   };
 
   return (
@@ -170,7 +171,7 @@ export const HomeView: React.FC = () => {
               Khám phá kỳ nghỉ tiếp theo
             </h1>
             <p className="type-hero-sub mx-auto mt-3 max-w-2xl text-white/90 drop-shadow">
-              Mô tả chuyến đi bằng lời của bạn, V-OTA tìm dịch vụ phù hợp
+              Mô tả chuyến đi bằng lời của bạn, X-OTA tìm dịch vụ phù hợp
             </p>
           </div>
 
@@ -187,7 +188,7 @@ export const HomeView: React.FC = () => {
                 onChange={(e) => { setAiQuery(e.target.value); instant.onType(); }}
                 {...instant.inputProps}
                 aria-label="Mô tả chuyến đi bạn muốn"
-                placeholder={placeholder || 'Hỏi AI: Tìm resort V-OTA view biển cho gia đình 4 người...'}
+                placeholder={placeholder || 'Hỏi AI: Tìm resort X-OTA view biển cho gia đình 4 người...'}
                 className="min-w-0 flex-1 truncate bg-transparent pl-3.5 text-base font-medium text-slate-800 outline-none placeholder:text-slate-500 sm:pl-4"
               />
               <button
@@ -242,6 +243,9 @@ export const HomeView: React.FC = () => {
         </section>
 
         {/* ① GỢI Ý CÁ NHÂN HÓA (đã đăng nhập): AC-REC-01, AC-REC-02 */}
+        {authReady && !currentPersona && (
+          <GuestRecommendationBanner onLogin={() => openLoginModal()} onRegister={() => navigate('/register')} />
+        )}
         {currentPersona && recsFailed && (
           <section className="mx-auto max-w-7xl px-4 pt-6 sm:px-6 lg:px-8">
             <p className="text-xs text-slate-500">

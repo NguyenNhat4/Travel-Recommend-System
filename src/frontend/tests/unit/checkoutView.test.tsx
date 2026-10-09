@@ -126,7 +126,7 @@ function Harness({ accountName = 'Nguyễn Minh Anh', cart = null, signedIn = tr
   // Phần khung quanh trang thanh toán: logo của header (gọi `navigate`) và hai liên kết như ở chân trang.
   return (
     <shared.Ctx.Provider value={value}>
-      <button type="button" onClick={() => guardedNavigate('/')}>V-OTA</button>
+      <button type="button" onClick={() => guardedNavigate('/')}>X-OTA</button>
       <CheckoutView />
       <a href="/hotels">Khách sạn</a>
       <a href="#checkout-top">Lên đầu trang</a>
@@ -717,7 +717,7 @@ describe('CheckoutView — hỏi lại trước khi rời trang (AC-BKG-20)', ()
   const dialog = () => screen.queryByRole('alertdialog');
   const stayButton = () => screen.getByRole('button', { name: 'Ở lại thanh toán' });
   const leaveButton = () => screen.getByRole('button', { name: 'Rời trang' });
-  const logo = () => screen.getByRole('button', { name: 'V-OTA' });
+  const logo = () => screen.getByRole('button', { name: 'X-OTA' });
   const lastNameOfAdult2 = () => screen.getByLabelText('Họ (Người lớn 2)') as HTMLInputElement;
   /** Nút Back của trình duyệt, rồi chờ `popstate`. */
   const pressBack = () => act(async () => { window.history.back(); await new Promise((r) => setTimeout(r, 50)); });

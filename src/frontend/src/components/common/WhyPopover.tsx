@@ -112,7 +112,7 @@ export const WhyPopover: React.FC<WhyPopoverProps> = ({
 
         <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
           <p className="text-xs text-slate-600">
-            Dựa trên hoạt động gần đây của bạn trên V-OTA:
+            Dựa trên hoạt động gần đây của bạn trên X-OTA:
           </p>
 
           <div className="space-y-3">

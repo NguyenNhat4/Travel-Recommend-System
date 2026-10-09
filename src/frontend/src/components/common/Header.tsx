@@ -199,10 +199,10 @@ export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
             className="flex items-center gap-2 cursor-pointer group"
           >
             <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-brand-600 to-brand-600 flex items-center justify-center text-white font-display text-lg shadow-xs group-hover:opacity-90 transition-opacity">
-              V
+              X
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="font-display text-xl tracking-wide text-slate-900">V-OTA</span>
+              <span className="font-display text-xl tracking-wide text-slate-900">X-OTA</span>
               <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-brand-50 text-brand-700 border border-brand-200">
                 Thanh toán an toàn
               </span>
@@ -248,16 +248,16 @@ export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
             {/* Thương hiệu */}
             <Link
               href="/"
-              aria-label="V-OTA, về trang chủ"
+              aria-label="X-OTA, về trang chủ"
               className={`group flex shrink-0 items-center gap-3 rounded-full focus-visible:outline-2 focus-visible:outline-offset-4 ${
                 onHero ? 'focus-visible:outline-white' : 'focus-visible:outline-brand-600'
               }`}
             >
               <span className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-tr from-amber-500 to-amber-300 font-display text-2xl leading-none text-white shadow-md shadow-amber-500/20 transition-transform duration-200 group-hover:scale-105">
-                V
+                X
               </span>
               <span className="hidden flex-col sm:flex lg:hidden xl:flex">
-                <span className={`font-display text-xl uppercase leading-none tracking-wide ${onHero ? 'text-white' : 'text-slate-900'}`}>V-OTA</span>
+                <span className={`font-display text-xl uppercase leading-none tracking-wide ${onHero ? 'text-white' : 'text-slate-900'}`}>X-OTA</span>
                 <span className={`mt-1 text-[10px] font-medium uppercase leading-none tracking-[0.14em] ${onHero ? 'text-white/80' : 'text-slate-500'}`}>Resorts & Hotels</span>
               </span>
             </Link>

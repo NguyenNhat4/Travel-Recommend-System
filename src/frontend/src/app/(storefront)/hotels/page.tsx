@@ -4,8 +4,8 @@ import { pickParam } from '../../../features/catalog/landing/searchHref';
 import { parseTripContext } from '../../../features/search/tripContext';
 
 export const metadata: Metadata = {
-  title: 'Khách sạn & resort | V-OTA',
-  description: 'Duyệt và tìm khách sạn, resort theo điểm đến, ngày và số khách trên V-OTA.',
+  title: 'Khách sạn & resort | X-OTA',
+  description: 'Duyệt và tìm khách sạn, resort theo điểm đến, ngày và số khách trên X-OTA.',
 };
 
 // Đọc query ở server để hero có sẵn trong HTML (dùng useSearchParams sẽ đẩy cả trang sang render phía client).

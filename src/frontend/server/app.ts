@@ -13,6 +13,6 @@ export function createApiApp() {
 export function startServer() {
   const app = createApiApp();
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`V-OTA API Server running on http://0.0.0.0:${PORT}`);
+    console.log(`X-OTA API Server running on http://0.0.0.0:${PORT}`);
   });
 }

@@ -65,7 +65,7 @@ export const TicketPanel: React.FC<TicketPanelProps> = ({ legs, activeLeg, onSel
                 <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 font-semibold text-slate-900">
                   {leg.fromCity}<ArrowRight className="h-3.5 w-3.5 text-slate-400" aria-hidden="true" />{leg.toCity}
                 </span>
-                {leg.unavailable && <span className="text-xs text-amber-700">Chưa có tuyến chiều về trên V-OTA.</span>}
+                {leg.unavailable && <span className="text-xs text-amber-700">Chưa có tuyến chiều về trên X-OTA.</span>}
                 {pick && (
                   <>
                     <span className="flex flex-wrap items-baseline gap-x-2 tabular-nums">

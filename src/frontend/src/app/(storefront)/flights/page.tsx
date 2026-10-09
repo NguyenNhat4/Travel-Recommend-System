@@ -7,8 +7,8 @@ import { FlightsPage } from '../../../features/flights/FlightsPage';
 import { buildFlightResultsHref, parseFlightSearch } from '../../../features/flights/results/flightHref';
 
 export const metadata: Metadata = {
-  title: 'Vé máy bay | V-OTA',
-  description: 'Tìm vé máy bay theo điểm đi, điểm đến và ngày bay, chọn chuyến ngay trên V-OTA.',
+  title: 'Vé máy bay | X-OTA',
+  description: 'Tìm vé máy bay theo điểm đi, điểm đến và ngày bay, chọn chuyến ngay trên X-OTA.',
 };
 
 // Đọc query ở server để hero có sẵn trong HTML (dùng useSearchParams sẽ đẩy cả trang sang render phía client).

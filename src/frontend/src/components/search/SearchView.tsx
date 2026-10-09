@@ -18,7 +18,7 @@ import { SearchAssistantBanner } from './SearchAssistantBanner';
 
 const GROUP_TITLES: Record<SearchGroup | 'all', string> = {
   all: 'Tất cả dịch vụ du lịch',
-  stay: 'Khách sạn & Khu nghỉ dưỡng V-OTA',
+  stay: 'Khách sạn & Khu nghỉ dưỡng X-OTA',
   exp: 'Tour và trải nghiệm',
   more: 'Gói Combo Du lịch Tiết Kiệm',
   flight: 'Vé máy bay & Chặng bay phổ biến',

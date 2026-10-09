@@ -225,7 +225,7 @@ Khi người dùng quay về Home từ Confirmation (bấm "Xem gợi ý mới t
 | Trạng thái | Hành vi |
 |---|---|
 | Đang tải | Lời chào + ô tìm kiếm render ngay. Section ① hiện skeleton 4 thẻ + skeleton tiêu đề. Section ④ tải song song và độc lập. Pattern: `[R45]` Klook web |
-| Lỗi `/recommendations` (5xx, timeout > 3 giây) | Ẩn section ①, không hiện lỗi to. Hiện một dòng nhỏ "Chưa tải được gợi ý cho bạn · [Thử lại]" phía trên ④ |
+| Lỗi `/recommendations` (5xx, timeout > 10 giây) | Ẩn section ①, không hiện lỗi to. Hiện một dòng nhỏ "Chưa tải được gợi ý cho bạn · [Thử lại]" phía trên ④ |
 | 401 (JWT hết hạn) | Modal "Phiên đăng nhập đã hết hạn" → đăng nhập lại → ở nguyên Home (§4.7.5) |
 | `recommendations: []` | Xử lý như cold start không `because` (4.1.3) |
 | Sản phẩm trong gợi ý có `available: false` | Không render thẻ. Nếu còn dưới 3 thẻ thì ẩn carousel và chỉ giữ tiêu đề + CTA "Tìm {nextVertical} đi {destination}" → `/search` |

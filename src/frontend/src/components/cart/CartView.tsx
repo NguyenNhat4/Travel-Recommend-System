@@ -278,7 +278,7 @@ export const CartView: React.FC = () => {
           <div className="text-center text-[11px] text-slate-500 space-y-1">
             <div className="flex items-center justify-center gap-1 text-slate-600 font-medium">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Thanh toán qua Stripe — V-OTA không lưu thông tin thẻ</span>
+              <span>Thanh toán qua Stripe — X-OTA không lưu thông tin thẻ</span>
             </div>
           </div>
         </div>

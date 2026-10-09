@@ -134,7 +134,7 @@ function cartErrorMessage(error: unknown, productName?: string): string {
   const name = productName ? `"${productName}"` : 'Sản phẩm';
   switch (error.code) {
     case 'PRODUCT_NOT_FOUND':
-      return `${name} hiện không bán trên V-OTA.`;
+      return `${name} hiện không bán trên X-OTA.`;
     case 'PRODUCT_UNAVAILABLE':
       return `${name} vừa hết chỗ.`;
     case 'DIRECT_BOOKING_ONLY':

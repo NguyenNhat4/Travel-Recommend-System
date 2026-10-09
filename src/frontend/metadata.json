@@ -1,6 +1,6 @@
 {
-  "name": "V-OTA Travel Recommendation Demo",
-  "description": "Nền tảng du lịch cá nhân hóa V-OTA với gợi ý thông minh, tìm kiếm ngữ nghĩa và trợ lý lịch trình AI.",
+  "name": "X-OTA Travel Recommendation Demo",
+  "description": "Nền tảng du lịch cá nhân hóa X-OTA với gợi ý thông minh, tìm kiếm ngữ nghĩa và trợ lý lịch trình AI.",
   "requestFramePermissions": [
     "microphone"
   ],

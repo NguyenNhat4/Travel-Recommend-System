@@ -30,9 +30,9 @@ export const Footer: React.FC = () => {
               className="flex items-center space-x-2.5 cursor-pointer group"
             >
               <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-amber-500 to-amber-300 flex items-center justify-center font-black text-slate-900 text-lg shadow-md group-hover:scale-105 transition-transform">
-                V
+                X
               </div>
-              <span className="text-xl font-extrabold tracking-widest uppercase">V-OTA</span>
+              <span className="text-xl font-extrabold tracking-widest uppercase">X-OTA</span>
             </div>
             <p className="text-xs text-brand-100/70 max-w-sm leading-relaxed">
               Hệ sinh thái khách sạn, nghỉ dưỡng, hội nghị và vui chơi giải trí hàng đầu Việt Nam.
@@ -60,7 +60,7 @@ export const Footer: React.FC = () => {
                 <div className="w-8 h-8 rounded-full bg-brand-900/80 flex items-center justify-center text-brand-300 shrink-0">
                   <MapPin className="w-4 h-4" />
                 </div>
-                <span className="text-brand-100/90 leading-snug">Đảo Hòn Tre, Phường Vĩnh Nguyên, Tp. Nha Trang, Khánh Hòa</span>
+                <span className="text-brand-100/90 leading-snug">Thành phố Hồ Chí Minh, Việt Nam</span>
               </div>
             </div>
           </div>
@@ -114,7 +114,7 @@ export const Footer: React.FC = () => {
           {/* App Download */}
           <div>
             <h4 className="font-sans text-xs font-bold uppercase tracking-wider text-brand-300 mb-4">TẢI ỨNG DỤNG</h4>
-            <p className="text-xs text-brand-100/70 mb-3">Tận hưởng ưu đãi độc quyền trên ứng dụng V-OTA Booking</p>
+            <p className="text-xs text-brand-100/70 mb-3">Tận hưởng ưu đãi độc quyền trên ứng dụng X-OTA Booking</p>
             <div className="flex flex-col space-y-2">
               <button
                 onClick={() => { }}
@@ -130,7 +130,7 @@ export const Footer: React.FC = () => {
 
         {/* Copyright Notice */}
         <div className="pt-8 flex flex-col sm:flex-row items-center justify-between text-[11px] text-brand-200/60">
-          <div>© 2026 V-OTA Joint Stock Company. Tất cả các quyền được bảo lưu.</div>
+          <div>© 2026 X-OTA Joint Stock Company. Tất cả các quyền được bảo lưu.</div>
           <div className="flex items-center space-x-4 mt-3 sm:mt-0">
             <button onClick={() => navigate('/')} className="hover:text-white transition cursor-pointer">Bảo mật</button>
             <button onClick={() => navigate('/')} className="hover:text-white transition cursor-pointer">Cookies</button>

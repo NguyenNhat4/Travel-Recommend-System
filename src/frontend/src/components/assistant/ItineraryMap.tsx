@@ -784,7 +784,7 @@ export const ItineraryMap: React.FC<ItineraryMapProps> = ({
 
           {pinActions && (
             <div className="mt-3 flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
-              <span className="text-[10px] text-slate-400">Sản phẩm thật trên V-OTA</span>
+              <span className="text-[10px] text-slate-400">Sản phẩm thật trên X-OTA</span>
               <div className="flex items-center gap-1.5 shrink-0">
                 {pinActions.canAddToCart && (
                   <button
