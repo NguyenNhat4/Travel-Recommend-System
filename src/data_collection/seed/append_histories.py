@@ -26,11 +26,19 @@ def digest(value):
     return hashlib.sha256(encoded(value)).hexdigest()
 
 
-def build(catalog, *, batch, as_of, seed=42):
+DEFAULT_PROFILE = "append-v1"
+
+
+def build(catalog, *, batch, as_of, seed=42, profile=DEFAULT_PROFILE, theme_pref=None):
+    """`profile` (config.PROFILES, mặc định append-v1) và `theme_pref` (ghi đè THEME_PREF_RATE, MOCK_DATA_SPEC §4.3).
+    Payload giữ format=1; khóa "profile" chỉ thêm khi khác append-v1 (artifact append-v1 cũ giữ nguyên sha). Nhãn chủ đề ẩn
+    (nếu có) trả ở khóa `themes` NGOÀI payload — ghi ra themes.json, không vào DB."""
     if not re.fullmatch(r"[a-z0-9-]{1,48}", batch):
         raise ValueError("batch: 1–48 lowercase letters, digits or hyphens")
+    if profile not in C.PROFILES:
+        raise ValueError(f"profile: one of {', '.join(sorted(C.PROFILES))}")
     prefix = f"VPX:{batch}:"
-    result = generate(catalog, as_of, seed=seed, profile="append-v1")
+    result = generate(catalog, as_of, seed=seed, profile=profile, theme_pref=theme_pref)
     personas = {p[0] for p in C.PERSONAS}
     profiles = [dict(p, cdp_user_id=prefix + p["cdp_user_id"]) for p in result["profiles"] if p["cdp_user_id"] not in personas]
     events = []
@@ -45,7 +53,13 @@ def build(catalog, *, batch, as_of, seed=42):
         events.append(e)
     payload = dict(format=1, synthetic=True, batch=batch, prefix=prefix, as_of=as_of.isoformat(), seed=seed,
                    catalog_sha256=digest(catalog), profiles=profiles, events=events)
-    return dict(payload=payload, sha256=digest(payload))
+    if profile != DEFAULT_PROFILE:
+        payload["profile"] = profile
+    artifact = dict(payload=payload, sha256=digest(payload))
+    themes = {prefix + u: t for u, t in result["themes"].items() if u not in personas}
+    if themes:
+        artifact["themes"] = themes
+    return artifact
 
 
 def validate(artifact):
@@ -54,6 +68,8 @@ def validate(artifact):
         raise ValueError("artifact checksum mismatch")
     if p["format"] != 1 or p["synthetic"] is not True or not re.fullmatch(r"[a-z0-9-]{1,48}", p["batch"]):
         raise ValueError("invalid batch metadata")
+    if not isinstance(p.get("profile", DEFAULT_PROFILE), str) or not p.get("profile", DEFAULT_PROFILE):
+        raise ValueError("invalid profile metadata")
     prefix = f"VPX:{p['batch']}:"
     ids = [r["cdp_user_id"] for r in p["profiles"]]
     if p["prefix"] != prefix or not ids or len(set(ids)) != len(ids) or any(not i.startswith(prefix) for i in ids):
@@ -111,6 +127,9 @@ def main():
     prepare.add_argument("--as-of", type=date.fromisoformat, required=True)
     prepare.add_argument("--seed", type=int, default=42)
     prepare.add_argument("--out", type=Path, required=True)
+    prepare.add_argument("--profile", choices=sorted(C.PROFILES), default=DEFAULT_PROFILE,
+                        help="config.PROFILES; g6-pref-v1 = sở thích chủ đề ẩn (MOCK_DATA_SPEC §4.3), chỉ cho DB nghiên cứu RecSys")
+    prepare.add_argument("--theme-pref", type=float, default=None, help="ghi đè THEME_PREF_RATE sau --profile")
     load = sub.add_parser("apply")
     load.add_argument("--artifact", type=Path, required=True)
     load.add_argument("--receipt", type=Path, required=True)
@@ -130,10 +149,14 @@ def main():
         for r in catalog:
             if r["unitPrice"] is not None:
                 r["unitPrice"] = float(r["unitPrice"])
-        artifact = build(catalog, batch=args.batch, as_of=args.as_of, seed=args.seed)
+        artifact = build(catalog, batch=args.batch, as_of=args.as_of, seed=args.seed, profile=args.profile, theme_pref=args.theme_pref)
+        themes = artifact.pop("themes", None)
         (args.out / "catalog.json").write_bytes(encoded(catalog))
         (args.out / "batch.json").write_bytes(encoded(artifact))
-        print(json.dumps(dict(batch=args.batch, sha256=artifact["sha256"], profiles=len(artifact["payload"]["profiles"]), events=len(artifact["payload"]["events"]))))
+        if themes:   # sidecar nhãn chủ đề ẩn (§4.3): cạnh batch.json, không bao giờ vào DB
+            (args.out / "themes.json").write_bytes(encoded(themes))
+        print(json.dumps(dict(batch=args.batch, sha256=artifact["sha256"], profile=args.profile, profiles=len(artifact["payload"]["profiles"]),
+                              events=len(artifact["payload"]["events"]), themed=sum(1 for t in (themes or {}).values() if t))))
     else:
         raw = args.artifact.read_bytes()
         artifact = json.loads(gzip.decompress(raw) if args.artifact.suffix == ".gz" else raw)

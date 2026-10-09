@@ -23,7 +23,8 @@ from datetime import datetime
 import numpy as np
 
 from src.backend.app.application.ports import UnitIndex
-from src.backend.app.domain.recommendation.profile import DORMANT_AFTER_DAYS, MAX_REPEAT_PER_TRIP, local_today, trip_is_open
+from src.backend.app.domain.recommendation.profile import (CAP_EXEMPT_EVENTS, DORMANT_AFTER_DAYS, H_SESSION_DAYS, MAX_REPEAT_PER_TRIP,
+                                                            SESSION_TRIP_ID, W_TYPE, local_today, trip_is_open)
 
 from .events import parse_ts, trip_ends_on
 from .splits import Split
@@ -42,6 +43,7 @@ class TripView:
     units: set[int]
     solo: bool
     ends_on: object = None           # max(usingDate) trên mọi event của trip — trip đang mở xét theo đây (FR-REC-02, 01/10/2026)
+    confidence: float = 1.0          # min(1, Σ W_TYPE) trên event sau cap của engine (CAP_EXEMPT_EVENTS không bị cap)
 
 
 @dataclass
@@ -51,18 +53,27 @@ class EngineView:
     trips: dict[str, TripView]
     active_trip: str | None
     bought_units: set[int] = field(default_factory=set)
+    session: TripView | None = None  # chuyến ảo gộp các chuyến chỉ-xem đang mở (FR-REC-02, 09/10); không nằm trong `trips`
+
+    def _active(self) -> TripView | None:
+        if not self.active_trip:
+            return None
+        return self.session if self.active_trip == SESSION_TRIP_ID else self.trips[self.active_trip]
 
     @property
     def destination(self) -> str | None:
-        return self.trips[self.active_trip].destination if self.active_trip else None
+        t = self._active()
+        return t.destination if t else None
 
     @property
     def excluded(self) -> set[str]:
-        return set(self.trips[self.active_trip].purchased_taxonomies) if self.active_trip else set()
+        t = self._active()
+        return set(t.purchased_taxonomies) if t else set()
 
     @property
     def active_is_solo(self) -> bool:
-        return bool(self.active_trip) and self.trips[self.active_trip].solo
+        t = self._active()
+        return bool(t) and t.solo
 
     @property
     def strategy(self) -> str:   # như `Profile.strategy`
@@ -86,10 +97,18 @@ def engine_view(train: list[dict], index: UnitIndex, as_of: datetime, has_vector
         days = max(0.0, (as_of - parse_ts(e["timestamp"])).total_seconds() / 86400)
         rows.append((days, e, unit, e.get("eventGroupId") or f"_solo_{pid}"))
     seen: Counter = Counter()
+    seen_x: Counter = Counter()
+    conf_evs: dict[str, list] = defaultdict(list)     # sau cap của engine (miễn CAP_EXEMPT_EVENTS): độ tin cậy chuyến
     by_trip: dict[str, list] = defaultdict(list)      # sau cap lặp: n_events, điểm đến, units — như build_profile
     every: dict[str, list] = defaultdict(list)        # mọi event: tuổi, ngày kết thúc, món đã mua
     for days, e, unit, tid in sorted(rows, key=lambda r: -r[0]):      # cũ trước, như build_profile
         every[tid].append((days, e, unit))
+        if e.get("eventName") in CAP_EXEMPT_EVENTS:
+            conf_evs[tid].append(e)
+        else:
+            seen_x[(tid, unit)] += 1
+            if seen_x[(tid, unit)] <= MAX_REPEAT_PER_TRIP:
+                conf_evs[tid].append(e)
         seen[(tid, unit)] += 1
         if seen[(tid, unit)] > MAX_REPEAT_PER_TRIP:
             continue
@@ -102,13 +121,34 @@ def engine_view(train: list[dict], index: UnitIndex, as_of: datetime, has_vector
         bought |= {u for _, e, u in all_evs if e.get("eventName") == "purchase"}
         trips[tid] = TripView(tid, min(d for d, _, _ in all_evs), len(evs), purchased,
                               str(Counter(str(index.destination[u]) for _, _, u in evs).most_common(1)[0][0]),
-                              {u for _, _, u in evs}, tid.startswith("_solo_"), trip_ends_on(e for _, e, _ in all_evs))
+                              {u for _, _, u in evs}, tid.startswith("_solo_"), trip_ends_on(e for _, e, _ in all_evs),
+                              min(1.0, sum(W_TYPE.get(str(e.get("eventName")), 0.1) for e in conf_evs[tid])))
     if not trips:
         return EngineView(0, {}, None)
+    bought = index.purchase_closure(bought)      # combo ↔ thành phần cùng lần mua (FR-REC-02, 09/10) — như `use_cases.bought_units`
     today = local_today(as_of)
     active = [t for t, v in trips.items() if trip_is_open(v.age_days, v.ends_on, today)]
-    return EngineView(sum(v.n_events for v in trips.values()), trips,
-                      min(active, key=lambda t: trips[t].age_days) if active else None, bought)
+    booked = [t for t in active if trips[t].purchased_taxonomies]         # chuyến đã đặt còn mở đứng trước (FR-REC-02, 09/10)
+    browse = [t for t in active if not trips[t].purchased_taxonomies]
+    n_events = sum(v.n_events for v in trips.values())
+    if not booked and len(browse) >= 2:                                 # chuyến ảo (FR-REC-02, 09/10) — như `profile.session_trip`
+        session = session_view([trips[t] for t in browse])
+        return EngineView(n_events, trips, SESSION_TRIP_ID, bought, session)
+    return EngineView(n_events, trips, min(booked or active, key=lambda t: trips[t].age_days) if active else None, bought)
+
+
+def session_view(views: list[TripView]) -> TripView:
+    """Gương `profile.session_trip` cho `TripView`: điểm đến = tổng trọng số 2^(−tuổi/H_SESSION) × độ tin cậy lớn nhất."""
+    dest_w: dict[str, float] = defaultdict(float)
+    for v in views:
+        dest_w[v.destination] += 2 ** (-v.age_days / H_SESSION_DAYS) * v.confidence
+    youngest = min(views, key=lambda v: v.age_days)
+    top = max(dest_w.values())
+    dest = youngest.destination if dest_w[youngest.destination] == top else sorted(d for d, w in dest_w.items() if w == top)[0]
+    ends = [v.ends_on for v in views if v.ends_on is not None]
+    return TripView(SESSION_TRIP_ID, youngest.age_days, sum(v.n_events for v in views), set(), dest,
+                    set().union(*(v.units for v in views)), False, max(ends) if ends else None,
+                    min(1.0, sum(v.confidence for v in views)))
 
 
 def unreachable(target: str, view: EngineView, index: UnitIndex, *, engine_meta: dict | None = None,

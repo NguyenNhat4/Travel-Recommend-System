@@ -1,0 +1,319 @@
+{
+ "_source": "Trích nguyên văn các dòng kết quả trong formula_prod_F78.log và formula_prod_F910.log (script crash KeyError 'F0_prod' ở bước dọn cuối sau khi đã in số, nên không có JSON gốc). Engine release-mvp-v2 @ 85cea82, chạy 08/10 sáng.",
+ "_source_sha256": {
+  "formula_prod_F78.log": "d00bd680e534666d934922b14b57cf30531818ae6ab66bdb86fbdef04b2aad57",
+  "formula_prod_F910.log": "8d07b077d2e5586cb2abc4757f8ced17c56251b2473c0b8b1a617beb341058b0"
+ },
+ "F7_betweenMinmaxPop30": {
+  "llbo": {
+   "n": 800,
+   "hit@20": 0.8363,
+   "ndcg@10": 0.525,
+   "hit@4": 0.5737
+  },
+  "temporal": {
+   "n": 775,
+   "hit@20": 0.129,
+   "ndcg@10": 0.0895,
+   "hit@4": 0.1058
+  },
+  "nexttrip": {
+   "n": 800,
+   "hit@20": 0.0387,
+   "ndcg@10": 0.01,
+   "hit@4": 0.0075
+  },
+  "syn_between": {
+   "themePrec": 0.776,
+   "themePrec_beach": 0.773,
+   "themePrec_mountain": 0.752,
+   "themePrec_city": 0.803,
+   "distinctDestsTotal": 41,
+   "top5Dests": [
+    [
+     "Nha Trang",
+     74
+    ],
+    [
+     "TP. Hồ Chí Minh",
+     55
+    ],
+    [
+     "Sa Pa",
+     44
+    ],
+    [
+     "Phú Quốc",
+     39
+    ],
+    [
+     "Đà Lạt",
+     39
+    ]
+   ]
+  },
+  "syn_open": {
+   "themePrec": 0.767,
+   "themePrec_beach": 0.75,
+   "themePrec_mountain": 0.8,
+   "themePrec_city": 0.75,
+   "distinctDestsTotal": 40,
+   "top5Dests": [
+    [
+     "Hải Phòng",
+     56
+    ],
+    [
+     "Đà Lạt",
+     52
+    ],
+    [
+     "Phú Quốc",
+     48
+    ],
+    [
+     "Vũng Tàu",
+     48
+    ],
+    [
+     "TP. Hồ Chí Minh",
+     48
+    ]
+   ]
+  }
+ },
+ "F8_betweenMinmaxPop25": {
+  "llbo": {
+   "n": 800,
+   "hit@20": 0.8363,
+   "ndcg@10": 0.525,
+   "hit@4": 0.5737
+  },
+  "temporal": {
+   "n": 775,
+   "hit@20": 0.1277,
+   "ndcg@10": 0.0867,
+   "hit@4": 0.1032
+  },
+  "nexttrip": {
+   "n": 800,
+   "hit@20": 0.035,
+   "ndcg@10": 0.0085,
+   "hit@4": 0.0063
+  },
+  "syn_between": {
+   "themePrec": 0.783,
+   "themePrec_beach": 0.758,
+   "themePrec_mountain": 0.775,
+   "themePrec_city": 0.817,
+   "distinctDestsTotal": 41,
+   "top5Dests": [
+    [
+     "Nha Trang",
+     59
+    ],
+    [
+     "TP. Hồ Chí Minh",
+     52
+    ],
+    [
+     "Sa Pa",
+     42
+    ],
+    [
+     "Ninh Bình",
+     40
+    ],
+    [
+     "Huế",
+     38
+    ]
+   ]
+  },
+  "syn_open": {
+   "themePrec": 0.767,
+   "themePrec_beach": 0.75,
+   "themePrec_mountain": 0.8,
+   "themePrec_city": 0.75,
+   "distinctDestsTotal": 40,
+   "top5Dests": [
+    [
+     "Hải Phòng",
+     56
+    ],
+    [
+     "Đà Lạt",
+     52
+    ],
+    [
+     "Phú Quốc",
+     48
+    ],
+    [
+     "Vũng Tàu",
+     48
+    ],
+    [
+     "TP. Hồ Chí Minh",
+     48
+    ]
+   ]
+  }
+ },
+ "F9_betweenMinmaxPop45": {
+  "llbo": {
+   "n": 800,
+   "hit@20": 0.8363,
+   "ndcg@10": 0.525,
+   "hit@4": 0.5737
+  },
+  "temporal": {
+   "n": 775,
+   "hit@20": 0.1381,
+   "ndcg@10": 0.0927,
+   "hit@4": 0.1135
+  },
+  "nexttrip": {
+   "n": 800,
+   "hit@20": 0.0462,
+   "ndcg@10": 0.0142,
+   "hit@4": 0.015
+  },
+  "syn_between": {
+   "themePrec": 0.556,
+   "themePrec_beach": 0.891,
+   "themePrec_mountain": 0.278,
+   "themePrec_city": 0.5,
+   "distinctDestsTotal": 39,
+   "top5Dests": [
+    [
+     "Nha Trang",
+     236
+    ],
+    [
+     "Phú Quốc",
+     194
+    ],
+    [
+     "Đà Nẵng",
+     88
+    ],
+    [
+     "TP. Hồ Chí Minh",
+     85
+    ],
+    [
+     "Phan Thiết",
+     61
+    ]
+   ]
+  },
+  "syn_open": {
+   "themePrec": 0.767,
+   "themePrec_beach": 0.75,
+   "themePrec_mountain": 0.8,
+   "themePrec_city": 0.75,
+   "distinctDestsTotal": 40,
+   "top5Dests": [
+    [
+     "Hải Phòng",
+     56
+    ],
+    [
+     "Đà Lạt",
+     52
+    ],
+    [
+     "Phú Quốc",
+     48
+    ],
+    [
+     "Vũng Tàu",
+     48
+    ],
+    [
+     "TP. Hồ Chí Minh",
+     48
+    ]
+   ]
+  }
+ },
+ "F10_betweenMinmaxPop60": {
+  "llbo": {
+   "n": 800,
+   "hit@20": 0.8363,
+   "ndcg@10": 0.525,
+   "hit@4": 0.5737
+  },
+  "temporal": {
+   "n": 775,
+   "hit@20": 0.1561,
+   "ndcg@10": 0.0911,
+   "hit@4": 0.1135
+  },
+  "nexttrip": {
+   "n": 800,
+   "hit@20": 0.0712,
+   "ndcg@10": 0.0128,
+   "hit@4": 0.02
+  },
+  "syn_between": {
+   "themePrec": 0.391,
+   "themePrec_beach": 0.956,
+   "themePrec_mountain": 0.044,
+   "themePrec_city": 0.172,
+   "distinctDestsTotal": 12,
+   "top5Dests": [
+    [
+     "Phú Quốc",
+     244
+    ],
+    [
+     "Nha Trang",
+     239
+    ],
+    [
+     "Phan Thiết",
+     199
+    ],
+    [
+     "Đà Nẵng",
+     170
+    ],
+    [
+     "TP. Hồ Chí Minh",
+     58
+    ]
+   ]
+  },
+  "syn_open": {
+   "themePrec": 0.767,
+   "themePrec_beach": 0.75,
+   "themePrec_mountain": 0.8,
+   "themePrec_city": 0.75,
+   "distinctDestsTotal": 40,
+   "top5Dests": [
+    [
+     "Hải Phòng",
+     56
+    ],
+    [
+     "Đà Lạt",
+     52
+    ],
+    [
+     "Phú Quốc",
+     48
+    ],
+    [
+     "Vũng Tàu",
+     48
+    ],
+    [
+     "TP. Hồ Chí Minh",
+     48
+    ]
+   ]
+  }
+ }
+}

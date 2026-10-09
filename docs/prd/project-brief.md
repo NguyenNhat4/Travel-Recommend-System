@@ -79,12 +79,14 @@ Toàn bộ trải nghiệm khám phá và đề xuất của V-OTA xoay quanh m�
 
 Hệ thống được thiết kế để phục vụ các nhóm hành vi du lịch đa dạng:
 
-| Persona | Tên / Định danh | Đặc điểm & Hành vi chính | Nhu cầu tiếp cận trên V-OTA |
+| Persona | Định danh | Định nghĩa | Gợi ý trang chủ |
 |---|---|---|---|
-| **P1** | **Khách gia đình / Nghỉ dưỡng** | Thích resort trọn gói, tiện ích cho trẻ nhỏ, bãi biển riêng, ưu tiên an toàn và tiện lợi. | Gợi ý combo phòng + vé tham quan, tìm kiếm theo tiêu chí không gian yên tĩnh, hỗ trợ lịch trình nhẹ nhàng. |
-| **P2** | **Khách công tác / Tiện ích** | Đi một mình hoặc theo nhóm nhỏ, cần khách sạn trung tâm gần hội nghị, thủ tục nhanh, đặt sát ngày. | Tìm kiếm theo vị trí và tiện nghi làm việc, gợi ý khách sạn doanh nhân, thủ tục đặt chỗ tối giản. |
-| **P3** | **Khách du lịch tự túc / Trải nghiệm** | Ưa thích văn hóa, ẩm thực bản địa, hoạt động ngoài trời mạo hiểm, tối ưu chi phí. | Semantic search cho các hoạt động độc lạ, trợ lý AI gợi ý lịch trình dày dặn khám phá ngóc ngách. |
-| **P4** | **Khách săn ưu đãi / Linh hoạt** | Tìm kiếm deal khuyến mãi, combo giá rẻ, thời gian đi linh hoạt tùy theo giá vé máy bay. | Nhận diện ưu đãi trên trang chủ, gợi ý các gói combo tiết kiệm, gợi ý theo khoảng ngân sách. |
+| **P1** | `P1_frequent` | Đã mua, có chuyến đã đặt hoặc vừa đi | Hoàn thiện chuyến đang mở (vé bay, hoạt động tại điểm đến) |
+| **P2** | `P2_first_time` | Có xem / tìm kiếm, chưa mua | Gợi ý theo các sản phẩm vừa xem |
+| **P3** | `P3_dormant` | Đã mua, không có chuyến mở, chuyến gần nhất cách hơn **365 ngày** | Chào mừng quay lại, gợi ý theo sở thích dài hạn và mức phổ biến |
+| **P4** | `P4_no_history` | Chưa có lịch sử | Sản phẩm được đặt nhiều |
+
+**Phong cách du lịch** (biển, núi, thành phố, …) là một **đặc trưng của khách**, suy ra từ lịch sử tương tác, không phải persona. Gợi ý cá nhân hoá phải bám phong cách này (FR-REC-01, FR-REC-04). *(Chốt 2026-10-09, đề xuất `update-archive/2026-10-09-persona-trang-thai-cold-start-va-phong-cach-du-lich.md`.)*
 
 ---
 

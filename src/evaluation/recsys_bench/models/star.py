@@ -1,8 +1,10 @@
 """`star_blend` — semantic + co-occurrence (STAR, tầng retrieval; spec `recsys-algos-v1.md` §2).
 
-`score = W_SHORT·[a·sem + (1−a)·collab] + W_POP·pop_D + W_LONG·sem_long`, `sem = E[c]@u` (u = vector trip mở hoặc u_long), `collab` của
-`cooc_trip` cùng seed/trọng số. `blend_scope = inner`; `outer` để grid tuần sau. a = 1,0 → `1,0·sem + 0,0·collab == sem` theo IEEE nên
-`star_blend_a1` ≡ `content_profile` theo cấu trúc (kiểm `expect_equal_to`).
+`score = engine + w_short·(1−a)·(collab − short)` — tức thay hạng ngắn hạn `w_short·short` của engine bằng `w_short·[a·short + (1−a)·collab]`;
+`short = E[c]@u` (u = vector trip mở) và `w_short = W_SHORT`, hoặc khi không có chuyến mở mà engine chấm F14c (PR-B 09/10)
+`short = calibrated_similarity(E[c]@u_long)` và `w_short = W_NEXT_SHORT`. `engine` = `content.engine_score` (hàm điểm production, gồm
+điểm xuất phát chuyến bay). `collab` của `cooc_trip` cùng seed/trọng số. `blend_scope = inner`. a = 1,0 → không cộng gì nên
+`star_blend_a1` ≡ `content_profile` trùng từng bit (kiểm `expect_equal_to`).
 """
 from __future__ import annotations
 
@@ -12,6 +14,7 @@ from src.backend.app.domain.recommendation import profile as P
 
 from . import because
 from .base import TrainData, UserCtx
+from .content import engine_score
 from .cooc import CoocTrip
 
 
@@ -32,6 +35,7 @@ class StarBlend:
     def fit(self, data: TrainData) -> dict:
         log = self.cooc.fit(data)
         self.E = data.E
+        self.index = data.index
         return {**log, "params": {**log["params"], "a": self.a, "blendScope": self.blend_scope}}
 
     def score(self, ctx: UserCtx, cand: np.ndarray) -> np.ndarray:
@@ -39,12 +43,17 @@ class StarBlend:
         profile = ctx.profile
         if not profile.trips:
             return np.zeros(len(cand), dtype=np.float32)
+        score = engine_score(self.index, self.E, ctx, cand)
+        if self.a == 1.0:
+            return score
         u = profile.active_trip.vec if profile.active_trip is not None else profile.u_long
-        E = self.E[cand]
-        sem, sem_long = E @ u, E @ profile.u_long
+        cos = self.E[cand] @ u
+        if profile.active_trip is None and ctx.next_trip_scoring:
+            short, w = P.calibrated_similarity(cos), P.W_NEXT_SHORT
+        else:
+            short, w = cos, P.W_SHORT
         collab = self.cooc.score(ctx, cand)
-        inner = (self.a * sem + (1.0 - self.a) * collab).astype(np.float32, copy=False)
-        return P.W_SHORT * inner + P.W_POP * ctx.pop[cand] + P.W_LONG * sem_long
+        return (score + w * (1.0 - self.a) * (collab - short)).astype(np.float32, copy=False)
 
     def collab_part(self, ctx: UserCtx, cand: np.ndarray) -> np.ndarray | None:
         return self.cooc.score(ctx, cand)

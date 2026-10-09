@@ -42,12 +42,18 @@ JOIN   catalog.product_meta m USING (product_id)
 logger = logging.getLogger("uvicorn.error")
 
 #: Thành phần combo: thứ tự + nhãn cho ô ROLLUP của text builder ("Gồm: vé VinWonders; buffet…"), `item_kind` cho cờ
-#: `includesFlight` / `includesHotel` của `UnitAttributes` (cột có sẵn trong DDL; text builder không đọc nó → text không đổi).
+#: `includesFlight` / `includesHotel` của `UnitAttributes`; `item_product_id` / `confidence` / `source` cho luật loại trừ
+#: combo ↔ thành phần (FR-REC-02, chốt 09/10/2026 — `combo_members_of`). Text builder không đọc ba cột sau → text và vector
+#: không đổi; chỉ mã băm catalog đổi một lần khi nâng cấp.
 _COMBO_QUERY = """
-SELECT combo_product_id, position, label, item_kind
+SELECT combo_product_id, position, label, item_kind, item_product_id, confidence, source
 FROM   catalog.combo_items
 ORDER  BY combo_product_id, position
 """
+
+#: Dòng mapping combo → sản phẩm được tin để loại trừ: đã map (`item_product_id`) và `confidence >= 0,8` hoặc sửa tay
+#: (`source = 'manual'`); dòng chỉ khớp theo địa điểm (0,60) không dùng (đề xuất `2026-10-08-recsys-loai-san-pham-da-mua-va-combo`).
+COMBO_MEMBER_MIN_CONFIDENCE = 0.8
 
 #: Mã băm của đúng hai câu trên, tính phía DB và trả một dòng. Lần nạp lại so mã này để bỏ qua việc kéo cả
 #: catalog (~51 MB) khi không có gì đổi; dòng nào đổi một cột backend đọc thì mã đổi.
@@ -57,6 +63,23 @@ SELECT coalesce((SELECT md5(string_agg(md5(t::text), '' ORDER BY t.product_id)) 
        coalesce((SELECT md5(string_agg(md5(c::text), '' ORDER BY c.combo_product_id, c.position))
                  FROM ({_COMBO_QUERY}) c), '')
 """
+
+
+def combo_members_of(combo_items: dict[str, list[dict]]) -> dict[str, tuple[str, ...]]:
+    """combo product_id → product_id các thành phần đã map tin cậy (đầu vào `UnitIndex.combo_members`)."""
+    out: dict[str, tuple[str, ...]] = {}
+    for pid, items in combo_items.items():
+        members = []
+        for it in items:
+            member = it.get("item_product_id")
+            if not member:
+                continue
+            conf = it.get("confidence")
+            if it.get("source") == "manual" or (conf is not None and float(conf) >= COMBO_MEMBER_MIN_CONFIDENCE):
+                members.append(str(member))
+        if members:
+            out[pid] = tuple(dict.fromkeys(members))
+    return out
 
 
 def combo_kinds_of(combo_items: dict[str, list[dict]]) -> dict[str, list[str]]:
@@ -76,6 +99,7 @@ class CatalogUnits:
     recommendable: np.ndarray
     parent_of: dict[str, str]
     attrs: UnitAttributes | None = None   # thuộc tính lọc Phase A, dựng kèm phòng/chuyến con
+    combo_members: dict[str, tuple[str, ...]] | None = None   # combo → thành phần tin cậy (loại trừ đã mua)
 
     def to_index(self, model_version: str) -> UnitIndex:
         return UnitIndex(
@@ -87,6 +111,7 @@ class CatalogUnits:
             parent_of=self.parent_of,
             model_version=model_version,
             attrs=self.attrs,
+            combo_members=self.combo_members or {},
         )
 
 
@@ -203,6 +228,7 @@ class PostgresCatalogReader:
             recommendable=np.array([bool(meta[p.product_id]["is_recommendable"]) for p in units]),
             parent_of=parent_of,
             attrs=UnitAttributes.build(units, children, combo_kinds_of(combo_items)),
+            combo_members=combo_members_of(combo_items),
         )
 
 

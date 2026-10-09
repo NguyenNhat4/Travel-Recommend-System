@@ -493,7 +493,7 @@ UPDATE cdp.products SET
 |---|---|---|---|
 | P1 · Minh Anh — khách Nha Trang | `P1_frequent` | 3 chuyến Nha Trang / 18 tháng (hotel + attraction); một chuyến sắp tới đã đặt khách sạn (có `bookings` + event purchase, chưa có flight); active, Gold | "Hoàn thiện chuyến Nha Trang" → flight/attraction |
 | P2 · Quốc Bảo — lần đầu | `P2_first_time` | 2 `product_view` tuần qua, chưa mua; new | Cold start có `because` "Vì bạn đã xem…" |
-| P3 · Thu Hà — ngủ đông | `P3_dormant` | 2 chuyến Phú Quốc, chuyến cuối 6 tháng trước; dormant | "Chào mừng quay lại" + gợi ý từ chuyến cũ |
+| P3 · Thu Hà — ngủ đông | `P3_dormant` | 2 chuyến Phú Quốc, chuyến cuối 400 ngày trước (> 365, ngưỡng dormant chốt 09/10); `lifecycle_stage` CDP = churned | "Chào mừng quay lại" + gợi ý từ chuyến cũ |
 | P4 · Khách mới | `P4_no_history` | 0 event; new | Chỉ "Được đặt nhiều" |
 
 ## 9. Parser combo: từ `description` ra `combo_items`
