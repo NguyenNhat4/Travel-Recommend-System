@@ -220,7 +220,8 @@ jobs:
             | .instance | split("/") | last' <<< "$instances")"
           [ -z "$bad" ] || { echo "VM chưa đúng template đích hoặc chưa RUNNING: $bad" >&2; exit 1; }
           health="$(gcloud compute backend-services get-health "$BACKEND_SERVICE" --global --project "$GCP_PROJECT_ID" --format=json)"
-          healthy="$(jq '[.status.healthStatus[]? | select(.healthState == "HEALTHY")] | length' <<< "$health")"
+          # get-health trả về mảng (một mục mỗi backend group), không phải object.
+          healthy="$(jq '[(if type == "array" then .[] else . end) | .status.healthStatus[]? | select(.healthState == "HEALTHY")] | length' <<< "$health")"
           [ "$healthy" = "$target_size" ] || { echo "LB chỉ có $healthy/$target_size instance HEALTHY" >&2; exit 1; }
 
       - name: Check readiness through the public endpoint
