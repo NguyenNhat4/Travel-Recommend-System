@@ -141,6 +141,10 @@ jobs:
 
       - name: Install Chromium
         working-directory: src/frontend
+        env:
+          # Runner tự host: PLAYWRIGHT_BROWSERS_PATH mặc định trỏ tới /opt/ms-playwright (thuộc root, user runner không ghi được,
+          # lỗi EACCES mkdir __dirlock). Dùng tool_cache của runner: ghi được và giữ qua các job, không tải lại mỗi lần.
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.tool_cache }}/ms-playwright
         # Runner tự host đã có sẵn thư viện hệ thống của Chromium và không có sudo không mật khẩu; --with-deps chỉ dùng trên runner GitHub-hosted.
         run: npx playwright install ${{ runner.environment == 'github-hosted' && '--with-deps' || '' }} chromium
 
@@ -148,6 +152,7 @@ jobs:
         working-directory: src/frontend
         env:
           CI: 'true'
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.tool_cache }}/ms-playwright
         run: npm run test:e2e
 
   build_vm:

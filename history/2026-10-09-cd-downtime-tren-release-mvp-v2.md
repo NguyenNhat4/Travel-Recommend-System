@@ -70,3 +70,4 @@ Commit 2 (entry này):
 
 - `.github/workflows/frontend-ci-cd.yml`: bước Install Chromium của job `e2e` bỏ `--with-deps` trên runner tự host, giống commit `1a51c76e` trên `fix/ci-cd-stabilize`. Lỗi trước đó: `sudo: a password is required` (run `37945573993`, bước Install Chromium). Lỗi này đã có trên release, không do cherry-pick.
 - Kiểm tra: YAML parse và `bash -n` của bước này: OK. Chưa chạy lại E2E trên GitHub tại thời điểm viết entry.
+- Lỗi thứ hai sau commit trên (run `37947197673`): `EACCES: permission denied, mkdir '/opt/ms-playwright/__dirlock'`. Runner đặt `PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright` (root sở hữu, user runner không ghi được). Sửa: đặt `PLAYWRIGHT_BROWSERS_PATH` = `runner.tool_cache/ms-playwright` ở bước Install Chromium và Run Playwright smoke tests. Thư mục tool_cache ghi được và giữ qua các job.
