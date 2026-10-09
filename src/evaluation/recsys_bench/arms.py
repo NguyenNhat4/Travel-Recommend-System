@@ -178,7 +178,8 @@ class EngineNoMmrArm(EngineArm):
         self.engine, self.pool_k = engine, pool_k or engine.candidate_k     # = candidate_k: pool đúng bằng pool của engine
 
     @staticmethod
-    def _by_score(score, E, candidates, taxonomy, k, max_per_vertical=None):
+    def _by_score(score, E, candidates, taxonomy, k, max_per_vertical=None, destination=None, max_per_destination=None):
+        # cap taxonomy / điểm đến (PR-B, 09/10) đều bỏ qua: arm này trả nguyên pool theo score
         return sorted(candidates, key=lambda i: -float(score[i]))[:k]
 
     def recommend(self, cdp_user_id: str, as_of: datetime, k: int, events: list[dict]) -> Ranked:

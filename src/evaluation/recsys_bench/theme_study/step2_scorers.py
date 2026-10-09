@@ -31,9 +31,9 @@ def _unit(x):
 def make_centered(mean_vec, ws, wp, wl):
     m = np.asarray(mean_vec, dtype=np.float32)
 
-    def score(profile, E, pop, context=None):
+    def score(profile, E, pop, context=None, next_trip_scoring=False):
         if profile.active_trip is not None:
-            return prod_score(profile, E, pop, context)
+            return prod_score(profile, E, pop, context, next_trip_scoring)
         u = profile.u_long
         Ec, uc = _unit(E - m), _unit(u - m)
         c = Ec @ uc                                   # không chuyến mở: u_short = u_long
@@ -44,9 +44,9 @@ def make_centered(mean_vec, ws, wp, wl):
 def make_quantile(q_low, q_high, ws=0.55, wp=0.30, wl=0.15):
     span = max(q_high - q_low, 1e-6)
 
-    def score(profile, E, pop, context=None):
+    def score(profile, E, pop, context=None, next_trip_scoring=False):
         if profile.active_trip is not None:
-            return prod_score(profile, E, pop, context)
+            return prod_score(profile, E, pop, context, next_trip_scoring)
         u = profile.u_long
         s = np.clip((E @ u - q_low) / span, 0.0, 1.0)
         return engine_origin_mask(ws * s + wp * pop + wl * s, context), u
@@ -66,10 +66,10 @@ def calibrate_quantile(eng4, world, build_profile, as_of, seed=99, n_per_theme=4
 
     vals: list = []
 
-    def rec_score(profile, E, pop, context=None):
+    def rec_score(profile, E, pop, context=None, next_trip_scoring=False):
         if profile.active_trip is None:
             vals.append(np.asarray(E @ profile.u_long, dtype=np.float64))
-        return prod_score(profile, E, pop, context)
+        return prod_score(profile, E, pop, context, next_trip_scoring)
 
     UC.build_profile, UC.score_candidates = build_profile, rec_score
     try:

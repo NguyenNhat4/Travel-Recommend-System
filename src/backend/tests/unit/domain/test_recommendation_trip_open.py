@@ -16,7 +16,7 @@ def test_trip_is_open_rules():
     assert trip_is_open(5, date(2026, 9, 21), TODAY) is True           # kết thúc hôm nay vẫn mở (usingDate >= hôm nay)
     assert trip_is_open(300, date(2026, 10, 5), TODAY) is True         # mua từ lâu, sắp đi → mở
     assert trip_is_open(5, date(2026, 9, 20), None) is True            # không có today → luật cũ theo tuổi
-    assert ENGINE_RULES_VERSION == "2026-10-09-origin-session"
+    assert ENGINE_RULES_VERSION == "2026-10-09-next-trip-f14c"
 
 
 def _world():

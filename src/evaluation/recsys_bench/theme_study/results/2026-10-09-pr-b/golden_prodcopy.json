@@ -1,0 +1,291 @@
+{
+ "args": {
+  "vec": "npy:D:/Study/VinAI20K/VSF/recsys-vec/2026-10-08/vec_prodcopy_e5s",
+  "as_of": "2026-10-08T00:00:00+00:00",
+  "configs": "B0,B2",
+  "splits": "llbo,temporal,nexttrip,coldstart",
+  "split_source": "frozen",
+  "frozen_dir": "D:\\Study\\VinAI20K\\VSF\\Travel-Recommendation-Product\\.worktrees\\recsys-update-2\\src\\evaluation\\recsys_bench\\frozen",
+  "frozen_tag": "prodcopy-asof20261008",
+  "user_part": "all",
+  "max_users": 0,
+  "scenarios": "between,open,noisy_paired,booked_browse,session_multi,dormant",
+  "syn_seeds": "13",
+  "n_syn": 80,
+  "syn_target": true,
+  "q": null,
+  "parity": "",
+  "per_user_out": "../../.oph-scratch/b_parity/golden_prodcopy.jsonl",
+  "out": "../../.oph-scratch/b_parity/golden_prodcopy.json"
+ },
+ "splits": {
+  "source": "frozen",
+  "filter": {
+   "as_of": "2026-10-08T00:00:00+00:00",
+   "total": 40158,
+   "by_name": {
+    "product_view": 15476,
+    "purchase": 14208,
+    "add_to_cart": 8125,
+    "search": 2349
+   },
+   "purchase_total": 14208,
+   "purchase_orphan": 63,
+   "purchase_missing_group": 94,
+   "purchase_dropped": 152,
+   "browse_orphan": 0,
+   "search_without_product": 2349,
+   "kept": 40006,
+   "users_before": 5599,
+   "users_after": 5599,
+   "min_timestamp": "2024-09-25T07:09:19+00:00",
+   "max_timestamp": "2026-10-07T18:38:07.150868+00:00"
+  },
+  "llbo": {
+   "file": "split-llbo-prodcopy-asof20261008.json",
+   "sha256": "0bff46bb8eac46338910ad7db6b6478ae0d53ac7aa31b95a10ec8e6a03ae8c41"
+  },
+  "temporal": {
+   "file": "split-temporal-prodcopy-asof20261008.json",
+   "sha256": "6b4302167980cc6205d68ddcb8b115ff5ab90988695548d583f04981ab65c1cf"
+  },
+  "nexttrip": {
+   "file": "split-nexttrip-prodcopy-asof20261008.json",
+   "sha256": "f5bd9dc92e7125eec6d1cb320824ce5e6f468530752a9817ef5dc441faf222ae"
+  },
+  "coldstart": {
+   "file": "split-coldstart-prodcopy-asof20261008.json",
+   "sha256": "7c27c6310ef56931c34591198682d58485622532c14036599e8dbfc1a18a1087"
+  }
+ },
+ "users": {
+  "llbo": 4023,
+  "temporal": 773,
+  "nexttrip": 1835,
+  "coldstart": 5233
+ },
+ "expanded": {
+  "B0": "P0+F0",
+  "B2": "P0+F0+F14c+destCap2"
+ },
+ "configs": {
+  "B0": {
+   "llbo": {
+    "n": 4023,
+    "hit@20": 0.8382,
+    "ndcg@10": 0.5385,
+    "mrr@20": 0.4784,
+    "hit@4": 0.5662,
+    "destHit@20": 0.9978
+   },
+   "temporal": {
+    "n": 773,
+    "hit@20": 0.1695,
+    "ndcg@10": 0.1066,
+    "mrr@20": 0.0952,
+    "hit@4": 0.1164,
+    "destHit@20": 0.6688
+   },
+   "nexttrip": {
+    "n": 1835,
+    "hit@20": 0.0845,
+    "ndcg@10": 0.0325,
+    "mrr@20": 0.0266,
+    "hit@4": 0.0311,
+    "destHit@20": 0.7025
+   },
+   "coldstart": {
+    "n": 5233,
+    "hit@20": 0.9715,
+    "ndcg@10": 0.6552,
+    "mrr@20": 0.5687,
+    "hit@4": 0.7705,
+    "destHit@20": 0.9878
+   },
+   "syn_between": {
+    "n": 240,
+    "themePrec": 0.4323,
+    "themePrec_beach": 0.9313,
+    "themePrec_mountain": 0.175,
+    "themePrec_city": 0.1906,
+    "nextDestHit@20": 0.5,
+    "nextDestHit@4": 0.15,
+    "tgtHit@20": 0.0,
+    "tgtHit@4": 0.0,
+    "distinctDestsTotal": 32
+   },
+   "syn_open": {
+    "n": 240,
+    "themePrec": 0.7566,
+    "themePrec_beach": 0.7177,
+    "themePrec_mountain": 0.7667,
+    "themePrec_city": 0.7854,
+    "nextDestHit@20": 1.0,
+    "nextDestHit@4": 1.0,
+    "tgtHit@20": 0.4042,
+    "tgtHit@4": 0.0625,
+    "distinctDestsTotal": 44
+   },
+   "syn_noisy_paired": {
+    "n": 240,
+    "themePrec": 0.401,
+    "themePrec_beach": 0.875,
+    "themePrec_mountain": 0.15,
+    "themePrec_city": 0.1781,
+    "nextDestHit@20": 0.5042,
+    "nextDestHit@4": 0.175,
+    "tgtHit@20": 0.0,
+    "tgtHit@4": 0.0,
+    "distinctDestsTotal": 15
+   },
+   "syn_booked_browse": {
+    "n": 193,
+    "themePrec": 0.7599,
+    "themePrec_beach": 0.8219,
+    "themePrec_mountain": 0.6572,
+    "themePrec_city": 0.7599,
+    "crossVertical": 0.9948,
+    "nextDestHit@20": 0.9948,
+    "nextDestHit@4": 0.9948,
+    "tgtHit@20": 0.7565,
+    "tgtHit@4": 0.4041,
+    "xvAtX@4": 0.8264,
+    "distinctDestsTotal": 41
+   },
+   "syn_session_multi": {
+    "n": 239,
+    "themePrec": 0.8194,
+    "themePrec_beach": 0.8175,
+    "themePrec_mountain": 0.7719,
+    "themePrec_city": 0.8688,
+    "nextDestHit@20": 0.9205,
+    "nextDestHit@4": 0.9121,
+    "tgtHit@20": 0.3473,
+    "tgtHit@4": 0.0335,
+    "distinctDestsTotal": 44
+   },
+   "syn_dormant": {
+    "n": 240,
+    "themePrec": 0.4115,
+    "themePrec_beach": 0.9,
+    "themePrec_mountain": 0.1437,
+    "themePrec_city": 0.1906,
+    "nextDestHit@20": 0.5333,
+    "nextDestHit@4": 0.1667,
+    "tgtHit@20": 0.0,
+    "tgtHit@4": 0.0,
+    "distinctDestsTotal": 27
+   },
+   "seconds": 941.1
+  },
+  "B2": {
+   "llbo": {
+    "n": 4023,
+    "hit@20": 0.8382,
+    "ndcg@10": 0.5385,
+    "mrr@20": 0.4784,
+    "hit@4": 0.5662,
+    "destHit@20": 0.9978
+   },
+   "temporal": {
+    "n": 773,
+    "hit@20": 0.1462,
+    "ndcg@10": 0.1003,
+    "mrr@20": 0.0915,
+    "hit@4": 0.1113,
+    "destHit@20": 0.6688
+   },
+   "nexttrip": {
+    "n": 1835,
+    "hit@20": 0.0545,
+    "ndcg@10": 0.0252,
+    "mrr@20": 0.0211,
+    "hit@4": 0.0245,
+    "destHit@20": 0.7188
+   },
+   "coldstart": {
+    "n": 5233,
+    "hit@20": 0.9713,
+    "ndcg@10": 0.655,
+    "mrr@20": 0.5686,
+    "hit@4": 0.7703,
+    "destHit@20": 0.9878
+   },
+   "syn_between": {
+    "n": 240,
+    "themePrec": 0.7618,
+    "themePrec_beach": 0.8104,
+    "themePrec_mountain": 0.776,
+    "themePrec_city": 0.699,
+    "nextDestHit@20": 0.4,
+    "nextDestHit@4": 0.0792,
+    "tgtHit@20": 0.025,
+    "tgtHit@4": 0.0,
+    "distinctDestsTotal": 42
+   },
+   "syn_open": {
+    "n": 240,
+    "themePrec": 0.7566,
+    "themePrec_beach": 0.7177,
+    "themePrec_mountain": 0.7667,
+    "themePrec_city": 0.7854,
+    "nextDestHit@20": 1.0,
+    "nextDestHit@4": 1.0,
+    "tgtHit@20": 0.4042,
+    "tgtHit@4": 0.0625,
+    "distinctDestsTotal": 44
+   },
+   "syn_noisy_paired": {
+    "n": 240,
+    "themePrec": 0.7219,
+    "themePrec_beach": 0.8396,
+    "themePrec_mountain": 0.7312,
+    "themePrec_city": 0.5948,
+    "nextDestHit@20": 0.3917,
+    "nextDestHit@4": 0.0708,
+    "tgtHit@20": 0.025,
+    "tgtHit@4": 0.0042,
+    "distinctDestsTotal": 43
+   },
+   "syn_booked_browse": {
+    "n": 193,
+    "themePrec": 0.7599,
+    "themePrec_beach": 0.8219,
+    "themePrec_mountain": 0.6572,
+    "themePrec_city": 0.7599,
+    "crossVertical": 0.9948,
+    "nextDestHit@20": 0.9948,
+    "nextDestHit@4": 0.9948,
+    "tgtHit@20": 0.7565,
+    "tgtHit@4": 0.4041,
+    "xvAtX@4": 0.8264,
+    "distinctDestsTotal": 41
+   },
+   "syn_session_multi": {
+    "n": 239,
+    "themePrec": 0.8194,
+    "themePrec_beach": 0.8175,
+    "themePrec_mountain": 0.7719,
+    "themePrec_city": 0.8688,
+    "nextDestHit@20": 0.9205,
+    "nextDestHit@4": 0.9121,
+    "tgtHit@20": 0.3473,
+    "tgtHit@4": 0.0335,
+    "distinctDestsTotal": 44
+   },
+   "syn_dormant": {
+    "n": 240,
+    "themePrec": 0.7694,
+    "themePrec_beach": 0.8656,
+    "themePrec_mountain": 0.7104,
+    "themePrec_city": 0.7323,
+    "nextDestHit@20": 0.5,
+    "nextDestHit@4": 0.1167,
+    "tgtHit@20": 0.0292,
+    "tgtHit@4": 0.0042,
+    "distinctDestsTotal": 41
+   },
+   "seconds": 917.3
+  }
+ }
+}

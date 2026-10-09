@@ -2,10 +2,8 @@
 
 - Ngày: 2026-10-08
 - Người đề xuất: tqanh123 / Claude Code soạn
-- Trạng thái: chờ chốt — **trình chốt G5b** (09/10): người dùng đã chốt lại G2 theo lựa chọn (a) — chấp nhận C3 với tiêu chí
-  nexttrip định nghĩa lại trên **hit@4** (`docs/spec/bench/recsys-bam-so-thich-quyet-dinh.md` §7.7). Phần P2 trong "P2 + F14c"
-  đã ship ở PR-A (09/10); đề xuất này chỉ còn F14c + destCap2 (PR-B)
-- Chốt bởi / ngày:
+- Trạng thái: đã áp dụng (2026-10-09: PRD FR-REC-04 / FR-REC-02, engine PR-B, spec §4.7, `baseline_v6`) — G2 chốt lại = (a) (`quyet-dinh.md` §7.7), G5b chốt 09/10
+- Chốt bởi / ngày: tqanh123, 2026-10-09
 - PRD bị ảnh hưởng: `docs/prd/requirements.md` §1.3 FR-REC-04, FR-REC-02 (câu cuối)
 - Mã FR/NFR: FR-REC-01, FR-REC-02, FR-REC-04
 

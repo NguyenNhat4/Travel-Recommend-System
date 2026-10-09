@@ -110,9 +110,12 @@ def rank_none(score_full: np.ndarray, cand: np.ndarray, pop: np.ndarray, product
     return [int(cand[i]) for i in order[:k]]
 
 
-def rank_mmr(score_full: np.ndarray, E: np.ndarray, cand_sorted: list[int], taxonomy: np.ndarray, k: int) -> list[int]:
-    """`mmr_select` của engine, không cap (mode eval); λ đọc từ `profile.MMR_LAMBDA` lúc gọi."""
-    return [int(i) for i in P.mmr_select(score_full, E, cand_sorted, taxonomy, k, max_per_vertical=None)]
+def rank_mmr(score_full: np.ndarray, E: np.ndarray, cand_sorted: list[int], taxonomy: np.ndarray, k: int,
+             destination: np.ndarray | None = None, max_per_destination: int | None = None) -> list[int]:
+    """`mmr_select` của engine, không cap taxonomy (mode eval); λ đọc từ `profile.MMR_LAMBDA` lúc gọi. `max_per_destination`:
+    cap điểm đến của engine khi không có chuyến mở (FR-REC-04, PR-B 09/10)."""
+    return [int(i) for i in P.mmr_select(score_full, E, cand_sorted, taxonomy, k, max_per_vertical=None, destination=destination,
+                                         max_per_destination=max_per_destination)]
 
 
 class CtxCache:
@@ -130,7 +133,11 @@ class CtxCache:
         if ctx is not None and ctx.as_of == as_of:
             return ctx
         data = self.data
-        profile = profile_for(resolved_events(events, data.index, as_of, data.has_vec), data, as_of)
+        resolved = resolved_events(events, data.index, as_of, data.has_vec)
+        profile = profile_for(resolved, data, as_of)
+        # như `use_cases`: điểm xuất phát từ mọi event đã resolve; F14c khi engine bật và tag model khớp
+        origin = P.infer_origin(resolved, data.index.taxonomy, data.index.attrs.origin_city)
+        next_trip = bool(getattr(self.engine, "next_trip_scoring", False)) and P.calibration_applies(data.index.model_version)
         dest = profile.active_trip.destination if profile.active_trip is not None else None
         excluded = set(profile.active_trip.purchased_taxonomies) if profile.active_trip is not None else set()
         pop_dict = self.pop_scores(as_of, dest)
@@ -138,7 +145,8 @@ class CtxCache:
         for g, s in pop_dict.items():
             pop[g] = s
         ctx = UserCtx(user=user, as_of=as_of, profile=profile, seeds=seeds_for(profile), pop=pop, pop_dict=pop_dict, destination=dest,
-                      excluded=excluded, bought=bought_units(data.index, events), user_row=data.user_rows.get(user))
+                      excluded=excluded, bought=bought_units(data.index, events), user_row=data.user_rows.get(user),
+                      origin=origin, next_trip_scoring=next_trip)
         self._cache[user] = ctx
         return ctx
 
@@ -201,7 +209,12 @@ class AlgoArm:
             # vào MMR là các món phổ biến nhất trong số điểm cao nhất, không phải chỉ số unit nhỏ nhất
             cand_sorted = np.asarray(rank_none(score_full, cand, ctx.pop, data.product_ids, len(cand)), dtype=np.int64)
         if cfg.rerank == "mmr":
-            chosen = rank_mmr(score_full, data.E, [int(i) for i in cand_sorted[: cfg.pool_k]], index.taxonomy, k)
+            # cap điểm đến như engine (khi không có chuyến mở; request bench không khoá điểm đến) — chỉ ở cấu hình gương engine
+            # (mode funnel + pool engine), như ô khám phá; cấu hình nghiên cứu pool mask giữ MMR thuần
+            mirror = cfg.mode == "funnel" and cfg.pool == "engine"
+            cap = getattr(self.ctx.engine, "max_per_destination", None) if mirror and profile.active_trip is None else None
+            chosen = rank_mmr(score_full, data.E, [int(i) for i in cand_sorted[: cfg.pool_k]], index.taxonomy, k,
+                              destination=index.destination if cap else None, max_per_destination=cap)
         else:
             chosen = rank_none(score_full, cand, ctx.pop, data.product_ids, k)
         meta["poolTruncated"] = pool_truncated

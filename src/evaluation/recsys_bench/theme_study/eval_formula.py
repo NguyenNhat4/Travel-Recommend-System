@@ -39,9 +39,9 @@ def _rank(x):
 
 
 def make_scorer(kind, ws=0.7, wp=0.15, wl=0.15, only_between=False):
-    def score(profile, E, pop, context=None):
+    def score(profile, E, pop, context=None, next_trip_scoring=False):
         if only_between and profile.active_trip is not None:
-            return prod_score(profile, E, pop, context)
+            return prod_score(profile, E, pop, context, next_trip_scoring)
         u = profile.active_trip.vec if profile.active_trip is not None else profile.u_long
         s_short, s_long = E @ u, E @ profile.u_long
         if kind == "minmax":

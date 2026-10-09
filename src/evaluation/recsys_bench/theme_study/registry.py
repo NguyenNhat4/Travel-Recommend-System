@@ -5,6 +5,9 @@ Từ 09/10 engine production đã gồm PR-A (P2 + loại combo + ô khám phá 
 Từ khi áp đề xuất [F] (09/10, `ENGINE_RULES_VERSION = 2026-10-09-origin-session`) engine cũng đã có O1 (điểm xuất phát, w 0,15),
 O3 (chuyến đã đặt ưu tiên) và O4 (chuyến ảo): `B0` = chuỗi F_O cũ (parity nDiscordant = 0 trên toàn bộ khách). Các token `orig`,
 `book`, `sess` (và bí danh O1–O5) trên engine này **áp lần hai** — chỉ dùng chúng để tái lập số trên engine cũ.
+Từ PR-B (đề xuất [B], `2026-10-09-next-trip-f14c`) engine cũng có F14c + destCap2 khi không có chuyến mở: `B0` = C3 cũ; `B2` áp lại
+cùng công thức (không đổi kết quả). `noNext` tắt F14c + cap của engine (`OfflineEngine.next_trip_scoring` / `max_per_destination`)
+để tái lập production trước PR-B.
 
 Tên cấu hình = các token nối bằng `+` (bí danh mở rộng đệ quy):
 
@@ -12,6 +15,7 @@ Tên cấu hình = các token nối bằng `+` (bí danh mở rộng đệ quy):
     F0 | F14c        công thức nhánh không chuyến mở: production | F14c (cal(cos) 0,65 + pop 0,35, Q ghim)
     destCap<N>       tối đa N món / điểm đến khi không có chuyến mở (`dest_diversity`)
     slotB | noExplore  ô khám phá B của engine bật (mặc định, như production) | tắt (`OfflineEngine.explore_fill`)
+    noNext           tắt F14c + 2 món / điểm đến của engine (PR-B) — production trước 09/10 tối
     book | sess      ưu tiên chuyến đã đặt (I-3, O3) | + chuyến ảo T_S từ các chuyến chỉ-xem (O4); `sessH:<ngày>`
     orig:pen:<w>     phạt route sai điểm xuất phát ở nhánh mở (O1); nhánh không chuyến luôn mask
     orig:mask        mask ở mọi nhánh (O2)
@@ -69,6 +73,7 @@ class Config:
     none_scorer: str = "F0"
     dest_cap: int = 0
     explore_fill: bool = True
+    engine_next: bool = True
     booked_first: bool = False
     session_agg: bool = False
     h_session: float = 7.0
@@ -118,6 +123,8 @@ def parse(name: str) -> Config:
             c = replace(c, explore_fill=True)
         elif tok == "noExplore":
             c = replace(c, explore_fill=False)
+        elif tok == "noNext":
+            c = replace(c, engine_next=False)
         elif tok == "book":
             c = replace(c, booked_first=True)
         elif tok == "sess":
@@ -196,9 +203,12 @@ class Installed:
             self._restore.append(pop_smooth.install(index, state, cfg.pop_h, cfg.pop_alpha, box=cfg.pop_box,
                                                     scope=cfg.pop_scope))
         for eng in engines:
-            old = eng.explore_fill
+            old = (eng.explore_fill, getattr(eng, "next_trip_scoring", True), getattr(eng, "max_per_destination", None))
             eng.explore_fill = cfg.explore_fill
-            self._restore.append(lambda e=eng, v=old: setattr(e, "explore_fill", v))
+            if not cfg.engine_next:
+                eng.next_trip_scoring, eng.max_per_destination = False, None
+            self._restore.append(lambda e=eng, v=old: (setattr(e, "explore_fill", v[0]), setattr(e, "next_trip_scoring", v[1]),
+                                                       setattr(e, "max_per_destination", v[2])))
         if cfg.cart_pool:
             for eng in engines:
                 inner = eng.vectors

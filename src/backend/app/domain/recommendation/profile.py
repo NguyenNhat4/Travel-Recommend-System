@@ -37,6 +37,15 @@ EXPLORE_MAX_PER_DESTINATION = 1
 #:   × độ tin cậy, điểm đến = nơi có tổng trọng số lớn nhất.
 W_ORIGIN = 0.15
 H_SESSION_DAYS = 7.0
+#: Chốt 2026-10-09 (đề xuất `update-archive/2026-10-08-recsys-chuan-hoa-so-thich-giua-hai-chuyen.md`, FR-REC-04 / FR-REC-02): khi
+#: không có chuyến mở, cos(u_long, v) được chuẩn hoá phân vị cố định về cùng thang với pop (F14c) rồi kết hợp
+#: `W_NEXT_SHORT · s + W_NEXT_POP · pop + W_NEXT_LONG · s`; danh sách tối đa `MAX_PER_DESTINATION` món mỗi điểm đến. Ngưỡng calibrate
+#: trên khách giả lập seed 99, gắn với model embedding + text builder (`SEMANTIC_CALIBRATION_MODEL_VERSION`): lệch tag thì dùng
+#: công thức production cũ (tầng application ghi WARNING).
+SEMANTIC_Q_LOW, SEMANTIC_Q_HIGH = 0.8529, 0.9387
+SEMANTIC_CALIBRATION_MODEL_VERSION = "intfloat/multilingual-e5-small:catalog-text-v2"
+W_NEXT_SHORT, W_NEXT_POP, W_NEXT_LONG = 0.50, 0.35, 0.15
+MAX_PER_DESTINATION = 2
 SESSION_TRIP_ID = "_session_"
 FLIGHT_TAXONOMY = "flight"
 #: Phiên bản luật của engine (không phải tham số): đổi khi hành vi đổi mà không có hằng nào đổi, để bench tách hai bộ số.
@@ -48,7 +57,9 @@ FLIGHT_TAXONOMY = "flight"
 #: `active_trip` hơn lượt xem / giỏ lẻ đến sau (sửa I-3).
 #: 2026-10-09 (đề xuất `update-archive/2026-10-09-recsys-diem-xuat-phat-va-phien-xem.md`): điểm xuất phát chuyến bay, chuyến ảo
 #: gộp các lượt xem gần đây.
-ENGINE_RULES_VERSION = "2026-10-09-origin-session"
+#: 2026-10-09 (đề xuất `update-archive/2026-10-08-recsys-chuan-hoa-so-thich-giua-hai-chuyen.md`, PR-B): F14c + 2 món / điểm đến khi
+#: không có chuyến mở.
+ENGINE_RULES_VERSION = "2026-10-09-next-trip-f14c"
 
 
 @dataclass
@@ -230,13 +241,31 @@ def origin_mismatch(context: ScoreContext) -> np.ndarray:
     return (context.taxonomy == FLIGHT_TAXONOMY) & (oc != "") & (oc != context.origin)
 
 
-def score_candidates(profile: Profile, E: np.ndarray, pop: np.ndarray,
-                     context: ScoreContext | None = None) -> tuple[np.ndarray, np.ndarray]:
-    """Trả (score, u) với u là vector dùng để giải thích. `context` có điểm xuất phát của khách thì chuyến bay sai điểm xuất
-    phát bị trừ `W_ORIGIN` (có chuyến mở) hoặc loại hẳn — điểm −∞, MMR không bao giờ chọn (không có chuyến mở)."""
+def calibration_applies(model_version: str | None) -> bool:
+    """Ngưỡng `SEMANTIC_Q_*` chỉ đúng với model + text builder đã calibrate."""
+    return model_version == SEMANTIC_CALIBRATION_MODEL_VERSION
+
+
+def calibrated_similarity(cos: np.ndarray) -> np.ndarray:
+    """cos → [0, 1] theo phân vị cố định (F14c), cùng thang với pop."""
+    return np.clip((cos - SEMANTIC_Q_LOW) / (SEMANTIC_Q_HIGH - SEMANTIC_Q_LOW), 0.0, 1.0)
+
+
+def score_candidates(profile: Profile, E: np.ndarray, pop: np.ndarray, context: ScoreContext | None = None,
+                     next_trip_scoring: bool = False) -> tuple[np.ndarray, np.ndarray]:
+    """Trả (score, u) với u là vector dùng để giải thích.
+
+    - Không có chuyến mở và `next_trip_scoring` (FR-REC-04, 09/10): `W_NEXT_SHORT · s + W_NEXT_POP · pop + W_NEXT_LONG · s` với
+      `s = calibrated_similarity(cos(u_long, v))`; ngược lại công thức 0,7 / 0,15 / 0,15.
+    - `context` có điểm xuất phát của khách thì chuyến bay sai điểm xuất phát bị trừ `W_ORIGIN` (có chuyến mở) hoặc loại hẳn —
+      điểm −∞, MMR không bao giờ chọn (không có chuyến mở)."""
     u = profile.active_trip.vec if profile.active_trip is not None else profile.u_long
-    s_short, s_long = E @ u, E @ profile.u_long
-    score = W_SHORT * s_short + W_POP * pop + W_LONG * s_long
+    if profile.active_trip is None and next_trip_scoring:
+        s = calibrated_similarity(E @ u)
+        score = W_NEXT_SHORT * s + W_NEXT_POP * pop + W_NEXT_LONG * s
+    else:
+        s_short, s_long = E @ u, E @ profile.u_long
+        score = W_SHORT * s_short + W_POP * pop + W_LONG * s_long
     if context is not None and context.origin is not None:
         mis = origin_mismatch(context)
         score = score - W_ORIGIN * mis if profile.active_trip is not None else np.where(mis, -np.inf, score)
@@ -244,16 +273,22 @@ def score_candidates(profile: Profile, E: np.ndarray, pop: np.ndarray,
 
 
 def mmr_select(score: np.ndarray, E: np.ndarray, candidates: list[int], taxonomy: np.ndarray, k: int,
-               max_per_vertical: int | None = MAX_PER_VERTICAL) -> list[int]:
+               max_per_vertical: int | None = MAX_PER_VERTICAL, destination: np.ndarray | None = None,
+               max_per_destination: int | None = None) -> list[int]:
     """MMR (λ = MMR_LAMBDA) + giới hạn cứng `max_per_vertical` món mỗi taxonomy; `None` = không giới hạn (chỉ cho đánh giá
-    offline với k = 20 — 5 taxonomy × 2 không thể đủ 20; production giữ MAX_PER_VERTICAL)."""
+    offline với k = 20 — 5 taxonomy × 2 không thể đủ 20; production giữ MAX_PER_VERTICAL). `max_per_destination` (cùng
+    `destination`, mảng điểm đến theo chỉ số của `score`): tối đa N món mỗi điểm đến — FR-REC-04 khi không có chuyến mở."""
     chosen: list[int] = []
     per_vertical: Counter = Counter()
+    per_dest: Counter = Counter()
+    cap_dest = max_per_destination is not None and destination is not None
     cand = list(candidates)
     while cand and len(chosen) < k:
         best, best_val = None, -1e9
         for i in cand:
             if max_per_vertical is not None and per_vertical[str(taxonomy[i])] >= max_per_vertical:
+                continue
+            if cap_dest and per_dest[str(destination[i])] >= max_per_destination:
                 continue
             div = max((float(E[i] @ E[j]) for j in chosen), default=0.0)
             val = MMR_LAMBDA * float(score[i]) - (1 - MMR_LAMBDA) * div
@@ -263,6 +298,8 @@ def mmr_select(score: np.ndarray, E: np.ndarray, candidates: list[int], taxonomy
             break
         chosen.append(best)
         per_vertical[str(taxonomy[best])] += 1
+        if cap_dest:
+            per_dest[str(destination[best])] += 1
         cand.remove(best)
     return chosen
 

@@ -12,6 +12,7 @@ from src.backend.app.application.search import hit
 from src.backend.app.core.logging_config import log_event
 from src.backend.app.domain.recommendation import (Popularity, Purchase, ResolvedEvent, ScoreContext, build_profile, explain,
                                                    infer_origin, mmr_select, score_candidates)
+from src.backend.app.domain.recommendation.profile import MAX_PER_DESTINATION, calibration_applies
 from src.backend.app.domain.recommendation.profile import (
     EXPLORE_MAX_PER_DESTINATION, EXPLORE_TAXONOMIES, MAX_PER_VERTICAL, local_today, parse_using_date,
 )
@@ -22,6 +23,18 @@ logger = logging.getLogger("uvicorn.error")
 def _using_date(value):
     """`usingDate` của event CDP → `date` (một parser chung với harness bench: `profile.parse_using_date`)."""
     return parse_using_date(value)
+
+
+_CALIBRATION_WARNED: set[str] = set()
+
+
+def _warn_calibration_mismatch(model_version: str | None) -> None:
+    """Ngưỡng F14c gắn với model + text builder đã calibrate; lệch thì dùng công thức cũ và cảnh báo một lần mỗi model."""
+    key = str(model_version)
+    if key not in _CALIBRATION_WARNED:
+        _CALIBRATION_WARNED.add(key)
+        log_event(logger, "recsys.next_trip_scoring.model_mismatch", "WARNING",
+                  message=f"recommend.next_trip_scoring model={key} khác tag calibrate; dùng công thức 0,7/0,15/0,15")
 
 
 def _ts(x) -> float:
@@ -142,6 +155,10 @@ class RecommendForUser:
     # Tắt bằng RECOMMEND_EXPLORE_FILL=false (Settings) khi cần rollback không redeploy; tắt = list y hệt trước PR-A.
     explore_fill: bool = True
     explore_candidate_k: int = 50   # top-K near_vector(u_long) cho ô khám phá; 1 món / điểm đến nên 50 là dư
+    # Không có chuyến mở (FR-REC-04 / FR-REC-02, 09/10): công thức F14c khi `index.model_version` khớp tag calibrate, ngược lại
+    # công thức cũ + WARNING; tối đa `max_per_destination` món / điểm đến (None = tắt; không áp khi request khoá `destination`).
+    next_trip_scoring: bool = True
+    max_per_destination: int | None = MAX_PER_DESTINATION
 
     def __call__(self, cdp_user_id: str | None, k: int = 5, now: datetime | None = None,
                  events: list[dict] | None = None, destination: str | None = None) -> dict:
@@ -218,9 +235,15 @@ class RecommendForUser:
         taxonomy, origin_city = space.taxonomy, space.origin_city
         context = ScoreContext(taxonomy=taxonomy, origin_city=origin_city,
                                origin=infer_origin(resolved, taxonomy, origin_city))
-        score, _ = score_candidates(profile, E, pop, context)
+        calibrated = self.next_trip_scoring and calibration_applies(idx.model_version)
+        if self.next_trip_scoring and not calibrated and profile.active_trip is None:
+            _warn_calibration_mismatch(idx.model_version)
+        score, _ = score_candidates(profile, E, pop, context, next_trip_scoring=calibrated)
         cand = sorted(cand, key=lambda j: -score[j])[: self.candidate_k]
-        chosen = mmr_select(score, E, cand, space.taxonomy, k, max_per_vertical=self.max_per_vertical)
+        # điểm đến lấy tại thời điểm MMR: `_LocalSpace` lớn dần trong request (ứng viên thêm sau build_profile)
+        cap_dest = self.max_per_destination if profile.active_trip is None and destination is None else None
+        chosen = mmr_select(score, E, cand, space.taxonomy, k, max_per_vertical=self.max_per_vertical,
+                            destination=space.destination if cap_dest else None, max_per_destination=cap_dest)
         if not chosen:
             return {**base, **self._cold_start(k, now, destination)}
 

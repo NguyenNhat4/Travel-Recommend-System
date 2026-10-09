@@ -20,6 +20,7 @@ from src.evaluation.recsys_bench.theme_study.step2_scorers import engine_origin_
 #: Ngưỡng hiệu chỉnh cos ghim theo plan giai đoạn lane B (`docs/plan/2026-10-08-recsys-trien-khai-theo-giai-doan.md`).
 Q_LOW, Q_HIGH = 0.8529, 0.9387
 MASKED = -np.inf
+W_LONG_NEXT = 0.15     # hạng u_long của F14c (`W_NEXT_LONG` của đề xuất [B])
 CART_DAYS = 30.0
 
 
@@ -41,7 +42,7 @@ def make_scorer(state: dict, index, *, none_scorer: str = "F0", w_pop_none: floa
     span = max(q[1] - q[0], 1e-6)
     w_pop_by_segment = w_pop_by_segment or {}
 
-    def score(profile, E, pop, context=None):
+    def score(profile, E, pop, context=None, next_trip_scoring=False):
         # `context` của engine (từ 09/10 engine đã có O1 điểm xuất phát): chuyển xuống `prod_score` để `B0+oph` = engine
         space = state.get("space")
         glob = list(space.glob) if space is not None else []
@@ -53,7 +54,7 @@ def make_scorer(state: dict, index, *, none_scorer: str = "F0", w_pop_none: floa
                 origin, ounit = str(index.attrs.origin_city[g]), g
             state["origin"], state["origin_unit"] = origin, ounit
         if profile.active_trip is not None:
-            s, u = prod_score(profile, E, pop, context)
+            s, u = prod_score(profile, E, pop, context, next_trip_scoring)
             if origin is not None:
                 mis = mismatch(glob, index, origin)
                 s = s - w_origin * mis if origin_mode == "pen" else np.where(mis, MASKED, s)
@@ -63,12 +64,14 @@ def make_scorer(state: dict, index, *, none_scorer: str = "F0", w_pop_none: floa
                     s = s + w_cart * np.isin(np.arange(len(s)), list(cart))
             return s, u
         if none_scorer == "F0":
-            s, u = prod_score(profile, E, pop, context)
+            s, u = prod_score(profile, E, pop, context, next_trip_scoring)
         else:
             u = profile.u_long
             wp = w_pop_by_segment.get(state.get("segment_cfg"), w_pop_none)
             sem = np.clip((E @ u - q[0]) / span, 0.0, 1.0)
-            s = (1.0 - wp) * sem + wp * np.asarray(pop, dtype=np.float32)
+            # dạng ba hạng của đề xuất [B] (0,50·s + 0,35·pop + 0,15·s) — cùng phép tính với engine PR-B để parity khớp từng bit
+            ws, wl = 1.0 - wp - W_LONG_NEXT, W_LONG_NEXT
+            s = ws * sem + wp * np.asarray(pop, dtype=np.float32) + wl * sem
             s = engine_origin_mask(s, context)                 # luật engine 09/10 cho nhánh không chuyến mở
         if origin is not None:
             s = np.where(mismatch(glob, index, origin), MASKED, s)

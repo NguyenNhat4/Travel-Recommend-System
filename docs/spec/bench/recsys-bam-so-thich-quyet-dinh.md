@@ -306,3 +306,10 @@ Plan `docs/plan/2026-10-09-recsys-cong-thuc-oph.md`; số: `src/evaluation/repor
   2. O1 và O4 có cần đề xuất PRD không: O1 là chi tiết xếp hạng (FR-REC-04), O4 đổi điểm đến được khoá khi khách chỉ đang xem
      (FR-REC-02 không mô tả chuyến chỉ-xem) — plan §8.2 đề nghị gộp vào một đề xuất nếu người dùng muốn ghi PRD.
   3. G2 (F14c) vẫn theo lộ trình lane B; chuỗi O không đổi câu trả lời G2 (F so với B2 nexttrip +0,0064).
+
+## 9. PR-B áp dụng (09/10)
+
+G5b chốt 09/10 (tqanh123): đề xuất [B] → PRD FR-REC-04 / FR-REC-02, engine `2026-10-09-next-trip-f14c` (F14c khi không có chuyến
+mở, tối đa 2 món / điểm đến, guard tag model, rollback `RECOMMEND_NEXT_TRIP_SCORING` / `RECOMMEND_MAX_PER_DESTINATION`). Parity với
+C3 của harness nDiscordant = 0 trên toàn bộ khách; trên mốc mới (đã có chuỗi O) DB G6 vẫn đạt D1 hit@4 (−0,0026, CI chứa 0), D2, D3,
+D4. Số: `src/evaluation/reports/eval-2026-10-09-recsys-pr-b-f14c-destcap.md`. Theo dõi chi phí nexttrip sau deploy như §7.7.
