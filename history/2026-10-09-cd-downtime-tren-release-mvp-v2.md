@@ -65,3 +65,8 @@ Commit 2 (entry này):
 - Downtime mỗi lần triển khai đã chấp nhận cho staging-HA, chưa có quyết định cho production.
 - `docker_test` không có guard chặn PR từ fork, giống `quality` và `e2e` của release. Cần xem xét khi có quyết định về runner tự host cho PR từ fork.
 - Chưa đo thời gian rollout thật sau thay đổi (kỳ vọng ~5 phút, thay vì ~15,6 phút).
+
+## Thay đổi bổ sung (commit 3): sửa job E2E fail trên PR #146
+
+- `.github/workflows/frontend-ci-cd.yml`: bước Install Chromium của job `e2e` bỏ `--with-deps` trên runner tự host, giống commit `1a51c76e` trên `fix/ci-cd-stabilize`. Lỗi trước đó: `sudo: a password is required` (run `37945573993`, bước Install Chromium). Lỗi này đã có trên release, không do cherry-pick.
+- Kiểm tra: YAML parse và `bash -n` của bước này: OK. Chưa chạy lại E2E trên GitHub tại thời điểm viết entry.

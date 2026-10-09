@@ -141,7 +141,8 @@ jobs:
 
       - name: Install Chromium
         working-directory: src/frontend
-        run: npx playwright install --with-deps chromium
+        # Runner tự host đã có sẵn thư viện hệ thống của Chromium và không có sudo không mật khẩu; --with-deps chỉ dùng trên runner GitHub-hosted.
+        run: npx playwright install ${{ runner.environment == 'github-hosted' && '--with-deps' || '' }} chromium
 
       - name: Run Playwright smoke tests
         working-directory: src/frontend
