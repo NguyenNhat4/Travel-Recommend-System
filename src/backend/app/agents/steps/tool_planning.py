@@ -26,8 +26,9 @@ logger = logging.getLogger("uvicorn.error")
 MAX_CALLS = 5
 MAX_SIMILAR_CALLS = 2  # mỗi lượt, mỗi anchor một lần; vẫn nằm trong MAX_CALLS
 # Số sản phẩm mỗi lời gọi do server cố định, không lấy từ LLM, để mọi mode (inprocess/http/fixture) nhận cùng số
-# ứng viên. Phải nằm trong `maximum` của contract (search ≤ 50, recommendations ≤ 20).
-SEARCH_LIMIT = 10
+# ứng viên. Phải nằm trong `maximum` của contract (search ≤ 50, recommendations ≤ 20). Search lấy tối đa contract: chuyến
+# dài cần đủ hoạt động cho cả sáng lẫn chiều, mà vé nhiều ngày và bản trùng còn bị loại khỏi slot sau retrieval.
+SEARCH_LIMIT = 50
 # Khách sạn lấy tối đa contract: luật ít di chuyển (AC-AGT-04) chọn khách sạn gần các điểm đã xếp, nên cần nhiều vị trí
 # để chọn; top 10 theo câu query thường dồn về một khu.
 HOTEL_SEARCH_LIMIT = 50
