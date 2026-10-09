@@ -1,6 +1,6 @@
 import React from 'react';
 import dynamic from 'next/dynamic';
-import { MapPin, Calendar, Users, Loader2, ArrowRight } from 'lucide-react';
+import { MapPin, Calendar, Users } from 'lucide-react';
 import { WidgetDays } from './WidgetDays';
 import { WidgetProductDetail } from './WidgetProductDetail';
 import { stayCardKey } from './widgetPlan';
@@ -21,8 +21,7 @@ const ItineraryMap = dynamic(
 );
 
 export function WidgetPlanPanel({ widget }: { widget: FloatingWidgetController }) {
-  const { activePlan, activeDayTab, setActiveDayTab, isCheckingOut,
-    handleCheckoutPlan, itemActions, hoveredCoordinate, hoveredPointId,
+  const { activePlan, activeDayTab, setActiveDayTab, itemActions, hoveredCoordinate, hoveredPointId,
     selectedProduct, closeProductDetail, addSelectedToCart, selectedCanAddToCart, bookSelectedNow,
     previewedStay, cancelStayPreview, chooseStayOption } = widget;
   if (!activePlan) return null;
@@ -70,9 +69,9 @@ export function WidgetPlanPanel({ widget }: { widget: FloatingWidgetController }
         <button
           onClick={() => setActiveDayTab(0)}
           aria-pressed={activeDayTab === 0}
-          className={`min-h-11 px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap focus-visible:outline-2 focus-visible:outline-blue-600 ${
+          className={`min-h-11 px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap focus-visible:outline-2 focus-visible:outline-brand-600 ${
             activeDayTab === 0
-              ? 'bg-blue-600 text-white shadow-xs'
+              ? 'bg-brand-600 text-white shadow-xs'
               : 'text-slate-600 hover:text-slate-900'
           }`}
         >
@@ -83,9 +82,9 @@ export function WidgetPlanPanel({ widget }: { widget: FloatingWidgetController }
             key={d.day}
             onClick={() => setActiveDayTab(d.day)}
             aria-pressed={activeDayTab === d.day}
-            className={`min-h-11 px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap focus-visible:outline-2 focus-visible:outline-blue-600 ${
+            className={`min-h-11 px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap focus-visible:outline-2 focus-visible:outline-brand-600 ${
               activeDayTab === d.day
-                ? 'bg-blue-600 text-white shadow-xs'
+                ? 'bg-brand-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -117,7 +116,7 @@ export function WidgetPlanPanel({ widget }: { widget: FloatingWidgetController }
     {/* Đổi khách sạn (hàng thẻ "Phương án khác"): lịch mới trượt vào thay vì thay chữ tại chỗ. */}
     <WidgetDays key={stayKey} widget={widget} />
 
-    {/* Footer của phần lịch trình: Tổng tiền & Nút Thanh Toán */}
+    {/* Footer của phần lịch trình: tổng tiền. Không có thanh toán gộp: mỗi mục đặt bằng nút riêng của nó. */}
     <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-slate-200/70 bg-white p-5">
       <div>
         <span className="block text-xs font-medium text-slate-500">
@@ -140,19 +139,6 @@ export function WidgetPlanPanel({ widget }: { widget: FloatingWidgetController }
             Chưa tính được
           </span>
         )}
-      </div>
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={handleCheckoutPlan}
-          disabled={isCheckingOut || Boolean(previewedStay)}
-          aria-busy={isCheckingOut}
-          title={previewedStay ? 'Đang xem trước: đổi sang khách sạn này hoặc quay lại trước khi thanh toán' : undefined}
-          className="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 active:bg-blue-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          <span>{isCheckingOut ? 'Đang mở trang thanh toán…' : 'Thanh toán tất cả'}</span>
-          {isCheckingOut ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
-        </button>
       </div>
     </div>
   </section>

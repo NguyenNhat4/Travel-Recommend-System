@@ -173,7 +173,7 @@ CONTRACT_REASONS = [
     "REQUIRED", "NAME_INVALID", "PHONE_INVALID", "EMAIL_INVALID", "BIRTH_DATE_INVALID", "CHILD_AGE_INVALID", "ADULT_REQUIRED",
     "PARTY_TOO_LARGE", "TRAVELER_UNKNOWN", "TRAVELER_DUPLICATED", "ITEM_DETAIL_MISSING", "ITEM_DETAIL_UNKNOWN",
     "ITEM_DETAIL_DUPLICATED", "ITEM_WITHOUT_TRAVELER", "GUEST_COUNT_MISMATCH", "INFANTS_EXCEED_ADULTS", "ROOM_COUNT_MISMATCH",
-    "OCCUPANCY_EXCEEDED", "LEAD_GUEST_INVALID", "TRAVELERS_REQUIRED",
+    "OCCUPANCY_EXCEEDED", "LEAD_GUEST_INVALID", "TRAVELERS_REQUIRED", "ROOMS_TOO_MANY",
 ]
 
 
@@ -211,6 +211,14 @@ def test_every_reason_named_in_the_contract_has_its_own_vietnamese_message():
      "Chọn ít nhất 1 khách dùng Vé VinWonders, hoặc xoá dịch vụ khỏi giỏ."),
     (Violation("itemDetails[0].rooms", "ROOM_COUNT_MISMATCH", {"rooms": 2}),
      "Bạn đã đặt 2 phòng. Hãy xếp khách vào đủ 2 phòng hoặc giảm số phòng."),
+    (Violation("guests", "PARTY_TOO_LARGE"), "Mỗi đơn tối đa 9 khách. Vui lòng tách thành nhiều đơn."),
+    (Violation("travelers", "PARTY_TOO_LARGE", {"max_party": 9}), "Mỗi đơn tối đa 9 khách. Vui lòng tách thành nhiều đơn."),
+    (Violation("travelers", "PARTY_TOO_LARGE", {"max_party": 18}), "Mỗi đơn tối đa 18 khách. Vui lòng tách thành nhiều đơn."),
+    (Violation("guests", "PARTY_TOO_LARGE", {"max_party": 18, "rooms": 2}),
+     "Mỗi phòng tối đa 9 khách (18 khách cho 2 phòng). Vui lòng thêm phòng."),
+    (Violation("itemDetails", "PARTY_TOO_LARGE", {"scope": "mixed", "item_name": "Lucky Sun"}),
+     "Lucky Sun trên 9 khách phải đặt riêng, không gộp với dịch vụ khác."),
+    (Violation("quantity", "ROOMS_TOO_MANY", {"max_rooms": 9}), "Mỗi lần đặt tối đa 9 phòng."),
 ])
 def test_message_variants_follow_the_field_and_context(violation, expected):
     assert message_for(violation) == expected

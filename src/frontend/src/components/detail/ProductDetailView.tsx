@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTravel } from '../../context/TravelContext';
 import {
-  getProduct, getSimilarProducts, hasVariants, listProducts, listVariants, productFromApi, trackProductView,
+  getProduct, hasVariants, listProducts, placeholderImage, listVariants, productFromApi, trackProductView,
   type VariantSummary,
 } from '../../services/catalog';
 import { isCartEligible } from '../../services/booking';
@@ -18,16 +18,26 @@ import type { CartState } from '../checkout/allocation';
 import { estimateFares } from '../checkout/fareEstimate';
 import { FareLines } from '../checkout/FareLines';
 import { GuestCounters } from '../checkout/GuestCounters';
-import { cartPayload, guestModeOf, initialCounts, isValidCounts, maxOccupancyFromAttributes, normalizeCounts } from '../checkout/guestCounts';
-import { parseTripContext } from '../../features/search/tripContext';
-import { MapPin, ShieldCheck, Users, BedDouble, Plane, Loader2, Calendar } from 'lucide-react';
+import {
+  cartPayload, capacityIssue, guestModeOf, initialCounts, isValidCounts, maxOccupancyFromAttributes, normalizeCounts, totalGuests,
+} from '../checkout/guestCounts';
+import { parseTripContext, serializeTripContext } from '../../features/search/tripContext';
+import { ProductBreadcrumb } from './ProductBreadcrumb';
+import { AmenityList, amenityList } from './AmenityList';
+import { DateInput } from './DateInput';
+import { HotelTripBar } from './HotelTripBar';
+import { RoomAmenityFilter, amenityOptions, matchesAmenities } from './RoomAmenityFilter';
+import { RoomCard } from './RoomCard';
+import { ImageLightbox, ProductGallery, imagesOf } from './ProductGallery';
+import { MapPin, ShieldCheck, BedDouble, Plane, Loader2, Star } from 'lucide-react';
 
 /**
  * Trang chi tiết `/product/{productId}` (docs/spec/hop-dong-tich-hop-frontend.md §4.3, product.md §4.3).
  *
- * Mọi dữ liệu từ API: GET /products/{id}, /products/{id}/similar, /recommendations. Khách sạn (property) và
+ * Mọi dữ liệu từ API: GET /products/{id}, /recommendations. Khách sạn (property) và
  * tuyến bay (route) chỉ để xem — khách chọn một hạng phòng / chuyến bay cụ thể (GET /products?parentProductId=)
- * và mục đó mới được thêm vào giỏ (FR-CAT-02).
+ * và mục đó mới đặt được (FR-CAT-02). Khách sạn không có hộp đặt dính: ngày/số khách ở một thanh phía trên danh sách phòng,
+ * nút Đặt ngay nằm trên từng thẻ hạng phòng (khách đi từ kết quả tìm kiếm đã mang sẵn ngày và số khách).
  */
 
 type LoadState =
@@ -133,50 +143,6 @@ function variantFacts(variant: Product): string[] {
   return facts;
 }
 
-const isoToDmy = (iso: string) => (iso ? iso.split('-').reverse().join('/') : '');
-
-/** "dd/mm/yyyy" → ISO; null nếu chưa đủ hoặc không phải ngày có thật. */
-function dmyToIso(text: string): string | null {
-  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(text);
-  if (!m) return null;
-  const iso = `${m[3]}-${m[2]}-${m[1]}`;
-  const d = new Date(`${iso}T12:00:00Z`);
-  return Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== iso ? null : iso;
-}
-
-/** Ô ngày dd/mm/yyyy (không phụ thuộc locale trình duyệt) kèm nút mở lịch; min/max chỉ ràng buộc trong lịch, lỗi do validateDates báo. */
-const DateInput: React.FC<{ label: string; value: string; min?: string; max?: string; onChange: (v: string) => void }> = ({
-  label, value, min, max, onChange,
-}) => {
-  const [text, setText] = useState(isoToDmy(value));
-  const picker = useRef<HTMLInputElement>(null);
-  // Đồng bộ khi giá trị đổi từ ngoài (ngày mặc định, tự dời ngày trả); không ghi đè khi đang gõ dở.
-  useEffect(() => { if (value !== (dmyToIso(text) ?? '')) setText(isoToDmy(value)); }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
-  const handleText = (raw: string) => {
-    const digits = raw.replace(/\D/g, '').slice(0, 8);
-    const masked = [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4)].filter(Boolean).join('/');
-    setText(masked);
-    onChange(dmyToIso(masked) ?? '');
-  };
-  return (
-    <div>
-      <label className="block text-[11px] font-bold text-slate-600 mb-1">{label}</label>
-      <div className="relative">
-        <input type="text" inputMode="numeric" placeholder="dd/mm/yyyy" value={text} maxLength={10} aria-label={label}
-          onChange={(e) => handleText(e.target.value)}
-          className="w-full pl-2.5 pr-8 py-1.5 text-xs border border-slate-300 rounded-lg outline-hidden focus:ring-1 focus:ring-blue-500" />
-        <button type="button" aria-label={`Mở lịch ${label.toLowerCase()}`} onClick={() => picker.current?.showPicker?.()}
-          className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-blue-600">
-          <Calendar className="w-4 h-4" />
-        </button>
-        <input ref={picker} type="date" tabIndex={-1} aria-hidden value={value} min={min} max={max}
-          onChange={(e) => e.target.value && onChange(e.target.value)}
-          className="absolute right-0 bottom-0 w-0 h-0 opacity-0 pointer-events-none" />
-      </div>
-    </div>
-  );
-};
-
 /** 404: "Sản phẩm này không còn trên V-OTA" + carousel phổ biến (product.md §4.3.4). */
 const NotFound: React.FC<{ onHome: () => void }> = ({ onHome }) => {
   const [popular, setPopular] = useState<Product[]>([]);
@@ -193,7 +159,7 @@ const NotFound: React.FC<{ onHome: () => void }> = ({ onHome }) => {
         <h2 className="text-xl font-bold text-slate-800">Sản phẩm này không còn trên V-OTA</h2>
         <p className="text-xs text-slate-500">Mã sản phẩm không tồn tại hoặc đã hết thời hạn mở bán.</p>
         <button onClick={onHome}
-          className="px-5 py-2 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 transition-colors">
+          className="px-5 py-2 bg-brand-600 text-white text-xs font-bold rounded-lg hover:bg-brand-700 transition-colors">
           Về trang chủ
         </button>
       </div>
@@ -213,6 +179,11 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
   const { addToCart, startBooking, navigate, currentPersona } = useTravel();
   const [state, setState] = useState<LoadState>({ status: 'loading' });
   const [retry, setRetry] = useState(0);
+  // Ngày và số khách của tấm tìm kiếm (?checkIn&…): giữ cho mục "Khách sạn tại …" của thanh phân cấp quay về đúng kết quả.
+  const [tripQuery, setTripQuery] = useState('');
+  useEffect(() => {
+    setTripQuery(serializeTripContext(parseTripContext(new URLSearchParams(window.location.search))));
+  }, [productId]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -245,24 +216,33 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
   const [variants, setVariants] = useState<Product[] | null>(null);
   const [variantsFailed, setVariantsFailed] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Ảnh lớn của một hạng phòng đang xem, và hạng phòng đang mở danh sách tiện ích.
+  const [roomPhotos, setRoomPhotos] = useState<{ images: string[]; index: number; title: string } | null>(null);
+  const [amenityRoomId, setAmenityRoomId] = useState<string | null>(null);
+  const [amenityFilter, setAmenityFilter] = useState<string[]>([]);
   useEffect(() => {
     setVariants(null);
     setVariantsFailed(false);
     setSelectedId(null);
+    setAmenityFilter([]);
     if (!product || !needsVariant) return;
     const controller = new AbortController();
     listVariants(product.id, controller.signal)
       .then((page) => {
         const items = page.results.map(productFromApi);
         setVariants(items);
-        setSelectedId(items.find(isBookable)?.id ?? null);
+        setSelectedId(product.taxonomy === 'hotel' ? null : items.find(isBookable)?.id ?? null);
       })
       .catch(() => { if (!controller.signal.aborted) setVariantsFailed(true); });
     return () => controller.abort();
   }, [product, needsVariant]);
 
-  const unit: Product | null = needsVariant ? variants?.find((v) => v.id === selectedId) ?? null : product;
+  // Khách sạn đặt trên từng thẻ hạng phòng nên không có "mục đang chọn"; trang hạng phòng đơn lẻ (không phân tầng) đặt chính nó.
+  const hotelMode = product?.taxonomy === 'hotel';
+  const unit: Product | null = needsVariant ? (hotelMode ? null : variants?.find((v) => v.id === selectedId) ?? null) : product;
   const bookable = isBookable(unit);
+  // Mục để điền sẵn ngày/số khách: khách sạn dùng chính sản phẩm (ngày không phụ thuộc hạng phòng).
+  const tripUnit = hotelMode ? product : unit;
 
   // Ngày và số lượng theo mục đặt được đang chọn.
   const [checkIn, setCheckIn] = useState('');
@@ -270,11 +250,12 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
   // Số khách/số phòng/số gói (spec checkout-nhieu-buoc-hanh-khach.md §6.9); đổi hạng phòng/chuyến bay thì đặt lại.
   const [counts, setCounts] = useState<CartState>(initialCounts);
   useEffect(() => {
-    if (!unit) return;
-    const hotel = unit.taxonomy === 'hotel';
+    if (!tripUnit) return;
+    const target = tripUnit;
+    const hotel = target.taxonomy === 'hotel';
     const checkInWindow = hotelCheckInWindow();
-    const maxOutOf = (from: string) => (hotel ? addDays(from, HOTEL_MAX_NIGHTS) : unit.availableTo ? addDays(unit.availableTo, 1) : undefined);
-    let start = defaultStart(unit);
+    const maxOutOf = (from: string) => (hotel ? addDays(from, HOTEL_MAX_NIGHTS) : target.availableTo ? addDays(target.availableTo, 1) : undefined);
+    let start = defaultStart(target);
     let out = clamp(addDays(start, 1), addDays(start, 1), maxOutOf(start));
     let counts = initialCounts();
 
@@ -283,7 +264,7 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
     const trip = parseTripContext(new URLSearchParams(window.location.search));
     const tripInRange = hotel
       ? trip.checkIn && trip.checkIn >= checkInWindow.from && trip.checkIn <= checkInWindow.to
-      : trip.checkIn && (!unit.availableFrom || trip.checkIn >= unit.availableFrom) && (!unit.availableTo || trip.checkIn <= unit.availableTo);
+      : trip.checkIn && (!target.availableFrom || trip.checkIn >= target.availableFrom) && (!target.availableTo || trip.checkIn <= target.availableTo);
     if (trip.checkIn && tripInRange) {
       start = trip.checkIn;
       const maxOut = maxOutOf(start);
@@ -291,49 +272,37 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
     }
     if (trip.adults) {
       const candidate: CartState = {
-        quantity: unit.taxonomy === 'hotel' ? trip.rooms ?? counts.quantity : counts.quantity,
+        quantity: hotel ? trip.rooms ?? counts.quantity : counts.quantity,
         guests: { adults: trip.adults, children: trip.children ?? 0 },
       };
-      const wanted = guestModeOf(unit.taxonomy);
-      if (isValidCounts(wanted, normalizeCounts(wanted, candidate), maxOccupancyFromAttributes(unit.attributes as Record<string, unknown>))) {
+      const wanted = guestModeOf(target.taxonomy);
+      if (isValidCounts(wanted, normalizeCounts(wanted, candidate), maxOccupancyFromAttributes(target.attributes as Record<string, unknown>))) {
         counts = normalizeCounts(wanted, candidate);
       }
     }
     setCheckIn(start);
     setCheckOut(out);
     setCounts(counts);
-  }, [unit?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tripUnit?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const isHotel = unit?.taxonomy === 'hotel';
-  const fixedDate = !isHotel && unit?.availableFrom && unit.availableFrom === unit.availableTo;
-  const nights = isHotel && checkIn && checkOut
-    ? Math.max(1, Math.round((new Date(checkOut).getTime() - new Date(checkIn).getTime()) / DAY_MS))
-    : 1;
+  // Hộp đặt bên phải chỉ còn cho vé máy bay, vé tham quan, golf, combo; khách sạn đặt trên thẻ hạng phòng.
+  const fixedDate = unit?.availableFrom && unit.availableFrom === unit.availableTo;
   // Ngày người dùng nhập tay có thể trống, ngoài cửa sổ mở bán hoặc trả phòng không sau nhận phòng: báo lỗi và khoá nút đặt,
   // không tự sửa ngày (nightsBetween/defaultUsingDate ở TravelContext sẽ âm thầm sửa nếu cứ gửi đi).
-  const dateError = bookable && !fixedDate ? validateDates(unit, checkIn, isHotel ? checkOut : undefined) : null;
+  const hotelRooms: Product[] | null = hotelMode ? (needsVariant ? variants : product && isBookable(product) ? [product] : []) : null;
+  const dateError = hotelMode
+    ? (hotelRooms?.some(isBookable) ? validateDates(product as Product, checkIn, checkOut) : null)
+    : bookable && !fixedDate ? validateDates(unit, checkIn) : null;
   const mode = unit ? guestModeOf(unit.taxonomy) : 'person';
   const unitAttributes = (unit?.attributes ?? null) as Record<string, unknown> | null;
   const validCounts = bookable && !dateError && isValidCounts(mode, counts, maxOccupancyFromAttributes(unitAttributes));
   // Chỉ để hiển thị: giá chính thức do Backend tính khi thêm vào giỏ và ở bước thanh toán.
-  const estimate = bookable
+  const estimate = bookable && !hotelMode
     ? estimateFares({
       taxonomy: unit.taxonomy, unitPrice: unit.unitPrice as number, attributes: unitAttributes,
-      quantity: counts.quantity, nights: isHotel ? nights : null, adults: counts.guests.adults, children: counts.guests.children,
+      quantity: counts.quantity, nights: null, adults: counts.guests.adults, children: counts.guests.children,
     })
     : null;
-
-  // Sản phẩm tương tự: lỗi hoặc rỗng thì ẩn section.
-  const [similar, setSimilar] = useState<Product[]>([]);
-  useEffect(() => {
-    setSimilar([]);
-    if (!product) return;
-    const controller = new AbortController();
-    getSimilarProducts(product.id, 8, controller.signal)
-      .then((res) => setSimilar(res.results.map(productFromApi)))
-      .catch(() => setSimilar([]));
-    return () => controller.abort();
-  }, [product]);
 
   // Hoàn thiện chuyến: chỉ khi đăng nhập và gợi ý cùng điểm đến với sản phẩm.
   const [trip, setTrip] = useState<RecommendationResponse | null>(null);
@@ -350,13 +319,40 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
   const handleAddToCart = () => {
     if (!bookable || !validCounts) return;
     const { quantity, guests } = cartPayload(mode, counts);
-    void addToCart(unit, quantity, checkIn, isHotel ? checkOut : undefined, guests ? { guests } : undefined);
+    void addToCart(unit, quantity, checkIn, undefined, guests ? { guests } : undefined);
   };
   // Đặt ngay: đơn nháp chỉ có sản phẩm này rồi mở trang thanh toán; không kèm mục nào trong giỏ (FR-BKG-01).
   const handleBookNow = async () => {
     if (!bookable || !validCounts) return;
     const { quantity, guests } = cartPayload(mode, counts);
-    await startBooking([{ product: unit, quantity, usingDate: checkIn, checkOutDate: isHotel ? checkOut : undefined, guests }]);
+    await startBooking([{ product: unit, quantity, usingDate: checkIn, guests }]);
+  };
+  // Khách sạn: Đặt ngay trên thẻ hạng phòng, với ngày và đoàn khách đang nhập ở thanh phía trên.
+  const roomState = (room: Product): { canBook: boolean; note: string | null } => {
+    const issue = capacityIssue('hotel', counts, maxOccupancyFromAttributes(room.attributes as Record<string, unknown> | null));
+    return {
+      canBook: isBookable(room) && !dateError && isValidCounts('hotel', counts, maxOccupancyFromAttributes(room.attributes as Record<string, unknown> | null)),
+      note: issue ? `Phòng chứa tối đa ${issue.capacity} khách cho ${counts.quantity} phòng; ${totalGuests(counts)} khách cần ít nhất ${issue.suggestedRooms} phòng.` : null,
+    };
+  };
+  // Nút tìm của thanh ngày/khách: giữ ngày và đoàn khách trên URL (thanh phân cấp và nút Back quay về đúng kết quả) rồi cuộn tới các hạng phòng.
+  const handleTripSearch = () => {
+    if (dateError) return;
+    const query = serializeTripContext({ checkIn, checkOut, adults: counts.guests.adults, children: counts.guests.children, rooms: counts.quantity });
+    window.history.replaceState(window.history.state, '', `${window.location.pathname}${query ? `?${query}` : ''}`);
+    setTripQuery(query);
+    document.getElementById('variants')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  const [bookingRoomId, setBookingRoomId] = useState<string | null>(null);
+  const handleBookRoom = async (room: Product) => {
+    if (!roomState(room).canBook || bookingRoomId) return;
+    const { quantity, guests } = cartPayload('hotel', counts);
+    setBookingRoomId(room.id);
+    try {
+      await startBooking([{ product: room, quantity, usingDate: checkIn, checkOutDate: checkOut, guests }]);
+    } finally {
+      setBookingRoomId(null);
+    }
   };
   // Khách sạn và vé máy bay không vào giỏ: chỉ có nút Đặt ngay (AC-BKG-15). `unit` còn null khi sản phẩm đang tải hoặc khi
   // chưa chọn hạng phòng/chuyến bay: lúc đó xét theo loại của sản phẩm cha.
@@ -380,7 +376,7 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
         <h2 className="text-xl font-bold text-slate-800">{error?.message || 'Có lỗi xảy ra.'}</h2>
         {error?.retryable !== false && (
           <button onClick={() => setRetry((n) => n + 1)}
-            className="px-5 py-2 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 transition-colors">
+            className="px-5 py-2 bg-brand-600 text-white text-xs font-bold rounded-lg hover:bg-brand-700 transition-colors">
             Thử lại
           </button>
         )}
@@ -390,27 +386,31 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
 
   const variantNoun = product.taxonomy === 'flight' ? 'chuyến bay' : 'hạng phòng';
   const bookableVariants = (variants ?? []).filter(isBookable);
+  // Hạng phòng rẻ nhất trong các hạng bán được; chỉ gắn nhãn "Giá tốt nhất" khi có từ hai hạng để so.
+  const cheapestRoomId = product.taxonomy !== 'flight' && bookableVariants.length > 1
+    ? bookableVariants.reduce((best, v) => ((v.unitPrice as number) < (best.unitPrice as number) ? v : best)).id : null;
   const unavailableReason = !unit
     ? (needsVariant ? (variants && bookableVariants.length === 0
       ? `Hiện chưa có ${variantNoun} nào đặt được trên V-OTA.` : `Chọn một ${variantNoun} để đặt.`) : null)
     : !unit.available ? 'Sản phẩm này hiện đã hết chỗ.'
       : unit.unitPrice == null || unit.attributes?.ticketed === false ? 'Sản phẩm này chỉ để tham khảo, không bán vé trên V-OTA.'
         : null;
+  const roomAmenityOptions = amenityOptions(hotelRooms ?? []);
+  const shownRooms = (hotelRooms ?? []).filter((room) => matchesAmenities(room, amenityFilter));
   const tripRecs = trip && trip.destination === product.destination
     ? trip.recommendations.filter((r) => r.product.id !== product.id) : [];
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-10">
+      {/* Khách sạn: thanh tìm kiếm ngày và khách trên cùng trang, phía trên thanh phân cấp, cùng kiểu với tấm tìm kiếm ở trang danh mục */}
+      {hotelMode && hotelRooms && hotelRooms.length > 0 && (
+        <HotelTripBar hotelName={product.name} checkIn={checkIn} checkOut={checkOut} counts={counts} dateError={dateError}
+          onDates={(from, to) => { setCheckIn(from); setCheckOut(to); }} onCounts={setCounts} onSearch={handleTripSearch} />
+      )}
+
       {/* Breadcrumbs & Header */}
       <div className="space-y-3">
-        <div className="flex items-center gap-2 text-xs text-slate-500">
-          <span className="hover:text-blue-600 cursor-pointer" onClick={() => navigate('/')}>Trang chủ</span>
-          <span>›</span>
-          <span className="hover:text-blue-600 cursor-pointer"
-            onClick={() => navigate(`/search?q=${encodeURIComponent(product.destination)}&destination=${encodeURIComponent(product.destination)}`)}>
-            {product.destination}
-          </span>
-        </div>
+        <ProductBreadcrumb product={product} tripQuery={tripQuery} />
 
         <div className="flex items-center gap-2 flex-wrap mb-1.5">
           <span className="flex items-center gap-1 text-xs text-slate-500">
@@ -420,37 +420,103 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
         </div>
         <h1 className="text-xl sm:text-3xl font-black text-slate-900">{product.name}</h1>
         {product.aggregateRating && (
-          <p className="text-xs text-slate-500">
-            ⭐ <strong className="text-slate-800 font-semibold">{product.aggregateRating.score}/5</strong>
-            {product.aggregateRating.count > 0 && ` (${product.aggregateRating.count.toLocaleString('vi-VN')} đánh giá tổng hợp)`}
+          <p className="inline-flex items-center gap-2 text-sm text-slate-600">
+            <span className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2.5 py-1 font-bold text-brand-900 ring-1 ring-brand-200">
+              <Star className="h-3.5 w-3.5 fill-brand-400 text-brand-500" aria-hidden="true" />{product.aggregateRating.score}/5
+            </span>
+            {product.aggregateRating.count > 0 && <span>{product.aggregateRating.count.toLocaleString('vi-VN')} đánh giá tổng hợp</span>}
           </p>
         )}
       </div>
 
-      {/* Ảnh: MVP chỉ có một imageUrl (backend §2.3) */}
-      <div className="relative rounded-2xl overflow-hidden aspect-16/7 bg-slate-100 shadow-md border border-slate-200">
-        <img src={product.imageUrl} alt={product.name} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
-        {!product.available && (
-          <div className="absolute inset-0 bg-slate-900/70 flex items-center justify-center text-sm sm:text-base font-bold text-white uppercase tracking-wider">
-            Sản phẩm hiện đã tạm hết chỗ
-          </div>
-        )}
-      </div>
+      {/* Ảnh: `attributes.images` của nguồn (một ảnh lớn + bốn ảnh nhỏ, bấm để xem lớn); thiếu thì ảnh thay thế theo loại */}
+      <ProductGallery images={imagesOf(product)} name={product.name} taxonomy={product.taxonomy} unavailable={!product.available} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-        {/* Cột trái: mô tả + chọn hạng phòng/chuyến bay */}
-        <div className="lg:col-span-2 space-y-8">
+      <div className={`grid grid-cols-1 gap-8 items-start ${hotelMode ? '' : 'lg:grid-cols-3'}`}>
+        {/* Cột trái: mô tả + chọn hạng phòng/chuyến bay. Khách sạn không có cột phải nên chiếm cả bề ngang. */}
+        <div className={`space-y-8 ${hotelMode ? '' : 'lg:col-span-2'}`}>
           <div className="space-y-3">
-            <h3 className="text-base font-bold text-slate-900">Mô tả chi tiết</h3>
-            <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-line">
+            <h3 className="text-lg font-bold text-slate-900">Mô tả chi tiết</h3>
+            <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-line max-w-4xl">
               {product.description || 'Chưa có mô tả cho dịch vụ này.'}
             </p>
           </div>
 
-          {needsVariant && (
+          {amenityList(product.attributes?.amenities).length > 0 && (
+            <div className="space-y-3">
+              <h3 className="text-lg font-bold text-slate-900">{product.taxonomy === 'hotel' ? 'Tiện ích khách sạn' : 'Tiện ích'}</h3>
+              <AmenityList items={amenityList(product.attributes?.amenities)} label="Tiện ích" />
+            </div>
+          )}
+
+          {hotelMode && (
             <div className="space-y-3 pt-4 border-t border-slate-200" id="variants">
-              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                {product.taxonomy === 'flight' ? <Plane className="w-4 h-4 text-blue-600" /> : <BedDouble className="w-4 h-4 text-blue-600" />}
+              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <BedDouble className="w-4 h-4 text-brand-600" />
+                {needsVariant ? 'Chọn hạng phòng' : 'Đặt phòng'}
+                {needsVariant && variantSummary && variantSummary.count > 0 && (
+                  <span className="text-xs font-medium text-slate-500">({variantSummary.count} lựa chọn)</span>
+                )}
+              </h3>
+              {variantsFailed ? (
+                <p className="text-xs text-slate-500">Chưa tải được danh sách hạng phòng.</p>
+              ) : hotelRooms === null || (needsVariant && variants === null) ? (
+                <div className="flex items-center gap-2 text-xs text-slate-500">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Đang tải hạng phòng…
+                </div>
+              ) : hotelRooms.length === 0 ? (
+                <p className="text-xs text-slate-600 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+                  {needsVariant ? 'Khách sạn này chưa có hạng phòng nào trên V-OTA — chỉ để tham khảo.' : unavailableReason}
+                </p>
+              ) : (
+                <>
+                  {bookableVariants.length === 0 && (
+                    <p className="text-xs text-slate-600 bg-amber-50 border border-amber-200 rounded-lg p-2.5">Hiện chưa có hạng phòng nào đặt được trên V-OTA.</p>
+                  )}
+                  {hotelRooms.length > 1 && (
+                    <RoomAmenityFilter options={roomAmenityOptions} selected={amenityFilter} onChange={setAmenityFilter}
+                      total={hotelRooms.length} shown={shownRooms.length} />
+                  )}
+                  {shownRooms.length === 0 && (
+                    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center space-y-2" data-testid="no-room-match">
+                      <p className="text-sm font-semibold text-slate-800">Không có hạng phòng nào có đủ các tiện ích đã chọn.</p>
+                      <button type="button" onClick={() => setAmenityFilter([])}
+                        className="min-h-11 cursor-pointer text-sm font-bold text-brand-700 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600">
+                        Xoá bộ lọc để xem tất cả
+                      </button>
+                    </div>
+                  )}
+                  <div className="space-y-3" role="list" aria-label="Hạng phòng">
+                    {shownRooms.map((room) => {
+                      const state = roomState(room);
+                      return (
+                        <div key={room.id} role="listitem">
+                          <RoomCard room={room} title={variantTitle(room)} bookable={isBookable(room)} canBook={state.canBook} bookNote={state.note} busy={bookingRoomId === room.id}
+                            cheapest={cheapestRoomId === room.id}
+                            onBook={() => void handleBookRoom(room)}
+                            onPhotos={(images) => setRoomPhotos({ images, index: 0, title: variantTitle(room) })}
+                            amenitiesOpen={amenityRoomId === room.id}
+                            onToggleAmenities={() => setAmenityRoomId(amenityRoomId === room.id ? null : room.id)} />
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[11px] text-slate-500" data-testid="direct-booking-note">
+                    Khách sạn được đặt trực tiếp, không thêm vào giỏ hàng.
+                  </p>
+                  <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Giá chính thức được xác nhận ở bước thanh toán</span>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {needsVariant && !hotelMode && (
+            <div className="space-y-3 pt-4 border-t border-slate-200" id="variants">
+              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                {product.taxonomy === 'flight' ? <Plane className="w-4 h-4 text-brand-600" /> : <BedDouble className="w-4 h-4 text-brand-600" />}
                 Chọn {variantNoun}
                 {variantSummary && variantSummary.count > 0 && (
                   <span className="text-xs font-medium text-slate-500">({variantSummary.count} lựa chọn)</span>
@@ -475,16 +541,12 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
                       <button key={variant.id} type="button" role="radio" aria-checked={selected} disabled={!selectable}
                         onClick={() => setSelectedId(variant.id)}
                         className={`w-full flex items-center justify-between gap-4 p-3.5 rounded-xl border text-left transition-colors ${
-                          selected ? 'border-blue-600 bg-blue-50/60 ring-1 ring-blue-600'
-                            : selectable ? 'border-slate-200 hover:border-blue-300 bg-white' : 'border-slate-100 bg-slate-50 opacity-60 cursor-not-allowed'}`}>
+                          selected ? 'border-brand-600 bg-brand-50/60 ring-1 ring-brand-600'
+                            : selectable ? 'border-slate-200 hover:border-brand-300 bg-white' : 'border-slate-100 bg-slate-50 opacity-60 cursor-not-allowed'}`}>
                         <div className="min-w-0">
                           <div className="text-sm font-bold text-slate-900 line-clamp-1">{variantTitle(variant)}</div>
                           <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-0.5 text-[11px] text-slate-500">
-                            {variantFacts(variant).map((fact) => (
-                              <span key={fact} className="inline-flex items-center gap-1">
-                                {fact.startsWith('Tối đa') && <Users className="w-3 h-3" />}{fact}
-                              </span>
-                            ))}
+                            {variantFacts(variant).map((fact) => <span key={fact}>{fact}</span>)}
                             {!variant.available && <span className="font-semibold text-rose-600">Hết chỗ</span>}
                           </div>
                         </div>
@@ -500,101 +562,87 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
 
         </div>
 
-        {/* Cột phải: hộp đặt */}
-        <div className="sticky top-20 bg-white p-6 rounded-2xl border border-slate-200 shadow-xl space-y-5">
-          <div>
-            <div className="text-xs text-slate-500 mb-1">
-              {unit && needsVariant ? variantTitle(unit) : 'Giá công khai từ V-OTA'}
-            </div>
-            {unit ? (
-              <>
-                <PriceTag price={unit.unitPrice} taxonomy={unit.taxonomy} size="lg" showTaxesIncluded={unit.unitPrice != null} />
-                <FlightSummary product={unit} />
-              </>
-            ) : (
-              <PriceTag price={variantSummary?.minPrice ?? null} taxonomy={product.taxonomy} size="lg" hasPrefixFrom />
-            )}
-          </div>
-
-          {bookable && (
-            <div className="space-y-3 pt-3 border-t border-slate-100">
-              {fixedDate ? (
-                <div>
-                  <div className="block text-[11px] font-bold text-slate-600 mb-1">
-                    {unit.taxonomy === 'flight' ? 'Ngày bay' : 'Ngày sử dụng'}
-                  </div>
-                  <div className="text-sm font-semibold text-slate-800">
-                    {new Date(`${unit.availableFrom}T12:00:00+07:00`).toLocaleDateString('vi-VN')}
-                  </div>
-                </div>
-              ) : isHotel ? (
-                <div className="grid grid-cols-2 gap-2">
-                  <DateInput label="Nhận phòng" value={checkIn} min={hotelCheckInWindow().from} max={hotelCheckInWindow().to}
-                    onChange={(v) => { setCheckIn(v); if (v && (!checkOut || checkOut <= v)) setCheckOut(addDays(v, 1)); }} />
-                  <DateInput label="Trả phòng" value={checkOut} min={checkIn ? addDays(checkIn, 1) : undefined}
-                    max={checkIn ? addDays(checkIn, HOTEL_MAX_NIGHTS) : undefined} onChange={setCheckOut} />
-                </div>
-              ) : (
-                <DateInput label="Ngày sử dụng" value={checkIn} min={unit.availableFrom} max={unit.availableTo} onChange={setCheckIn} />
-              )}
-              <GuestCounters taxonomy={unit.taxonomy} unitPrice={unit.unitPrice as number} attributes={unitAttributes}
-                value={counts} onChange={setCounts} />
-            </div>
-          )}
-
-          {estimate && (
-            <div className="space-y-2" data-testid="estimate">
-              <FareLines fares={estimate.lines} testId="estimate-lines" />
-              <div className="flex justify-between items-baseline px-3 py-2 bg-slate-50 rounded-xl">
-                <span className="text-xs font-bold text-slate-800">Tổng ước tính:</span>
-                <span className="text-base font-extrabold text-blue-900 font-mono" data-testid="estimate-total">{formatVnd(estimate.total)}</span>
+        {/* Cột phải: hộp đặt (không dùng cho khách sạn: nút Đặt ngay nằm trên từng hạng phòng) */}
+        {!hotelMode && (
+          <div className="sticky top-20 bg-white p-6 rounded-2xl border border-slate-200 shadow-xl space-y-5">
+            <div>
+              <div className="text-xs text-slate-500 mb-1">
+                {unit && needsVariant ? variantTitle(unit) : 'Giá công khai từ V-OTA'}
               </div>
+              {unit ? (
+                <>
+                  <PriceTag price={unit.unitPrice} taxonomy={unit.taxonomy} size="lg" showTaxesIncluded={unit.unitPrice != null} />
+                  <FlightSummary product={unit} />
+                </>
+              ) : (
+                <PriceTag price={variantSummary?.minPrice ?? null} taxonomy={product.taxonomy} size="lg" hasPrefixFrom />
+              )}
             </div>
-          )}
 
-          {dateError && (
-            <p role="alert" data-testid="date-error" className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-2.5">{dateError}</p>
-          )}
+            {bookable && (
+              <div className="space-y-3 pt-3 border-t border-slate-100">
+                {fixedDate ? (
+                  <div>
+                    <div className="block text-[11px] font-bold text-slate-600 mb-1">
+                      {unit.taxonomy === 'flight' ? 'Ngày bay' : 'Ngày sử dụng'}
+                    </div>
+                    <div className="text-sm font-semibold text-slate-800">
+                      {new Date(`${unit.availableFrom}T12:00:00+07:00`).toLocaleDateString('vi-VN')}
+                    </div>
+                  </div>
+                ) : (
+                  <DateInput label="Ngày sử dụng" value={checkIn} min={unit.availableFrom} max={unit.availableTo} onChange={setCheckIn} />
+                )}
+                <GuestCounters taxonomy={unit.taxonomy} unitPrice={unit.unitPrice as number} attributes={unitAttributes}
+                  value={counts} onChange={setCounts} />
+              </div>
+            )}
 
-          {unavailableReason && (
-            <p className="text-xs text-slate-600 bg-amber-50 border border-amber-200 rounded-lg p-2.5">{unavailableReason}</p>
-          )}
+            {estimate && (
+              <div className="space-y-2" data-testid="estimate">
+                <FareLines fares={estimate.lines} testId="estimate-lines" />
+                <div className="flex justify-between items-baseline px-3 py-2 bg-slate-50 rounded-xl">
+                  <span className="text-xs font-bold text-slate-800">Tổng ước tính:</span>
+                  <span className="text-base font-extrabold text-brand-900 font-mono" data-testid="estimate-total">{formatVnd(estimate.total)}</span>
+                </div>
+              </div>
+            )}
 
-          <div className="space-y-2">
-            {cartEligible && (
-              <button onClick={handleAddToCart} disabled={!bookable || !validCounts}
-                className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-bold text-sm rounded-xl shadow-xs transition-colors">
-                Thêm vào giỏ hàng
+            {dateError && (
+              <p role="alert" data-testid="date-error" className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-2.5">{dateError}</p>
+            )}
+
+            {unavailableReason && (
+              <p className="text-xs text-slate-600 bg-amber-50 border border-amber-200 rounded-lg p-2.5">{unavailableReason}</p>
+            )}
+
+            <div className="space-y-2">
+              {cartEligible && (
+                <button onClick={handleAddToCart} disabled={!bookable || !validCounts}
+                  className="w-full py-3 bg-brand-600 hover:bg-brand-700 disabled:bg-slate-300 text-white font-bold text-sm rounded-xl shadow-xs transition-colors">
+                  Thêm vào giỏ hàng
+                </button>
+              )}
+              <button onClick={() => void handleBookNow()} disabled={!bookable || !validCounts}
+                className={cartEligible
+                  ? 'w-full py-2.5 bg-brand-50 hover:bg-brand-100 disabled:bg-slate-100 disabled:text-slate-400 text-brand-700 font-bold text-xs rounded-xl border border-brand-200 transition-colors'
+                  : 'w-full py-3 bg-brand-600 hover:bg-brand-700 disabled:bg-slate-300 text-white font-bold text-sm rounded-xl shadow-xs transition-colors'}>
+                Đặt ngay
               </button>
-            )}
-            <button onClick={() => void handleBookNow()} disabled={!bookable || !validCounts}
-              className={cartEligible
-                ? 'w-full py-2.5 bg-blue-50 hover:bg-blue-100 disabled:bg-slate-100 disabled:text-slate-400 text-blue-700 font-bold text-xs rounded-xl border border-blue-200 transition-colors'
-                : 'w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-bold text-sm rounded-xl shadow-xs transition-colors'}>
-              Đặt ngay
-            </button>
-            {!cartEligible && (
-              <p className="text-[11px] text-slate-500 text-center" data-testid="direct-booking-note">
-                {isHotel ? 'Khách sạn' : 'Vé máy bay'} được đặt trực tiếp, không thêm vào giỏ hàng.
-              </p>
-            )}
-          </div>
+              {!cartEligible && (
+                <p className="text-[11px] text-slate-500 text-center" data-testid="direct-booking-note">
+                  Vé máy bay được đặt trực tiếp, không thêm vào giỏ hàng.
+                </p>
+              )}
+            </div>
 
-          <div className="flex items-center gap-1.5 text-[11px] text-slate-500 justify-center">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Giá chính thức được xác nhận ở bước thanh toán</span>
+            <div className="flex items-center gap-1.5 text-[11px] text-slate-500 justify-center">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Giá chính thức được xác nhận ở bước thanh toán</span>
+            </div>
           </div>
-        </div>
+        )}
       </div>
-
-      {similar.length > 0 && (
-        <div className="pt-8 border-t border-slate-200 space-y-4">
-          <h2 className="text-lg font-black text-slate-900">Tương tự {product.name}</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {similar.slice(0, 8).map((sim) => <ProductCard key={sim.id} product={sim} variant="grid" />)}
-          </div>
-        </div>
-      )}
 
       {tripRecs.length > 0 && (
         <div className="pt-8 border-t border-slate-200 space-y-4">
@@ -606,6 +654,11 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
             ))}
           </div>
         </div>
+      )}
+
+      {roomPhotos && (
+        <ImageLightbox images={roomPhotos.images} index={roomPhotos.index} title={roomPhotos.title} taxonomy="hotel"
+          onClose={() => setRoomPhotos(null)} onIndex={(index) => setRoomPhotos((cur) => (cur ? { ...cur, index } : cur))} />
       )}
     </div>
   );

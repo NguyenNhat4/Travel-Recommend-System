@@ -97,11 +97,46 @@ describe('FlightResultsView', () => {
     expect(within(cards().find((c) => cardOf(c) === 'VJ100')!).getByText('Giá rẻ nhất')).toBeTruthy();
   });
 
-  it('opens on the nearest day with flights and says so when the wanted day has none', async () => {
+  it('says there is no flight on the searched day instead of listing another day, and offers the nearest days to pick', async () => {
     renderView({ ...SEARCH, trip: { ...SEARCH.trip, checkIn: '2999-10-06' } });
-    await ready();
+    const empty = await screen.findByTestId('no-flights-on-date');
+    expect(empty.textContent).toContain('Không có chuyến bay Hà Nội → TP. Hồ Chí Minh ngày');
+    expect(empty.textContent).toContain('06/10/2999');
+    expect(screen.queryAllByRole('article')).toHaveLength(0);                              // không chuyến của ngày khác nào được hiện
+    // Dải ngày vẫn có, nhưng không ngày nào được chọn sẵn.
+    expect(screen.getByRole('button', { name: /05\/10.*2 chuyến/ }).getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByRole('button', { name: /08\/10.*1 chuyến/ }).getAttribute('aria-pressed')).toBe('false');
+    const offers = within(empty).getAllByRole('button').map((button) => button.textContent);
+    expect(offers).toHaveLength(2);
+    expect(offers[0]).toMatch(/05\/10 · từ 700k/);
+    expect(offers[1]).toMatch(/08\/10 · từ 650k/);
+
+    fireEvent.click(within(empty).getByRole('button', { name: /08\/10/ }));
     expect(cardNumbers()).toEqual(['VJ300']);
-    expect(screen.getByText(/Không có chuyến ngày 06\/10/)).toBeTruthy();
+    expect(screen.queryByTestId('no-flights-on-date')).toBeNull();
+    expect(screen.getByRole('button', { name: /08\/10.*1 chuyến/ }).getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('return leg: a searched return day without flights gets the same notice; no return day opens the first connecting day', async () => {
+    renderView({ ...SEARCH, trip: { ...SEARCH.trip, checkOut: '2999-10-10' } });
+    await ready();
+    fireEvent.click(screen.getByRole('button', { name: 'Chọn chuyến VJ100' }));
+    const empty = await screen.findByTestId('no-flights-on-date');
+    expect(empty.textContent).toContain('Không có chuyến bay TP. Hồ Chí Minh → Hà Nội ngày');
+    expect(empty.textContent).toContain('10/10/2999');
+    expect(empty.textContent).toContain('cất cánh sau chuyến chiều đi đã chọn');
+    expect(screen.queryAllByRole('article')).toHaveLength(0);
+    // VJ901 (04/10) cất cánh trước chiều đi nên không được gợi ý; chỉ còn 12/10.
+    expect(within(empty).getAllByRole('button').map((button) => button.textContent)).toEqual([expect.stringMatching(/12\/10 · từ 632k/)]);
+    cleanup();
+
+    renderView({ ...SEARCH, trip: { ...SEARCH.trip, checkOut: undefined } });
+    await ready();
+    fireEvent.click(screen.getByRole('button', { name: 'Khứ hồi' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Chọn chuyến VJ100' }));
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Chọn vé chiều về' })).toBeTruthy());
+    await waitFor(() => expect(cardNumbers()).toEqual(['VJ900']));
+    expect(screen.queryByTestId('no-flights-on-date')).toBeNull();
   });
 
   it('filters by time of day and by airline, and resets', async () => {

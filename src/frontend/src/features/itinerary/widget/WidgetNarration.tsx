@@ -120,14 +120,14 @@ export function WidgetNarration({ text, products, onOpen, quickAddIds, onQuickAd
           <div key={index} className="my-4 whitespace-normal">
             <ProductCard
               variant="compact"
-              className="group gap-3 shadow-xs transition-colors hover:border-blue-300 focus-within:border-blue-400
+              className="group gap-3 shadow-xs transition-colors hover:border-ai-300 focus-within:border-ai-400
                 [&]:rounded-xl [&>div:first-child]:flex-1 [&>div:first-child>div:last-child]:flex-1
                 [&_h4]:line-clamp-none [&_h4]:text-sm [&_h4]:leading-snug [&_h4_button]:line-clamp-2
                 [&_h4~div]:flex-col [&_h4~div]:items-start [&_h4~div]:gap-1
                 [&_h4~div>span]:max-w-full [&_h4~div>span]:text-slate-500
                 [&_p>span:last-child]:text-slate-500
                 [&_button]:min-h-11 [&_button]:focus-visible:outline-2
-                [&_button]:focus-visible:outline-offset-2 [&_button]:focus-visible:outline-blue-600"
+                [&_button]:focus-visible:outline-offset-2 [&_button]:focus-visible:outline-ai-600"
               product={product}
               onSelect={() => onOpen(product.id)}
               showRatingAndAddress

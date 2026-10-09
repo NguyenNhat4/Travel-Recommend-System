@@ -84,7 +84,7 @@ const ItemReview: React.FC<{ ctl: CheckoutController; item: ApiCartItem }> = ({ 
         <div className="text-xs text-slate-500 tabular-nums">{formatDmy(item.usingDate)}{isHotel(item) ? ` · ${item.nights ?? 1} đêm` : ''} · {summary}</div>
         {rooms && <div className="text-xs text-slate-600">{rooms}</div>}
         <details className="text-xs">
-          <summary className="cursor-pointer select-none text-blue-600 font-semibold inline-flex items-center gap-1">
+          <summary className="cursor-pointer select-none text-brand-600 font-semibold inline-flex items-center gap-1">
             <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />Chi tiết giá
           </summary>
           <div className="mt-1.5 space-y-1 tabular-nums text-slate-600">
@@ -117,14 +117,14 @@ export const ReviewStep: React.FC<{ ctl: CheckoutController }> = ({ ctl }) => {
       <section className={cardClass} aria-label="Hành khách">
         <SectionTitle
           title={`Hành khách (${ctl.drafts.length})`}
-          extra={<button type="button" onClick={() => ctl.goto('travelers')} aria-label="Sửa hành khách" className="text-xs font-semibold text-blue-600 hover:underline inline-flex items-center gap-1"><PenLine className="w-3 h-3" aria-hidden="true" />Sửa</button>}
+          extra={<button type="button" onClick={() => ctl.goto('travelers')} aria-label="Sửa hành khách" className="text-xs font-semibold text-brand-600 hover:underline inline-flex items-center gap-1"><PenLine className="w-3 h-3" aria-hidden="true" />Sửa</button>}
         />
         <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {ctl.drafts.map((d) => {
             const birth = d.type === 'CHILD' ? ctl.parseDob(d.birthText) : null;
             return (
               <li key={d.ref} className="flex items-center gap-2.5 rounded-lg bg-slate-50 border border-slate-100 px-3 py-2">
-                <span className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${d.type === 'ADULT' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-800'}`}>
+                <span className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${d.type === 'ADULT' ? 'bg-brand-100 text-brand-700' : 'bg-amber-100 text-amber-800'}`}>
                   {d.type === 'ADULT' ? <User className="w-3.5 h-3.5" aria-hidden="true" /> : <Baby className="w-3.5 h-3.5" aria-hidden="true" />}
                 </span>
                 <span className="text-sm font-semibold text-slate-900 truncate">{displayName(d, ctl.drafts)}</span>
@@ -143,14 +143,14 @@ export const ReviewStep: React.FC<{ ctl: CheckoutController }> = ({ ctl }) => {
       <section className={cardClass} aria-label="Dịch vụ">
         <SectionTitle
           title={`Dịch vụ (${ctl.items.length})`}
-          extra={<button type="button" onClick={() => ctl.goto('services')} aria-label="Sửa dịch vụ" className="text-xs font-semibold text-blue-600 hover:underline inline-flex items-center gap-1"><PenLine className="w-3 h-3" aria-hidden="true" />Sửa</button>}
+          extra={<button type="button" onClick={() => ctl.goto('services')} aria-label="Sửa dịch vụ" className="text-xs font-semibold text-brand-600 hover:underline inline-flex items-center gap-1"><PenLine className="w-3 h-3" aria-hidden="true" />Sửa</button>}
         />
         <div className="divide-y divide-slate-100 -mt-1">
           {ctl.items.map((item) => <ItemReview key={item.cartItemId} ctl={ctl} item={item} />)}
         </div>
         <div className="pt-3 border-t border-slate-200 flex justify-between items-baseline gap-3">
           <span className="text-sm font-bold text-slate-900">Tổng thanh toán</span>
-          {ctl.anyPending ? <Skeleton width={110} /> : <span className="text-xl font-extrabold text-blue-900 tabular-nums" data-testid="review-total">{formatVnd(cart.total)}</span>}
+          {ctl.anyPending ? <Skeleton width={110} /> : <span className="text-xl font-extrabold text-brand-900 tabular-nums" data-testid="review-total">{formatVnd(cart.total)}</span>}
         </div>
       </section>
 
@@ -158,9 +158,9 @@ export const ReviewStep: React.FC<{ ctl: CheckoutController }> = ({ ctl }) => {
         <SectionTitle title="Phương thức thanh toán" />
         <div className="space-y-2" role="radiogroup" aria-label="Phương thức thanh toán">
           {PAYMENT_METHODS.map((option) => (
-            <label key={option.id} className={`flex items-center justify-between gap-3 p-3 rounded-xl border text-sm ${option.enabled ? 'border-blue-300 bg-blue-50/40 cursor-pointer' : 'border-slate-200 text-slate-400 cursor-not-allowed'}`}>
+            <label key={option.id} className={`flex items-center justify-between gap-3 p-3 rounded-xl border text-sm ${option.enabled ? 'border-brand-300 bg-brand-50/40 cursor-pointer' : 'border-slate-200 text-slate-400 cursor-not-allowed'}`}>
               <span className="flex items-center gap-2.5">
-                <input type="radio" name="payment-method" value={option.id} disabled={!option.enabled} checked={ctl.method === option.id} onChange={() => ctl.setMethod('stripe')} className="accent-blue-600" />
+                <input type="radio" name="payment-method" value={option.id} disabled={!option.enabled} checked={ctl.method === option.id} onChange={() => ctl.setMethod('stripe')} className="accent-brand-600" />
                 <CreditCard className="w-4 h-4" aria-hidden="true" />
                 {option.label}
               </span>
@@ -176,7 +176,7 @@ export const ReviewStep: React.FC<{ ctl: CheckoutController }> = ({ ctl }) => {
 
       <section className={cardClass} aria-label="Xác nhận">
         <label htmlFor="terms" className="flex items-start gap-3 text-sm text-slate-700 cursor-pointer p-3 bg-slate-50 rounded-xl border border-slate-200">
-          <input id="terms" type="checkbox" checked={ctl.termsAgreed} onChange={(e) => ctl.setTermsAgreed(e.target.checked)} className="mt-0.5 w-4 h-4 accent-blue-600 shrink-0" />
+          <input id="terms" type="checkbox" checked={ctl.termsAgreed} onChange={(e) => ctl.setTermsAgreed(e.target.checked)} className="mt-0.5 w-4 h-4 accent-brand-600 shrink-0" />
           <span>
             Tôi đã kiểm tra họ tên hành khách và đồng ý <b>Điều khoản dịch vụ</b>, <b>Chính sách huỷ</b>:{' '}
             {deadlinePassed ? (
@@ -216,7 +216,7 @@ export const ReviewStep: React.FC<{ ctl: CheckoutController }> = ({ ctl }) => {
               Mỗi tài khoản chỉ giữ một đơn cùng lúc.
             </p>
             <div className="flex flex-col gap-2">
-              <button type="button" onClick={() => void ctl.continuePending()} className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl">Tiếp tục thanh toán đơn đó</button>
+              <button type="button" onClick={() => void ctl.continuePending()} className="w-full py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold rounded-xl">Tiếp tục thanh toán đơn đó</button>
               <button type="button" onClick={() => void ctl.cancelPendingAndRetry()} className="w-full py-2.5 bg-white border border-rose-300 text-rose-700 hover:bg-rose-50 text-xs font-bold rounded-xl">{ctl.sourceKind === 'cart' ? 'Huỷ đơn đó và đặt lại từ giỏ' : 'Huỷ đơn đó và đặt lại'}</button>
               <button type="button" onClick={() => ctl.setPendingHold(null)} className="w-full py-2 text-xs text-slate-500 hover:underline">Đóng</button>
             </div>

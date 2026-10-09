@@ -3,7 +3,7 @@
 /** Bước ① Hành khách (spec checkout-nhieu-buoc-hanh-khach.md §6.4): đoàn khách, họ tên, ngày sinh trẻ em, người liên hệ. */
 import React from 'react';
 import { ArrowRight, Baby, FileText, Info, Plane, User } from 'lucide-react';
-import { MAX_PARTY, ageOn, formatDmy, normalizeName } from './checkoutRules';
+import { ageOn, formatDmy, normalizeName } from './checkoutRules';
 import { displayName, partyCounts, ticketName, travelerLabel, type TravelerDraft } from './allocation';
 import { CounterRow, ErrorSummaryBox, Field, Notice, PrimaryButton, SectionTitle, cardClass, inputClass } from './CheckoutParts';
 import type { CheckoutController } from './useCheckout';
@@ -22,9 +22,9 @@ const SegRadio: React.FC<{
   <div id={id} role="radiogroup" tabIndex={-1} aria-labelledby={labelId} aria-describedby={`e-${id}`} className="flex flex-wrap gap-2 outline-hidden">
     {options.map(([v, text, disabled]) => (
       <label key={v} htmlFor={`${id}-${v}`}
-        className={`rounded-lg border px-3.5 h-9 inline-flex items-center text-sm font-semibold has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-blue-500 ${
+        className={`rounded-lg border px-3.5 h-9 inline-flex items-center text-sm font-semibold has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-500 ${
           disabled ? 'opacity-40 cursor-not-allowed border-slate-300 bg-white text-slate-700'
-            : `cursor-pointer ${value === v ? 'border-blue-600 bg-blue-50 text-blue-800' : invalid ? 'border-rose-300 bg-white text-slate-700' : 'border-slate-300 bg-white text-slate-700 hover:border-blue-400'}`}`}>
+            : `cursor-pointer ${value === v ? 'border-brand-600 bg-brand-50 text-brand-800' : invalid ? 'border-rose-300 bg-white text-slate-700' : 'border-slate-300 bg-white text-slate-700 hover:border-brand-400'}`}`}>
         <input type="radio" className="sr-only" id={`${id}-${v}`} name={id} value={v} checked={value === v} disabled={disabled} onChange={() => onChange(v)} />
         {text}
       </label>
@@ -45,9 +45,9 @@ const FlightFields: React.FC<{ ctl: CheckoutController; draft: TravelerDraft }> 
   const titleId = id('x-title'), docId = id('x-doc'), dobId = id('dob');
   const escorts = ctl.drafts.filter((d) => d.type === 'ADULT');
   return (
-    <div className="rounded-lg border border-indigo-100 bg-white p-3.5 space-y-3" data-testid="flight-fields">
+    <div className="rounded-lg border border-brand-100 bg-white p-3.5 space-y-3" data-testid="flight-fields">
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <span className="text-xs font-bold text-indigo-800 flex items-center gap-1.5"><Plane className="w-3.5 h-3.5" aria-hidden="true" />Thông tin cho vé máy bay</span>
+        <span className="text-xs font-bold text-brand-800 flex items-center gap-1.5"><Plane className="w-3.5 h-3.5" aria-hidden="true" />Thông tin cho vé máy bay</span>
         <span className="text-[11px] text-slate-500">Hãng bay yêu cầu · dùng cho mọi chặng</span>
       </div>
       <div className="space-y-1.5">
@@ -140,12 +140,12 @@ const TravelerCard: React.FC<{ ctl: CheckoutController; draft: TravelerDraft }> 
     <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 space-y-3" data-testid="traveler-card">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className={`w-7 h-7 rounded-full flex items-center justify-center ${draft.type === 'ADULT' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-800'}`}>
+          <span className={`w-7 h-7 rounded-full flex items-center justify-center ${draft.type === 'ADULT' ? 'bg-brand-100 text-brand-700' : 'bg-amber-100 text-amber-800'}`}>
             {draft.type === 'ADULT' ? <User className="w-4 h-4" aria-hidden="true" /> : <Baby className="w-4 h-4" aria-hidden="true" />}
           </span>
           <span className="text-sm font-bold text-slate-900">{label}</span>
         </div>
-        {isLead && <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-md px-1.5 py-0.5">Là người liên hệ</span>}
+        {isLead && <span className="text-[11px] font-semibold text-brand-700 bg-brand-50 border border-brand-200 rounded-md px-1.5 py-0.5">Là người liên hệ</span>}
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field id={ids.sn} label="Họ *" error={ctl.errors[ids.sn]}>
@@ -204,21 +204,21 @@ export const TravelersStep: React.FC<{ ctl: CheckoutController }> = ({ ctl }) =>
         <SectionTitle title="Ai đi chuyến này?" />
         <div className="divide-y divide-slate-100" id="party-counters">
           <CounterRow
-            label="Người lớn" hint="Từ 12 tuổi" value={counts.adults} canDec={counts.adults > 1} canInc={total < MAX_PARTY}
+            label="Người lớn" hint="Từ 12 tuổi" value={counts.adults} canDec={counts.adults > 1} canInc={total < ctl.partyCap}
             decLabel="Bớt người lớn" incLabel="Thêm người lớn" onDec={() => ctl.removeTraveler('ADULT')} onInc={() => ctl.addTraveler('ADULT')}
           />
           <CounterRow
-            label="Trẻ em" hint="Dưới 12 tuổi" value={counts.children} canDec={counts.children > 0} canInc={total < MAX_PARTY}
+            label="Trẻ em" hint="Dưới 12 tuổi" value={counts.children} canDec={counts.children > 0} canInc={total < ctl.partyCap}
             decLabel="Bớt trẻ em" incLabel="Thêm trẻ em" onDec={() => ctl.removeTraveler('CHILD')} onInc={() => ctl.addTraveler('CHILD')}
           />
         </div>
         {ctl.errors['party-counters'] && <p className="text-xs text-rose-600 font-medium" role="alert">{ctl.errors['party-counters']}</p>}
-        <p className="text-xs text-slate-500">Tối đa 9 khách mỗi đơn.</p>
+        <p className="text-xs text-slate-500">Tối đa {ctl.partyCap} khách mỗi đơn.</p>
       </section>
 
       <section className={cardClass} aria-label="Thông tin hành khách">
         <SectionTitle title="Thông tin hành khách" />
-        <div className="flex items-start gap-2 rounded-xl bg-blue-50 border border-blue-100 px-3.5 py-3 text-xs text-blue-900">
+        <div className="flex items-start gap-2 rounded-xl bg-brand-50 border border-brand-100 px-3.5 py-3 text-xs text-brand-900">
           <Info className="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
           <span>
             Nhập đúng họ tên như trên CCCD, hộ chiếu hoặc giấy khai sinh. Hãng bay, khách sạn có thể từ chối nếu tên sai.
@@ -265,7 +265,7 @@ export const TravelersStep: React.FC<{ ctl: CheckoutController }> = ({ ctl }) =>
           </div>
         </div>
         <label htmlFor="c-sync" className="flex items-center gap-2.5 text-sm text-slate-700 cursor-pointer">
-          <input id="c-sync" type="checkbox" checked={ctl.syncContact} onChange={(e) => ctl.setSyncContact(e.target.checked)} className="w-4 h-4 accent-blue-600" />
+          <input id="c-sync" type="checkbox" checked={ctl.syncContact} onChange={(e) => ctl.setSyncContact(e.target.checked)} className="w-4 h-4 accent-brand-600" />
           Người liên hệ cũng là Người lớn 1
         </label>
       </section>

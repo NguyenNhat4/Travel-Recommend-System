@@ -19,8 +19,8 @@ interface FlightCardProps {
 const kg = (value: number): string => (value === 0 ? 'Không gồm' : `${value} kg`);
 
 const TimeBox: React.FC<{ clock: string; tag: string; code: string }> = ({ clock, tag, code }) => (
-  <div className="flex items-center gap-2.5 rounded-2xl border border-blue-200 px-3.5 py-2.5 @max-[30rem]:flex-col @max-[30rem]:items-start @max-[30rem]:gap-0.5 @max-[30rem]:px-2.5">
-    <span className="text-2xl font-semibold tabular-nums tracking-tight text-blue-600 @max-[30rem]:text-xl">{clock}</span>
+  <div className="flex items-center gap-2.5 rounded-2xl border border-brand-200 px-3.5 py-2.5 @max-[30rem]:flex-col @max-[30rem]:items-start @max-[30rem]:gap-0.5 @max-[30rem]:px-2.5">
+    <span className="text-2xl font-semibold tabular-nums tracking-tight text-brand-600 @max-[30rem]:text-xl">{clock}</span>
     <span className="flex flex-col whitespace-nowrap text-xs leading-snug text-slate-500 @max-[30rem]:flex-row @max-[30rem]:items-baseline @max-[30rem]:gap-1.5">
       <span>{tag}</span>
       <b className="text-base font-semibold text-slate-900 @max-[30rem]:order-first @max-[30rem]:text-[13px]">{code}</b>
@@ -41,7 +41,7 @@ export const FlightCard: React.FC<FlightCardProps> = ({ option, chosen, expanded
   const knownBags = fare.carryOnKg !== null || fare.checkedKg !== null;
 
   return (
-    <article className={`@container rounded-[20px] border-[1.5px] bg-white shadow-[0_8px_40px_rgba(15,28,58,0.05)] ${selected ? 'border-blue-600' : 'border-slate-100'}`}>
+    <article className={`@container rounded-[20px] border-[1.5px] bg-white shadow-[0_8px_40px_rgba(15,28,58,0.05)] ${selected ? 'border-brand-600' : 'border-slate-100'}`}>
       <div className="grid @min-[40rem]:grid-cols-[minmax(0,1fr)_12rem]">
         <div className="flex min-w-0 flex-col gap-3 p-3.5 @min-[30rem]:px-5 @min-[30rem]:py-4">
           <div className="grid grid-cols-[auto_minmax(4rem,1fr)_auto] items-center gap-2 @min-[30rem]:gap-3.5">
@@ -51,7 +51,7 @@ export const FlightCard: React.FC<FlightCardProps> = ({ option, chosen, expanded
               <span className="flex w-full max-w-[7.5rem] items-center text-slate-400" aria-hidden="true">
                 <i className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
                 <span className="h-px flex-1 bg-current opacity-70" />
-                {option.nonstop === true && <Plane className="mx-0.5 h-[15px] w-[15px] shrink-0 rotate-45 text-blue-600" />}
+                {option.nonstop === true && <Plane className="mx-0.5 h-[15px] w-[15px] shrink-0 rotate-45 text-brand-600" />}
                 {option.nonstop === false && <i className="h-2 w-2 shrink-0 rounded-full border-[1.5px] border-current bg-white" />}
                 {option.nonstop !== null && <span className="h-px flex-1 bg-current opacity-70" />}
                 <i className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
@@ -74,7 +74,7 @@ export const FlightCard: React.FC<FlightCardProps> = ({ option, chosen, expanded
                   <button key={f.productId} type="button" role="radio" aria-checked={f.productId === fare.productId} disabled={selected}
                     onClick={() => setFareId(f.productId)}
                     className={`cursor-pointer rounded-full border px-2.5 py-0.5 text-[11px] font-semibold transition-colors disabled:cursor-default ${
-                      f.productId === fare.productId ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-600 enabled:hover:border-blue-300'}`}>
+                      f.productId === fare.productId ? 'border-brand-600 bg-brand-50 text-brand-700' : 'border-slate-200 text-slate-600 enabled:hover:border-brand-300'}`}>
                     {f.name || 'Giá rẻ nhất'}
                   </button>
                 ))}
@@ -105,7 +105,7 @@ export const FlightCard: React.FC<FlightCardProps> = ({ option, chosen, expanded
           <button type="button" aria-pressed={selected} onClick={() => (selected ? onClear() : onPick(option, fare))}
             aria-label={`${selected ? 'Bỏ chọn' : 'Chọn'} chuyến ${option.flightNumber}`}
             className={`inline-flex h-11 min-w-[8.25rem] cursor-pointer items-center justify-center gap-1.5 rounded-full px-[18px] font-display text-base transition ${
-              selected ? 'bg-white text-blue-700 shadow-[inset_0_0_0_1.5px_var(--color-blue-600)]' : 'bg-gradient-to-br from-blue-600 to-blue-800 text-white shadow-[0_6px_14px_rgba(6,82,207,0.24)] hover:brightness-110'}`}>
+              selected ? 'bg-white text-brand-700 shadow-[inset_0_0_0_1.5px_var(--color-brand-600)]' : 'bg-gradient-to-br from-brand-600 to-brand-800 text-white shadow-[0_6px_14px_rgba(6,82,207,0.24)] hover:brightness-110'}`}>
             {selected ? <><Check className="h-4 w-4" aria-hidden="true" />Đã chọn</> : 'Chọn'}
           </button>
         </div>

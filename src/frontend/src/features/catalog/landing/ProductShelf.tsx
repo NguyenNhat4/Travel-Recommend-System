@@ -82,7 +82,7 @@ export function ProductShelf({
       {state.error ? (
         <div role="alert" className="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-600">
           Chưa tải được danh sách ·{' '}
-          <button type="button" onClick={onRetry} className="cursor-pointer font-semibold text-blue-600 hover:underline">Thử lại</button>
+          <button type="button" onClick={onRetry} className="cursor-pointer font-semibold text-brand-600 hover:underline">Thử lại</button>
         </div>
       ) : state.loading && items.length === 0 ? (
         <div className="flex gap-6 overflow-hidden" aria-busy="true">
@@ -92,7 +92,7 @@ export function ProductShelf({
         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-600">
           <p>{empty?.text}</p>
           {empty?.href && (
-            <Link href={empty.href} className="mt-2 inline-block font-semibold text-blue-600 hover:underline">{empty.hrefLabel ?? 'Xem tất cả'}</Link>
+            <Link href={empty.href} className="mt-2 inline-block font-semibold text-brand-600 hover:underline">{empty.hrefLabel ?? 'Xem tất cả'}</Link>
           )}
         </div>
       ) : (

@@ -50,7 +50,7 @@ export const LoginModal: React.FC = () => {
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white">
+            <div className="w-8 h-8 rounded-lg bg-brand-600 flex items-center justify-center text-white">
               <Lock className="w-4 h-4" />
             </div>
             <div>
@@ -83,7 +83,7 @@ export const LoginModal: React.FC = () => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="ten@vidu.com"
-                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-hidden"
+                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-hidden"
               />
             </div>
 
@@ -97,7 +97,7 @@ export const LoginModal: React.FC = () => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-hidden pr-10"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-hidden pr-10"
                 />
                 <button
                   type="button"
@@ -112,7 +112,7 @@ export const LoginModal: React.FC = () => {
             <button
               type="submit"
               disabled={submitting}
-              className="w-full disabled:opacity-60 py-2.5 px-4 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs transition-colors"
+              className="w-full disabled:opacity-60 py-2.5 px-4 text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg shadow-xs transition-colors"
             >
               Đăng nhập
             </button>
@@ -125,7 +125,7 @@ export const LoginModal: React.FC = () => {
                 closeLoginModal();
                 navigate('/register');
               }}
-              className="text-xs text-blue-600 hover:underline font-semibold"
+              className="text-xs text-brand-600 hover:underline font-semibold"
             >
               Chưa có tài khoản? Đăng ký miễn phí
             </button>

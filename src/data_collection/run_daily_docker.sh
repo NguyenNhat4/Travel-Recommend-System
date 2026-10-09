@@ -110,6 +110,11 @@ cmd_fresh_run() {
               -v "$FRESH_DATA_DIR:/data")
   if [ -r "$FRESH_ENV_FILE" ]; then args+=(--env-file "$FRESH_ENV_FILE"); fi
   args+=(-e CATALOG_STATE_DIR=/data/state -e CATALOG_RUN_ROOT=/data/fresh_runs)
+  # Giới hạn RAM của job cào (VM 4 GB chạy chung backend): hết RAM thì kernel giết tiến trình trong container này (thường là
+  # Chromium của một nguồn), không giết backend. FRESH_MEMORY= (rỗng) bỏ giới hạn.
+  if [ -n "${FRESH_MEMORY-2500m}" ]; then
+    args+=(--memory "${FRESH_MEMORY-2500m}" --memory-swap "${FRESH_MEMORY-2500m}")
+  fi
   if [[ "$mode" = status || "$mode" = due ]]; then
     if [ "$mode" = status ]; then status_host; fi
     docker run "${args[@]}" "$FRESH_IMAGE" "$mode"

@@ -1,5 +1,6 @@
 import logging
 import uuid
+from datetime import date
 from time import perf_counter
 from typing import Annotated
 
@@ -25,8 +26,10 @@ class GuestsPayload(BaseModel):
 
 
 class TravelContextPayload(BaseModel):
-    """contract `TravelContext`: route chỉ dùng `guests` (1.16.0 — filter sức chứa); checkIn/checkOut/rooms bỏ qua."""
+    """contract `TravelContext`: `guests` (1.16.0 — filter sức chứa) và `checkIn` / `checkOut` (1.19.0 — filter ngày); `rooms` bỏ qua."""
     guests: GuestsPayload | None = None
+    checkIn: date | None = None
+    checkOut: date | None = None
 
 
 class SearchRequestPayload(BaseModel):
@@ -49,11 +52,15 @@ class SearchRequestPayload(BaseModel):
 def _safe_search(search_products, query: str, taxonomy: str | None, destination: str | None,
                  limit: int, offset: int, *, origin: str | None = None, price_min: int | None = None,
                  price_max: int | None = None, star_min: float | None = None, available_only: bool = True,
-                 guests: dict | None = None):
+                 guests: dict | None = None, dates: dict | None = None):
     started = perf_counter()
     if price_min is not None and price_max is not None and price_min > price_max:
         return JSONResponse(status_code=400, content=error_response(
             "VALIDATION_ERROR", "priceMin phải nhỏ hơn hoặc bằng priceMax.", current_request_id() or uuid.uuid4().hex
+        ))
+    if dates and dates.get("check_out") is not None and dates["check_out"] <= dates["check_in"]:
+        return JSONResponse(status_code=400, content=error_response(
+            "VALIDATION_ERROR", "checkOut phải sau checkIn.", current_request_id() or uuid.uuid4().hex
         ))
     if search_products is None or not query.strip():
         result = {
@@ -77,6 +84,7 @@ def _safe_search(search_products, query: str, taxonomy: str | None, destination:
             query.strip(), taxonomy=taxonomy, destination=destination, origin=origin, price_min=price_min,
             price_max=price_max, star_min=star_min, available_only=available_only, limit=limit, offset=offset,
             **(guests or {}),   # travelContext.guests (1.16.0) — chỉ truyền khi request có, engine cũ không cần biết
+            **(dates or {}),    # travelContext.checkIn / checkOut (1.19.0) — như trên
         )
     result.setdefault("diagnostics", {})["latencyMs"] = max(
         0, round((perf_counter() - started) * 1000)
@@ -94,6 +102,14 @@ def _guests(body: "SearchRequestPayload") -> dict | None:
         return None
     out = {k: v for k, v in (("adults", g.adults), ("children", g.children)) if v is not None}
     return out or None
+
+
+def _dates(body: "SearchRequestPayload") -> dict | None:
+    """`checkIn` bắt buộc để lọc ngày: chỉ có `checkOut` thì bỏ qua (không có ngày bắt đầu để kiểm)."""
+    t = body.travelContext
+    if t is None or t.checkIn is None:
+        return None
+    return {"check_in": t.checkIn, "check_out": t.checkOut}
 
 
 # --- log tìm kiếm (SEARCH_LOG_QUERIES; composition root gắn `app.state.search_log` khi bật) ---------------------------------
@@ -157,7 +173,7 @@ def search_post(body: SearchRequestPayload, search_products=Depends(get_search),
     result = _safe_search(search_products, query, body.taxonomy, body.destination, limit, offset, origin=body.origin,
                           price_min=body.priceMin, price_max=body.priceMax, star_min=body.starRatingMin,
                           available_only=body.availableOnly if body.availableOnly is not None else True,
-                          guests=_guests(body))
+                          guests=_guests(body), dates=_dates(body))
     _log_search(request, search_products, query, offset, result, identity,
                 {"taxonomy": body.taxonomy, "destination": body.destination})
     return result

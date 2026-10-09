@@ -81,6 +81,25 @@ details{margin:10px 0}summary{cursor:pointer}
 .substep{border:1px solid var(--line);border-left:5px solid var(--line);border-radius:9px;padding:8px 12px}.substep p{margin:4px 0}
 .substep[data-st=ok]{border-left-color:var(--good)}.substep[data-st=running]{border-left-color:var(--brand)}.substep[data-st=error]{border-left-color:var(--bad)}
 .node small.sub{color:var(--brand)}
+/* % hoàn thành: nền ô tô tới --p (đang chạy: đã làm / tổng; xong: phần thành công / tổng) */
+.pf{--pf:#dff3e8;background:linear-gradient(90deg,var(--pf) var(--p),var(--panel) var(--p))}
+.pf[data-st=running],.pf[data-st=waiting],.pf[data-st=draft]{--pf:#dce8ff}
+.pf[data-st=error],.pf[data-st=dead],.pf[data-st=failed]{--pf:#fbe0e3}
+.pf[data-st=partial],.pf[data-st=blocked],.pf[data-st=timeout],.pf[data-st=stopped]{--pf:#ffefc7}
+.pf[data-low]{--pf:#ffefc7}
+.pind{background:repeating-linear-gradient(135deg,#eef3fe 0 10px,var(--panel) 10px 20px);background-size:28px 28px;animation:pind 1.2s linear infinite}
+@keyframes pind{to{background-position:28px 0}}
+@media (prefers-reduced-motion:reduce){.pind{animation:none}}
+.pct{font-variant-numeric:tabular-nums;font-weight:600}
+.node .more{color:var(--brand)}
+.xnode{display:flex;flex-direction:column;gap:6px}
+.chain{display:flex;flex-wrap:wrap;align-items:stretch;gap:4px;padding:6px;border:1px dashed var(--line);border-radius:9px;background:var(--soft)}
+.chain .arr{align-self:center;color:var(--muted);font-size:13px}
+.sx{flex:0 0 132px;text-align:left;border:1px solid var(--line);border-left:4px solid var(--line);border-radius:8px;padding:5px 7px;font-size:12px;line-height:1.3}
+.sx:not(.pf):not(.pind){background:var(--panel)}
+.sx b{display:block;font-size:12px}.sx small{display:block;color:var(--muted)}
+.sx[data-st=ok]{border-left-color:var(--good)}.sx[data-st=running]{border-left-color:var(--brand)}
+.sx[data-st=error]{border-left-color:var(--bad)}.sx[data-st=partial],.sx[data-st=skipped]{border-left-color:#d69a00}
 .strip{display:flex;gap:3px}.cell{display:inline-block;width:22px;height:18px;padding:0;border-radius:4px;border:1px solid var(--line);background:#eef0f3;cursor:pointer}
 .cell[data-st=ok]{background:#9bd9bb;border-color:#7cc8a4}.cell[data-st=running],.cell[data-st=waiting],.cell[data-st=draft]{background:#a9c5ff;border-color:#86abf5}
 .cell[data-st=error],.cell[data-st=dead],.cell[data-st=failed]{background:#f19aa6;border-color:#e27584}.cell[data-st=blocked],.cell[data-st=timeout],.cell[data-st=stopped],.cell[data-st=skipped]{background:#ffd27a;border-color:#eab54a}
@@ -124,7 +143,7 @@ const card=(title,body,extra='')=>`<section class="card" ${extra}><h2>${esc(titl
 const table=(heads,rows,rowClass=()=> '')=>rows.length?`<div class="scroll"><table><thead><tr>${heads.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map((r,i)=>`<tr class="${rowClass(i)}">${r.map(c=>`<td>${c??'—'}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`:'<div class="empty-box">Chưa có dữ liệu.</div>';
 const bar=(done,total)=>total?`<div class="bar"><i style="width:${Math.min(100,Math.round(100*done/total))}%"></i></div>`:'';
 const select=(name,options,value,all='Tất cả')=>`<select name="${esc(name)}" aria-label="${esc(name)}"><option value="">${esc(all)}</option>${Object.entries(options||{}).map(([k,n])=>`<option value="${esc(k)}" ${k===value?'selected':''}>${esc(k)} (${num(n)})</option>`).join('')}</select>`;
-const S={view:'overview',run:null,tab:null,node:null,graph:null,gtimer:null,timer:null,es:null,list:null,runData:null,preview:false,log:{lines:[],group:'',level:'',q:'',follow:true,paused:false,ended:false},settings:null};
+const S={expanded:new Set(),view:'overview',run:null,tab:null,node:null,graph:null,gtimer:null,timer:null,es:null,list:null,runData:null,preview:false,log:{lines:[],group:'',level:'',q:'',follow:true,paused:false,ended:false},settings:null};
 
 const PREVIEWABLE=/^\/api\/(normalise|products?|cities)(\/|$)/;
 async function api(path,params={},body){const url=new URL(path,location.origin);if(S.view==='run'&&S.preview&&PREVIEWABLE.test(path))url.searchParams.set('preview','1');Object.entries(params).forEach(([k,v])=>{if(v!==undefined&&v!==null&&v!=='')url.searchParams.set(k,v)});const response=await fetch(url,{cache:'no-store',...(body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json','X-Requested-With':'vota-monitor'},body:JSON.stringify(body)})});const data=await response.json();if(!response.ok)throw Error(typeof data.error==='string'?data.error:JSON.stringify(data.error||data));return data}
@@ -134,7 +153,7 @@ function modal(title,html){$('#detailTitle').textContent=title;$('#detailBody').
 function stopLive(){clearInterval(S.timer);S.timer=null;if(S.es){S.es.close();S.es=null}}
 
 // ------------------------------------------------------------------ cảnh báo và SLA (CP7, CP8)
-const ALERT_KINDS={transient:'Lỗi tạm thời',blocked:'Bị chặn',timeout:'Quá giờ',code:'Lỗi code',quality:'Chặn chất lượng',infra:'Lỗi hạ tầng',unknown:'Chưa phân loại',record:'Bản ghi lỗi',sla:'SLA'};
+const ALERT_KINDS={transient:'Lỗi tạm thời',blocked:'Bị chặn',timeout:'Quá giờ',code:'Lỗi code',quality:'Chặn chất lượng',infra:'Lỗi hạ tầng',unknown:'Chưa phân loại',record:'Bản ghi lỗi',sla:'SLA',coverage:'Cào chưa đủ'};
 const SLA_STATE={ok:['ok','Đạt'],late:['error','Trễ'],pending:['waiting','Chưa tới hạn'],none:['notInMode','Không áp dụng']};
 function alertRows(list,showRun=true){return table(['Lúc','Mức','Loại',...(showRun?['Lượt']:[]),'Bước · nguồn','Nội dung'],list.map(a=>[esc(when(a.at)),`<span class="status ${a.level==='error'?'error':'partial'}">${a.level==='error'?'Lỗi':'Cảnh báo'}</span>`,esc(ALERT_KINDS[a.kind]||a.kind),...(showRun?[a.run?button(a.run,'run',{id:a.run,node:a.step},'link'):'—']:[]),esc([a.step,a.source].filter(Boolean).join(' · ')||'—'),esc(a.message)]))}
 function alertsCard(list){const L=S.alertFilter||{};const shown=(list||[]).filter(a=>(!L.level||a.level===L.level)&&(!L.kind||a.kind===L.kind));
@@ -201,15 +220,32 @@ function streamControl(e){if(!e)return '';if(!e.enabled)return `<p class="muted"
 const RESUME_LABEL={crawl:'Cào lại nguồn này',normalise:'Chạy lại từ bước này',merge:'Chỉ gộp lại từ checkpoint',validate:'Chạy lại từ bước này',db:'Chạy lại từ bước này',index:'Chạy lại từ bước này'};
 function resumeButtons(n){if(!n?.resume?.length)return '';const crawl=n.resume.includes('crawl');return `<div class="actions">${n.resume.map(f=>button(RESUME_LABEL[f],'resume',f==='crawl'?{run:S.run,from:f,source:n.lane}:{run:S.run,from:f},f==='merge'?'small':'primary small')).join('')}<small class="muted">${crawl?'Chỉ cào lại nguồn này (tiếp tục từ tiến độ đã lưu), dùng lại dữ liệu của các nguồn khác rồi chạy tiếp tới nạp DB và index.':'Không cào lại; dùng lại interim, checkpoint, catalog của lượt này rồi chạy tiếp tới nạp DB và index.'}</small></div>`}
 function nodeStreamControl(n){const key=streamKey(n);if(!key||S.runData?.status!=='running'||!S.live?.running||S.live.runId!==S.run)return '';return streamControl((S.live.stream||[]).find(x=>x.key===key))}
-function nodeLog(n){if(!n)return {group:'',q:''};if(n.col==='crawl')return {group:LANE_LOG[n.lane]||'',q:''};if(n.id.startsWith(NS))return {group:'',q:`[normalise:${n.id.slice(NS.length)}]`};return {group:'job',q:''}}
+const BIG_STEPS=new Set(['maintain','normalise','validate','db','index']);  // log: catalog.step.* + catalog.substep name=<bước>:…
+function nodeLog(n){if(!n)return {group:'',q:''};if(n.col==='crawl')return {group:LANE_LOG[n.lane]||'',q:''};if(n.id.startsWith(NS))return {group:'',q:`[normalise:${n.id.slice(NS.length)}]`};if(BIG_STEPS.has(n.id))return {group:'',q:`name=${n.id}`};return {group:'job',q:''}}
 const currentNode=()=>S.graph?.nodes.find(n=>n.id===S.node)||null;
 const stepOf=id=>[...(S.runData?.steps||[])].reverse().find(s=>s.name===id);
+// UI6: % hoàn thành (node.progress / bước con .percent) — đang chạy chưa biết tổng thì sọc chạy
+function fillAttrs(p,st){if(p?.percent!=null)return ` style="--p:${Math.max(0,Math.min(100,p.percent))}%"${p.percent<90&&['ok','partial'].includes(st)?' data-low':''}`;return ''}
+function fillClass(p,st){return p?.percent!=null?' pf':(st==='running'?' pind':'')}  // chỉ ô đang chạy mới có sọc; ô chờ để trắng
+function pctText(p){if(!p)return '';const r=p.done!=null&&p.total!=null?`${num(p.done)}/${num(p.total)}`:'';if(p.percent==null)return r?`<span class="pct">${r}</span>`:'';
+ return `<span class="pct">${Math.round(p.percent*10)/10}%</span>${r?` · ${r}`:''}${p.kind==='progress'?' đã làm':''}`}
+function subHtml(x,parent){// vào → ra (bớt = dòng bị lọc / gộp); bước chỉ sửa dòng có sẵn: "N dòng · M đổi"
+ const io=x.changed!=null?`${x.in!=null?`${num(x.in)} dòng · `:''}${num(x.changed)} đổi`:(x.in!=null||x.out!=null?`${x.in!=null?num(x.in):'—'} → ${x.out!=null?num(x.out):'—'}`:'');
+ const dropped=x.changed==null&&x.in!=null&&x.out!=null&&x.out<x.in?` <span class="wtext">(bớt ${num(x.in-x.out)})</span>`:'';
+ const okt=x.ok!=null&&x.total?`<span class="pct">${x.percent}%</span> · ${num(x.ok)}/${num(x.total)} đạt`:'';
+ const tip=[x.description,x.note,x.error].filter(Boolean).join('\n');
+ return `<button type="button" class="sx${fillClass(x,x.status)}" data-subof="${esc(parent)}" data-sub="${esc(x.name)}" data-st="${esc(x.status)}"${fillAttrs(x,x.status)} title="${esc((tip?tip+'\n':'')+'Bấm để xem log của bước này')}"><b>${esc(x.name)}</b><small>${esc(labels[x.status]||x.status)}${x.seconds!=null?` · ${esc(x.seconds)} s`:''}${x.ramMb!=null?` · RAM ${num(x.ramMb)} MB`:''}</small>${io?`<small>${io}${dropped}</small>`:''}${okt?`<small>${okt}</small>`:''}${x.note?`<small>${esc(x.note)}</small>`:''}${x.error?`<small class="minus">${esc(x.error)}</small>`:''}</button>`}
+function chainHtml(n){return `<div class="chain" aria-label="Các bước bên trong ${esc(n.label)}">${n.substeps.map(x=>subHtml(x,n.id)).join('<span class="arr" aria-hidden="true">→</span>')}</div>`}
+const expandable=n=>S.view==='run'&&(n.substeps||[]).length>0;
 function nodeHtml(n){const bits=[];const secs=n.seconds??(n.status==='running'&&n.startedAt?Math.round((Date.now()-new Date(n.startedAt))/1000):null);if(secs!=null)bits.push(`${esc(secs)} s`);
  if(n.in!=null)bits.push(`${num(n.in)} → ${num(n.out)}`);else if(n.out!=null)bits.push(`${num(n.out)} dòng`);
  if(n.errors)bits.push(`<span class="minus">${num(n.errors)} lỗi</span>`);if(n.retries)bits.push(`thử lại ${esc(n.retries)}`);
  if(n.stream)bits.push(`theo phần: ${esc(n.stream.batches)} lô${n.stream.dbRowsWritten!=null?` · ${num(n.stream.dbRowsWritten)} dòng ghi`:''}`);
  const dr=n.draft?`<small>đang gộp: lần ${esc(n.draft.n)}${n.draft.rows!=null?` · ${num(n.draft.rows)} dòng`:''}${n.draft.groups?.length?` · xong: ${esc(n.draft.groups.join(', '))}`:''}</small>`:'';
- return `<button type="button" class="node${FADED.has(n.status)?' faded':''}" data-node="${esc(n.id)}" data-st="${esc(n.status)}" aria-pressed="${n.id===S.node}" title="${esc(n.error||n.label)}"><b>${esc(n.label)}</b>${badge(n.status)}${bits.length?`<small>${bits.join(' · ')}</small>`:''}${dr}${n.substep?`<small class="sub">đang: ${esc(n.substep)}</small>`:''}${n.note?`<small class="sub">${esc(n.note)}</small>`:''}</button>`}
+ const pt=pctText(n.progress),rf=n.refresh?`<small>làm mới khách sạn đang có ${num(n.refresh.refreshed)}/${num(n.refresh.requested)} (${esc(n.refresh.percent)}%)</small>`:'';
+ const open=S.expanded?.has(n.id),more=expandable(n)?`<small class="more">${open?'▾ thu lại':'▸'} ${n.substeps.length} bước bên trong</small>`:'';
+ const btn=`<button type="button" class="node${FADED.has(n.status)?' faded':''}${fillClass(n.progress,n.status)}" data-node="${esc(n.id)}" data-st="${esc(n.status)}"${fillAttrs(n.progress,n.status)} aria-pressed="${n.id===S.node}"${expandable(n)?` aria-expanded="${!!open}"`:''} title="${esc(n.error||n.label)}"><b>${esc(n.label)}</b>${badge(n.status)}${pt?`<small>${pt}</small>`:''}${bits.length?`<small>${bits.join(' · ')}</small>`:''}${rf}${dr}${n.substep?`<small class="sub">đang: ${esc(n.substep)}</small>`:''}${n.note?`<small class="sub">${esc(n.note)}</small>`:''}${more}</button>`;
+ return open&&expandable(n)?`<div class="xnode">${btn}${chainHtml(n)}</div>`:btn}
 function problemHtml(g){const p=g.problem;if(!p)return '';const kind=p.errorKind?kindBadge(p.errorKind)+' ':'';
  const body=`<strong>${p.status==='blocked'?'Bị chặn':'Lỗi'} ở: ${esc(p.label)}</strong> ${kind}<br><small>${esc((p.error||labels[p.status]||p.status||'').slice(0,300))}</small>`;
  return p.id?`<button type="button" class="problem" data-node="${esc(p.id)}">${body} <small class="muted">— bấm để xem</small></button>`:`<div class="problem">${body}</div>`}
@@ -217,7 +253,9 @@ function graphHtml(g){const ci=Object.fromEntries(g.columns.map((c,i)=>[c.id,i])
  for(const n of g.nodes){const k=`${n.col}|${n.lane??''}`;if(!cells.has(k))cells.set(k,{col:n.col,lane:n.lane,nodes:[]});cells.get(k).nodes.push(n)}
  const heads=g.columns.map((c,i)=>`<div class="ghead" style="grid-column:${i+1};grid-row:1;order:${i*100}">${esc(c.label)}</div>`).join('');
  const body=[...cells.values()].map(c=>{const i=ci[c.col],lane=c.lane==null?null:li[c.lane];return `<div class="gcell" style="grid-column:${i+1};grid-row:${lane==null?`2 / span ${rows}`:lane+2};order:${i*100+1+(lane??0)}">${c.nodes.map(nodeHtml).join('')}</div>`}).join('');
- return `<div class="gwrap"><div class="graph" id="graph" style="grid-template-columns:repeat(${g.columns.length},minmax(140px,1fr));grid-template-rows:auto repeat(${rows},auto)"><svg id="edges" aria-hidden="true"></svg>${heads}${body}</div></div>`}
+ const wide=g.columns.map(c=>{const subs=Math.max(0,...g.nodes.filter(n=>n.col===c.id&&S.expanded?.has(n.id)&&expandable(n)).map(n=>n.substeps.length));
+  return subs?`minmax(${Math.min(subs,3)*150+12}px,${Math.min(subs,3)}fr)`:'minmax(140px,1fr)'}).join(' ');  // chuỗi xuống dòng sau 3 ô
+ return `<div class="gwrap"><div class="graph" id="graph" style="grid-template-columns:${wide};grid-template-rows:auto repeat(${rows},auto)"><svg id="edges" aria-hidden="true"></svg>${heads}${body}</div></div>`}
 function drawEdges(){const gr=$('#graph'),svg=$('#edges');if(!gr||!svg||!S.graph||getComputedStyle(svg).display==='none')return;const box=gr.getBoundingClientRect();
  const bad=new Set(S.graph.nodes.filter(n=>['error','dead'].includes(n.status)).map(n=>n.id));  // UI3: đường tới ô lỗi tô đỏ
  const at=id=>gr.querySelector(`[data-node="${CSS.escape(id)}"]`);
@@ -452,7 +490,7 @@ async function storagePage(){const d=await api('/api/storage');if(S.view!=='stor
   card('Theo thư mục',table(['Thư mục','Dung lượng','Số file'],d.dirs.map(r=>[esc(r.name),esc(gb(r.bytes)),esc(num(r.files))])))+
   card('Các lượt cào còn giữ',table(['Lượt','Cập nhật','Dung lượng','Trạng thái'],d.runs.map((r,i)=>[esc(r.runId),esc(when(r.modifiedAt)),esc(gb(r.bytes)),r.running?'<span class="status running">đang chạy</span>':i<keep?'<span class="status ok">giữ</span>':'<span class="status partial">sẽ xoá khi dọn</span>'])))+
   card('Dọn dữ liệu cũ',`<form id="cleanupForm" class="actions"><label>Giữ lại <input name="keep" type="number" min="1" max="100" value="${keep}" style="width:5em"> lượt mới nhất</label><button class="danger" type="submit">Xoá các lượt cũ hơn</button></form><p class="muted">Xoá raw, interim, catalog, log và profile trình duyệt của các lượt cũ. Lượt đang chạy luôn được giữ. Dữ liệu đã nạp vào DB và state (ID khách sạn, lịch xoay vòng) không bị đụng.</p><div id="cleanupOut"></div>`)}
-async function storageCleanup(f){const keep=Number(f.get('keep'));if(!confirm(`Xoá mọi lượt cào cũ, chỉ giữ ${keep} lượt mới nhất?`))return;const out=$('#cleanupOut');out.innerHTML='<p class="muted">Đang xoá…</p>';const r=await api('/api/storage/cleanup',{},{keepRuns:keep});out.innerHTML=`<p>Đã xoá ${r.removed.length} lượt, giải phóng ${esc(gb(r.freedBytes))}.</p>`;setTimeout(()=>storagePage().catch(fail),800)}
+async function storageCleanup(f){const keep=Number(f.get('keep'));if(!confirm(`Xoá mọi lượt cào cũ, chỉ giữ ${keep} lượt mới nhất?`))return;const out=$('#cleanupOut');out.innerHTML='<p class="muted">Đang xoá…</p>';const r=await api('/api/storage/cleanup',{},{keepRuns:keep});out.innerHTML=`<p>Đã xoá ${r.removed.length} lượt, giải phóng ${esc(gb(r.freedBytes))}.</p>`+(r.failed&&r.failed.length?`<p class="status error">Không xoá được ${r.failed.length} lượt (thiếu quyền hoặc file đang mở): ${esc(r.failed.join(', '))}</p>`:'');setTimeout(()=>storagePage().catch(fail),800)}
 
 // ------------------------------------------------------------------ tab DB: xem toàn bộ database (chỉ đọc)
 const dbKey=(d,r)=>d.pk?.length?Object.fromEntries(d.pk.map(c=>[c,r[c]])):null;
@@ -585,6 +623,11 @@ async function action(name,args){notice('');
 document.addEventListener('click',e=>{const sg=e.target.closest('[data-setgroup]');if(sg){S.settingsGroup=sg.dataset.setgroup;document.querySelectorAll('[data-setgroup]').forEach(b=>b.setAttribute('aria-current',b===sg));document.querySelectorAll('#settingsForm [data-group]').forEach(x=>x.hidden=x.dataset.group!==S.settingsGroup);return}
  const nav=e.target.closest('nav [data-view]'),tab=e.target.closest('[data-tab]'),b=e.target.closest('[data-action]'),node=e.target.closest('[data-node]');
  if(nav)navigate(nav.dataset.view).catch(fail);
+ const sx=e.target.closest('[data-sub]');  // UI6: bấm ô con → tab Log lọc đúng bước con
+ if(sx&&S.view==='run'){S.node=sx.dataset.subof;S.tab='log';Object.assign(S.log,{group:'',q:`name=${sx.dataset.subof}:${sx.dataset.sub}`.toLowerCase()});markSelected();renderPanel().then(()=>$('#panel')?.scrollIntoView({behavior:'smooth'})).catch(fail);return}
+ if(node&&S.view==='run'){const n=S.graph?.nodes.find(x=>x.id===node.dataset.node);  // UI6: bấm ô lớn có bước con thì bung / thu
+  if(n&&expandable(n)){S.expanded.has(n.id)?S.expanded.delete(n.id):S.expanded.add(n.id);$('#graphBox').innerHTML=graphHtml(S.graph);drawEdges();
+   document.querySelector(`#graph [data-node="${CSS.escape(n.id)}"]`)?.scrollIntoView({block:'nearest',inline:'nearest'})}}
  if(node)(S.view==='run'?selectNode(node.dataset.node):openRun(S.miniRun,null,null,node.dataset.node)).catch(fail);
  if(tab){S.tab=tab.dataset.tab;renderTab().catch(fail)}
  if(b){e.preventDefault();b.disabled=true;action(b.dataset.action,JSON.parse(b.dataset.args)).catch(fail).finally(()=>b.disabled=false)}});

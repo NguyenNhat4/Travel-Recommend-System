@@ -25,14 +25,16 @@ import numpy as np
 
 from ..search.amenities import amenity_keys
 from .models import Product
+from .stay_dates import Calendar, as_ordinal, parse_calendar
 
 FLAG_INCLUDES_FLIGHT = "includesFlight"
 FLAG_INCLUDES_HOTEL = "includesHotel"
 FLAG_TICKETED = "ticketed"
 FLAGS = frozenset({FLAG_INCLUDES_FLIGHT, FLAG_INCLUDES_HOTEL, FLAG_TICKETED})
 
-#: Một phòng/chuyến con: (product_id, unit_price hoặc None, maxOccupancy hoặc None).
-ChildRow = tuple[str, float | None, float | None]
+#: Một phòng/chuyến con: (product_id, unit_price hoặc None, maxOccupancy hoặc None, lịch hoặc None, đang bán được).
+#: "Đang bán được" = `available` và có giá: đúng điều kiện trang chi tiết cho chọn hạng phòng (`isBookable`).
+ChildRow = tuple[str, float | None, float | None, Calendar | None, bool]
 
 
 def _amenity_strings(p: Product) -> list[str]:
@@ -80,10 +82,12 @@ def _flags(p: Product, combo_kinds: Iterable[str]) -> frozenset[str]:
 
 
 def _child_rows(kids: Sequence[Product]) -> tuple[ChildRow, ...]:
-    """(id, giá, sức chứa) của từng con, sắp theo giá tăng dần (giá None cuối), hoà → id."""
+    """(id, giá, sức chứa, lịch, đang bán được) của từng con, sắp theo giá tăng dần (giá None cuối), hoà → id."""
     rows = [(c.product_id,
              float(c.unit_price) if c.unit_price is not None else None,
-             float(c.max_occupancy) if c.max_occupancy is not None else None) for c in kids]
+             float(c.max_occupancy) if c.max_occupancy is not None else None,
+             parse_calendar(c.attributes),
+             bool(c.available and c.unit_price is not None)) for c in kids]
     rows.sort(key=lambda r: (r[1] is None, r[1] if r[1] is not None else 0.0, r[0]))
     return tuple(rows)
 
@@ -104,17 +108,29 @@ class UnitAttributes:
     flags: tuple[frozenset[str], ...] = ()          # cờ `FLAGS` theo unit; frozenset rỗng = không cờ / không biết
     max_occupancy: np.ndarray | None = None         # (n,) float64 — max maxOccupancy của unit + con, NaN khi không biết
     children: tuple[tuple[ChildRow, ...], ...] = ()  # con của từng unit, sắp theo giá (None cuối) rồi id
+    # Bộ lọc ngày (đề xuất PRD update-archive/2026-10-07-loc-theo-ngay-o-tim-kiem.md; `stay_dates.py`):
+    sale_from: np.ndarray | None = None             # (n,) float64 — ordinal của available_from, NaN khi thiếu
+    sale_to: np.ndarray | None = None               # (n,) float64 — ordinal của available_to, NaN khi thiếu
+    calendars: tuple[tuple[Calendar | None, ...], ...] = ()  # điểm tham quan / golf: lịch của chính unit; loại khác: ()
+                                                    # (lịch hạng phòng khách sạn nằm ở `children`)
 
     def __post_init__(self) -> None:
         n = len(self.amenities)
+        if self.sale_from is None:
+            object.__setattr__(self, "sale_from", np.full(n, np.nan, dtype=np.float64))
+        if self.sale_to is None:
+            object.__setattr__(self, "sale_to", np.full(n, np.nan, dtype=np.float64))
+        if not self.calendars:
+            object.__setattr__(self, "calendars", ((),) * n)
         if not self.flags:
             object.__setattr__(self, "flags", (frozenset(),) * n)
         if self.max_occupancy is None:
             object.__setattr__(self, "max_occupancy", np.full(n, np.nan, dtype=np.float64))
         if not self.children:
             object.__setattr__(self, "children", ((),) * n)
-        if len(self.flags) != n or len(self.children) != n or self.max_occupancy.shape != (n,):
-            raise ValueError("flags / max_occupancy / children phải cùng chiều với amenities")
+        if (len(self.flags) != n or len(self.children) != n or self.max_occupancy.shape != (n,)
+                or len(self.calendars) != n or self.sale_from.shape != (n,) or self.sale_to.shape != (n,)):
+            raise ValueError("flags / max_occupancy / children / calendars / sale_from / sale_to phải cùng chiều với amenities")
 
     def __len__(self) -> int:
         return len(self.amenities)
@@ -141,7 +157,17 @@ class UnitAttributes:
             flags=tuple(_flags(p, kinds_of.get(p.product_id, ())) for p in units),
             max_occupancy=np.array([_max_occupancy(p, cs) for p, cs in zip(units, kids)], dtype=np.float64),
             children=tuple(_child_rows(cs) for cs in kids),
+            sale_from=np.array([as_ordinal(p.available_from) for p in units], dtype=np.float64),
+            sale_to=np.array([as_ordinal(p.available_to) for p in units], dtype=np.float64),
+            calendars=tuple(_calendars(p, cs) for p, cs in zip(units, kids)),
         )
+
+
+def _calendars(p: Product, kids: Sequence[Product]) -> tuple[Calendar | None, ...]:
+    """Điểm tham quan / golf: lịch của chính unit. Khách sạn: lịch từng hạng phòng nằm ở `children`. Loại khác: không có."""
+    if p.taxonomy in ("attraction", "golf"):
+        return (parse_calendar(p.attributes),)
+    return ()
 
 
 def _object_array(values: list[Any]) -> np.ndarray:

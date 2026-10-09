@@ -31,12 +31,12 @@ export function WidgetOpening({ value, onChange, onSend, busy }: WidgetOpeningPr
       <p className="mt-3 w-full text-xs leading-relaxed text-slate-500">Ví dụ: Đi biển 3 ngày, 2 người, ngân sách 5 triệu.</p>
       <div className="mt-5 flex flex-wrap justify-center gap-2" aria-label="Gợi ý yêu cầu du lịch">
         {SUGGESTIONS.map(({ label, icon: Icon, prompt }) => (
-          <button key={label} type="button" disabled={busy} onClick={() => onChange(prompt)} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:border-blue-300 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:opacity-50">
-            <Icon className="h-4 w-4 text-blue-600" aria-hidden="true" />{label}
+          <button key={label} type="button" disabled={busy} onClick={() => onChange(prompt)} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:border-ai-300 hover:bg-ai-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ai-500 focus-visible:ring-offset-2 disabled:opacity-50">
+            <Icon className="h-4 w-4 text-ai-600" aria-hidden="true" />{label}
           </button>
         ))}
       </div>
-      <button type="button" aria-expanded={detailsOpen} aria-controls={detailsId} onClick={() => setDetailsOpen((open) => !open)} className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-semibold text-blue-700 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+      <button type="button" aria-expanded={detailsOpen} aria-controls={detailsId} onClick={() => setDetailsOpen((open) => !open)} className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-semibold text-ai-700 hover:bg-ai-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ai-500">
         Thêm thông tin chuyến đi <ChevronDown className={`h-4 w-4 transition ${detailsOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
       </button>
       <div id={detailsId} hidden={!detailsOpen} className="w-full">

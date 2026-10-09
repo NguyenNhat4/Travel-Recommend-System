@@ -37,14 +37,14 @@ export const BookingCard: React.FC<BookingCardProps> = ({ booking, rebooking, on
     <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white" data-testid="booking-card">
       <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3.5 gap-y-2 px-4 py-3.5 max-sm:grid-cols-[auto_minmax(0,1fr)]">
         <div
-          className={`w-14 rounded-xl py-1.5 text-center leading-[1.1] ${dim ? 'bg-slate-100 text-slate-600' : 'bg-blue-50 text-blue-700'}`}
+          className={`w-14 rounded-xl py-1.5 text-center leading-[1.1] ${dim ? 'bg-slate-100 text-slate-600' : 'bg-brand-50 text-brand-700'}`}
           aria-hidden="true" data-testid="booking-date-tile"
         >
           <small className="block text-[10.5px] font-bold uppercase tracking-wider">THG {Number(month)}</small>
           <b className="block text-[22px] font-bold tabular-nums">{Number(day)}</b>
         </div>
         <div className="min-w-0">
-          <Link href={detailHref} className="font-mono text-[13px] font-semibold text-slate-900 hover:text-blue-700 hover:underline hover:underline-offset-4">
+          <Link href={detailHref} className="font-mono text-[13px] font-semibold text-slate-900 hover:text-brand-700 hover:underline hover:underline-offset-4">
             {booking.referenceCode}
           </Link>
           <p className="text-xs text-slate-500">Đặt lúc {formatDateTimeVn(booking.createdAt)}</p>
@@ -60,7 +60,7 @@ export const BookingCard: React.FC<BookingCardProps> = ({ booking, rebooking, on
           const Icon = ICONS[item.taxonomy] ?? Ticket;
           return (
             <li key={item.bookingItemId} className="grid grid-cols-[2.25rem_minmax(0,1fr)_auto] items-center gap-3 border-t border-slate-200 py-3 first:border-t-0">
-              <span className="grid h-9 w-9 place-items-center rounded-xl bg-slate-100 text-blue-700">
+              <span className="grid h-9 w-9 place-items-center rounded-xl bg-slate-100 text-brand-700">
                 <Icon className="h-[18px] w-[18px]" aria-hidden={true} />
               </span>
               <div className="min-w-0">
@@ -87,19 +87,19 @@ export const BookingCard: React.FC<BookingCardProps> = ({ booking, rebooking, on
         </div>
         <div className="flex flex-wrap gap-2 max-sm:[&>*]:flex-1">
           {!payNow && (
-            <Link href={detailHref} className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-800 hover:border-blue-600 hover:text-blue-700">
+            <Link href={detailHref} className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-800 hover:border-brand-600 hover:text-brand-700">
               Xem chi tiết
             </Link>
           )}
           {payNow && (
-            <Link href={detailHref} className="inline-flex min-h-11 items-center justify-center rounded-full bg-blue-600 px-5 text-[13px] font-semibold text-white hover:bg-blue-700">
+            <Link href={detailHref} className="inline-flex min-h-11 items-center justify-center rounded-full bg-brand-600 px-5 text-[13px] font-semibold text-white hover:bg-brand-700">
               Tiếp tục thanh toán
             </Link>
           )}
           {canRebook(booking) && (
             <button
               type="button" disabled={rebooking} onClick={() => onRebook(booking.referenceCode)}
-              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-blue-600 px-5 text-[13px] font-semibold text-white hover:bg-blue-700 disabled:bg-slate-300"
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-brand-600 px-5 text-[13px] font-semibold text-white hover:bg-brand-700 disabled:bg-slate-300"
             >
               {rebooking && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
               Đặt lại

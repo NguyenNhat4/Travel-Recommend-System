@@ -26,6 +26,7 @@ from .hybrid import HybridConfig, HybridOutcome, hybrid_filter_score, rrf
 from .lexical import STOPWORDS, coverage, fold, is_unaccented, query_tokens, strip_accents, tokens
 from .normalize import ALIASES, DESTINATION_ALIASES, PARTY_PHRASES, NormalizedQuery, QueryNormalizer
 from .query_plan import (
+    APPLIED_DATE,
     APPLIED_MUST_NOT,
     APPLIED_PARTY,
     APPLIED_PRICE,
@@ -45,7 +46,7 @@ from .suggest import MIN_QUERY_CHARS, SUGGEST_GROUPS, SuggestEntry, is_suggestab
 from .tone import detect_style, normalize_tone
 
 __all__ = [
-    "ALIASES", "AMENITIES", "Amenity", "AMENITY_KEYS", "amenity_keys", "APPLIED_MUST_NOT", "APPLIED_PARTY",
+    "ALIASES", "AMENITIES", "Amenity", "AMENITY_KEYS", "amenity_keys", "APPLIED_DATE", "APPLIED_MUST_NOT", "APPLIED_PARTY",
     "APPLIED_PRICE", "APPLIED_ROUTE", "APPLIED_STAR", "APPLIED_TAXONOMY", "build_query_plan", "candidate_filter_score",
     "coverage", "decide_destination", "DESTINATION_ALIASES", "DestinationDecision", "detect_style", "EMPTY_DESTINATION",
     "EMPTY_PARAM", "exact_filter_score", "FLIGHT_CUES", "FlightRoles", "fold", "hybrid_filter_score", "HybridConfig",

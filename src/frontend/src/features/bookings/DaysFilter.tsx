@@ -83,8 +83,8 @@ export const DaysFilter: React.FC<DaysFilterProps> = ({ value, onChange }) => {
         aria-labelledby={`${uid}-label ${uid}-value`}
         onClick={() => (open ? close(false) : show())}
         onKeyDown={(event) => { if (!open && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) { event.preventDefault(); show(); } }}
-        className={`inline-flex min-h-10 min-w-[8.5rem] items-center justify-between gap-2 rounded-full border bg-white px-3.5 text-[13px] font-medium text-slate-800 transition-colors hover:border-blue-600 ${
-          open ? 'border-blue-600 ring-2 ring-blue-100' : 'border-slate-200'
+        className={`inline-flex min-h-10 min-w-[8.5rem] items-center justify-between gap-2 rounded-full border bg-white px-3.5 text-[13px] font-medium text-slate-800 transition-colors hover:border-brand-600 ${
+          open ? 'border-brand-600 ring-2 ring-brand-100' : 'border-slate-200'
         }`}
       >
         <span id={`${uid}-value`}>{selected.label}</span>
@@ -106,8 +106,8 @@ export const DaysFilter: React.FC<DaysFilterProps> = ({ value, onChange }) => {
                 key={option.value} id={optionId(index)} role="option" aria-selected={isSelected}
                 onClick={() => choose(index)} onPointerEnter={() => setActive(index)}
                 className={`flex min-h-11 cursor-pointer items-center justify-between gap-3 rounded-xl px-3 text-sm transition-colors ${
-                  isSelected ? 'font-semibold text-blue-700' : 'font-medium text-slate-700'
-                } ${index === active ? (isSelected ? 'bg-blue-100' : 'bg-slate-100') : isSelected ? 'bg-blue-50' : ''}`}
+                  isSelected ? 'font-semibold text-brand-700' : 'font-medium text-slate-700'
+                } ${index === active ? (isSelected ? 'bg-brand-100' : 'bg-slate-100') : isSelected ? 'bg-brand-50' : ''}`}
               >
                 {option.label}
                 {isSelected && <Check className="h-4 w-4 flex-none" aria-hidden="true" />}

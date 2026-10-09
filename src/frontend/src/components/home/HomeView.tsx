@@ -179,7 +179,7 @@ export const HomeView: React.FC = () => {
             <form
               onSubmit={submitAi}
               role="search"
-              className="glass-sheet flex items-center justify-between gap-2 rounded-2xl p-2 shadow-2xl ring-2 ring-blue-500/20 sm:rounded-full sm:p-2.5"
+              className="glass-sheet flex items-center justify-between gap-2 rounded-2xl p-2 shadow-2xl ring-2 ring-brand-500/20 sm:rounded-full sm:p-2.5"
             >
               <input
                 type="text"
@@ -193,7 +193,7 @@ export const HomeView: React.FC = () => {
               <button
                 type="submit"
                 aria-label="Tìm kiếm"
-                className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full bg-blue-600 text-white shadow-md transition hover:bg-blue-700 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+                className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full bg-brand-600 text-white shadow-md transition hover:bg-brand-700 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
               >
                 <Search className="h-5 w-5" aria-hidden="true" />
               </button>
@@ -226,9 +226,9 @@ export const HomeView: React.FC = () => {
               <li key={shortcut.id}>
                 <Link
                   href={shortcut.href}
-                  className="flex h-full items-center gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+                  className="flex h-full items-center gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
                 >
-                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-600">
                     <NavIcon name={shortcut.icon} className="h-5 w-5" />
                   </span>
                   <span className="min-w-0">
@@ -246,7 +246,7 @@ export const HomeView: React.FC = () => {
           <section className="mx-auto max-w-7xl px-4 pt-6 sm:px-6 lg:px-8">
             <p className="text-xs text-slate-500">
               Chưa tải được gợi ý cho bạn ·{' '}
-              <button onClick={() => setRecsRetry((n) => n + 1)} className="cursor-pointer font-semibold text-blue-600 hover:underline">
+              <button onClick={() => setRecsRetry((n) => n + 1)} className="cursor-pointer font-semibold text-brand-600 hover:underline">
                 Thử lại
               </button>
             </p>
@@ -259,7 +259,7 @@ export const HomeView: React.FC = () => {
                 <h2 className="type-title text-slate-900">Gợi ý</h2>
                 <button
                   onClick={() => setShowSectionWhy(true)}
-                  className="inline-flex cursor-pointer items-center gap-1 rounded-xl border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition-colors hover:bg-blue-100"
+                  className="inline-flex cursor-pointer items-center gap-1 rounded-xl border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700 transition-colors hover:bg-brand-100"
                 >
                   <HelpCircle className="h-3.5 w-3.5" aria-hidden="true" />
                   <span>Vì sao có gợi ý này?</span>
@@ -307,7 +307,7 @@ export const HomeView: React.FC = () => {
                     role="tab"
                     aria-selected={selected}
                     onClick={() => setPopularTab(tab)}
-                    className={`h-11 shrink-0 cursor-pointer rounded-full border px-5 text-sm font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${
+                    className={`h-11 shrink-0 cursor-pointer rounded-full border px-5 text-sm font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 ${
                       selected ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
                     }`}
                   >
@@ -348,7 +348,7 @@ export const HomeView: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {/* Trust Badge 1 */}
               <div className="glass-card rounded-2xl p-6 border border-white/70 shadow-lg hover:shadow-2xl transition duration-300 flex flex-col items-start">
-                <div className="w-12 h-12 rounded-xl bg-blue-50 border border-blue-100/80 flex items-center justify-center mb-4 shadow-md shadow-blue-500/10 overflow-hidden">
+                <div className="w-12 h-12 rounded-xl bg-brand-50 border border-brand-100/80 flex items-center justify-center mb-4 shadow-md shadow-brand-500/10 overflow-hidden">
                   <img
                     src="/trust_badge_ecosystem.webp"
                     alt="Hệ sinh thái du lịch & giải trí toàn diện"
@@ -365,7 +365,7 @@ export const HomeView: React.FC = () => {
 
               {/* Trust Badge 2 */}
               <div className="glass-card rounded-2xl p-6 border border-white/70 shadow-lg hover:shadow-2xl transition duration-300 flex flex-col items-start">
-                <div className="w-12 h-12 rounded-xl bg-blue-50 border border-blue-100/80 flex items-center justify-center mb-4 shadow-md shadow-blue-500/10 overflow-hidden">
+                <div className="w-12 h-12 rounded-xl bg-brand-50 border border-brand-100/80 flex items-center justify-center mb-4 shadow-md shadow-brand-500/10 overflow-hidden">
                   <img
                     src="/trust_badge_booking.webp"
                     alt="Trải nghiệm đặt dịch vụ liền mạch"
@@ -382,7 +382,7 @@ export const HomeView: React.FC = () => {
 
               {/* Trust Badge 3 */}
               <div className="glass-card rounded-2xl p-6 border border-white/70 shadow-lg hover:shadow-2xl transition duration-300 flex flex-col items-start">
-                <div className="w-12 h-12 rounded-xl bg-blue-50 border border-blue-100/80 flex items-center justify-center mb-4 shadow-md shadow-blue-500/10 overflow-hidden">
+                <div className="w-12 h-12 rounded-xl bg-brand-50 border border-brand-100/80 flex items-center justify-center mb-4 shadow-md shadow-brand-500/10 overflow-hidden">
                   <img
                     src="/trust_badge_ai_assistant.webp"
                     alt="Trợ lý AI đồng hành du lịch"

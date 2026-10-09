@@ -105,7 +105,7 @@ export const BookingHistoryView: React.FC = () => {
               key={item.id} type="button" role="tab" id={`booking-tab-${item.id}`} aria-selected={tab === item.id}
               aria-controls="booking-history-list" onClick={() => go({ tab: item.id })}
               className={`-mb-px min-h-12 border-b-[3px] px-1 text-sm transition-colors ${
-                tab === item.id ? 'border-blue-600 font-semibold text-blue-700' : 'border-transparent font-medium text-slate-600 hover:text-slate-900'
+                tab === item.id ? 'border-brand-600 font-semibold text-brand-700' : 'border-transparent font-medium text-slate-600 hover:text-slate-900'
               }`}
             >
               {item.label}
@@ -121,7 +121,7 @@ export const BookingHistoryView: React.FC = () => {
               <button
                 key={item.id} type="button" aria-pressed={active} onClick={() => go({ taxonomy: item.id })}
                 className={`inline-flex min-h-10 flex-none items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 text-[13px] font-medium transition-colors ${
-                  active ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200 bg-white text-slate-700 hover:border-blue-600 hover:text-blue-700'
+                  active ? 'border-brand-600 bg-brand-600 text-white' : 'border-slate-200 bg-white text-slate-700 hover:border-brand-600 hover:text-brand-700'
                 }`}
               >
                 <Icon className="h-4 w-4" aria-hidden={true} />
@@ -171,7 +171,7 @@ export const BookingHistoryView: React.FC = () => {
               action={isFiltered(filters)
                 ? <ActionButton onClick={() => go({ taxonomy: 'ALL', days: 0 })}>Xoá bộ lọc</ActionButton>
                 : copy.cta
-                  ? <Link href={copy.cta.href} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-blue-600 px-6 text-[13px] font-semibold text-white hover:bg-blue-700"><Search className="h-4 w-4" aria-hidden="true" /> {copy.cta.label}</Link>
+                  ? <Link href={copy.cta.href} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-brand-600 px-6 text-[13px] font-semibold text-white hover:bg-brand-700"><Search className="h-4 w-4" aria-hidden="true" /> {copy.cta.label}</Link>
                   : undefined}
             />
           );
@@ -201,7 +201,7 @@ export const BookingHistoryView: React.FC = () => {
 const ActionButton: React.FC<{ onClick: () => void; children: React.ReactNode }> = ({ onClick, children }) => (
   <button
     type="button" onClick={onClick}
-    className="inline-flex min-h-11 items-center gap-2 rounded-full bg-blue-600 px-6 text-[13px] font-semibold text-white hover:bg-blue-700"
+    className="inline-flex min-h-11 items-center gap-2 rounded-full bg-brand-600 px-6 text-[13px] font-semibold text-white hover:bg-brand-700"
   >
     {children}
   </button>
@@ -211,11 +211,11 @@ const ActionButton: React.FC<{ onClick: () => void; children: React.ReactNode }>
 const Illustration: React.FC = () => (
   <svg viewBox="0 0 132 112" fill="none" aria-hidden="true" className="mb-1.5 h-28 w-[8.25rem]">
     <ellipse cx="66" cy="102" rx="46" ry="6" className="fill-slate-100" />
-    <rect x="22" y="38" width="62" height="54" rx="10" className="fill-blue-50 stroke-blue-600" strokeWidth="2.5" />
-    <path d="M41 38v-8a6 6 0 0 1 6-6h12a6 6 0 0 1 6 6v8" className="stroke-blue-600" strokeWidth="2.5" />
-    <path d="M38 50v30M68 50v30" className="stroke-blue-600" strokeWidth="2.5" strokeLinecap="round" />
-    <circle cx="36" cy="95" r="4" className="fill-blue-600" />
-    <circle cx="70" cy="95" r="4" className="fill-blue-600" />
+    <rect x="22" y="38" width="62" height="54" rx="10" className="fill-brand-50 stroke-brand-600" strokeWidth="2.5" />
+    <path d="M41 38v-8a6 6 0 0 1 6-6h12a6 6 0 0 1 6 6v8" className="stroke-brand-600" strokeWidth="2.5" />
+    <path d="M38 50v30M68 50v30" className="stroke-brand-600" strokeWidth="2.5" strokeLinecap="round" />
+    <circle cx="36" cy="95" r="4" className="fill-brand-600" />
+    <circle cx="70" cy="95" r="4" className="fill-brand-600" />
     <circle cx="90" cy="48" r="17" className="fill-white stroke-slate-800" strokeWidth="3" />
     <path d="m102 61 14 15" className="stroke-slate-800" strokeWidth="5" strokeLinecap="round" />
   </svg>

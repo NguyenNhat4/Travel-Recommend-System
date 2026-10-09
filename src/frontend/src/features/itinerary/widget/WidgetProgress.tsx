@@ -18,7 +18,7 @@ export function WidgetProgress({ progress, isSlow }: { progress: AssistantProgre
                 <Check className="h-3.5 w-3.5" strokeWidth={3} />
               </span>
             )}
-            {step.status === 'active' && <Loader2 className="h-5 w-5 shrink-0 animate-spin text-blue-600" />}
+            {step.status === 'active' && <Loader2 className="h-5 w-5 shrink-0 animate-spin text-ai-600" />}
             {step.status === 'pending' && <span className="h-5 w-5 shrink-0 rounded-full border-2 border-slate-200" />}
             <span className={step.status === 'active' ? 'font-semibold text-slate-800' : step.status === 'done' ? 'text-slate-600' : 'text-slate-400'}>
               {step.label}
