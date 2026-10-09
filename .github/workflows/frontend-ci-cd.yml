@@ -141,6 +141,8 @@ jobs:
 
       - name: Install Chromium
         working-directory: src/frontend
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/ms-playwright
         # Runner tự host không có sudo không cần mật khẩu: --with-deps cần root để cài thư viện hệ thống.
         # Có sudo (GitHub-hosted) thì cài đủ phụ thuộc; không có thì chỉ cài binary, thư viện phải có sẵn trên runner.
         run: |
@@ -150,6 +152,7 @@ jobs:
         working-directory: src/frontend
         env:
           CI: 'true'
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/ms-playwright
         run: npm run test:e2e
 
   build_vm:
