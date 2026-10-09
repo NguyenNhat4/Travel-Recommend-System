@@ -112,7 +112,7 @@ variable "memory_target_percent" {
 }
 
 variable "boot_to_ready_seconds" {
-  description = "Thời gian từ lúc VM tạo đến lúc /health/ready = 200 (kéo image, nạp RecSys). Dùng cho min_ready_sec của rolling update, cooldown autoscaler và initial_delay autohealing. CHƯA đo trên GCP: đo lại sau lần apply đầu (log startup.recsys.ready so với thời điểm tạo VM) rồi chỉnh."
+  description = "Thời gian từ lúc VM tạo đến lúc /health/ready = 200 (kéo image, nạp RecSys). Dùng cho cooldown autoscaler và initial_delay autohealing (không còn là min_ready_sec của rolling update từ 2026-10-09). CHƯA đo trên GCP: đo lại sau lần apply đầu (log startup.recsys.ready so với thời điểm tạo VM) rồi chỉnh."
   type        = number
   default     = 360
 

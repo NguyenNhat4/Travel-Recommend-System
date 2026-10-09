@@ -154,7 +154,7 @@ Hệ thống cung cấp các endpoint kiểm tra trạng thái sức khỏe đ�
 ```
 1. Xác nhận toàn bộ automated tests và contract validation đều PASS trên CI.
 2. Thực thi migration cơ sở dữ liệu bằng `db/migrations/run.py`.
-3. Triển khai phiên bản Backend mới (hỗ trợ Zero-downtime rolling update).
+3. Triển khai phiên bản Backend mới. Staging-HA thay toàn bộ VM app một lượt và chấp nhận downtime ngắn (vài phút) để rút ngắn thời gian phát hành; không dùng VM surge. Cổng sẵn sàng là LB báo đủ VM HEALTHY và `/health/ready` qua public endpoint đạt 6 lần liên tiếp. Quyết định này áp dụng cho staging-HA; production chưa có quyết định riêng. *(Chốt 2026-10-09, đề xuất `update-archive/2026-10-09-rut-ngan-cd-chap-nhan-downtime.md`.)*
 4. Triển khai phiên bản Frontend mới tương ứng.
 5. Thực hiện kịch bản Smoke Test trên Staging/Production để xác nhận luồng tìm kiếm và đặt hàng hoạt động bình thường.
 
