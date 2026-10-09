@@ -213,6 +213,23 @@ resource "google_compute_backend_service" "app" {
 resource "google_compute_url_map" "app" {
   name            = "${var.name_prefix}-app"
   default_service = google_compute_backend_service.app.id
+
+  # Dashboard job cào theo host riêng; xem crawler_monitor.tf. Host khác vẫn vào app như trước.
+  dynamic "host_rule" {
+    for_each = local.monitor_enabled ? [1] : []
+    content {
+      hosts        = [var.monitor_host]
+      path_matcher = "crawler-monitor"
+    }
+  }
+
+  dynamic "path_matcher" {
+    for_each = local.monitor_enabled ? [1] : []
+    content {
+      name            = "crawler-monitor"
+      default_service = google_compute_backend_service.monitor[0].id
+    }
+  }
 }
 
 resource "google_compute_managed_ssl_certificate" "app" {

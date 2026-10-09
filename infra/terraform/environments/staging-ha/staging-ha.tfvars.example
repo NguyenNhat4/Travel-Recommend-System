@@ -20,3 +20,6 @@ db_primary_ip             = "10.148.0.2"
 # patroni_clone_from_host       = "10.148.0.2"   # chỉ node a dùng, chỉ lúc di trú lần đầu
 # --- Cảnh báo job cào ---
 # crawler_alerts_enabled = true   # sau khi crawler bản có catalog.freshness đã deploy
+
+# Dashboard job cào công khai (crawler_monitor.tf): false = không mở
+crawler_monitor_public = false
