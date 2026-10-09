@@ -41,7 +41,11 @@ flowchart LR
   bỏ "hòn Thơm"), rồi nguồn Search trước Recommendation, rồi giá thấp, rồi `productId`; duyệt theo thứ tự này, một mã chỉ
   bị bỏ khi nó cặp với một mã đang được giữ. Mã bị bỏ ra khỏi
   ứng viên nên không vào lịch lẫn phương án khác, và có cảnh báo `PRODUCT_DROPPED_DUPLICATE` ("Bỏ "X" vì trùng với "Y".").
-- Khách sạn, vé máy bay, combo, gói nhiều ngày không qua bước này. LLM lỗi hoặc quá `ITINERARY_LLM_TIMEOUT_SECONDS`: chỉ dùng luật cùng tên.
+- Khách sạn, vé máy bay, combo không qua bước này. LLM lỗi hoặc quá `ITINERARY_LLM_TIMEOUT_SECONDS`: chỉ dùng luật cùng tên.
+- [Gói nhiều ngày](glossary.md#goi-nhieu-ngay) chỉ so với nhau, bằng luật, không qua LLM: hai gói có cùng các từ trong tên
+  (không kể thứ tự, dấu, chữ hoa) là một gói, giữ một theo thứ tự trên và có cùng cảnh báo `PRODUCT_DROPPED_DUPLICATE`.
+  Trace 09/10/2026: Vinpearl bán "[02 ngày không giới hạn] - VinWonders + Vinpearl Safari …" và "… Vinpearl Safari +
+  VinWonders …" là hai mã, mục "Gói nhiều ngày" từng hiện cả hai.
 
 **Chỗ ở** — tối đa 2 khách sạn cho `max(1, days − 1)` đêm, chọn **sau** khi đã biết số hoạt động mỗi ngày, cùng lúc với
 việc ghép ngày (xem [tối ưu quãng đường](#gom-theo-khoang-cach)). Chỉ khách sạn rõ vị trí, cùng mức nguồn tốt nhất
