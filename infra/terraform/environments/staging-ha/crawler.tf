@@ -65,6 +65,11 @@ resource "google_compute_instance" "crawler" {
   }
 
   depends_on = [google_compute_router_nat.egress]
+
+  # Key SSH của runner CD được thêm vào metadata ngoài Terraform (cài cron qua IAP SSH). Không để plan xóa nó.
+  lifecycle {
+    ignore_changes = [metadata["ssh-keys"]]
+  }
 }
 
 output "crawler_instance_name" {

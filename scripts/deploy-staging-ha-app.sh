@@ -51,6 +51,7 @@ allowed_changes='
 google_compute_instance_template.app|create,delete
 google_compute_instance_template.app|delete,create
 google_compute_region_instance_group_manager.app|update
+google_compute_region_autoscaler.app|update
 google_compute_instance.crawler[0]|create
 '
 unexpected="$(terraform show -json "$plan_file" | jq -r '
