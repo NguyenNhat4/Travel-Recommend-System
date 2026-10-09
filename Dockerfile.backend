@@ -30,16 +30,9 @@ RUN python -m pip install --no-cache-dir --index-url https://download.pytorch.or
         "$(grep -E '^torch==' /tmp/backend-requirements-embed.txt)" \
     && python -m pip install --no-cache-dir -r /tmp/backend-requirements-embed.txt
 
-# Tải sẵn model lúc build (đúng revision ghim trong core/config.py; test kiểm hai giá trị trùng nhau) để container không
-# tải gì lúc khởi động. Chỉ lấy các file transformers cần — cache ~475 MB. Sau bước này HF chạy offline: đổi
-# EMBED_MODEL_REVISION lúc chạy mà không build lại image thì nạp model báo lỗi rõ ràng thay vì tải ngầm.
-# Kích thước image: thêm ~0,7 GB torch CPU + transformers và ~0,47 GB model so với image chỉ có Cohere.
-ARG EMBED_MODEL=intfloat/multilingual-e5-small
-ARG EMBED_MODEL_REVISION=614241f622f53c4eeff9890bdc4f31cfecc418b3
-RUN python -c "from huggingface_hub import snapshot_download; snapshot_download('${EMBED_MODEL}', revision='${EMBED_MODEL_REVISION}', allow_patterns=['config.json', 'model.safetensors', 'tokenizer.json', 'tokenizer_config.json', 'special_tokens_map.json', 'sentencepiece.bpe.model'])" \
-    && chmod -R a+rX /opt/hf
-ENV HF_HUB_OFFLINE=1 \
-    TRANSFORMERS_OFFLINE=1
+# Model đã tải ở bước snapshot_download phía trên (trước khi bật HF_HUB_OFFLINE); không tải lần hai — sau
+# HF_HUB_OFFLINE=1 snapshot_download luôn lỗi OfflineModeIsEnabled. Bước warmup cuối file kiểm model nạp được offline.
+ENV TRANSFORMERS_OFFLINE=1
 
 # The API imports the backend package, OpenAPI bundle and shared itinerary fixtures.
 COPY src/backend /app/src/backend
@@ -49,7 +42,7 @@ COPY src/shared/mocks /app/src/shared/mocks
 COPY db/migrations /app/db/migrations
 
 # Kiểm ngay lúc build: model nạp được offline từ cache và embed thử một câu ra đúng 384 chiều.
-RUN python -c "from src.backend.app.infrastructure.embeddings.local_e5_embedder import LocalE5Embedder; LocalE5Embedder('${EMBED_MODEL}', revision='${EMBED_MODEL_REVISION}').warmup()"
+RUN python -c "from src.backend.app.infrastructure.embeddings.local_e5_embedder import LocalE5Embedder; v = LocalE5Embedder('${EMBED_MODEL}', revision='${EMBED_MODEL_REVISION}').embed_query('kiểm tra'); assert v.shape == (384,), v.shape"
 
 USER app
 
