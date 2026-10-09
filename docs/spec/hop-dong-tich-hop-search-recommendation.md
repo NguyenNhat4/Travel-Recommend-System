@@ -619,6 +619,13 @@ mở trẻ nhất như cũ. Trước đó một view / giỏ lẻ đến sau (`_
 `cross_vertical` và luật loại loại sản phẩm đã mua (lỗi I-3, `docs/spec/bench/recsys-offline-eval.md`). `ENGINE_RULES_VERSION =
 "2026-10-09-booked-first"`; gương harness: `ceiling.engine_view`, `splits.excluded_taxonomies`, `arms.trip_destination`.
 
+**Bổ sung 2026-10-09 (FR-REC-02, đề xuất `update-archive/2026-10-09-recsys-diem-xuat-phat-va-phien-xem.md`, đã chốt).** Không có
+trip đã đặt nào đang mở nhưng có **≥ 2 trip chỉ-xem / giỏ đang mở** → engine gộp chúng thành **một chuyến ảo** (`_session_`):
+vector = chuẩn hoá Σ `2^(−tuổi/H_SESSION_DAYS)` · độ tin cậy · vector trip (`H_SESSION_DAYS = 7`); điểm đến = điểm đến có tổng trọng
+số lớn nhất (hoà → điểm đến của trip trẻ nhất); `purchasedTaxonomies` rỗng; event = hợp event các trip (dùng cho `because[]`).
+Chuyến ảo không nằm trong `diagnostics.trips` và không đổi `eventsUsed`. Một trip chỉ-xem → giữ nguyên trip đó.
+`ENGINE_RULES_VERSION = "2026-10-09-origin-session"`; gương harness như bổ sung trên.
+
 **Ràng buộc bắt buộc:**
 
 1. `cross_vertical` ⟹ `nextVertical` **và** `destination` khác `null`
@@ -696,7 +703,11 @@ final = W_SHORT · cos(u_short, v_c) + W_POP · pop_D(c) + W_LONG · cos(u_long,
 W_SHORT / W_POP / W_LONG = 0.7 / 0.15 / 0.15
 ```
 
-`u_short` = vector chuyến đang mở (không có chuyến mở thì dùng `u_long`); `pop_D` = mức phổ biến của ứng viên. Hằng nằm ở
+`u_short` = vector chuyến đang mở (không có chuyến mở thì dùng `u_long`); `pop_D` = mức phổ biến của ứng viên. **Điểm xuất phát
+chuyến bay (FR-REC-04, chốt 2026-10-09):** `origin` = `originCity` của route bay mà khách xem / thêm giỏ / mua gần nhất
+(`profile.infer_origin`); route bay có `originCity` khác rỗng và khác `origin` bị trừ `W_ORIGIN = 0.15` khi có chuyến mở, bị loại
+(điểm −∞, MMR không chọn) khi không có chuyến mở; chưa có event chuyến bay → không áp dụng. `use_cases` truyền
+`ScoreContext(taxonomy, originCity, origin)` cho `score_candidates`. Hằng nằm ở
 `src/backend/app/domain/recommendation/profile.py` (`W_SHORT, W_POP, W_LONG`). Trọng số chốt 2026-10-07, thay 0.6 / 0.25 / 0.15
 (`docs/prd/update-archive/2026-10-06-recsys-trong-so-ngan-han-pho-bien.md`; số đo: `src/evaluation/reports/eval-2026-10-06-recsys-search-tong-hop.md`
 phần A §4, `eval-2026-10-07-recsys-grid-llbo-coldstart.md`).

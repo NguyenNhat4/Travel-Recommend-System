@@ -2,8 +2,8 @@
 
 - Ngày: 2026-10-09
 - Người đề xuất: tqanh123 / Claude Code soạn
-- Trạng thái: chờ chốt
-- Chốt bởi / ngày:
+- Trạng thái: đã áp dụng (2026-10-09: PRD FR-REC-02 / FR-REC-04, engine `profile.py` + `use_cases.py`, spec §4.4 / §4.7, test, `baseline_v5`)
+- Chốt bởi / ngày: tqanh123, 2026-10-09
 - PRD bị ảnh hưởng: `docs/prd/requirements.md` §1.3 FR-REC-02, FR-REC-04
 - Mã FR/NFR: FR-REC-02, FR-REC-04
 

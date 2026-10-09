@@ -67,8 +67,11 @@ Còn S6 (trình gate) và S7 (Pha B).
 
 Người dùng chốt: gộp chuỗi O vào PR-A; viết đề xuất mới cho O1 + O4; chạy hết luồng rồi push. Đã làm trên nhánh này (sau khi merge
 PR-A `20ec374`): áp [D] (O3) và [E] (dormant 365, persona) vào PRD → engine → spec → seed; gate `baseline_v4` và latency đầu-cuối
-(`src/evaluation/reports/eval-2026-10-09-recsys-gate-v4-booked-first-dormant365.md`, Δp95 ≤ 3 ms). **O1 + O4 chờ chốt** đề xuất
-`docs/prd/update/2026-10-09-recsys-diem-xuat-phat-va-phien-xem.md` trước khi vào engine.
+(`src/evaluation/reports/eval-2026-10-09-recsys-gate-v4-booked-first-dormant365.md`, Δp95 ≤ 3 ms). Người dùng chốt [F] 09/10 →
+O1 + O4 vào engine (`docs/prd/update-archive/2026-10-09-recsys-diem-xuat-phat-va-phien-xem.md`), parity với bản thí nghiệm
+nDiscordant = 0 trên toàn bộ khách, `baseline_v5`, latency đạt G1
+(`src/evaluation/reports/eval-2026-10-09-recsys-gate-v5-diem-xuat-phat-phien-xem.md`). **Chuỗi O của plan đã lên engine (PR-A).**
+Còn: track F14c (PR-B) theo lane B / G2.
 
 ---
 

@@ -10,7 +10,8 @@ from src.backend.app.application.ports import CdpHistoryReader, UnitIndex, Vecto
 from src.backend.app.application.ports.cdp_client import CdpUnavailableError
 from src.backend.app.application.search import hit
 from src.backend.app.core.logging_config import log_event
-from src.backend.app.domain.recommendation import Popularity, Purchase, ResolvedEvent, build_profile, explain, mmr_select, score_candidates
+from src.backend.app.domain.recommendation import (Popularity, Purchase, ResolvedEvent, ScoreContext, build_profile, explain,
+                                                   infer_origin, mmr_select, score_candidates)
 from src.backend.app.domain.recommendation.profile import (
     EXPLORE_MAX_PER_DESTINATION, EXPLORE_TAXONOMIES, MAX_PER_VERTICAL, local_today, parse_using_date,
 )
@@ -120,6 +121,11 @@ class _LocalSpace:
     def destination(self) -> np.ndarray:
         return self.index.destination[self.glob] if self.glob else np.array([], dtype=str)
 
+    @property
+    def origin_city(self) -> np.ndarray:
+        """Điểm xuất phát của route bay ("" với unit khác) — FR-REC-04, chốt 09/10."""
+        return self.index.attrs.origin_city[self.glob] if self.glob else np.array([], dtype=object)
+
 
 @dataclass
 class RecommendForUser:
@@ -208,7 +214,11 @@ class RecommendForUser:
                     cand.append(local)
         pop = np.array([pop_global.get(g, 0.0) for g in space.glob], dtype=np.float32)
         E = space.E
-        score, _ = score_candidates(profile, E, pop)
+        # FR-REC-04 (09/10): điểm xuất phát của chuyến bay khách xem / đặt gần nhất; route bay khác điểm xuất phát bị hạ / loại
+        taxonomy, origin_city = space.taxonomy, space.origin_city
+        context = ScoreContext(taxonomy=taxonomy, origin_city=origin_city,
+                               origin=infer_origin(resolved, taxonomy, origin_city))
+        score, _ = score_candidates(profile, E, pop, context)
         cand = sorted(cand, key=lambda j: -score[j])[: self.candidate_k]
         chosen = mmr_select(score, E, cand, space.taxonomy, k, max_per_vertical=self.max_per_vertical)
         if not chosen:

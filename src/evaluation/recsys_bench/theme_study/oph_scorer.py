@@ -15,6 +15,7 @@ import numpy as np
 
 from src.backend.app.domain.recommendation import score_candidates as prod_score
 from src.evaluation.recsys_bench.theme_study.origin import infer_origin, mismatch
+from src.evaluation.recsys_bench.theme_study.step2_scorers import engine_origin_mask
 
 #: Ngưỡng hiệu chỉnh cos ghim theo plan giai đoạn lane B (`docs/plan/2026-10-08-recsys-trien-khai-theo-giai-doan.md`).
 Q_LOW, Q_HIGH = 0.8529, 0.9387
@@ -40,7 +41,8 @@ def make_scorer(state: dict, index, *, none_scorer: str = "F0", w_pop_none: floa
     span = max(q[1] - q[0], 1e-6)
     w_pop_by_segment = w_pop_by_segment or {}
 
-    def score(profile, E, pop):
+    def score(profile, E, pop, context=None):
+        # `context` của engine (từ 09/10 engine đã có O1 điểm xuất phát): chuyển xuống `prod_score` để `B0+oph` = engine
         space = state.get("space")
         glob = list(space.glob) if space is not None else []
         origin = None
@@ -51,7 +53,7 @@ def make_scorer(state: dict, index, *, none_scorer: str = "F0", w_pop_none: floa
                 origin, ounit = str(index.attrs.origin_city[g]), g
             state["origin"], state["origin_unit"] = origin, ounit
         if profile.active_trip is not None:
-            s, u = prod_score(profile, E, pop)
+            s, u = prod_score(profile, E, pop, context)
             if origin is not None:
                 mis = mismatch(glob, index, origin)
                 s = s - w_origin * mis if origin_mode == "pen" else np.where(mis, MASKED, s)
@@ -61,12 +63,13 @@ def make_scorer(state: dict, index, *, none_scorer: str = "F0", w_pop_none: floa
                     s = s + w_cart * np.isin(np.arange(len(s)), list(cart))
             return s, u
         if none_scorer == "F0":
-            s, u = prod_score(profile, E, pop)
+            s, u = prod_score(profile, E, pop, context)
         else:
             u = profile.u_long
             wp = w_pop_by_segment.get(state.get("segment_cfg"), w_pop_none)
             sem = np.clip((E @ u - q[0]) / span, 0.0, 1.0)
             s = (1.0 - wp) * sem + wp * np.asarray(pop, dtype=np.float32)
+            s = engine_origin_mask(s, context)                 # luật engine 09/10 cho nhánh không chuyến mở
         if origin is not None:
             s = np.where(mismatch(glob, index, origin), MASKED, s)
         return s, u
