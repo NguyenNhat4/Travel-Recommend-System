@@ -1,0 +1,18 @@
+{
+  "error": {
+    "code": "PRODUCT_UNAVAILABLE",
+    "message": "Sản phẩm vừa hết chỗ.",
+    "retryable": false,
+    "requestId": "draft-01JXYZ",
+    "details": {
+      "rejectedItems": [
+        {
+          "productId": "nt-a-99",
+          "usingDate": "2026-10-16",
+          "code": "PRODUCT_UNAVAILABLE",
+          "message": "Sản phẩm vừa hết chỗ."
+        }
+      ]
+    }
+  }
+}

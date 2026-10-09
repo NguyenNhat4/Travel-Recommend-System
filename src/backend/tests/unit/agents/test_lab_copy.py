@@ -14,7 +14,7 @@ from src.backend.app.application.itinerary.contracts import error_response
 class LabCopyTests(unittest.TestCase):
     def test_removed_routes_and_state_fields(self):
         # `route`/`evaluation_result` gộp vào `decision`; `thread_id`/`scenario_id`/`messages`/`errors`/
-        # `pending_question`/`llm_used` bỏ vì không node nào đọc lại (docs/spec/agent/field-review.md §3).
+        # `pending_question`/`llm_used` bỏ vì không node nào đọc lại (history/2026-09-28-ap-dung-de-xuat-field-review-agent.md).
         self.assertFalse({'risk_level', 'approval', 'proposed_action', 'route', 'evaluation_result',
                           'thread_id', 'scenario_id', 'messages', 'errors', 'pending_question',
                           'llm_used'} & AgentState.__annotations__.keys())
@@ -22,11 +22,11 @@ class LabCopyTests(unittest.TestCase):
         self.assertFalse(hasattr(nodes, 'risky_action_node'))
         self.assertFalse(hasattr(routing, 'route_after_approval'))
 
-    def test_twelve_node_topology(self):
+    def test_fourteen_node_topology(self):
         graph = build_graph()
         self.assertEqual(set(graph.get_graph().nodes) - {'__start__', '__end__'},
                          {'intake', 'classify', 'extract', 'tool', 'evaluate', 'converse', 'compose', 'narrate',
-                          'clarify', 'retry', 'dead_letter', 'finalize'})
+                          'clarify', 'retry', 'dead_letter', 'finalize', 'apply_option', 'filter'})
 
     def test_every_node_is_named_for_the_trace(self):
         """`partial` mất __name__, nên node dựng từ nó sẽ hiện là "RunnableLambda" trong LangSmith."""

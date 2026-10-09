@@ -15,7 +15,7 @@ export function FloatingWidget() {
   const widget = useFloatingWidget();
   const { isOpen, setIsOpen, isExpanded, setIsExpanded, isHistoryOpen, setIsHistoryOpen,
     activePlan, isChatCollapsed, setIsChatCollapsed, handleQuickPrompt,
-    selectedProduct, closeProductDetail, addSelectedToCart } = widget;
+    selectedProduct, closeProductDetail, addSelectedToCart, selectedCanAddToCart, bookSelectedNow } = widget;
   const dialogRef = useWidgetFocus(isOpen, isExpanded, isHistoryOpen);
   return (
     <>
@@ -162,8 +162,8 @@ export function FloatingWidget() {
                 onClick={() => setIsChatCollapsed(prev => !prev)}
                 className={`hidden lg:flex absolute top-1/2 -translate-y-1/2 z-30 transition-all duration-200 cursor-pointer items-center justify-center ${
                   isChatCollapsed
-                    ? 'left-0 w-6 h-12 bg-white hover:bg-blue-50 text-slate-500 hover:text-blue-600 border border-l-0 border-slate-300/80 rounded-r-xl shadow-md hover:w-7'
-                    : '-left-3.5 w-7 h-7 bg-white hover:bg-slate-50 text-slate-500 hover:text-blue-600 border border-slate-200 rounded-full shadow-md hover:scale-110'
+                    ? 'left-0 w-6 h-12 bg-white hover:bg-ai-50 text-slate-500 hover:text-ai-600 border border-l-0 border-slate-300/80 rounded-r-xl shadow-md hover:w-7'
+                    : '-left-3.5 w-7 h-7 bg-white hover:bg-slate-50 text-slate-500 hover:text-ai-600 border border-slate-200 rounded-full shadow-md hover:scale-110'
                 }`}
                 title={isChatCollapsed ? "Mở rộng Khung Chat AI Assistant" : "Thu nhỏ Khung Chat AI Assistant"}
                 aria-label={isChatCollapsed ? "Mở rộng Khung Chat AI Assistant" : "Thu nhỏ Khung Chat AI Assistant"}
@@ -176,7 +176,7 @@ export function FloatingWidget() {
               </button>
               {selectedProduct && !activePlan
                 ? <WidgetProductDetail key={selectedProduct.productId} productId={selectedProduct.productId}
-                    summary={selectedProduct.summary} onClose={closeProductDetail} onAddToCart={addSelectedToCart}
+                    summary={selectedProduct.summary} onClose={closeProductDetail} onAddToCart={selectedCanAddToCart ? addSelectedToCart : undefined} onBookNow={bookSelectedNow}
                     cartAddState={widget.cartAddStates[selectedProduct.productId]} />
                 : activePlan ? <WidgetPlanPanel widget={widget} /> : <WidgetPlanEmpty onPrompt={handleQuickPrompt} />}
             </div>
@@ -190,7 +190,7 @@ export function FloatingWidget() {
 function WidgetTitle({ title }: { title?: string }) {
   return (
     <div className="flex min-w-0 items-center gap-3">
-      <span className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 sm:flex">
+      <span className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-ai-50 text-ai-600 sm:flex">
         <Compass className="h-5 w-5" aria-hidden="true" />
       </span>
       <div className="min-w-0">

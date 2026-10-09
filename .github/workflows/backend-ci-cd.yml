@@ -17,6 +17,7 @@ on:
       - '.github/actions/sync-env-from-secret-manager/**'
       - 'Dockerfile.backend'
       - 'src/backend/**'
+      - 'db/migrations/**'
       - 'scripts/**'
       - 'src/shared/contracts/**'
       - 'scripts/**'
@@ -32,6 +33,7 @@ on:
       - '.github/actions/sync-env-from-secret-manager/**'
       - 'Dockerfile.backend'
       - 'src/backend/**'
+      - 'db/migrations/**'
       - 'scripts/**'
       - 'src/shared/contracts/**'
       - 'ops/docker-compose.backend-vm.yml'
@@ -45,26 +47,29 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  PIP_BREAK_SYSTEM_PACKAGES: '1'
   PYTHON_VERSION: '3.11'
 
 jobs:
   quality:
     name: CI checks
     if: ${{ github.event_name == 'push' || github.event.action == 'opened' || github.event.action == 'synchronize' || github.event.action == 'reopened' || (github.event.action == 'closed' && github.event.pull_request.merged == true) || (github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3')) }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vota-staging-ha]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
+        if: ${{ runner.environment == 'github-hosted' }}
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
           cache-dependency-path: src/backend/requirements.txt
 
       - name: Install backend test dependencies
-        run: python -m pip install --upgrade pip && python -m pip install -r src/backend/requirements.txt
+        # torch bản CPU trước (bản mặc định của PyPI kéo CUDA vài GB); e5-small chạy CPU như trong image.
+        run: python3 -m pip install --upgrade pip && python3 -m pip install --index-url https://download.pytorch.org/whl/cpu "torch>=2.3" && python3 -m pip install -r src/backend/requirements.txt
 
       - name: Validate contract
         run: PYTHONDONTWRITEBYTECODE=1 python3 src/shared/contracts/tests/validate_contract.py
@@ -87,7 +92,7 @@ jobs:
   build:
     name: Build images
     needs: quality
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vota-staging-ha]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -109,7 +114,7 @@ jobs:
     name: Publish SHA and latest images
     if: ${{ (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true) || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') }}
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vota-staging-ha]
     environment: staging
     permissions:
       contents: read
@@ -175,9 +180,10 @@ jobs:
 
   deploy:
     name: Deploy application VM in place
-    if: ${{ (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true) || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') }}
+    # Tắt: VM staging cũ không nhận deploy nữa. Triển khai lên staging-ha qua các workflow staging-ha-*-cd.yml.
+    if: ${{ false }}
     needs: publish
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vota-staging-ha]
     # Two 15-minute health windows (deploy and rollback) plus image pull and SSH.
     timeout-minutes: 45
     concurrency:
@@ -201,6 +207,7 @@ jobs:
           GCE_DB_TUNNEL_PORT: ${{ secrets.GCE_DB_TUNNEL_PORT || '15432' }}
           BACKEND_IMAGE: ${{ secrets.GAR_BACKEND_IMAGE }}
           BACKEND_DIGEST: ${{ needs.publish.outputs.backend_digest }}
+          MIGRATE_DB_SECRET: ${{ vars.GCE_MIGRATE_DB_SECRET || 'vota-migrate-database-url' }}
         run: |
           for name in GCP_PROJECT_ID GCE_INSTANCE GCE_ZONE GCE_COMPOSE_FILE GCE_BACKEND_HEALTH_URL; do
             if [ -z "${!name:-}" ]; then
@@ -208,6 +215,10 @@ jobs:
               exit 1
             fi
           done
+          if [[ ! "$MIGRATE_DB_SECRET" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+            echo 'GCE_MIGRATE_DB_SECRET must be a Secret Manager secret id.' >&2
+            exit 1
+          fi
           if [[ ! "$GCE_DB_TUNNEL_PORT" =~ ^[0-9]+$ ]]; then
             echo 'GCE_DB_TUNNEL_PORT must be numeric.' >&2
             exit 1
@@ -293,8 +304,21 @@ jobs:
           GCE_DB_TUNNEL_PORT: ${{ secrets.GCE_DB_TUNNEL_PORT || '15432' }}
           BACKEND_IMAGE: ${{ secrets.GAR_BACKEND_IMAGE }}
           BACKEND_DIGEST: ${{ needs.publish.outputs.backend_digest }}
+          MIGRATE_DB_SECRET: ${{ vars.GCE_MIGRATE_DB_SECRET || 'vota-migrate-database-url' }}
         run: |
           remote_dir="/tmp/vota-cicd-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           backend_ref="$BACKEND_IMAGE@$BACKEND_DIGEST"
-          remote_command="chmod +x '$remote_dir'/*.sh && '$remote_dir/deploy-backend-vm.sh' --backend-image '$backend_ref' --compose-file '$GCE_COMPOSE_FILE' --backend-health-url '$GCE_BACKEND_HEALTH_URL' --db-tunnel-port '$GCE_DB_TUNNEL_PORT'"
-          gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet --command "$remote_command"
+          remote_command="chmod +x '$remote_dir'/*.sh && '$remote_dir/deploy-backend-vm.sh' --backend-image '$backend_ref' --compose-file '$GCE_COMPOSE_FILE' --backend-health-url '$GCE_BACKEND_HEALTH_URL' --db-tunnel-port '$GCE_DB_TUNNEL_PORT' --migrate-dsn-stdin"
+          # DSN của role có quyền tạo bảng nằm trong Secret Manager (nội dung secret là đúng một dòng postgresql://…). Đọc bằng
+          # danh tính CI, rồi đi qua stdin của SSH: không vào argv, không vào log, không ghi file trên VM. Đọc thất bại hoặc
+          # rỗng thì dừng ở đây, chưa đụng tới VM.
+          umask 077
+          dsn_file="$(mktemp)"
+          trap 'rm -f "$dsn_file"' EXIT
+          gcloud secrets versions access latest --secret "$MIGRATE_DB_SECRET" --project "$GCP_PROJECT_ID" > "$dsn_file"
+          if ! grep -Eq '^postgres(ql)?://[^[:space:]]+$' "$dsn_file"; then
+            echo "Secret $MIGRATE_DB_SECRET is empty or is not a single postgresql:// DSN; not touching the VM." >&2
+            exit 1
+          fi
+          gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet \
+            --command "$remote_command" < "$dsn_file"

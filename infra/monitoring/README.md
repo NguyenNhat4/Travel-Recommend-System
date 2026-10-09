@@ -4,7 +4,8 @@ This root configures only the staging monitoring environment. It does not contai
 
 ## Resources
 
-- Cloud Monitoring dashboard for VM CPU, memory, disk, readiness, watcher heartbeat, crawler outcomes and container lifecycle events.
+- Cloud Monitoring dashboard (`dashboard.tf`, 12-column mosaic) read top to bottom: Overview (readiness + SLO gauges), Backend API, one block per VM (App, DB, DB replica when it exists) with CPU/memory/fullest-disk scorecards and CPU, memory-by-state, disk-by-device, network charts, per-container CPU/RAM/disk for the App VM, container and crawler events, logs. Nothing is averaged across VMs or containers.
+- Per-container CPU and RAM: `vota-container-stats-collector` runs `docker stats --no-stream` every 60 s and writes custom metrics `custom.googleapis.com/vota/container/{cpu_percent,memory_bytes,memory_percent}` (declared in `container_metrics.tf`; CPU 100% = one vCPU). The `container metrics collector silent` alert fires if the samples stop.
 - Dashboard log panels for backend, frontend, crawler, Redis and Weaviate containers, filtered by container name where the emitted log entry provides it.
 - Per-container disk usage: `vota-container-disk-collector` samples every 5 minutes (writable layer, json-file logs incl. rotations, named volumes) into `/var/log/vota/container-disk.jsonl`; a log-based distribution metric feeds a dashboard chart and the `container disk usage high` alert (`container_disk_alert_gib`, default 5 GiB), and a logs panel shows the exact byte values.
 - Alert policies for uptime, CPU, memory, disk, per-container disk and error-level VM logs.
@@ -54,4 +55,6 @@ sudo systemctl is-active vota-docker-event-watcher.service
 sudo tail -n 20 /var/log/vota/docker-events.jsonl
 sudo systemctl is-active vota-container-disk-collector.service
 sudo tail -n 5 /var/log/vota/container-disk.jsonl
+sudo systemctl is-active vota-container-stats-collector.service
+sudo journalctl -u vota-container-stats-collector -n 20 --no-pager
 ```

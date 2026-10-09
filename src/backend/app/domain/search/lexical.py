@@ -40,6 +40,16 @@ def query_tokens(q: str, min_len: int = 2) -> list[str]:
     return list(dict.fromkeys(t for t in tokens(q) if len(t) >= min_len and t not in STOPWORDS))
 
 
+def is_unaccented(q: str, min_tokens: int = 3) -> bool:
+    """Câu gõ **không dấu** (slice `no_diacritics` của gold): có chữ cái, bỏ dấu (kể cả đ → d) không đổi gì, và có ít nhất
+    `min_tokens` token truy vấn không phải số. Câu ngắn kiểu thương hiệu ("VinWonders", "Sun World") không tính — chúng đi
+    đường vớt BM25 bình thường. Tính trên câu **gốc**: bước chuẩn hoá đã trả dấu cho địa danh nên không dùng được câu sau nó."""
+    s = unicodedata.normalize("NFC", q)
+    if not any(ch.isalpha() for ch in s) or strip_accents(s) != s:
+        return False
+    return sum(not t.isdigit() for t in query_tokens(s)) >= min_tokens
+
+
 def coverage(q_tokens: Iterable[str], name_tokens: set[str]) -> float:
     """Tỉ lệ token của truy vấn có mặt trong tên — truy vấn gần như là tên/thương hiệu thì cao.
 

@@ -1,0 +1,19 @@
+{
+  "schema_version": "1",
+  "snapshot": "2026-09-23",
+  "collection": "app:ProductBench__e5_small",
+  "depth": 10,
+  "seed": 42,
+  "drafts_sha256": null,
+  "overlap_qids": [],
+  "files": {
+    "A": {
+      "path": "pool_A.csv",
+      "sha256": "2606524544f826caac201039d4e50b709706d19d164d882679267e64b088b2dc",
+      "labeler": "A",
+      "n_queries": 5,
+      "n_pairs": 14
+    }
+  },
+  "created_at": "2026-10-06T02:07:46+07:00"
+}

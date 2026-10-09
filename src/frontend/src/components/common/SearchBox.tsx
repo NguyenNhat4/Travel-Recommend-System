@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useTravel } from '../../context/TravelContext';
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition';
+import { InstantSearchPanel } from '../../features/search/instant/InstantSearchPanel';
+import { useInstantSearchBox } from '../../features/search/instant/useInstantSearchBox';
 import { 
   Search, 
   Mic, 
@@ -47,7 +49,13 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
   variant = 'hero',
   autoFocus = false
 }) => {
-  const { currentLocale, showToast } = useTravel();
+  const { currentLocale, showToast, navigate } = useTravel();
+  // Gợi ý tức thì khi gõ (FR-SRC-05). `instant.search` ghi câu vào lịch sử rồi gọi `onSearch` như trước.
+  const { containerRef: instantContainerRef, ...instant } = useInstantSearchBox({
+    value,
+    onSearch,
+    onOpenProduct: (productId) => navigate(`/product/${encodeURIComponent(productId)}`),
+  });
   const [isLargeTextMode, setIsLargeTextMode] = useState<boolean>(() => {
     try {
       return localStorage.getItem('vota_elder_text_mode') === 'true';
@@ -86,7 +94,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
             : `Voice recognized: "${text.trim()}"`
         );
         // Traditional user flow: trigger search on final result
-        onSearch(text.trim());
+        instant.search(text);
       }
     },
     onError: (err) => {
@@ -111,8 +119,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!value.trim()) return;
-    onSearch(value.trim());
+    instant.search(value);
   };
 
   const handleClear = () => {
@@ -136,7 +143,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
         <div className="flex items-center justify-between text-xs text-slate-500 px-1">
           <div className="flex items-center gap-2">
             <span className="font-semibold text-slate-700 flex items-center gap-1">
-              <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+              <Sparkles className="w-3.5 h-3.5 text-brand-600" />
               <span>{isVi ? 'Tìm kiếm thông minh đa thế hệ' : 'Multi-generational Smart Search'}</span>
             </span>
           </div>
@@ -162,12 +169,13 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
       )}
 
       {/* Main Search Bar Form */}
+      <div ref={instantContainerRef} className="relative">
       <form onSubmit={handleSubmit} className="relative group">
         <div
           className={`relative flex items-center bg-white rounded-2xl border-2 transition-all shadow-md ${
             isListening 
               ? 'border-red-500 ring-4 ring-red-100' 
-              : 'border-slate-300 hover:border-blue-400 focus-within:border-blue-600 focus-within:ring-4 focus-within:ring-blue-100'
+              : 'border-slate-300 hover:border-brand-400 focus-within:border-brand-600 focus-within:ring-4 focus-within:ring-brand-100'
           } ${isLargeTextMode ? 'p-2 sm:p-2.5' : 'p-1.5 sm:p-2'}`}
         >
           {/* Text Input */}
@@ -175,7 +183,9 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
             type="text"
             value={value}
             autoFocus={autoFocus}
-            onChange={(e) => onChange(e.target.value)}
+            onChange={(e) => { onChange(e.target.value); instant.onType(); }}
+            {...instant.inputProps}
+            aria-label={isVi ? 'Ô tìm kiếm' : 'Search box'}
             placeholder={placeholder || defaultPlaceholder}
             className={`w-full pl-4 sm:pl-5 pr-3 bg-transparent text-slate-900 placeholder:text-slate-400 outline-hidden font-medium ${
               isLargeTextMode 
@@ -208,7 +218,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                 className={`p-2.5 rounded-xl font-bold transition-all flex items-center gap-1.5 border ${
                   isListening
                     ? 'bg-red-600 text-white border-red-700 animate-pulse shadow-md'
-                    : 'bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 border-slate-200 hover:border-blue-200'
+                    : 'bg-slate-100 hover:bg-brand-50 text-slate-700 hover:text-brand-700 border-slate-200 hover:border-brand-200'
                 }`}
                 title={
                   isVi 
@@ -225,7 +235,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                   </>
                 ) : (
                   <>
-                    <Mic className="w-4 h-4 text-slate-600 hover:text-blue-600" />
+                    <Mic className="w-4 h-4 text-slate-600 hover:text-brand-600" />
                     <span className="text-[11px] font-semibold text-slate-600 hidden md:inline-block">
                       {isVi ? 'Nói' : 'Voice'}
                     </span>
@@ -237,7 +247,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
             {/* Search Button (Solid blue, icon only) */}
             <button
               type="submit"
-              className={`relative overflow-hidden font-black rounded-xl transition-all shadow-md active:scale-95 flex items-center justify-center shrink-0 bg-blue-600 hover:bg-blue-700 text-white focus:ring-4 focus:ring-blue-300 ${
+              className={`relative overflow-hidden font-black rounded-xl transition-all shadow-md active:scale-95 flex items-center justify-center shrink-0 bg-brand-600 hover:bg-brand-700 text-white focus:ring-4 focus:ring-brand-300 ${
                 isLargeTextMode
                   ? 'p-3.5 sm:p-4 min-h-[52px] min-w-[52px]'
                   : isHero
@@ -257,6 +267,8 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
           </div>
         </div>
       </form>
+      {instant.open && <InstantSearchPanel {...instant.panel} />}
+      </div>
 
       {/* Voice Listening Transcript Feedback */}
       {isListening && (
@@ -292,9 +304,9 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
               type="button"
               onClick={() => {
                 onChange(chip);
-                onSearch(chip);
+                instant.search(chip);
               }}
-              className={`rounded-full bg-white border border-slate-200 font-medium text-slate-700 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 transition-colors shadow-2xs flex items-center gap-1 ${
+              className={`rounded-full bg-white border border-slate-200 font-medium text-slate-700 hover:bg-brand-50 hover:text-brand-700 hover:border-brand-300 transition-colors shadow-2xs flex items-center gap-1 ${
                 isLargeTextMode 
                   ? 'px-3.5 py-1.5 text-sm' 
                   : 'px-3 py-1 text-xs'

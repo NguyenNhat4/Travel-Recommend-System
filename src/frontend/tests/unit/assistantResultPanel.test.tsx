@@ -174,6 +174,21 @@ describe('AssistantResultPanel', () => {
       ]);
     });
 
+    it('books each hotel of a hotel change from the day of its first night (AC-AGT-04, contract 1.19.0)', () => {
+      const south = { ...hotel, productId: 'hotel-2', name: 'Khách sạn Nam đảo' };
+      const day = (n: number) => ({ day: n, date: `2026-10-0${n}`, slots: [] });
+      const itinerary = {
+        ...(completed.status === 'COMPLETED' ? completed.itinerary : (undefined as never)),
+        stay: { product: hotel, nights: 2, fromNight: 1 },
+        stays: [{ product: hotel, nights: 2, fromNight: 1 }, { product: south, nights: 2, fromNight: 3 }],
+        days: [1, 2, 3, 4, 5].map(day),
+      };
+      expect(itineraryCartItems(itinerary)).toEqual([
+        { product: hotel, usingDate: '2026-10-01', checkOutDate: '2026-10-03' },
+        { product: south, usingDate: '2026-10-03', checkOutDate: '2026-10-05' },
+      ]);
+    });
+
     it('attaches the itinerary party to every cart item so the cart gets adults and children', () => {
       const party = { adults: 2, children: 1 };
       expect(itineraryCartItems(completed.status === 'COMPLETED' ? completed.itinerary : (undefined as never), party)).toEqual([
@@ -182,26 +197,28 @@ describe('AssistantResultPanel', () => {
       ]);
     });
 
-    it('adds the whole itinerary and single items through onAddToCart, with the intent party', () => {
+    it('books single items only (no pay-all button), with the intent party', () => {
       const onAddToCart = vi.fn();
-      render(<AssistantResultPanel response={completed} onAddToCart={onAddToCart} />);
+      const onBookNow = vi.fn();
+      render(<AssistantResultPanel response={completed} onAddToCart={onAddToCart} onBookNow={onBookNow} />);
       const party = { adults: 2, children: 1 };                                 // intent.party của fixture
-      fireEvent.click(screen.getByRole('button', { name: /Thêm cả lịch trình vào giỏ \(2\)/ }));
-      expect(onAddToCart).toHaveBeenLastCalledWith([
-        { product: hotel, usingDate: '2026-10-01', checkOutDate: '2026-10-02', party },
-        { product: ticket, usingDate: '2026-10-01', party },
-      ]);
-      // hotel + ticket ngày 1 + ticket ngày 2; vé hết chỗ không có nút.
-      expect(screen.getAllByRole('button', { name: 'Thêm vào giỏ' })).toHaveLength(3);
-      fireEvent.click(screen.getAllByRole('button', { name: 'Thêm vào giỏ' })[2]);
+      expect(screen.queryByRole('button', { name: /Thanh toán tất cả/ })).toBeNull();
+      // Khách sạn chỉ đặt trực tiếp: Thêm vào giỏ chỉ có ở vé ngày 1 và ngày 2; vé hết chỗ không có nút nào.
+      expect(screen.getAllByRole('button', { name: 'Thêm vào giỏ' })).toHaveLength(2);
+      fireEvent.click(screen.getAllByRole('button', { name: 'Thêm vào giỏ' })[1]);
       expect(onAddToCart).toHaveBeenLastCalledWith([{ product: ticket, usingDate: '2026-10-02', party }]);
+      // Đặt ngay có ở mọi mục đặt được: khách sạn + vé ngày 1 + vé ngày 2.
+      expect(screen.getAllByRole('button', { name: 'Đặt ngay' })).toHaveLength(3);
+      fireEvent.click(screen.getAllByRole('button', { name: 'Đặt ngay' })[0]);
+      expect(onBookNow).toHaveBeenLastCalledWith([{ product: hotel, usingDate: '2026-10-01', checkOutDate: '2026-10-02', party }]);
     });
 
-    it('hides add-to-cart when the price is unknown', () => {
+    it('hides the booking buttons when the price is unknown', () => {
       const unknownPrice: Response = { ...completed, itinerary: { ...completed.itinerary, stay: { product, nights: 1 }, days: [] } } as Response;
-      render(<AssistantResultPanel response={unknownPrice} onAddToCart={vi.fn()} />);
+      render(<AssistantResultPanel response={unknownPrice} onAddToCart={vi.fn()} onBookNow={vi.fn()} />);
       expect(screen.queryByRole('button', { name: 'Thêm vào giỏ' })).toBeNull();
-      expect(screen.queryByRole('button', { name: /Thêm cả lịch trình/ })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Đặt ngay' })).toBeNull();
+      expect(screen.queryByRole('button', { name: /Thanh toán tất cả/ })).toBeNull();
     });
 
     it('offers quick edits that stay within 1–7 days and name the replaced product', () => {

@@ -21,10 +21,14 @@ def test_config_loads_with_spec_numbers(cfg):
 
 def test_gold_slice_quota_matches_target_and_min(cfg):
     """spec §1.2 + Part 5 `sb gold check`: tổng quota = target, mỗi slice ≥ min_per_slice."""
+    from evaluation.search_bench.gold_schema import SLICES
     q = cfg.gold.slices
-    assert sum(q.values()) == cfg.gold.target                            # 200
+    assert sum(q.values()) == cfg.gold.target == 232                     # 07/10: 211 (gold_v4) + 9 + 12 (gold_v6)
     assert min(q.values()) >= cfg.gold.min_per_slice                     # mục tiêu mỗi slice ≥ tối thiểu (3)
     assert len(q) * cfg.gold.min_per_slice <= cfg.gold.minimum <= cfg.gold.target
+    assert cfg.gold.minimum == 51 and len(q) == 17
+    # quota và SLICES cùng tập, hai slice gold_v6 nối CUỐI (`sb gold split` seed RNG theo SLICES.index)
+    assert set(q) == set(SLICES) and SLICES[-2:] == ("duration_false_positive", "poi_resolution")
 
 
 def test_strict_section_rejects_unknown_key(tmp_path):

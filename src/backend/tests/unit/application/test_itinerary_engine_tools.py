@@ -24,6 +24,7 @@ from src.backend.app.application.catalog.use_cases import GetProductDetail, GetS
 from src.backend.app.application.itinerary.contracts import valid
 from src.backend.app.application.itinerary.engine_tools import InProcessItineraryTools
 from src.backend.app.application.itinerary.tool_contracts import validate
+from src.backend.app.application.ports.embedder import EmbeddingUnavailableError
 from src.backend.app.application.ports.itinerary_tools import ToolError
 from src.backend.app.core.request_context import bind_request_id, current_request_id, reset_request_id
 from src.backend.app.infrastructure.auth.keys import generate_rsa_pem_pair
@@ -330,15 +331,19 @@ def test_result_is_a_copy_not_the_engine_index(services):
     assert "injected" not in index.units[index.idx[item["productId"]]].attributes
 
 
-def test_search_forwards_only_the_engine_filters_and_never_identity():
+def test_search_forwards_every_engine_filter_and_the_guests_but_never_identity():
+    # Trace 2026-10-08 (gia đình 2 lớn 1 bé ở TP.HCM): số khách không tới engine nên sức chứa phòng không được lọc.
+    # Cùng bộ tham số với route POST /search; `sort`, `includeVariants`, ngày trong travelContext engine chưa nhận.
     engine = Spy({"results": [], "total": 0})
     request = {"query": "  khách sạn gia đình ", "destination": "Nha Trang", "taxonomy": None, "limit": 5,
                "offset": 0, "priceMax": 2_000_000, "starRatingMin": 4, "availableOnly": True,
-               "sort": "relevance", "includeVariants": False}
+               "sort": "relevance", "includeVariants": False,
+               "travelContext": {"checkIn": "2026-10-15", "guests": {"adults": 2, "children": 1}}}
     run(tools_with(search=engine).search_products(request))
     run(tools_with(search=engine).search_products({"query": "golf", "taxonomy": "golf"}))
     assert engine.calls == [
-        (("khách sạn gia đình",), {"destination": "Nha Trang", "limit": 5, "offset": 0}),
+        (("khách sạn gia đình",), {"destination": "Nha Trang", "limit": 5, "offset": 0, "price_max": 2_000_000,
+                                   "star_min": 4, "available_only": True, "adults": 2, "children": 1}),
         (("golf",), {"taxonomy": "golf"}),
     ]
 
@@ -352,6 +357,35 @@ SIMILAR_ROWS = ROWS + [P("X1", "Phòng chưa gắn cha", "hotel", "Nha Trang", {
 @pytest.fixture
 def similar(services):
     return GetSimilarProducts(InMemoryProductQuery(SIMILAR_ROWS), services["similar"])
+
+
+def test_embedding_failure_reaches_the_trace_with_its_reason():
+    """Cohere hết hạn mức: tool báo ngay lý do `embed:quota_exhausted`, không còn chờ tới TOOL_TIMEOUT."""
+    tools = tools_with(search=Spy(error=EmbeddingUnavailableError("quota_exhausted", status=429, retryable=False)))
+    gateway = ItineraryToolGateway(tools, tools, tools)
+    result = run(gateway.execute({"id": "a", "name": "search_products", "args": {"query": "biển"}}))
+    assert result["error"] == {"code": "SEARCH_UNAVAILABLE", "retryable": False, "httpStatus": 503,
+                               "reason": "embed:quota_exhausted"}
+
+
+def test_search_route_answers_503_with_reason_when_embedding_fails():
+    app = FastAPI()
+    install_error_handlers(app)
+    app.include_router(search_routes.router, prefix="/api/v1")
+
+    def search(*_args, **_kwargs):
+        raise EmbeddingUnavailableError("quota_exhausted", status=429, retryable=False)
+    app.state.search = search
+
+    async def scenario():
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(base_url="http://backend.test/api/v1/", transport=transport) as http:
+            return await http.get("search", params={"q": "khách sạn"})
+    response = run(scenario())
+    assert response.status_code == 503
+    error = response.json()["error"]
+    assert (error["code"], error["retryable"], error["details"]) == ("SEARCH_UNAVAILABLE", False,
+                                                                       {"reason": "quota_exhausted"})
 
 
 def test_similar_matches_the_route_and_the_http_adapter(services, world, detail, similar):
@@ -405,3 +439,25 @@ def test_similar_through_the_gateway_never_logs_the_anchor(similar, caplog):
     assert missing["error"] == {"code": "PRODUCT_NOT_FOUND", "retryable": False, "httpStatus": 404}
     assert "name=get_similar_products outcome=ok" in caplog.text
     assert "R1" not in caplog.text and "khong-co" not in caplog.text
+
+
+def test_list_products_calls_the_catalog_use_case_and_maps_its_parameters():
+    """Chặng bay của lịch trình (AC-AGT-02) đọc tuyến và chuyến qua use case GET /products, không qua HTTP."""
+    seen = []
+
+    async def list_products(**kwargs):
+        seen.append(kwargs)
+        return {"results": [], "total": 0, "limit": kwargs["limit"], "offset": kwargs["offset"]}
+
+    tools = InProcessItineraryTools(search=lambda: None, recommend=lambda: None, index=lambda: None,
+                                    product_detail=lambda: None, similar_products=lambda: None,
+                                    token_verifier=lambda: None, revoked_tokens=lambda: None,
+                                    list_products=lambda: list_products)
+    page = run(tools.list_products({"parentProductId": "route-1", "availableOnly": True, "limit": 50, "offset": 0}))
+    assert page["total"] == 0 and page["requestId"]
+    assert seen == [{"destination": None, "taxonomy": None, "available_only": True, "sort": "popular", "limit": 50,
+                     "offset": 0, "parent_product_id": "route-1"}]
+    unwired = InProcessItineraryTools(search=lambda: None, recommend=lambda: None, index=lambda: None,
+                                      product_detail=lambda: None, similar_products=lambda: None,
+                                      token_verifier=lambda: None, revoked_tokens=lambda: None)
+    assert tool_error(unwired.list_products({"taxonomy": "flight"})).http_status == 503

@@ -17,11 +17,11 @@ function MenuItemLink({ item, active, onNavigate }: { item: NavItem; active: boo
       href={item.href}
       onClick={onNavigate}
       aria-current={active ? 'page' : undefined}
-      className={`flex items-center gap-3 rounded-2xl p-3 transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-blue-600 ${
-        active ? 'bg-blue-50' : 'hover:bg-slate-100'
+      className={`flex items-center gap-3 rounded-2xl p-3 transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-brand-600 ${
+        active ? 'bg-brand-50' : 'hover:bg-slate-100'
       }`}
     >
-      <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl text-blue-600 ${active ? 'bg-white shadow-xs' : 'bg-blue-50'}`}>
+      <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl text-brand-600 ${active ? 'bg-white shadow-xs' : 'bg-brand-50'}`}>
         <NavIcon name={item.icon} className="h-5 w-5" />
       </span>
       <span className="min-w-0">

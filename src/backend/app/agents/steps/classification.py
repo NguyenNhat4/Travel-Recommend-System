@@ -3,9 +3,10 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import date, datetime, timedelta, timezone
+import re
 
 from src.backend.app.application.itinerary.contracts import bounds, valid
-from src.backend.app.domain.itinerary.dates import explicit_dates, this_year
+from src.backend.app.domain.itinerary.dates import explicit_dates, stated_days, this_year
 from src.backend.app.domain.itinerary.normalization import fold
 from src.backend.app.domain.itinerary.planning import merge_intent
 
@@ -17,8 +18,12 @@ from .prompts import CLASSIFY_PROMPT, EXTRACT_PROMPT
 
 # Việt Nam không có giờ mùa hè, nên lệch cố định UTC+7 là đủ và không cần gói dữ liệu múi giờ (tzdata).
 VIETNAM = timezone(timedelta(hours=7))
-TRIP_FIELDS = ("destination", "days", "startDate", "party", "budget")
+TRIP_FIELDS = ("destination", "days", "startDate", "party", "budget", "origin")
+#: Trường phải đủ trước khi gọi tool (AC-AGT-01); ngân sách vẫn được hỏi nhưng không bắt buộc.
+REQUIRED_FIELDS = ("destination", "days", "startDate", "party")
 SWAP_CONSTRAINTS = ("exclude_products", "specific_hotel", "specific_activity", "require_hotel")
+#: "lấy phương án 2", "phuong an so 2", "take option 2" (so trên chuỗi đã `fold`).
+_OPTION_PICK = re.compile(r"\b(?:phuong an|option)\s*(?:so\s*)?(\d)\b")
 
 
 def vietnam_today(now: datetime | None = None) -> date:
@@ -36,11 +41,30 @@ def route_input(state: dict) -> list:
     return [("system", CLASSIFY_PROMPT), ("human", prompt_yaml(payload))]
 
 
+def _vague_form(state: dict) -> dict | None:
+    """Câu trả lời không thêm được thông tin (`vague`) khi còn thiếu trường bắt buộc: đi thẳng `clarify` kèm form.
+
+    `None` (xử lý như `travel`) khi chuyến đi đã đủ trường bắt buộc hoặc chưa có lượt nào để câu này trả lời.
+    """
+    intent = state.get("intent") or {}
+    if not state.get("conversation_history") or all(intent.get(key) is not None for key in REQUIRED_FIELDS):
+        return None
+    missing = [key for key in TRIP_FIELDS if intent.get(key) is None]
+    update = {"decision": "missing_info", "clarification_reason": "suggest_form", "missing_fields": missing,
+              "start_date_asked": True}
+    if {"destination", "days"} & set(missing):
+        update["clarification_rounds"] = int(state.get("clarification_rounds", 0) or 0) + 1
+    return update
+
+
 def route_result(state: dict, result: TurnRoute) -> dict:
-    """Update của `classify`: `travel` đi tiếp `extract`; trò chuyện và ngoài phạm vi đi `converse`."""
+    """Update của `classify`: `travel` đi tiếp `extract`; `vague` đi `clarify` kèm form khi còn thiếu trường bắt
+    buộc, không thì như `travel`; trò chuyện và ngoài phạm vi đi `converse`."""
     label = TurnRoute.model_validate(result).route
-    update = {"interaction_type": label, "refusal": label == "out_of_scope",
+    update = {"interaction_type": "travel" if label == "vague" else label, "refusal": label == "out_of_scope",
               "events": [event("classify", f"route {label}")]}
+    if label == "vague":
+        return {**update, **(_vague_form(state) or {"decision": "travel"})}
     if label == "travel":
         return {**update, "decision": "travel"}
     # `converse` dùng `missing_fields` để mời người dùng nói tiếp phần chuyến đi còn thiếu.
@@ -93,11 +117,25 @@ def _copied_from_selection(state: dict, changes: dict) -> None:
             changes.pop(key)
 
 
+def picked_option(state: dict) -> dict | None:
+    """Phương án khác người dùng chọn ở lượt này ("lấy phương án N"), chỉ trong các phương án đã hiện ở lượt trước
+    (`previous_options`, AC-AGT-04 chốt 2026-10-08); số không có trong đó thì None."""
+    match = _OPTION_PICK.search(fold(state.get("query", "")))
+    if match is None:
+        return None
+    return next((option for option in state.get("previous_options", [])
+                 if option.get("index") == int(match.group(1)) and option.get("stays")), None)
+
+
 def _merged_constraints(state: dict, result: Extraction, patch: dict, intent: dict) -> dict:
     """Ràng buộc mới; các luật dưới đây giữ cho `require_hotel` và `exclude_*` không tự mâu thuẫn."""
     constraints = deepcopy(state.get("constraints", {}))
     changes = result.constraints.model_dump(exclude_none=True)
     _copied_from_selection(state, changes)
+    option = picked_option(state)
+    if option is not None:
+        # Tên lấy từ phương án đã hiện (grounding), không từ LLM; phương án hai khách sạn giữ khách sạn đêm 1.
+        changes["specific_hotel"] = option["stays"][0]["name"]
     for key in changes.pop("clear_fields", []):
         constraints.pop(key, None)
     if "hotel_attributes" in changes:
@@ -121,6 +159,10 @@ def _merged_constraints(state: dict, result: Extraction, patch: dict, intent: di
                 constraints.pop("children_ages", None)
     if constraints.get("require_hotel"):
         constraints["exclude_taxonomies"] = [x for x in constraints.get("exclude_taxonomies", []) if x != "hotel"]
+    if changes.get("require_flight"):
+        constraints["exclude_taxonomies"] = [x for x in constraints.get("exclude_taxonomies", []) if x != "flight"]
+    elif "flight" in changes.get("exclude_taxonomies", []):
+        constraints.pop("require_flight", None)
     return constraints
 
 
@@ -154,6 +196,20 @@ def _date_from_message(state: dict, result: Extraction, patch: dict, today: date
     patch["startDate"] = stated
     remaining = [field for field in result.change_without_value if field != "startDate"]
     return result.model_copy(update={"change_without_value": remaining, "start_date_undecided": False})
+
+
+def _days_from_message(state: dict, result: Extraction, patch: dict) -> None:
+    """Lưới an toàn khi LLM bỏ trống số ngày dù câu chat viết thời lượng dạng gói ("1 ngày 2 đêm", "3n2d").
+
+    Trace thật (golden TC-03, 05/10): "nghỉ dưỡng ... 1 ngày 2 đêm" ra `days = null` nên agent hỏi lại số ngày, trong khi
+    hội thoại gốc chỉ hỏi điểm đến. Chỉ điền khi LLM không đưa số ngày, lượt này không có ngày kết thúc và không có chip
+    số ngày; ghi thẳng vào `patch`. Số ngày ngoài 1–7 vẫn bị `_invalid_inputs` hỏi lại như mọi giá trị khác.
+    """
+    if patch.get("days") is not None or result.end_date or "days" in state.get("intent_override", {}):
+        return
+    days = stated_days(state.get("query", ""))
+    if days is not None:
+        patch["days"] = days
 
 
 def _default_year(result: Extraction, intent: dict, patch: dict, today: date) -> Extraction:
@@ -206,16 +262,14 @@ def _invalid_inputs(intent: dict, today: date) -> list[dict]:
     return found
 
 
-#: Chi tiết chuyến đi được hỏi một lần sau điểm đến và số ngày (AC-AGT-01); trả lời bỏ qua vẫn lập lịch.
-TRIP_DETAILS = ("startDate", "party", "budget")
+#: Chi tiết chuyến đi hỏi gộp bằng câu chữ một lần sau điểm đến và số ngày; từ lượt sau còn thiếu ngày đi hoặc số
+#: người thì hiện form (AC-AGT-01).
+TRIP_DETAILS = ("startDate", "party", "budget", "origin")  # nơi đi: không bắt buộc, như ngân sách (AC-AGT-02)
 
 
-def trip_details_missing(intent: dict, result: Extraction) -> list[str]:
-    """Chi tiết còn thiếu; người dùng nói rõ chưa chốt ngày thì ngày đi không tính là thiếu."""
-    missing = [key for key in TRIP_DETAILS if intent.get(key) is None]
-    if result.start_date_undecided and "startDate" in missing:
-        missing.remove("startDate")
-    return missing
+def trip_details_missing(intent: dict) -> list[str]:
+    """Chi tiết còn thiếu; "chưa chốt ngày" vẫn tính ngày đi là thiếu, vì ngày đi là trường bắt buộc."""
+    return [key for key in TRIP_DETAILS if intent.get(key) is None]
 
 
 def _ask_invalid(state: dict, result: Extraction, intent: dict, invalid: list[dict], missing: list[str],
@@ -228,7 +282,7 @@ def _ask_invalid(state: dict, result: Extraction, intent: dict, invalid: list[di
     fields = [*missing, *(item["field"] for item in invalid if item["field"] not in missing)]
     asks_details = not missing and not asked and not state.get("intent_override")
     if asks_details:
-        fields += [key for key in trip_details_missing(intent, result) if key not in fields]
+        fields += [key for key in trip_details_missing(intent) if key not in fields]
     update = {"decision": "missing_info", "missing_fields": fields, "clarification_reason": "invalid_input",
               "start_date_asked": asked or asks_details or any(item["field"] == "startDate" for item in invalid)}
     if missing:
@@ -246,6 +300,7 @@ def extract_result(state: dict, result: Extraction) -> dict:
         # Loại nơi bị điền nhầm vào cả `destination` ("biển"): không phải tên điểm đến, đừng đem đi khớp catalog.
         patch.pop("destination")
     result = _date_from_message(state, result, patch, vietnam_today())
+    _days_from_message(state, result, patch)
     intent, invalid_override = _merged_intent(state, patch)
     if invalid_override is not None:
         return invalid_override
@@ -293,10 +348,13 @@ def extract_result(state: dict, result: Extraction) -> dict:
         return {**update, "decision": "missing_info",
                 "missing_fields": list(dict.fromkeys(result.change_without_value)),
                 "clarification_reason": "change_without_value"}
-    details = trip_details_missing(intent, result)
-    # Chip sửa tay là chỉnh có chủ ý trên hội thoại đã có, không hỏi thêm ở đó.
+    details = trip_details_missing(intent)
+    # Chip sửa tay là chỉnh có chủ ý trên hội thoại đã có, không hỏi thêm bằng câu chữ ở đó.
     if details and not asked and not state.get("intent_override"):
         return {**update, "decision": "missing_info", "missing_fields": details,
                 "start_date_asked": True, "clarification_reason": None}
-    # Đã lập lịch một lần thì không hỏi các chi tiết này nữa, kể cả khi người dùng đổi điểm đến sau đó.
+    # Đã hỏi một lần mà vẫn thiếu ngày đi hoặc số người (kể cả trả lời một phần): form ở mỗi lượt cho tới khi đủ.
+    if any(intent.get(key) is None for key in REQUIRED_FIELDS):
+        return {**update, "decision": "missing_info", "missing_fields": details,
+                "start_date_asked": True, "clarification_reason": "suggest_form"}
     return {**update, "decision": "tool", "start_date_asked": True, "clarification_reason": None}

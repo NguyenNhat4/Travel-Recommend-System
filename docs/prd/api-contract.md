@@ -49,7 +49,9 @@ Các API trả về danh sách sử dụng cơ chế phân trang dựa trên `pa
 |---|---|---|---|
 | `POST` | `/api/v1/auth/login` | Đăng nhập tài khoản | `email`, `password` $\rightarrow$ Auth token / Cookie session |
 | `POST` | `/api/v1/auth/logout` | Hủy phiên đăng nhập | Thu hồi token |
-| `GET` | `/api/v1/auth/me` | Lấy thông tin hồ sơ hiện tại | Trả về `userId`, `email`, `fullName`, `personaTag` |
+| `GET` | `/api/v1/auth/me` | Lấy thông tin hồ sơ hiện tại | Trả về `userId`, `email`, `fullName`, `phone`, `personaTag` |
+| `PATCH` | `/api/v1/auth/me` | Sửa hồ sơ (FR-USR-04) | `fullName?`, `phone?` (`null` xoá số) $\rightarrow$ hồ sơ mới |
+| `PUT` | `/api/v1/auth/password` | Đổi mật khẩu (FR-USR-04) | `currentPassword`, `newPassword` $\rightarrow$ `204`, thu hồi các phiên khác |
 
 ### 2.2. Phân Nhóm Danh Mục Sản Phẩm (`/api/v1/products`)
 | Phương thức | Endpoint | Chức năng | Ghi chú & Ràng buộc |
@@ -73,6 +75,7 @@ Các API trả về danh sách sử dụng cơ chế phân trang dựa trên `pa
   }
   ```
 - **Response Payload:** Trả về danh sách sản phẩm kèm điểm tương đồng ngữ nghĩa (`similarityScore`) và nhãn tiện ích nổi bật.
+- **Gợi ý khi gõ:** `GET /api/v1/search/suggestions?q=ha&limit=8` — trả tối đa 10 gợi ý, mỗi gợi ý có loại (`destination` hoặc `product`), nhãn hiển thị và, với sản phẩm, `productId` cùng `taxonomy`. Không cần đăng nhập, không ghi hành vi. Hình dạng chính xác ở `src/shared/contracts/openapi.yaml`.
 
 ### 2.4. Phân Nhóm Gợi Ý Cá Nhân Hóa (`/api/v1/recommendations`)
 - **Endpoint:** `GET /api/v1/recommendations`
@@ -134,6 +137,7 @@ Các API trả về danh sách sử dụng cơ chế phân trang dựa trên `pa
   - Nhận danh sách các mục đặt chỗ (`items`: `productId`, `usingDate`, `quantity`).
   - Hệ thống kiểm tra lịch khả dụng $\rightarrow$ Ghi nhận event sang CDP $\rightarrow$ Tạo bản ghi trong `app.bookings`.
 - **Xem chi tiết đơn hàng:** `GET /api/v1/bookings/{bookingCode}`
+- **Danh sách đơn của tôi:** `GET /api/v1/bookings?tab=upcoming|done|cancelled&taxonomy=&days=1|7|30|60&page=&pageSize=` — trả `{data[], pagination}`; mỗi phần tử là bản tóm tắt nhẹ của đơn (FR-BKG-14). Ví dụ chỉ minh hoạ, nguồn sự thật là `src/shared/contracts/openapi.yaml`.
 
 ### 2.7. Phân Nhóm Theo Dõi Hành Vi Khách Hàng (`/api/v1/events`)
 - **Endpoint:** `POST /api/v1/events`

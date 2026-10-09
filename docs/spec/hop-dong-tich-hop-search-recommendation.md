@@ -135,7 +135,101 @@ q'      = chuẩn_hoá(query): NFC → viết tắt (KS, KDL, gd, VW; NT, PQ, Đ
           → sửa chính tả tên riêng theo từ vựng tên sản phẩm + điểm đến của catalog (không bảng chép tay)
           → tên điểm đến về đúng giá trị catalog (khớp dài nhất trên token đã fold)
           → kiểu đi về nhãn `audience` catalog dùng (bạn trai/bạn gái → cặp đôi, 1 mình → một mình, công ty → công tác)
-          Embed và BM25 đều dùng q'. Không tách điểm đến/số khách thành filter (bước 2). `query` gốc giữ ở event `search` (§3.2).
+          Embed và BM25 đều dùng q'. Số khách chưa thành filter. `query` gốc giữ ở event `search` (§3.2).
+F       = structured filter, trong đó điểm đến (từ 2026-10-05, FR-SRC-03, sau cờ `SEARCH_DEST_FILTER`, mặc định tắt
+          cho tới khi bench xác nhận): `destination` của request luôn thắng; không có thì lấy địa danh **duy nhất** mà
+          bước chuẩn hoá nhận ra trong q'; câu nêu ≥ 2 nơi (nơi đi + nơi đến, "A hoặc B", thương hiệu chứa địa danh) hay
+          câu hỏi vé máy bay (`taxonomy = flight`, cụm "vé máy bay / chuyến bay / đường bay / chặng bay") thì **không**
+          lọc theo điểm đến. F rỗng sau khi lọc theo địa danh suy ra → chạy lại không lọc (FR-SRC-04), khai
+          `diagnostics.destinationFilter.fallback = dropped_empty`. Khi filter suy ra đang áp, token địa danh không tính
+          vào `phủ(tên, truy vấn)` ở bước VỚT. Khai báo: `diagnostics.derivedDestinations` (luôn, khi câu có địa danh),
+          `diagnostics.destinationFilter` và `appliedFilters.hard.destinationSource` (khi cờ bật) — contract 1.14.0.
+Câu không dấu (từ 2026-10-05, `SEARCH_NO_DIACRITICS_MODE=relax`, mặc định `off`): câu gốc không có dấu nào và có ≥ 3 token
+          truy vấn → bước VỚT dùng bộ ngưỡng riêng (`lexicalK 20 / lexicalCutoff 0 / lexicalMinCoverage 0,4`, tạm — chưa
+          qua dev/test) và cutoff dense riêng nếu cấu hình; vector và khoá cache không đổi; khai
+          `diagnostics.queryProfile = no_diacritics`, `cutoff` của response là cutoff hiệu lực.
+QUERY PLAN (từ 2026-10-05, kiến trúc Phase A — `docs/spec/bench/kien_truc_search_ota_so_do_va_giai_doan.md`; contract
+          1.15.0 `diagnostics.queryPlan`): sau chuẩn hoá, parse hard constraint từ q' theo thứ tự giá/sao → phủ định → loại
+          sản phẩm → tuyến bay. Tham số request luôn thắng giá trị suy ra; mỗi họ một cờ, mặc định tắt (tắt vẫn parse và khai
+          ở `queryPlan` để bench đo — trừ ba họ 07/10 bên dưới: tắt thì không parse, không khai). Ngữ nghĩa từng họ:
+          · F6 `SEARCH_NUMERIC_FILTER`: "dưới / không quá / tối đa N triệu|nghìn" → priceMax (hard, trên giá thấp nhất của
+            unit kể cả phòng con; giá null bị loại khi có lọc giá); "từ / không dưới / N sao" → starRatingMin (SOFT theo
+            [C6]: unit khai sao thấp hơn bị loại, unit không khai sao giữ và xếp sau). "không nhất thiết N sao" → bỏ điều
+            kiện, không lọc.
+          · F3 `SEARCH_NEGATION_FILTER`: "không có / không ghi nhận / không gồm / không phải / trừ X" với X trong từ vựng
+            tiện ích (`domain/search/amenities.py`) → loại unit CÓ GHI NHẬN X (property ∪ phòng con); vắng = không biết →
+            qua ([C2], khớp quy ước gán nhãn #3/#7 của `docs/spec/bench/gold-guide.md`). "không cần / không nhất thiết X" →
+            bỏ điều kiện. Cụm ngoài từ vựng → `queryPlan.unresolved`, không lọc, không bịa khoá.
+          · F4 `SEARCH_TAXONOMY_FILTER`: câu nêu đúng MỘT loại sản phẩm (khách sạn/resort/villa…, vé máy bay/chuyến bay…,
+            vé tham quan/VinWonders…, combo, golf) và không có `taxonomy` request → lọc taxonomy; ≥ 2 loại (cross-vertical)
+            hoặc cụm nằm trong tên thương hiệu → không lọc. Bật cờ này làm request tổng quan của Web (không taxonomy, dùng để
+            đếm tab) chỉ còn đếm loại câu nêu — bật cần ý kiến Web (`docs/spec/product.md` §4.2.3).
+          · F5 `SEARCH_ROUTE_FILTER`: chỉ câu vé máy bay (`taxonomy = flight` hoặc cụm bay ở trên): "từ A đến/đi/vào/ra B",
+            "A - B", "A đi B" → origin A, destination B (lọc `originCity` / `destinationCity` của tuyến); chỉ "đến B" → chỉ
+            đích; thiếu nơi đi thì không bịa; hai nơi không rõ vai → không lọc. Tham số `origin` (1.15.0) thắng câu; ngoài
+            câu bay `origin` bị bỏ qua và khai ở `queryPlan.ignored`.
+          · Từ 2026-10-06 (contract 1.16.0; mọi phần mới sau cờ, mặc định tắt):
+            – Loại trừ loại sản phẩm / thành phần (thuộc F3, cờ `SEARCH_NEGATION_FILTER`): "vé lẻ", "không lấy combo", "không
+              phải khách sạn" → `queryPlan.mustNot.taxonomies`; "không kèm vé máy bay / khách sạn" → `mustNot.flags`
+              (`includesFlight` / `includesHotel`, suy từ `catalog.combo_items.item_kind` của combo). Không bao giờ loại chính
+              loại câu (hoặc tham số) đang hỏi — xung đột khai `unresolved`.
+            – Combo đứng đầu câu ("combo vé máy bay và khách sạn Đà Lạt") → taxonomy combo, thành phần không tính là loại thứ
+              hai. Câu đã có một loại khác flight (tham số hoặc suy ra) không phải câu vé máy bay: không parse tuyến, điểm đến
+              lọc như câu thường.
+            – `SEARCH_TAXONOMY_STRONG_ONLY`: F4 chỉ lọc khi câu có cue MẠNH; bảng cue yếu `constraints.WEAK_VERTICAL_CUES`
+              ("nghỉ dưỡng", "phòng", "tham quan", "công viên", "khu vui chơi", "gói du lịch", tên điểm VinWonders / Safari /
+              Grand World — combo chứa vé được tính là đúng ý) chọn theo dữ liệu nhãn 06/10; khai `queryPlan.taxonomy.strength`.
+              Tên điểm vui chơi luôn giữ trong `lexicalText` (là tên sản phẩm, BM25 cần). Với F4 chúng vẫn chỉ là cue yếu; bật thêm
+              `SEARCH_ENTITY_FILTER` (khối 07/10 dưới) thì tên đó còn làm cổng entity — F4 bật cùng entity → AND (taxonomy ∧ tên chứa entity).
+            – `SEARCH_PARTY_FILTER`: "N người", "N người lớn M trẻ em" → `appliedFilters.hard.minOccupancy` = tổng; tham số
+              `travelContext.guests` của request luôn áp (không cờ — tuân thủ contract). Loại unit có sức chứa tối đa (unit ∪
+              phòng con) < tổng; không khai sức chứa → giữ ([C2]). Giá và số khách cùng áp → phải có MỘT phòng con thoả cả hai.
+              `results[].matchedChildren` (≤ 5 id phòng con, giá tăng dần) phát mỗi khi lọc giá hoặc số khách đang áp.
+            – `SEARCH_TONE_NORMALIZE`: đưa vị trí dấu thanh (oà/òa, oé/óe, uý/úy) về kiểu đa số của catalog trước mọi bước.
+            – Độ tin cậy router (không LLM): `queryPlan.confidence` (0–1) và `fallbackReasons` (phủ định không rõ phạm vi, tuyến
+              hai nơi không rõ vai, nhiều loại, cue loại yếu, xung đột tham số ↔ câu, câu dài nhiều ràng buộc…). Luôn khai, không
+              cờ. LLM fallback cho câu độ tin cậy thấp: đề xuất đã chốt và áp dụng 06/10
+              (`docs/prd/update-archive/2026-10-06-search-llm-fallback-query-plan.md`), ship ở contract 1.17.0 — `queryPlan.llm`,
+              `stageMs.llm`, cờ `SEARCH_LLM_FALLBACK` off|shadow|on (mặc định off → response y như 1.16.0); giả thuyết LLM chỉ điền ô
+              mà rule để trống, kiểm theo catalog, khai `llm.accepted` / `rejected`. Wiring production (settings + `main.py`) bị merge
+              `21d72ae` làm mất, khôi phục 07/10 (`history/2026-10-07-restore-search-prod-defaults-llm-fallback.md`).
+          · Từ 2026-10-07 (contract 1.18.0; spec `docs/spec/bench/tong-hop-chinh-sua-luong-search-ota.md`, plan
+            `docs/plan/2026-10-07-search-duration-entity-poi.md`; ba cờ mặc định tắt — tắt thì KHÔNG parse, không khai, response
+            y như 1.17.0; thứ tự parse khi bật: giá/sao → thời lượng → số khách → phủ định → loại → vai trò entity → tuyến →
+            POI/điểm đến; dense text, khoá cache embed, `confidence` và tập câu kích hoạt LLM không đổi):
+            – F7 `SEARCH_DURATION_FILTER`: "N ngày M đêm", "3N2Đ", "N ngày", "M đêm", "N days M nights" (chữ số 1–30; cụm đã nằm
+              trong span giá / số khách như "2 triệu/đêm", "2 người" không tính; "qua đêm", "chợ đêm", "ngay trung tâm", "3 tiếng"
+              không khớp) → `queryPlan.duration {days, nights, source: query}`, `applied` có `duration`, cụm bị bỏ khỏi `lexicalText`
+              ("VinWonders 3 ngày 2 đêm" → `lexicalText = "VinWonders"`, hết vớt hotel "… Ngay … Chợ Đêm" qua BM25). Chỉ khai + bỏ
+              cụm, KHÔNG lọc — catalog chưa có trường thời lượng (`nights` 0 unit); câu chỉ có thời lượng không phát `appliedFilters`;
+              `emptyReason = duration` khai cho đủ họ, không bao giờ phát.
+            – `SEARCH_POI_RESOLVE`: địa danh / khu vực / quận / sân bay / venue trong bảng gazetteer của repo
+              (`domain/search/gazetteer.py`: Hồ Hoàn Kiếm / Hồ Gươm, Hồ Tây, Nội Bài, Cầu Rồng, Bà Nà, Bãi Sao, Hòn Tằm…; chỉ entry
+              có điểm đến thuộc catalog đang phục vụ) → điểm đến catalog của nó vào F1 đúng luật địa danh thường: duy nhất → lọc
+              (`diagnostics.destinationFilter.source` vẫn là `query`, giữ fallback FR-SRC-04); ≥ 2 điểm đến ("khách sạn Hà Nội gần
+              Cầu Rồng") → `skipped = multi`; hai POI cùng thành phố ("Hồ Gươm hoặc Hồ Tây") → một điểm đến; câu vé máy bay không
+              lọc. Khai `queryPlan.location {key, name, kind, destination}` (POI đầu tiên trong câu),
+              `diagnostics.derivedDestinations` gồm điểm đến suy từ POI, `appliedFilters.hard.destinationSource = poi` (chỉ khi điểm
+              đến đang áp đến từ POI; tuyến bay IATA vẫn `query`). POI trong span phủ định bỏ; token POI giữ trong BM25. Chưa có geo
+              (bán kính, khoảng cách) — P1, contract 1.19.0.
+            – `SEARCH_ENTITY_FILTER` — cổng entity CỨNG: câu nêu điểm vui chơi trong gazetteer (khoá `vinwonders`, `safari`,
+              `grand_world`, `hon_tam`…; brand khách sạn "Vinpearl" không phải entity; chỉ khoá có ≥ 1 unit attraction/combo trong
+              catalog mới gate, không thì rơi về `location`). Vai trò theo cue loại của câu: `gate` khi câu không nêu loại khác (hoặc
+              chỉ cue attraction/combo, kể cả combo đứng đầu — "combo VinWonders Phú Quốc"); `location` khi câu có cue loại khác —
+              khách sạn / phòng / vé máy bay / golf, kể cả cue yếu ("phòng gần Grand World") — hoặc ≥ 2 loại. `gate` → `applied`
+              có `entity`, mask chỉ giữ unit attraction/combo có **tên** chứa ≥ 1 khoá (hard, không nới; nhiều khoá → OR),
+              `appliedFilters.hard.entity` = danh sách khoá; `location` → chỉ khai `queryPlan.entity {keys, role}`, không lọc.
+              Entity trong span phủ định bỏ ("không lấy VinWonders, vé Safari" → chỉ `safari`); token entity không bỏ khỏi
+              `lexicalText`; F3 `mustNot.taxonomies` giao bình thường ("vé lẻ VinWonders, không lấy combo" → chỉ attraction). Tham số
+              `taxonomy` của request KHÔNG đổi vai trò, chỉ giao với mask → request tab Lưu trú của Web cho câu VinWonders về
+              `total 0`, `emptyReason = entity` (không phải `param`) — bật cần Web xác nhận như F4 (`docs/spec/product.md` §4.2.3);
+              Agent tool không truyền `derive_plan` nên cổng áp cả Agent khi cờ bật. Combo chỉ nhận entity qua tên
+              (`catalog.combo_items` → P1).
+          Cụm đã thành filter (và cụm thời lượng F7, 07/10) bị bỏ khỏi câu đưa vào BM25 và độ phủ vớt (`queryPlan.lexicalText`);
+          vector dense vẫn dùng q' đầy đủ (khoá cache embed không đổi). Sau RRF kiểm lại hard filter trên R
+          (`queryPlan.revalidatedDrops`, kỳ vọng 0). F rỗng do filter suy ra → `total 0` + `queryPlan.emptyReason` (`entity` khi
+          cổng entity 07/10 làm rỗng, kể cả khi request có `taxonomy`), KHÔNG nới ngầm (kiến trúc Phase A §6); chỉ điểm đến suy
+          ra (kể cả suy từ POI) giữ fallback ở trên. `appliedFilters.hard/soft` khai những gì đã áp (§2.5).
 C_dense = top-candidateK của F theo cosine
 C_lex   = top-lexicalCandidateK của F theo BM25 trên nameAscii + searchTextAscii (đã fold dấu; truy vấn fold cùng cách)
 R_dense = { p ∈ C_dense | score(p) >= cutoff }
@@ -143,6 +237,17 @@ R_lex   = { p ∈ C_lex \ R_dense | rank_lex(p) <= lexicalK ∧ score(p) >= lexi
 R       = R_dense ∪ R_lex
 SORT    = giảm dần theo RRF(p) = Σ 1/(rrfK + rank) trên các nhánh p có mặt; hoà thì theo score
 ```
+
+Từ 2026-10-06 (contract 1.16.0, kiến trúc §7 kênh 5C) có thêm kênh **fuzzy tên** và RRF **có trọng số**, mặc định tắt / trung tính:
+
+```
+C_fuzzy = (SEARCH_FUZZY_K > 0) top-fuzzyCandidateK của F theo độ giống trigram (kiểu pg_trgm, trong tiến trình — không
+          trigram Postgres) giữa tên unit và cửa sổ token cùng độ dài tên của lexicalText
+R_fuzzy = { p ∈ C_fuzzy \ (R_dense ∪ R_lex) | rank_fuzzy(p) <= fuzzyK ∧ sim(p) >= fuzzyMinSim ∧ score(p) >= lexicalCutoff }
+RRF(p)  = Σ w_kênh / (rrfK + rank_kênh(p)),  w = SEARCH_RRF_DENSE_WEIGHT / _LEXICAL_WEIGHT / _FUZZY_WEIGHT (mặc định 1 → như cũ)
+```
+
+`diagnostics.fuzzyCount` = số unit chỉ vào R nhờ kênh fuzzy; `stageMs.fuzzy` gồm cả lấy vector để tính `score`.
 
 `score` vẫn là cosine (§2.6); RRF chỉ quyết định thứ tự, nên `score` không đơn điệu trong một trang.
 `phủ(tên, truy vấn)` = tỉ lệ token của truy vấn (đã fold, dài ≥ 2, bỏ từ chức năng) có trong tên. Truy vấn gần
@@ -158,11 +263,11 @@ của `normalize` (chỉ khi bước chuẩn hoá bật), `embed`, `dense` (gồ
 kể cả khi nhánh BM25 lỗi), `fuse` (RRF + cutoff + facets) và `hydrate`. Đo trong engine nên tổng các bước ≤
 `latencyMs` của route. Chỉ `/search` có trường này.
 
-Vector truy vấn được **cache trong tiến trình** (từ 2026-09-30, contract 1.12.0; NFR-PERF-03 yêu cầu cache khi Cohere
-vượt ngân sách): khoá là câu **sau chuẩn hoá và gộp khoảng trắng** (`SearchProducts.query_text`), nên "KS ở NT" và
+Vector truy vấn được **cache trong tiến trình** (từ 2026-09-30, contract 1.12.0; NFR-PERF-03 yêu cầu cache vector của
+truy vấn lặp lại): khoá là câu **sau chuẩn hoá và gộp khoảng trắng** (`SearchProducts.query_text`), nên "KS ở NT" và
 "khách sạn ở Nha Trang" dùng chung một vector; không fold hoa/thường/dấu. `diagnostics.embedCache` = `hit` / `miss`
 (chỉ `/search`; vắng khi `SEARCH_EMBED_CACHE=false`). Cache không đổi kết quả hay thứ tự — chỉ `stageMs.embed` khác.
-LRU `SEARCH_EMBED_CACHE_SIZE` (mặc định 10.000 ≈ 41 MB), single-flight: nhiều request cùng câu chỉ một lượt Cohere.
+LRU `SEARCH_EMBED_CACHE_SIZE` (mặc định 10.000 ≈ 15 MB với e5-small 384 chiều), single-flight: nhiều request cùng câu chỉ embed một lần.
 Sau lần nạp catalog đầu tiên backend **nạp sẵn** cache ở nền (`SEARCH_PREWARM`): file câu gold đóng băng
 `src/backend/data/search_prewarm_queries.txt` (131 câu gold_v1) + head query của `app.search_logs`, pacing
 `SEARCH_PREWARM_INPUTS_PER_MINUTE`; job `python -m src.backend.jobs.prewarm_query_cache --base-url URL` làm nóng một
@@ -195,9 +300,15 @@ Các bất biến dưới đây tính trên tập ứng viên `C`, không phải
 ### 2.4. Chế độ truy xuất — khai báo, không đổi ngầm · `[C4]`
 
 ```yaml
-search:           { mode: HYBRID_CANDIDATE_SCORE, cutoff: 0.62, candidateK: 200,
+search:           { mode: HYBRID_CANDIDATE_SCORE, cutoff: 0.84, candidateK: 200,
                     lexicalCandidateK: 50, lexicalK: 10, lexicalCutoff: 0.50, lexicalMinCoverage: 0.6, fusion: rrf(60),
-                    normalize: true }
+                    normalize: true, destFilter: false, noDiacriticsMode: off,   # hai knob này: 2026-10-05, §2.2
+                    negationFilter: false, taxonomyFilter: false, routeFilter: false, numericFilter: false,   # 2026-10-05, QUERY PLAN §2.2
+                    toneNormalize: false, taxonomyStrongOnly: false, partyFilter: false,                     # 2026-10-06, §2.2
+                    fuzzyK: 0, fuzzyCandidateK: 50, fuzzyMinSim: 0.75, rrfWeights: { dense: 1, lexical: 1, fuzzy: 1 },
+                    llmFallback: off,                                                                        # 2026-10-06, §2.2 (contract 1.17.0)
+                    durationFilter: false, poiResolve: false, entityFilter: false,                           # 2026-10-07, §2.2 (contract 1.18.0)
+                    logQueries: false }                                                                      # 2026-10-06, §7.3
 similar:          { mode: ANN_CANDIDATE_SCORE, topK: 20 }
 recommendations:  { mode: ANN_CANDIDATE_SCORE, candidateK: 200 }
 ```
@@ -213,6 +324,9 @@ Weaviate Cloud mất 453 giây. Mỗi request gửi truy vấn top-K sang Weavia
 Metadata (taxonomy, destination, available, recommendable, parent) vẫn nạp từ
 Postgres để tính filter: lúc khởi động và sau đó mỗi `CATALOG_REFRESH_SECONDS`
 (mặc định 900 giây), để giá, trạng thái và cửa sổ ngày theo kịp job cào hằng ngày.
+Mỗi lần nạp lại hỏi Postgres mã băm của catalog (một dòng); mã trùng lần trước thì
+dùng lại catalog đang giữ, không kéo lại — kiểm vector và độ phổ biến vẫn chạy mỗi
+chu kỳ. Hỏi mã băm lỗi thì kéo đầy đủ như cũ.
 Lần nạp lại lỗi thì giữ bản đang phục vụ. Mỗi lần nạp kiểm từng search unit
 theo object id, `modelVersion`, `textHash` (không tải vector): unit chưa có vector
 vẫn nằm trong metadata nhưng Weaviate chưa trả nó cho tới khi job index xong; unit
@@ -241,10 +355,30 @@ chạy offline trong test).
 |---|---|---:|---|
 | **Hard** | `taxonomy`, `destination`, `priceMin/Max`, `availableOnly` | ≥ 93% | Loại thẳng |
 | **Soft** | `starRatingMin` | 51% | Thiếu dữ liệu **không bị loại**, chỉ xếp sau |
+| **Hard** suy từ câu (05/10, sau cờ, §2.2 QUERY PLAN) | `taxonomy` (F4), `origin` / `destinationCity` tuyến bay (F5), `mustNotAmenities` (F3), `priceMin/priceMax` (F6) | taxonomy 100 % · tuyến 100 % · amenities 99 % property · giá 100 % | Loại thẳng; `mustNot` chỉ loại unit **có ghi nhận** tiện ích, không cam kết "chắc chắn không có" ([C2]); giá null bị loại khi có lọc giá |
+| **Soft** suy từ câu (05/10) | `starRatingMin` (F6) | 70 % property | Unit khai sao thấp hơn bị loại; không khai → giữ, xếp sau |
+| **Hard** số khách (06/10) | `minOccupancy` — `travelContext.guests` (luôn áp) hoặc "N người" (cờ `SEARCH_PARTY_FILTER`) | sức chứa biết ở 1.807/2.321 khách sạn | Loại unit có sức chứa tối đa < tổng; không khai → giữ ([C2]); cùng lọc giá hoặc ngày → MỘT phòng con đang bán phải thoả đồng thời tất cả (1.19.0, kiểm ngay ở mask) |
+| **Hard** ngày (07/10, contract 1.19.0) | `travelContext.checkIn` / `checkOut` (luôn áp, chỉ từ request; `domain/catalog/stay_dates.py`, `UnitIndex._stay_mask`) | khách sạn: lịch có ở mọi hạng phòng; vé tham quan / golf: lịch + cửa sổ; combo: cửa sổ | Khách sạn: nhận trong [hôm nay, +3 tháng], 1–30 đêm, và còn ≥ 1 hạng phòng đang bán (`available` + có giá) không có đêm kín (`0`) trong [checkIn, checkOut), cùng phòng đó phải thoả số khách và giá đang áp; vé / golf: `checkIn` trong cửa sổ mở bán và ngày đó không kín; combo: `checkIn` trong cửa sổ; route bay: không lọc. Không biết (không lịch, đêm ngoài 30 ngày lịch, không cửa sổ) → giữ ([C2]). Lịch KHÔNG chặn đặt chỗ (FR-CAT-03) |
+| **Hard** loại trừ suy từ câu (06/10, F3) | `mustNotTaxonomies` ("vé lẻ", "không lấy combo"), `mustNotFlags` (`includesFlight` / `includesHotel` của combo) | taxonomy 100 % · cờ combo 39/39 combo vé+phòng | Loại thẳng; không loại chính loại câu đang hỏi |
+| **Hard** cổng entity (07/10, cờ `SEARCH_ENTITY_FILTER`, chỉ vai trò `gate`) | `entity` — danh sách khoá điểm vui chơi từ gazetteer (`vinwonders`, `safari`, `grand_world`, `hon_tam`…) | tên unit attraction/combo (VinWonders có trong 141 tên trên catalog bench 3.183 unit; combo chỉ qua tên, `combo_items` → P1) | Loại thẳng mọi unit không phải attraction/combo có tên chứa ≥ 1 khoá (nhiều khoá → OR); không nới; giao với `taxonomy` request và F3 → F rỗng khai `emptyReason = entity` |
 
 Response echo `appliedFilters.hard` và `.soft`. Agent **phải đọc** khối này: nếu
 `starRatingMin` nằm trong `soft`, Agent không được nói với người dùng "khách sạn
 này 4 sao" cho một kết quả không khai `starRating`.
+
+Từ 2026-10-05 (contract 1.14.0) `/search` phát `appliedFilters` khi `SEARCH_DEST_FILTER` bật và có hard filter đang áp;
+`hard.destinationSource` = `param` (destination của request) hoặc `query` (địa danh suy ra từ câu, §2.2); từ 2026-10-07
+(contract 1.18.0, cờ `SEARCH_POI_RESOLVE`) còn `poi` — điểm đến suy từ địa danh / khu vực / sân bay trong gazetteer ("Hồ Hoàn
+Kiếm" → Hà Nội), khi đó `diagnostics.destinationFilter.source` vẫn là `query` và `queryPlan.location` cho biết địa danh nào.
+Sau fallback (`diagnostics.destinationFilter.fallback`) khối `hard` không còn `destination`. Agent đọc `destinationSource =
+query` / `poi` để biết engine đã khoá điểm đến theo câu, không theo yêu cầu tường minh của người dùng.
+
+Từ 2026-10-05 (contract 1.15.0) `appliedFilters` còn được phát khi bất kỳ hard/soft filter nào đang áp — tham số request
+tường minh (`origin`, `priceMin/priceMax`, `starRatingMin`, `availableOnly`) hoặc filter suy từ câu khi cờ bật — với các khoá
+`taxonomySource`, `origin`, `originSource`, `destinationCity`, `mustNotAmenities`, `priceSource` (hard) và `starRatingMin`,
+`starRatingSource` (soft) — cùng `mustNotBrands`; 1.16.0 thêm `mustNotTaxonomies`, `mustNotFlags`, `minOccupancy`, `partySource`;
+1.18.0 thêm `entity` (hard, cổng entity) và giá trị `poi` cho `destinationSource`. `diagnostics.queryPlan` là "parse ra gì",
+`appliedFilters` là "đã lọc gì" (thời lượng F7 chỉ có ở `queryPlan`, không bao giờ vào `appliedFilters`).
 
 ### 2.6. Điểm số — và điều bên tiêu thụ không được suy ra
 
@@ -266,7 +400,7 @@ Chỉ hiển thị `score` cho khách ở chế độ debug.
 | Từ | Không được kết luận |
 |---|---|
 | `score: 0.81` | "81% phù hợp" |
-| `available: true` | "còn phòng ngày 15/10" — đó là `bookable` |
+| `available: true` | "còn phòng ngày 15/10" — đó là `bookable`. Có `travelContext.checkIn` thì kết quả đã qua bộ lọc ngày (§2.5) nhưng vẫn là snapshot lịch, không phải xác nhận còn phòng |
 | `because[]` | Bằng chứng nhân quả. Đó là đóng góp vào điểm số, không phải lý do khách mua |
 | `total: 87` | Kích thước catalog. Đó là `|R|` sau filter và cutoff |
 | Thuộc tính vắng mặt | `false`. Vắng mặt nghĩa là **không biết** — xem `[C2]` |
@@ -306,7 +440,7 @@ Mọi sản phẩm đều có cosine với mọi truy vấn. Không có cutoff t
 yêu cầu điều đó.
 
 ```yaml
-search.cutoff: 0.62     # PROVISIONAL — benchmark Ngày 3
+search.cutoff: 0.84     # e5-small, hiệu chỉnh trên gold_v4 (06/10)
 ```
 
 Nguồn sự thật duy nhất là `application.yml`. Response trả lại giá trị đã áp
@@ -384,6 +518,26 @@ vẫn trả về, chỉ là vô nghĩa.
 Hai mã khác nhau vì cách xử lý khác nhau: cái đầu là sai id, cái sau là cần reindex.
 
 ---
+
+### 3.7. `/search/suggestions` — gợi ý tức thì khi gõ · FR-SRC-05
+
+```http
+GET /api/v1/search/suggestions?q=ha&limit=8
+```
+
+Hình dạng: `SearchSuggestionResponse` trong `search.yaml` (contract 1.14.0). Đây **không** phải một chế độ của `/search`: khớp chữ, không điểm số, không embed, không kho vector.
+
+| Hạng mục | Quy tắc |
+|---|---|
+| Nguồn | `UnitIndex` đang phục vụ: tên điểm đến (cùng giá trị và số đếm với `/destinations`) và tên search unit còn bán. Không có vé máy bay, hạng phòng, chuyến bay hay unit `available = false` |
+| Khớp | Sau `fold` (bỏ dấu, chữ thường): hạng 0 tên bắt đầu bằng truy vấn · hạng 1 truy vấn khớp từ đầu một từ · hạng 2 mọi token của truy vấn là tiền tố của một từ trong tên. Không khớp giữa từ ("ha" ≠ "nhạc") |
+| Xếp và chia | Nhóm theo thứ tự điểm đến, `hotel`, `attraction`, `golf`, `combo`; trong nhóm theo hạng khớp, rồi độ phổ biến (`BuildPopularity`), rồi tên ngắn hơn. Chia chỗ theo vòng giữa các nhóm đến `limit` (mặc định 8, tối đa 10), nên một nhóm đông không đẩy nhóm khác ra |
+| Truy vấn ngắn | Dưới 2 ký tự chữ/số sau `fold` → `200` với `suggestions: []`, không phải lỗi. `q` thiếu, dài hơn 100 ký tự hoặc `limit` ngoài 1–10 → `422 VALIDATION_ERROR` |
+| Ghi hành vi | **Không** ghi event `search` sang CDP và không ghi `app.search_logs`: Web gọi theo từng lần gõ. Không cần JWT |
+| Bộ nhớ đệm | LRU trong tiến trình theo `(fold(q), limit)`, dựng lại cùng mỗi lần catalog nạp lại; response có `Cache-Control: public, max-age=300` (RecSys chưa sẵn sàng thì trả rỗng và không có header này) |
+| Ngân sách | p95 ≤ 250 ms (AC-SRC-02). Không gọi dịch vụ ngoài nên không chịu độ trễ Weaviate/Cohere ở §7.1 |
+
+Code: `domain/search/suggest.py`, `application/search/suggest.py`, `api/v1/routes/search.py`.
 
 ## 4. Recommendation engine
 
@@ -550,8 +704,14 @@ Lấy 1–2 nguồn cao nhất, ngưỡng tối thiểu `0.15`.
 ### 4.7. Điểm cuối và đa dạng
 
 ```
-final = cos(u, v_c) + γ · log(1 + review_count)      γ = 0.05
+final = W_SHORT · cos(u_short, v_c) + W_POP · pop_D(c) + W_LONG · cos(u_long, v_c)
+W_SHORT / W_POP / W_LONG = 0.7 / 0.15 / 0.15
 ```
+
+`u_short` = vector chuyến đang mở (không có chuyến mở thì dùng `u_long`); `pop_D` = mức phổ biến của ứng viên. Hằng nằm ở
+`src/backend/app/domain/recommendation/profile.py` (`W_SHORT, W_POP, W_LONG`). Trọng số chốt 2026-10-07, thay 0.6 / 0.25 / 0.15
+(`docs/prd/update-archive/2026-10-06-recsys-trong-so-ngan-han-pho-bien.md`; số đo: `src/evaluation/reports/eval-2026-10-06-recsys-search-tong-hop.md`
+phần A §4, `eval-2026-10-07-recsys-grid-llbo-coldstart.md`).
 
 Sau đó MMR re-rank với `λ = 0.7`, cộng giới hạn cứng tối đa 2 kết quả mỗi
 `parentProductId`.
@@ -628,7 +788,7 @@ khác hẳn nhau.
 | `GET /products/{id}/similar` | 300 ms |
 | `GET /recommendations`, cache hit | 300 ms |
 | `GET /recommendations`, cache miss (đọc 500 event từ CDP) | 800 ms |
-| Embed một truy vấn | 60 ms khi `embedCache = miss` (gọi Cohere); hit ≈ 0 ms — từ 30/09 vector truy vấn được cache (§2.2), số đo thật ở `docs/spec/bench/search-eval-results.md` |
+| Embed một truy vấn | p95 ≈ 11 ms khi `embedCache = miss` (e5-small trên CPU laptop; Cohere trước đây ≈ 60 ms, p95 437 ms trên VM); hit ≈ 0 ms — từ 30/09 vector truy vấn được cache (§2.2), số đo thật ở `docs/spec/bench/search-eval-results.md` |
 
 Đo thật 01/10/2026 trên VM (`release-mvp-v2`, contract 1.12.0; Weaviate Cloud ở `eu-central-1`, VM ở `asia-southeast1`):
 `/search` p95 **4,0 s** = dense 1,8 s + BM25 2,1 s nối tiếp (mỗi lượt gửi mask 3.146 id); embed cache hit 0 ms, miss p95 437 ms.
@@ -651,6 +811,12 @@ lọc, danh sách `productId` trả về, `strategy`, `cutoff`, `topScore`,
 `filteredCount`, `relevantCount`, độ trễ, mã lỗi.
 
 **Không được:** JWT, `X-Service-Token`, email hoặc số điện thoại đầy đủ.
+
+**Ghi `app.search_logs` (từ 2026-10-06, cờ `SEARCH_LOG_QUERIES`, mặc định tắt; kiến trúc §11):** route `/search` ghi một dòng
+cho trang đầu của câu thật — `query`, `filters` (taxonomy/destination của request + `appliedFilters.hard` + `queryPlan.confidence`),
+`result_product_ids`, `result_count`, `model_version`, `latency_ms`, `cdp_user_id` chỉ khi request đã xác thực (token lỗi → NULL,
+không 401). Ghi ngoài đường request (hàng đợi 1.000 dòng, một luồng ghi), lỗi ghi không bao giờ lên response. Bảng này là nguồn
+head query cho prewarm (§2.2) và cho hole detection / gold mới (bench).
 
 ### 7.4. Versioning
 
@@ -710,10 +876,28 @@ Team Search cung cấp:
     `search("Vinpeal Resort Nha Trang")` → `corrections` có Vinpeal → Vinpearl và top-1 như câu viết đúng;
     `search("khach san co ban cong")` → không có `corrections`; `search("chỗ nghỉ Đà Lạt đi cùng bạn gái")` →
     `party: COUPLE`, `normalizedQuery` chứa "cặp đôi".
+10d. (07/10, cờ `SEARCH_DURATION_FILTER`) `search("VinWonders 3 ngày 2 đêm")` → `queryPlan.duration == {days: 3, nights: 2,
+    source: query}`, `queryPlan.lexicalText == "VinWonders"`, `applied` chứa `duration`, không có `appliedFilters` khi không có
+    filter khác đang áp (riêng cờ này bật); kết quả
+    không còn hotel chỉ trùng "ngay"/"đêm" trong tên (ví dụ "… Ngay Trung Tâm & Chợ Đêm", "… ngay BẾN NINH KIỀU & CHỢ ĐÊM").
+    `search("resort 2 triệu/đêm Phú Quốc")`, `search("khách sạn gần chợ đêm Đà Lạt")` → không có `queryPlan.duration`.
+10e. (07/10, cờ `SEARCH_POI_RESOLVE` + `SEARCH_DEST_FILTER`) `search("khách sạn gần Hồ Hoàn Kiếm")` →
+    `diagnostics.destinationFilter == {source: query, value: "Hà Nội"}`, `appliedFilters.hard.destinationSource == "poi"`,
+    `queryPlan.location == {key: ho_hoan_kiem, name: "Hồ Hoàn Kiếm", kind: landmark, destination: "Hà Nội"}`,
+    `derivedDestinations == ["Hà Nội"]`, mọi kết quả ở Hà Nội; `search("khách sạn gần Hồ Gươm hoặc Hồ Tây")` → cũng Hà Nội;
+    `search("khách sạn Hà Nội gần Cầu Rồng")` → `destinationFilter.skipped == multi`, không lọc; `search("vé máy bay HAN DAD")`
+    (F5 bật) → điểm đến Đà Nẵng suy từ IATA không bao giờ khai `destinationSource = poi`, không có `queryPlan.location`.
+10f. (07/10, cờ `SEARCH_ENTITY_FILTER`) `search("VinWonders Nha Trang")` → mọi `results[]` là attraction/combo có tên chứa
+    VinWonders, `appliedFilters.hard.entity == ["vinwonders"]`, `queryPlan.entity == {keys: [vinwonders], role: gate}`,
+    `sum(facets.taxonomy) == total` vẫn đúng; cùng câu với `taxonomy=hotel` → `total 0`, `queryPlan.emptyReason == "entity"`;
+    `search("khách sạn ở Grand World Phú Quốc")` → `entity.role == location`, `applied` không có `entity`, kết quả vẫn có khách sạn;
+    `search("vé lẻ VinWonders Nam Hội An, không lấy combo")` (F3 bật) → `applied` có `mustNot` và `entity`, không có combo;
+    `search("không lấy VinWonders, vé Safari")` → `hard.entity == ["safari"]`. Cả ba cờ tắt → response không có
+    `queryPlan.duration` / `location` / `entity`, y như 1.17.0.
 11. p95 dưới 300 ms trên catalog đầy đủ, đo với Weaviate cùng mạng nội bộ (local hoặc cùng region).
     *(Bổ sung 2026-09-29: PRD NFR-PERF-01 đặt ngưỡng chặt hơn, ≤ 250 ms; báo p95 tổng kèm p95 từng bước theo
-    `diagnostics.stageMs` để thấy phần nào là Cohere, phần nào là Weaviate. Bổ sung 2026-09-30: báo p95 riêng cho
-    `embedCache = hit` và `miss`; ngưỡng 250 ms áp cho đường hit, đường miss = hit + một lượt Cohere.)*
+    `diagnostics.stageMs` để thấy phần nào là embed, phần nào là Weaviate. Bổ sung 2026-09-30: báo p95 riêng cho
+    `embedCache = hit` và `miss`; ngưỡng 250 ms áp cho đường hit, đường miss = hit + một lần embed e5-small.)*
 
 ### Similar
 
@@ -759,10 +943,17 @@ Bốn tiêu chí **20, 21, 22, 23** là quan trọng nhất trong cả danh sác
 | S4 | Soft delete chưa duyệt · `[U1]` | `because[].productName` giả định sản phẩm còn hàng trong `products` |
 | S5 | Cache user vector chưa duyệt · `[P3]` | Không cache thì p95 `/recommendations` là 800 ms, không phải 300 ms |
 | S6 | Công thức `popularity_score` chưa chốt · `[C7]` | Tạm dùng `log(1 + review_count)` |
-| S7 | ~~Model embedding chưa chốt~~ — **đã chốt 22/09/2026** | Cohere `embed-multilingual-v3.0`, **1024 chiều**, vector lưu ở Weaviate (không còn pgvector). Xem `docs/prd/architecture.md` §4–§5. Kéo theo S8. |
+| S7 | ~~Model embedding chưa chốt~~ — **đổi 06/10/2026** | `intfloat/multilingual-e5-small`, **384 chiều**, chạy local trong backend, tiền tố `query: ` / `passage: `, collection `ProductE5Small` (`VECTOR_COLLECTION`) (thay Cohere `embed-multilingual-v3.0` 1024 chiều chốt 22/09; Cohere bỏ hẳn, không còn đường lui). Xem `docs/prd/architecture.md` §4–§5, `docs/prd/update-archive/2026-10-05-fr-src-02-embedding-local-e5-small.md`, `docs/prd/update-archive/2026-10-06-bo-duong-lui-cohere.md`. Kéo theo S8. |
 | S8 | ~~`EXACT_FILTER_SCORE` cần duyệt lại~~ — **đã chốt 24/09/2026, hướng (b)** | Đổi cam kết `total`/`facets` thành xấp xỉ trên tập ứng viên, khai báo qua `approximate`/`totalExact`/`facetsExact`. `/similar`, `/recommendations` chạy `ANN_CANDIDATE_SCORE`; `/search` chạy `HYBRID_CANDIDATE_SCORE` từ 25/09 (§2.4). |
 | S9 | `lexicalK` / `lexicalCutoff` / `lexicalMinCoverage` của hybrid chưa benchmark | Dùng `10` / `0.50` / `0.6`; đo ở cổng S2 của bench (`docs/spec/bench/arms.md`) trên gold, kèm slice `named_entity`, `no_diacritics`, `out_of_catalog` |
 | S10 | Bảng viết tắt, cụm kiểu đi và ngưỡng sửa chính tả của bước chuẩn hoá chưa benchmark | Dùng bảng trong `domain/search/normalize.py`; đo trên slice `abbrev_typo`, `audience_style` (bench Part 6, cổng S3/S6). Bảng backend là nguồn cho `config/aliases.yaml` của bench |
+| S12 | Từ vựng tiện ích và cue phủ định (F3) — **đã đo 06/10** trên `gold_v5` (`src/evaluation/reports/eval-2026-10-06-search-query-plan-gold-v4.md`): `amenity_negation` nDCG@10 0,303 → 0,762, Forbidden@10 0,539 → 0,225 (một mình) / 0 (tổ hợp F1–F6); bỏ F3 khỏi tổ hợp LOSE (−5,2) | Cờ `SEARCH_NEGATION_FILTER` vẫn tắt tới khi người dùng chốt bật (đề xuất: bật). Danh sách tiện ích nguồn dừng ở 60 chuỗi ở một số khách sạn → tiện ích bị loại trừ có thể vắng (Data) |
+| S13 | Bảng cue loại sản phẩm + guard thương hiệu (F4) — **đã đo 06/10**: `taxonomy_collision` +21,8; cue chỗ nghỉ giữ 99–100 % item đúng (dev/test), tên điểm vui chơi 47–73 % → yếu (`WEAK_VERTICAL_CUES`); F4 đủ +2,4 trên mốc; chỉ-cue-mạnh thua F4 đủ 1,1 (TIE); bỏ F4 khỏi tổ hợp → LOSE (−2,1), Forbidden 0,065. Bật đổi số đếm tab của Web | Cờ `SEARCH_TAXONOMY_FILTER` tắt; đề xuất bật **cần ý kiến Web**; `SEARCH_TAXONOMY_STRONG_ONLY` giữ tắt |
+| S14 | Mẫu giá/sao và vai trò nơi đi/đến (F5/F6) — **đã đo 06/10**: chiều bay 0,11 → 1,00; constraint precision 0,79 → 0,92 (0,96 trong tổ hợp); nDCG TIE từng phần, bỏ khỏi tổ hợp làm hỏng guard | Cờ `SEARCH_ROUTE_FILTER` / `SEARCH_NUMERIC_FILTER` tắt tới khi chốt (đề xuất: bật); tham số request tường minh vẫn áp theo contract |
+| S15 | Kênh fuzzy tên, RRF trọng số, chuẩn hoá dấu thanh, lọc số khách suy từ câu (1.16.0) — đo 06/10: fuzzy −0,6 (ngưỡng 0,75) / −1,2 (0,6); lexical weight 0,5 +1,2 trên F1–F6 (TIE dev/test cùng chiều); tone 0,0; party −0,6 — gold gần như không có câu dấu thanh lệch / số khách | Giữ tắt (`SEARCH_FUZZY_K=0`, trọng số 1,0, `SEARCH_TONE_NORMALIZE` / `SEARCH_PARTY_FILTER` false); cần gold riêng trước khi bật |
+| S16 | Ngưỡng kết quả yếu trên e5 (S2) — đo 06/10 trên dev/test: margin **0,058** chặn 3/3 + 4/4 câu ngoài catalog, gắn weak nhầm 9–12 % câu trong catalog (0,06: 14–16 %); cutoff tuyệt đối không chặn câu ngoài catalog nào | Client dùng margin 0,058 khi người dùng chốt; S2 giữ "chưa chốt" (7 câu ngoài catalog, nền tính trên cả catalog) |
+| S17 | Ghi `app.search_logs` (`SEARCH_LOG_QUERIES`) chưa chạy trên Postgres thật. LLM fallback cho câu độ tin cậy thấp — đề xuất **đã chốt, đã áp dụng 06/10** (`docs/prd/update-archive/2026-10-06-search-llm-fallback-query-plan.md`), ship contract 1.17.0 (`queryPlan.llm`, `stageMs.llm`); đo 06/10: gpt-4o-mini kích hoạt 10/59 câu (ngưỡng 0,75 / 1,0), 0 trường nhận, nDCG không đổi | `SEARCH_LOG_QUERIES` tắt; `SEARCH_LLM_FALLBACK=off` (shadow/on khi có bằng chứng trên gold); wiring production bị merge `21d72ae` làm mất, khôi phục 07/10 (`history/2026-10-07-restore-search-prod-defaults-llm-fallback.md`) |
+| S18 | Thời lượng F7, địa danh gazetteer → F1, cổng entity cứng (contract 1.18.0, 07/10; spec `docs/spec/bench/tong-hop-chinh-sua-luong-search-ota.md`, plan `docs/plan/2026-10-07-search-duration-entity-poi.md`) — **chưa đo**: probe fixture c0736–c0756 rồi `gold_v6` (slice `duration_false_positive`, `poi_resolution`), arm `APP.e5s.prod_f12356_dur` / `_poi` / `_ent` / `_dur_poi_ent` | Ba cờ `SEARCH_DURATION_FILTER` / `SEARCH_POI_RESOLVE` / `SEARCH_ENTITY_FILTER` tắt tới khi bench WIN/TIE trên test + Forbidden@10 = 0 + guard + 12 qid hồi quy + p95 không tăng > 30 %; `SEARCH_ENTITY_FILTER` còn cần Web xác nhận (tab Lưu trú có thể 0, `docs/spec/product.md` §4.2.3). Gazetteer là bảng tay trong repo — địa danh ngoài bảng không resolve (Data/Search bổ sung khi có hole) |
 | S11 | Kích thước cache vector truy vấn (10.000), danh sách prewarm (131 câu gold_v1 + head query `app.search_logs` — bảng này chưa có code ghi) và pacing 2.000 câu/phút chưa đo | Dùng mặc định trong `core/config.py`; đo hit/miss bằng `sb latency http` (bench Part 9) trên Cloud; đổi số qua biến môi trường `SEARCH_EMBED_CACHE_*`, `SEARCH_PREWARM_*` |
 
 S5 là phụ thuộc nặng nhất: không duyệt `[P3]` thì tiêu chí nghiệm thu 26 không

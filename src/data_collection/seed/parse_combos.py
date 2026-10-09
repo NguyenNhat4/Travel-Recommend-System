@@ -25,13 +25,16 @@ import csv
 import json
 import re
 from collections import Counter, defaultdict
+from datetime import date
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 from data_collection.collectors.textutil import fold
 
 SOURCE = "description_parse"
 MIN_REVIEW_CONFIDENCE = 0.8
 MAPPABLE_KINDS = ("hotel", "attraction", "golf", "flight")
+TRIP_HOTEL_MIN_SIM = 0.7  # combo bay + ở của Trip: ngưỡng khớp tên khách sạn (dưới mức này để soát tay, không map đoán)
 
 # ------------------------------------------------------------------ nhận loại (từ khoá đã bỏ dấu, chữ thường)
 # Thứ tự = độ ưu tiên: cụm cụ thể trước cụm chung. Bảng theo spec, bổ sung từ khoá thấy trong 93 combo thật
@@ -263,21 +266,26 @@ class Catalog:
             return pick["productId"], 0.6, f"phân khu/hoạt động trong địa điểm của combo \"{combo_venue}\": {pick['name'][:70]}"
         return None, None, "không có sản phẩm khớp trong cùng điểm đến"
 
-    def map_hotel(self, label: str, combo: dict) -> tuple[str | None, float | None, str]:
+    def map_hotel(self, label: str, combo: dict, room_label: str | None = None,
+                  min_sim: float = 0.4) -> tuple[str | None, float | None, str]:
+        """`room_label`: tên hạng phòng riêng khi nguồn đã tách (Trip); khi đó `label` chỉ là tên khách sạn và cần `min_sim`
+        cao hơn (so riêng tên khách sạn thì 0,4–0,67 vẫn còn cặp sai, vd. "Hạ Na Hotel Đà Lạt" ~ "Hasa Đà Lạt Hotel" 0,67)."""
         best, best_sim = None, 0.0
         for h in self.by_dest_hotels.get(combo["destination"], []):
             s = similarity(label, h["name"])
             if s > best_sim:
                 best, best_sim = h, s
-        if best is None or best_sim < 0.4:
+        if best is None or best_sim < min_sim:
             return None, None, "không có khách sạn khớp trong cùng điểm đến"
         rooms = self.rooms_of.get(best["productId"], [])
         if not rooms:
             return best["productId"], 0.85, f"khớp tên khách sạn {best_sim:.2f}, khách sạn không có hạng phòng: {best['name'][:60]}"
-        scored = sorted(((similarity(label, r["attributes"].get("roomName") or ""), r) for r in rooms), key=lambda t: (-t[0], t[1]["unitPrice"] or 10 ** 12))
+        scored = sorted(((similarity(room_label or label, r["attributes"].get("roomName") or ""), r) for r in rooms), key=lambda t: (-t[0], t[1]["unitPrice"] or 10 ** 12))
         s, room = scored[0]
         if s >= 0.5:
             return room["productId"], 0.95, f"khớp khách sạn và hạng phòng {s:.2f}: {room['name'][:70]}"
+        if room_label:  # nguồn nói rõ hạng phòng mà không khớp phòng nào: về property, 0.6 (MOCK_DATA_SPEC §3), không đoán phòng
+            return best["productId"], 0.6, f"khớp tên khách sạn {best_sim:.2f}, hạng phòng \"{room_label[:40]}\" không khớp: {best['name'][:60]}"
         return room["productId"], 0.85, f"khớp tên khách sạn {best_sim:.2f}, hạng phòng suy ra (rẻ nhất): {room['name'][:70]}"
 
 
@@ -303,10 +311,42 @@ def structured_items(combo: dict, cat: Catalog) -> list[dict]:
     ]
 
 
+def trip_flight_hotel_items(combo: dict, cat: Catalog) -> list[dict]:
+    """Combo bay + ở thật của trip.com (attributes.comboKind = trip_real_flight_hotel): sân bay, khách sạn, hạng phòng đã có
+    cấu trúc trong attributes, ngày đi/về và số khách nằm trong `url`. Không tách từ tên: tên dạng "Vé máy bay khứ hồi A - B +
+    <phòng> tại <khách sạn>" bị cắt sai ở ' - ', '&', ',' (mất điểm đến, tên khách sạn vỡ đôi)."""
+    a = combo["attributes"]
+    origin, dest = a.get("fromCode"), a.get("toCode")
+    route = cat.route_by_airports.get((origin, dest))
+    query = {k: v[0] for k, v in parse_qs(urlparse(a.get("url") or "").query).items()}
+    flight_label = combo["name"].split(" + ", 1)[0].strip()
+    nights = None
+    try:
+        nights = (date.fromisoformat(query["oDate"]) - date.fromisoformat(query["iDate"])).days or None
+    except (KeyError, ValueError):
+        pass
+    adults = float(query["adult"]) if query.get("adult", "").isdigit() else 2.0
+    hotel_name, room_type = a.get("hotelName") or "", a.get("roomType") or ""
+    hotel_label = f"{room_type} tại {hotel_name}" if room_type and hotel_name else hotel_name or combo["name"]
+    pid, conf, note = cat.map_hotel(hotel_name, combo, room_type or None, min_sim=TRIP_HOTEL_MIN_SIM) if hotel_name else (None, None, "thiếu attributes.hotelName")
+    return [
+        {"combo_product_id": combo["productId"], "position": 1, "label": flight_label, "item_kind": "flight",
+         "item_product_id": route["productId"] if route else None, "quantity": adults, "unit": "khách", "is_optional": False,
+         "source": "api", "confidence": 0.9 if route else None,
+         "evidence": f"attributes.fromCode={origin}, toCode={dest}, url dDate={query.get('dDate')} rDate={query.get('rDate')} | "
+                     + (f"tuyến chiều đi: {route['name'][:60]}" if route else "chưa có tuyến bay này trong catalog")},
+        {"combo_product_id": combo["productId"], "position": 2, "label": hotel_label, "item_kind": "hotel",
+         "item_product_id": pid, "quantity": float(nights or 1), "unit": "đêm", "is_optional": False, "source": "api",
+         "confidence": conf, "evidence": f"attributes.hotelName, roomType; url iDate={query.get('iDate')} oDate={query.get('oDate')} | {note}"[:400]},
+    ]
+
+
 def parse_combo(combo: dict, cat: Catalog) -> list[dict]:
     a = combo["attributes"]
     if a.get("comboKind") == "flight_hotel":
         return structured_items(combo, cat)
+    if a.get("comboKind") == "trip_real_flight_hotel":
+        return trip_flight_hotel_items(combo, cat)
     venue_fold = fold(a.get("venue") or "")
     ctx_tokens = set(venue_fold.split()) | set(fold(combo["destination"]).split()) | set(fold(a.get("province") or "").split())
     candidates: list[tuple[str, str]] = [(p, f"tên: {p}") for p in name_pieces(combo["name"])]
@@ -314,9 +354,16 @@ def parse_combo(combo: dict, cat: Catalog) -> list[dict]:
         candidates.append((line, f"mô tả: {line}"))
     items: list[dict] = []
     seen: list[tuple[str, set[str]]] = []
+    venue_ticket = None  # mảnh chỉ nói "vào khu vui chơi" (tên venue, "Phá đảo 04 khu", "trọn vẹn 03 khu"): vé vào cửa của venue
     for piece, evidence in candidates:
         gift = bool(GIFT_RE.match(piece))
         core = core_label(piece)
+        if core and venue_fold and re.search(r"\bkhu\b", core) and WRAPPER_RE.match(core):
+            venue_ticket = venue_ticket or evidence
+        words = set(core.split())
+        if core and venue_fold and len(words) >= 2 and words <= set(venue_fold.split()) \
+                and not words <= set(fold(combo["destination"]).split()):  # tên (một phần) địa điểm, không phải tên điểm đến
+            venue_ticket = venue_ticket or evidence
         if not core or WRAPPER_RE.match(core):
             continue
         kind, ambiguous = classify(piece)
@@ -325,7 +372,7 @@ def parse_combo(combo: dict, cat: Catalog) -> list[dict]:
                 r"vinwonders|safari|grand world|vinke|aquarium|vinpearl", core):
             continue
         # số lượng gộp trong mảnh quá ngắn (vd. "03 khu") không phải thành phần
-        if re.fullmatch(r"\d+ (?:khu|tro|game|games|luot|ngay|tieng)", core):
+        if re.fullmatch(r"\d+ (?:khu|tro|game|games|luot|ngay|tieng|nguoi|khach)", core):
             continue
         from_description = evidence.startswith("mô tả")
         if from_description and kind == "attraction" and not DESC_ATTRACTION_RE.search(fold(piece)):
@@ -353,6 +400,14 @@ def parse_combo(combo: dict, cat: Catalog) -> list[dict]:
                       "confidence": conf, "evidence": f"{evidence} | {note}"[:400]})
         if len(items) >= 12:
             break
+    if venue_ticket and not any(it["item_kind"] == "attraction" for it in items):
+        label = f"Vé vào cửa {a['venue']}"
+        pid, conf, note = cat.map_attraction(label, combo, "attraction", False)
+        items.insert(0, {"combo_product_id": combo["productId"], "position": 1, "label": label, "item_kind": "attraction",
+                         "item_product_id": pid, "quantity": 1.0, "unit": "vé", "is_optional": False, "source": SOURCE,
+                         "confidence": conf, "evidence": f"{venue_ticket} (vé vào cửa của địa điểm combo) | {note}"[:400]})
+        for i, it in enumerate(items, 1):
+            it["position"] = i
     if not items:  # spec tuần 1: mọi combo có ít nhất một dòng
         label = re.sub(r"\s+", " ", strip_tags(combo["name"])).strip(" -–")
         items.append({"combo_product_id": combo["productId"], "position": 1, "label": label, "item_kind": "other", "item_product_id": None,
@@ -391,6 +446,15 @@ def normalize_unit(item: dict) -> dict:
     return {**item, "unit": DEFAULT_UNIT[item["item_kind"]], "evidence": f"{evidence} | {note}".strip(" |")[:400]}
 
 
+def merge_manual(combo_id: str, parsed: list[dict], manual: dict[tuple[str, int], dict]) -> list[dict]:
+    """Dòng duyệt tay cùng (combo, position) thay dòng parse; dòng duyệt tay ở position parse không sinh ra thì nối sau.
+    Dùng chung cho CLI và job nạp DB (fresh_catalog_db.sync_combo_items)."""
+    mine = {pos: row for (cid, pos), row in manual.items() if cid == combo_id}
+    merged = [mine.pop(it["position"], it) for it in parsed]
+    merged += [row for _, row in sorted(mine.items())]
+    return [normalize_unit(it) for it in merged]
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--data-dir", type=Path, default=Path("data"))
@@ -405,11 +469,7 @@ def main(argv: list[str] | None = None) -> int:
     items: list[dict] = []
     attrs_out: dict[str, dict] = {}
     for combo in combos:
-        parsed = parse_combo(combo, cat)
-        merged = [manual.pop((combo["productId"], it["position"]), it) for it in parsed]
-        merged += [m for k, m in sorted(manual.items()) if k[0] == combo["productId"]]
-        merged = [normalize_unit(it) for it in merged]
-        items.extend(merged)
+        items.extend(merge_manual(combo["productId"], parse_combo(combo, cat), manual))
         attributes, evidence = combo_attributes(combo)
         attrs_out[combo["productId"]] = {"attributes": attributes, "evidence": evidence}
 

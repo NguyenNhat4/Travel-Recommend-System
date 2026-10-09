@@ -9,11 +9,12 @@ from types import SimpleNamespace
 
 from src.backend.app.application.itinerary.contracts import enum_values
 from src.evaluation.agent.golden import (
-    conversation_of, dataset_findings, expected_tool_call, gate_no_booking_claim, gate_no_tool_before_info,
-    gate_schema, gate_secrets, load_dataset, resolve_dates, schedule_findings,
+    Case, Turn, conversation_of, dataset_findings, expected_tool_call, gate_no_booking_claim,
+    gate_no_tool_before_info, gate_schema, gate_secrets, judge_findings, load_dataset, progress_writer,
+    TurnResult, build_report, render_markdown, resolve_dates, run_case, schedule_findings,
 )
 
-DATASET_PATH = Path(__file__).resolve().parents[1] / "datasets" / "itinerary_agent_golden.yaml"
+DATASET_PATH = Path(__file__).resolve().parents[1] / "datasets" / "agent_test_cases_nhat.yaml"
 
 FAKE_SETTINGS = SimpleNamespace(
     openai_api_key="sk-fake-test-key-0123456789", gemini_api_key="", anthropic_api_key="", langsmith_api_key="",
@@ -24,38 +25,11 @@ class DatasetTests(unittest.TestCase):
     def setUp(self):
         self.cases = load_dataset(DATASET_PATH)
 
-    def test_has_exactly_one_case_per_category_with_unique_ids(self):
-        """Bộ rút gọn: mỗi category một case (case agent dễ fail nhất); thêm case thứ hai vào cùng category là phá quy ước."""
+    def test_case_ids_are_unique(self):
         self.assertEqual(len({c.id for c in self.cases}), len(self.cases))
-        categories = [c.category for c in self.cases]
-        self.assertEqual(len(categories), len(set(categories)), "category có hơn một case")
-        self.assertEqual(len(self.cases), 14)
-
-    def test_a_start_date_question_is_answered_before_the_expected_result(self):
-        """AC-AGT-01: lượt hỏi ngày đi không có sản phẩm; kỳ vọng kết quả nằm ở lượt trả lời sau nó."""
-        asks = 0
-        for case in self.cases:
-            for index, turn in enumerate(case.turns):
-                if "startDate" in turn.expect.get("missingFieldsInclude", []):
-                    asks += 1
-                    self.assertEqual(turn.expect.get("toolCalled"), False, f"{case.id}: lượt hỏi ngày không được gọi tool")
-                    self.assertNotIn("minActivities", turn.expect)
-        self.assertGreaterEqual(asks, 5)
-
-    def test_clear_requests_state_their_start_date_with_a_placeholder_and_check_the_extraction(self):
-        """Yêu cầu đầy đủ nêu ngày đi tường minh (không cũ theo thời gian) và kiểm `intent.startDate` chính xác."""
-        checked = 0
-        for case in self.cases:
-            if case.category != "clear_request":
-                continue
-            checked += 1
-            turn = case.turns[0]
-            self.assertRegex(turn.message, r"\{today\+\d+\}", f"{case.id}: câu chưa có ngày đi")
-            self.assertRegex(turn.expect["intent"]["startDate"], r"^\{today\+\d+:iso\}$", f"{case.id}: chưa kiểm startDate")
-        self.assertGreaterEqual(checked, 1)
 
     def test_every_date_placeholder_in_the_dataset_resolves(self):
-        today = date(2026, 9, 25)
+        today = date(2026, 10, 2)
         for case in self.cases:
             for turn in case.turns:
                 resolved = json.dumps([resolve_dates(turn.message, today), resolve_dates(turn.expect, today)],
@@ -221,7 +195,7 @@ class ExpectedToolCallTests(unittest.TestCase):
 
 
 def _product(product_id, taxonomy="attraction", price=100000, duration=60):
-    return {"productId": product_id, "taxonomy": taxonomy, "unitPrice": price,
+    return {"productId": product_id, "taxonomy": taxonomy, "unitPrice": price, "available": True,
             "attributes": {"durationMinutes": duration}}
 
 
@@ -259,6 +233,15 @@ class ScheduleFindingsTests(unittest.TestCase):
         findings = schedule_findings(response, {})
         self.assertTrue(any("lặp lại" in f for f in findings))
 
+    def test_two_products_with_the_same_name_are_flagged(self):
+        # Trace 08/10/2026: hai vé Water Taxi khác mã, cùng tên (AC-AGT-04, node `filter`).
+        name = "[Grand World Phú Quốc] - Vé đi thuyền Venice (Water Taxi)"
+        slots = [{"time": "MORNING", "product": {**_product("e35d"), "name": name}},
+                 {"time": "AFTERNOON", "product": {**_product("f540"), "name": name.upper()}}]
+        response = {"status": "COMPLETED", "intent": {"days": 1},
+                    "itinerary": {"days": [{"day": 1, "slots": slots}]}, "warnings": []}
+        self.assertTrue(any("tên" in f and "lặp lại" in f for f in schedule_findings(response, {})))
+
     def test_cheapest_hotel_not_selected_flagged(self):
         expensive = _product("hotel-expensive", taxonomy="hotel", price=2_000_000)
         cheap = _product("hotel-cheap", taxonomy="hotel", price=500_000)
@@ -273,6 +256,16 @@ class ScheduleFindingsTests(unittest.TestCase):
         response = {"status": "COMPLETED", "intent": {"days": 1},
                     "itinerary": {"stay": {"product": cheap}, "days": []}, "warnings": []}
         findings = schedule_findings(response, {"hotel-expensive": expensive, "hotel-cheap": cheap})
+        self.assertFalse(any("hotel rẻ nhất" in f for f in findings))
+
+    def test_a_searched_hotel_beats_a_cheaper_recommended_one(self):
+        # compose_plan xếp Search trước Recommendation rồi mới tới giá.
+        searched = _product("hotel-searched", taxonomy="hotel", price=2_000_000)
+        recommended = _product("hotel-recommended", taxonomy="hotel", price=500_000)
+        response = {"status": "COMPLETED", "intent": {"days": 1},
+                    "itinerary": {"stay": {"product": searched}, "days": []}, "warnings": []}
+        findings = schedule_findings(response, {"hotel-searched": searched, "hotel-recommended": recommended},
+                                     {"hotel-searched": "search", "hotel-recommended": "recommendation"})
         self.assertFalse(any("hotel rẻ nhất" in f for f in findings))
 
 
@@ -352,10 +345,6 @@ class NewExpectKeyTests(unittest.TestCase):
         self.assertEqual(dataset_findings(response, 200, [], expect, {},
                                           {"get_similar_products", "search_products"}), [])
 
-    def test_swap_case_expects_the_similar_tool(self):
-        case = next(c for c in load_dataset(DATASET_PATH) if c.id == "G-076")
-        self.assertEqual(case.turns[1].expect["toolsInclude"], ["get_similar_products"])
-
 
 if __name__ == "__main__":
     unittest.main()
@@ -384,3 +373,181 @@ class ResolveDatesTests(unittest.TestCase):
 
     def test_text_that_is_not_a_placeholder_is_left_alone(self):
         self.assertEqual(resolve_dates("giá {100} và {today+x}", self.today), "giá {100} và {today+x}")
+
+    def test_day_month_formats_typed_by_real_users(self):
+        self.assertEqual(resolve_dates("Ngày {today+19:vi}", self.today), "Ngày 14 tháng 10")
+        self.assertEqual(resolve_dates("ngày {today+20:dm}, 2 người lớn", self.today), "ngày 15/10, 2 người lớn")
+
+
+AGENT_CASES_PATH = DATASET_PATH
+
+
+def _form_response(question, default, suggested=("Đà Nẵng", "Nha Trang", "Phú Quốc"), form=True):
+    response = {"status": "NEEDS_CLARIFICATION", "question": question, "missingFields": ["destination"],
+                "suggestedValues": {"destination": list(suggested)}}
+    if form:
+        response["clarificationForm"] = {"defaults": {"destination": default}}
+    return response
+
+
+class FormMatchesAnswerTests(unittest.TestCase):
+    expect = {"formMatchesAnswer": True}
+
+    def test_a_suggested_destination_missing_from_the_form_fails(self):
+        # TC-02: lời trả lời gợi ý Đà Nẵng nhưng form chưa chọn Đà Nẵng.
+        findings = dataset_findings(_form_response("**Gợi ý**\nMình gợi ý Đà Nẵng nhé.", None), 200, [], self.expect, {})
+        self.assertEqual(len(findings), 1)
+        self.assertIn("Đà Nẵng", findings[0])
+        self.assertTrue(dataset_findings(_form_response("Mình gợi ý Đà Nẵng nhé.", "Nha Trang"), 200, [],
+                                         self.expect, {}))
+
+    def test_a_matching_form_passes(self):
+        self.assertEqual(dataset_findings(_form_response("Mình gợi ý Đà Nẵng nhé.", "Đà Nẵng"), 200, [],
+                                          self.expect, {}), [])
+
+    def test_an_answer_naming_no_destination_has_nothing_to_compare(self):
+        self.assertEqual(dataset_findings(_form_response("Bạn chỉnh form bên dưới nhé.", "Đà Nẵng"), 200, [],
+                                          self.expect, {}), [])
+
+    def test_the_form_must_be_shown(self):
+        findings = dataset_findings(_form_response("Đi đâu?", None, form=False), 200, [], self.expect, {})
+        self.assertEqual(findings, ["không có clarificationForm"])
+
+
+class AgentTestCasesDatasetTests(unittest.TestCase):
+    def test_the_user_reported_cases_load_and_every_placeholder_resolves(self):
+        cases = load_dataset(AGENT_CASES_PATH)
+        self.assertEqual([case.id for case in cases], ["TC-01", "TC-02", "TC-03", "TC-04", "TC-10", "TC-11"])
+        for case in cases:
+            for turn in case.turns:
+                resolved = json.dumps([resolve_dates(turn.message, date(2026, 10, 2)),
+                                       resolve_dates(turn.expect, date(2026, 10, 2))], ensure_ascii=False)
+                self.assertNotIn("{today", resolved, f"{case.id}: placeholder chưa được thay")
+        tc01 = resolve_dates(cases[0].turns[2].message, date(2026, 10, 2))
+        self.assertEqual(tc01, "Ngày 14 tháng 10")
+
+
+class _ScriptedJudge:
+    """LLM giả: trả kết luận cố định, ghi lại prompt đã nhận."""
+
+    def __init__(self, verdicts=None, error=None):
+        self.verdicts, self.error, self.prompts = verdicts or [], error, []
+
+    def with_structured_output(self, schema):
+        judge = self
+
+        class _Runnable:
+            async def ainvoke(self, messages, config=None):
+                judge.prompts.append(messages)
+                if judge.error:
+                    raise judge.error
+                return schema(verdicts=judge.verdicts)
+        return _Runnable()
+
+
+class JudgeFindingsTests(unittest.IsolatedAsyncioTestCase):
+    response = {"status": "COMPLETED", "message": "**Hà Nội 1 ngày**\nMình đổi ngày đi sang 14/10.",
+                "intent": {"destination": "Hà Nội", "startDate": "2026-10-14"}}
+
+    async def test_only_failed_criteria_become_findings_with_the_judge_reason(self):
+        judge = _ScriptedJudge([{"passed": True, "reason": "có nói ngày"}, {"passed": False, "reason": "không có lịch"}])
+        findings = await judge_findings(judge, [{"user": "Đổi ngày"}], "Ngày 14 tháng 10", self.response,
+                                        ["Ghi nhận ngày", "Trình bày lịch trình"], 5)
+        self.assertEqual(findings, ["[judge] Trình bày lịch trình: không có lịch"])
+        human = judge.prompts[0][1][1]
+        self.assertIn("Mình đổi ngày đi sang 14/10.", human)
+        self.assertIn("Đổi ngày", human)
+
+    async def test_a_judge_error_or_wrong_count_never_passes_silently(self):
+        failed = await judge_findings(_ScriptedJudge(error=RuntimeError("down")), [], "x", self.response, ["a"], 5)
+        self.assertEqual(failed, ["[judge] không chấm được: RuntimeError"])
+        short = await judge_findings(_ScriptedJudge([]), [], "x", self.response, ["a"], 5)
+        self.assertEqual(short, ["[judge] trả 0 kết luận cho 1 tiêu chí"])
+
+    def test_the_judge_key_is_accepted_by_the_loader(self):
+        cases = load_dataset(AGENT_CASES_PATH)
+        self.assertTrue(any(turn.expect.get("judge") for case in cases for turn in case.turns))
+
+
+class ReportSlugTests(unittest.TestCase):
+    def test_each_dataset_writes_its_own_report(self):
+        from src.evaluation.agent.golden import DEFAULT_DATASET, report_slug
+        self.assertEqual(report_slug(DEFAULT_DATASET), "agent-test-cases")
+        self.assertEqual(report_slug("x/my_cases.yaml"), "my-cases")
+
+
+class DroppedReportTests(unittest.TestCase):
+    """Mục "Đã loại" của biên bản: mã node `filter` bỏ vì trùng (AC-AGT-04, chốt 2026-10-08)."""
+
+    def report(self, dropped):
+        result = TurnResult("TC-11", 1, "Phú Quốc 3 ngày", 200, "COMPLETED", 10, 0, True, True, [], dropped)
+        settings = SimpleNamespace(itinerary_llm_model="m")
+        report = build_report([result], settings, "golden", None)
+        return report
+
+    def test_dropped_products_are_listed_with_what_they_duplicate_and_who_dropped_them(self):
+        report = self.report([{"productId": "fdb01f88-87d1", "name": "Cáp Treo Hòn Thơm", "duplicateOf": "76da210a-c70c",
+                               "duplicateOfName": "Sun World Hòn Thơm", "by": "llm"}])
+        self.assertEqual(report["turns"][0]["dropped"][0]["by"], "llm")
+        markdown = render_markdown(report, "abc")
+        self.assertIn("## Đã loại", markdown)
+        self.assertIn("| TC-11 | 1 | Cáp Treo Hòn Thơm (`fdb01f88`) | Sun World Hòn Thơm (`76da210a`) | llm |", markdown)
+
+    def test_no_dropped_product_says_so(self):
+        markdown = render_markdown(self.report([]), "abc")
+        self.assertIn("## Đã loại", markdown)
+        self.assertIn("Không có.", markdown.split("## Đã loại")[1])
+
+
+class _StubPlanner:
+    """Graph giả: mỗi lượt trả câu hỏi lại; lượt có câu "chậm" thì treo để runner gặp timeout."""
+
+    async def ainvoke(self, inputs, config=None):
+        import asyncio
+        if inputs["query"] == "chậm":
+            await asyncio.sleep(1)
+        return {"http_status": 200, "events": [], "candidates": {}, "response": {
+            "status": "NEEDS_CLARIFICATION", "conversationId": "5f0c8a52-0b7e-4b5e-9d55-8d5b1f8e2a10",
+            "question": "Bạn đi ngày nào?", "missingFields": ["startDate"], "knownIntent": {
+                "destination": "Hà Nội", "startDate": None, "days": None, "party": None, "budget": None,
+                "interests": [], "pace": None}}}
+
+
+class ProgressEventTests(unittest.IsolatedAsyncioTestCase):
+    """Event tiến độ mà eval_app.py đọc (qua --progress-file)."""
+
+    async def test_each_turn_reports_start_then_result_and_the_case_closes(self):
+        events = []
+        case = Case(id="X-1", category="c", fr=["FR-AGT-01"],
+                    turns=[Turn("Đi Hà Nội", {"status": ["NEEDS_CLARIFICATION"]}), Turn("2 ngày", {"status": ["COMPLETED"]})])
+        await run_case(case, _StubPlanner(), None, FAKE_SETTINGS, 5, on_event=events.append, repetition=2)
+        self.assertEqual([e["event"] for e in events], ["turn_start", "turn_done", "turn_start", "turn_done", "case_done"])
+        first, second = events[1], events[3]
+        self.assertTrue(first["passed"])
+        self.assertEqual(first["reply"], "Bạn đi ngày nào?")
+        self.assertEqual(first["intent"]["destination"], "Hà Nội")
+        self.assertEqual((first["turn"], first["turns"], first["repetition"]), (1, 2, 2))
+        self.assertFalse(second["passed"])
+        self.assertTrue(any("status=" in f for f in second["findings"]))
+        self.assertEqual(events[-1], {"event": "case_done", "caseId": "X-1", "repetition": 2, "turns": 2,
+                                      "turnsRun": 2, "passed": False})
+
+    async def test_a_timeout_reports_the_turn_and_the_skipped_rest(self):
+        events = []
+        case = Case(id="X-2", category="c", fr=["FR-AGT-01"], turns=[Turn("chậm"), Turn("không chạy tới")])
+        await run_case(case, _StubPlanner(), None, FAKE_SETTINGS, 0.05, on_event=events.append)
+        self.assertEqual([e["event"] for e in events], ["turn_start", "turn_done", "case_done"])
+        self.assertEqual(events[1]["status"], "TIMEOUT")
+        self.assertEqual((events[2]["turns"], events[2]["turnsRun"]), (2, 1))
+
+    def test_progress_writer_appends_one_json_line_per_event(self):
+        import tempfile
+        self.assertIsNone(progress_writer(None))
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "run" / "progress.jsonl"
+            write = progress_writer(path)
+            write({"event": "start", "turns": 3})
+            write({"event": "done", "exitCode": 0})
+            lines = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+        self.assertEqual([line["event"] for line in lines], ["start", "done"])
+        self.assertIn("at", lines[0])

@@ -1,9 +1,11 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
 import { useTravel } from '../../../context/TravelContext';
 import { useAssistant } from '../../../context/AssistantProvider';
-import { useAssistantCart } from '../../../hooks/useAssistantCart';
-import { convertItineraryCompletedToGroundedPlan, locateProduct, narrationProducts } from './widgetPlan';
-import type { WidgetPlan, WidgetChatMessage, ConversationSession } from './widgetTypes';
+import { useAssistantCart, useBookItinerary } from '../../../hooks/useAssistantCart';
+import { isCartEligible } from '../../../services/booking';
+import { listAssistantConversations, type AssistantConversationList } from '../../../services/assistantHistory';
+import { convertItineraryCompletedToGroundedPlan, locateProduct, narrationProducts, stayCardKey, stayOptionCards } from './widgetPlan';
+import type { WidgetPlan, WidgetChatMessage, ConversationSession, StayOptionCard } from './widgetTypes';
 import type { Product } from '../../../types/travel';
 import { useWidgetCart } from './useWidgetCart';
 
@@ -14,11 +16,33 @@ interface SelectedProduct {
   plan?: WidgetPlan;
 }
 
+const HISTORY_PAGE_SIZE = 20;
+const HISTORY_TITLE_MAX = 35;
+const historyTimeFormat = new Intl.DateTimeFormat('vi-VN', {
+  timeZone: 'Asia/Ho_Chi_Minh', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+});
+
+type HistoryStatus = 'idle' | 'loading' | 'error';
+
+function truncateTitle(text: string) {
+  return text.length > HISTORY_TITLE_MAX ? `${text.slice(0, HISTORY_TITLE_MAX)}...` : text;
+}
+
+function toConversationSession(summary: AssistantConversationList['data'][number]): ConversationSession {
+  return {
+    id: summary.conversationId,
+    title: summary.title || 'Hội thoại mới',
+    timestamp: historyTimeFormat.format(new Date(summary.updatedAt)),
+  };
+}
+
 export function useFloatingWidget() {
-  const { addToCart, showToast, navigate, currentRoute } = useTravel();
+  const { showToast, currentRoute, currentPersona } = useTravel();
+  const personaId = currentPersona?.id ?? null;
   const {
     state: assistantState,
     sendMessage,
+    selectStayOption,
     retry,
     abort,
     resetConversation,
@@ -26,6 +50,7 @@ export function useFloatingWidget() {
     loadConversation,
   } = useAssistant();
   const addItineraryToCart = useAssistantCart();
+  const bookItinerary = useBookItinerary();
   const { addPlanItemToCart, cartAddStates } = useWidgetCart();
 
   // Widget States
@@ -34,7 +59,6 @@ export function useFloatingWidget() {
   const [inputVal, setInputVal] = useState<string>('');
   const [activePlan, setActivePlan] = useState<WidgetPlan | null>(null);
   const [activeDayTab, setActiveDayTab] = useState<number>(1);
-  const [isCheckingOut, setIsCheckingOut] = useState<boolean>(false);
   const [isChatCollapsed, setIsChatCollapsed] = useState<boolean>(false);
   const [hoveredCoordinate, setHoveredCoordinate] = useState<{ lat: number; lng: number } | null>(null);
   const [hoveredPointId, setHoveredPointId] = useState<string | null>(null);
@@ -42,12 +66,52 @@ export function useFloatingWidget() {
   const [focusedProductId, setFocusedProductId] = useState<string | null>(null);
   // Panel chi tiết ở cột phải (PRD user-flow.md §4.2); null thì cột phải là lịch trình + bản đồ.
   const [selectedProduct, setSelectedProduct] = useState<SelectedProduct | null>(null);
+  // Khoá (`stayCardKey`) của thẻ khách sạn đang lưu lên server (AC-AGT-04), trong lúc đó hàng thẻ tạm khoá; khoá theo
+  // khách sạn vì số phương án đánh lại sau khi đổi.
+  const [selectingStay, setSelectingStay] = useState<string | null>(null);
+  // Thẻ khách sạn đang xem trước ở cột phải (chưa đổi, chưa lưu) và câu trả lời chứa nó.
+  const [stayPreview, setStayPreview] = useState<{ messageId: string; key: string } | null>(null);
   // History Conversation & Drawer States
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
-  const [conversations, setConversations] = useState<ConversationSession[]>([]);
-  const [activeSessionId, setActiveSessionId] = useState<string>('conv-current');
+  // Lịch sử lấy từ archive của backend (FR-AGT-01, spec Frontend §9.6); khách không có lịch sử lâu dài.
+  const [archivedConversations, setArchivedConversations] = useState<ConversationSession[]>([]);
+  const [historyStatus, setHistoryStatus] = useState<HistoryStatus>('idle');
+  const historyRequestRef = useRef(0);
+  const isSignedIn = personaId !== null;
+  const activeSessionId = assistantState.conversationId;
 
   const isRunning = assistantState.phase === 'connecting' || assistantState.phase === 'streaming';
+
+  const loadHistory = useCallback(async () => {
+    const requestId = ++historyRequestRef.current;
+    if (!personaId) {
+      setArchivedConversations([]);
+      setHistoryStatus('idle');
+      return;
+    }
+    setHistoryStatus('loading');
+    try {
+      const list = await listAssistantConversations(1, HISTORY_PAGE_SIZE);
+      if (requestId !== historyRequestRef.current) return;
+      setArchivedConversations(list.data.map(toConversationSession));
+      setHistoryStatus('idle');
+    } catch {
+      // Giữ danh sách cũ để người dùng vẫn mở được; panel hiện lỗi và nút Thử lại.
+      if (requestId !== historyRequestRef.current) return;
+      setHistoryStatus('error');
+    }
+  }, [personaId]);
+
+  // Đổi tài khoản: bỏ danh sách của tài khoản trước, kể cả response đang bay về.
+  useEffect(() => {
+    historyRequestRef.current += 1;
+    setArchivedConversations([]);
+    setHistoryStatus('idle');
+  }, [personaId]);
+
+  useEffect(() => {
+    if (isHistoryOpen) void loadHistory();
+  }, [isHistoryOpen, loadHistory]);
 
   const chatScrollRef = useRef<HTMLDivElement>(null);
 
@@ -74,6 +138,8 @@ export function useFloatingWidget() {
       setActivePlan(plan);
       setActiveDayTab(1);
     }
+    // Response mới (lượt mới, hoặc vừa đổi khách sạn) thì cột phải là lịch đã lưu, không còn xem trước.
+    setStayPreview(null);
   }, [assistantState.response]);
 
   // Derive messages from the provider transcript
@@ -85,9 +151,11 @@ export function useFloatingWidget() {
     return assistantState.transcript.map((item) => {
       let plan: WidgetPlan | undefined = undefined;
       let products: Record<string, Product> | undefined = undefined;
+      let stayOptions: StayOptionCard[] | undefined = undefined;
       if (item.response?.status === 'COMPLETED') {
         plan = convertItineraryCompletedToGroundedPlan(item.response);
         products = narrationProducts(item.response);
+        stayOptions = stayOptionCards(item.response, plan);
       } else if (item.response?.status === 'FALLBACK') {
         // Câu FALLBACK mời xem các ứng viên "bên dưới": thẻ dựng từ `searchResults`.
         products = narrationProducts(item.response);
@@ -99,6 +167,7 @@ export function useFloatingWidget() {
         text: item.text,
         plan,
         products,
+        stayOptions,
         clarificationForm: item.response?.status === 'NEEDS_CLARIFICATION' ? item.response.clarificationForm : undefined,
         suggestions: item.response?.status === 'NO_RESULTS' || item.response?.status === 'NEEDS_CLARIFICATION'
           ? item.response.suggestions
@@ -107,13 +176,40 @@ export function useFloatingWidget() {
     });
   }, [assistantState.transcript]);
 
-  // Scroll to the latest message
+  // Cuộc đang chat có thể chưa vào archive (khách, hoặc lượt đầu chưa ghi xong): vẫn hiện ở đầu danh sách.
+  const conversations = useMemo<ConversationSession[]>(() => {
+    const currentId = assistantState.conversationId;
+    const firstUserText = messages.find((m) => m.sender === 'user')?.text;
+    if (!currentId || !firstUserText || archivedConversations.some((c) => c.id === currentId)) {
+      return archivedConversations;
+    }
+    return [{ id: currentId, title: truncateTitle(firstUserText), timestamp: 'Đang trò chuyện' }, ...archivedConversations];
+  }, [archivedConversations, assistantState.conversationId, messages]);
+
+  // Cuộn xuống tin mới nhất khi có tin nhắn mới hoặc chữ của tin cuối dài thêm (đang stream). Không cuộn khi chỉ đổi
+  // `response` (bấm thẻ khách sạn): người dùng đang bấm ở giữa bong bóng, kéo xuống cuối là bị "giật".
+  const lastMessage = messages[messages.length - 1];
   useEffect(() => {
     if (isOpen && messages.length) {
       chatScrollRef.current?.scrollTo({ top: chatScrollRef.current.scrollHeight, behavior: 'smooth' });
-
     }
-  }, [isOpen, messages, isExpanded]);
+  }, [isOpen, messages.length, lastMessage?.id, lastMessage?.text]);
+
+  // Thu gọn và mở rộng là hai cây DOM khác nhau (`FloatingWidget`), nên khung chat dựng lại và mất vị trí cuộn. Mở rộng vì
+  // chạm thẻ khách sạn thì giữ hàng thẻ đó ở giữa khung; còn lại về tin mới nhất như trước. Cuộn tức thì, trước khi vẽ.
+  const keepInViewRef = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    const chat = chatScrollRef.current;
+    if (!isOpen || !chat) return;
+    const anchor = keepInViewRef.current ? chat.querySelector<HTMLElement>(keepInViewRef.current) : null;
+    keepInViewRef.current = null;
+    if (!anchor) {
+      chat.scrollTop = chat.scrollHeight;
+      return;
+    }
+    const offset = anchor.getBoundingClientRect().top - chat.getBoundingClientRect().top;
+    chat.scrollTop += offset - (chat.clientHeight - anchor.offsetHeight) / 2;
+  }, [isExpanded]);
 
   // Handle ESC key to close or minimize
   useEffect(() => {
@@ -148,9 +244,9 @@ export function useFloatingWidget() {
     }
   }, [isOpen]);
 
-  // Close widget when navigating to checkout
+  // Đóng widget khi sang thanh toán hoặc giỏ hàng (toast "Xem giỏ"): widget phủ toàn màn hình nên không đóng thì che mất trang.
   useEffect(() => {
-    if (currentRoute.startsWith('/checkout')) {
+    if (currentRoute.startsWith('/checkout') || currentRoute.startsWith('/cart')) {
       setIsOpen(false);
       setIsExpanded(false);
     }
@@ -168,9 +264,9 @@ export function useFloatingWidget() {
     setInputVal(promptText);
   };
 
-  // Xác nhận form gợi ý: đặt câu yêu cầu hoàn chỉnh vào ô nhập để người dùng đọc lại, sửa rồi mới gửi — không tự gửi.
+  // Xác nhận form gợi ý: gửi ngay câu yêu cầu hoàn chỉnh (PRD user-flow.md, AC-AGT-01).
   const handleConfirmTripDetails = (prompt: string) => {
-    setInputVal(prompt);
+    handleSendMessage(prompt);
   };
 
 
@@ -195,44 +291,93 @@ export function useFloatingWidget() {
 
   const closeProductDetail = () => setSelectedProduct(null);
 
+  const canChangeStay = (message: WidgetChatMessage) =>
+    !isRunning && selectingStay === null && message.id === messages[messages.length - 1]?.id;
+
+  // Dải "Đang xem trước" ở cột phải: thẻ đang xem và câu trả lời chứa nó.
+  const previewedStay = (() => {
+    if (!stayPreview) return null;
+    const message = messages.find((item) => item.id === stayPreview.messageId);
+    const card = message?.stayOptions?.find((item) => stayCardKey(item) === stayPreview.key);
+    return message && card ? { message, card } : null;
+  })();
+
+  /** Cột phải hiện `plan` của một thẻ khách sạn; widget đang thu gọn thì mở rộng và giữ hàng thẻ đó trong khung chat. */
+  const showStayPlan = (message: WidgetChatMessage, plan: WidgetPlan | undefined) => {
+    setSelectedProduct(null);
+    setFocusedProductId(null);
+    if (!isExpanded) keepInViewRef.current = `[data-message-id="${CSS.escape(message.id)}"] [data-stay-row]`;
+    setIsExpanded(true);
+    if (plan) setActivePlan(plan);
+    setActiveDayTab(1);
+  };
+
+  /**
+   * Chạm một thẻ khách sạn trong hàng "Phương án khác" (AC-AGT-04, chốt 2026-10-08): cột phải, bản đồ và tổng tiền xem
+   * trước lịch của thẻ đó, chưa đổi lịch đã lưu. Chạm thẻ đang chọn thì thôi xem trước.
+   */
+  const previewStayOption = (message: WidgetChatMessage, card: StayOptionCard) => {
+    if (card.index !== null && !canChangeStay(message)) return;
+    showStayPlan(message, card.plan);
+    setStayPreview(card.index === null ? null : { messageId: message.id, key: stayCardKey(card) });
+  };
+
+  const cancelStayPreview = () => {
+    if (previewedStay?.message.plan) setActivePlan(previewedStay.message.plan);
+    setStayPreview(null);
+  };
+
+  /**
+   * Nút "Đổi sang khách sạn này": lịch, bản đồ và tổng tiền ở cột phải đổi ngay; lựa chọn được lưu lên server ở nền, không
+   * thêm tin nhắn. Server trả về thì hàng thẻ tính lại chênh tiền/km theo lịch mới; lỗi thì quay về lịch cũ. Chỉ hàng thẻ
+   * của câu trả lời mới nhất đổi được (server chỉ giữ phương án của lượt gần nhất).
+   */
+  const chooseStayOption = async (message: WidgetChatMessage, card: StayOptionCard) => {
+    if (card.index === null || !canChangeStay(message)) return;
+    showStayPlan(message, card.plan);
+    setStayPreview(null);
+    setSelectingStay(stayCardKey(card));
+    const saved = await selectStayOption(card.index);
+    setSelectingStay(null);
+    if (!saved) {
+      if (message.plan) setActivePlan(message.plan);
+      showToast('Chưa đổi được khách sạn, bạn thử lại nhé.');
+    }
+  };
+
   const addSelectedToCart = selectedProduct?.plan?.cartItems.some((item) => item.product.productId === selectedProduct.productId)
     ? () => addPlanItemToCart(selectedProduct.plan!, selectedProduct.productId)
     : undefined;
 
-  const handleCheckoutPlan = (e?: React.MouseEvent) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    if (!activePlan || isCheckingOut) return;
-    if (!activePlan.cartItems.length) {
-      showToast('Lịch trình chưa có dịch vụ nào đặt được.');
-      return;
-    }
-    // Thêm tuần tự rồi mới sang /checkout: checkout đọc GET /cart ngay khi mở, nên phải chờ mọi mục vào giỏ.
-    setIsCheckingOut(true);
-    void addItineraryToCart(activePlan.cartItems, () => navigate('/checkout'))
-      .finally(() => setIsCheckingOut(false));
+  // Panel chi tiết: khách sạn và vé máy bay chỉ có Đặt ngay; tour, golf, combo có thêm Thêm vào giỏ (R-DIR-02).
+  const selectedItem = selectedProduct?.plan?.cartItems.find((item) => item.product.productId === selectedProduct.productId);
+  const selectedCanAddToCart = Boolean(selectedItem && isCartEligible(selectedItem.product.taxonomy));
+  const bookSelectedNow = selectedItem ? () => { void bookItinerary(selectedItem); } : undefined;
+
+  /** "Đặt ngay" trên thẻ trong khung chat (vé máy bay): đặt đúng mục đó của lịch trong câu trả lời chứa thẻ. */
+  const bookPlanItem = (plan: WidgetPlan, productId: string) => {
+    const item = plan.cartItems.find((candidate) => candidate.product.productId === productId);
+    if (item) void bookItinerary(item);
+  };
+
+  /**
+   * Nút riêng của từng sản phẩm trong lịch trình (thẻ và ghim bản đồ): khách sạn, vé máy bay chỉ có Đặt ngay; tour, golf,
+   * combo có thêm Thêm vào giỏ. Sản phẩm chưa đặt được (ví dụ khách sạn chưa có hạng phòng) không có nút nào: thẻ vẫn mở
+   * trang chi tiết như trước (spec dat-truc-tiep-theo-don-nhap.md §16, ghi chú Q11c).
+   */
+  const itemActions = (productId: string) => {
+    const item = activePlan?.cartItems?.find((i) => i.product.productId === productId);
+    if (!item) return null;
+    return {
+      canAddToCart: isCartEligible(item.product.taxonomy),
+      bookNow: () => { void bookItinerary(item); },
+      addToCart: () => { void addItineraryToCart([item]); },
+    };
   };
 
   const handleStartNewChat = () => {
-    // Nếu phiên hiện tại có tin nhắn từ người dùng, lưu vào danh sách lịch sử
-    const hasUserMsg = messages.some(m => m.sender === 'user');
-    if (hasUserMsg && assistantState.conversationId) {
-      const firstUserMsg = messages.find(m => m.sender === 'user')?.text || 'Hội thoại mới';
-      const newSession: ConversationSession = {
-        id: assistantState.conversationId,
-        title: activePlan?.title || (firstUserMsg.length > 35 ? firstUserMsg.slice(0, 35) + '...' : firstUserMsg),
-        timestamp: 'Vừa xong',
-        messages: [...messages],
-        plan: activePlan
-      };
-      setConversations(prev => [newSession, ...prev.filter(session => session.id !== newSession.id)]);
-    }
-
-    // Reset về hội thoại mới với backend agent
+    // Cuộc cũ đã nằm trong archive của backend; lần mở panel sau tải lại danh sách.
     resetConversation();
-    setActiveSessionId('conv-' + Date.now());
     setActivePlan(null);
     setFocusedProductId(null);
     setSelectedProduct(null);
@@ -244,31 +389,34 @@ export function useFloatingWidget() {
   };
 
   const handleSelectConversation = async (session: ConversationSession) => {
+    if (session.id === assistantState.conversationId) {
+      setIsHistoryOpen(false);
+      return;
+    }
     try {
       await loadConversation(session.id);
     } catch {
       showToast('Không thể mở lại hội thoại. Vui lòng thử lại.');
       return;
     }
-    setActiveSessionId(session.id);
-    setActivePlan(session.plan);
+    // Lịch trình dựng lại từ response đã lưu qua effect đồng bộ `assistantState.response` ở trên.
+    setActivePlan(null);
+    setFocusedProductId(null);
     setSelectedProduct(null);
     setActiveDayTab(1);
     setIsHistoryOpen(false);
   };
 
-  const handleDeleteConversation = (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    setConversations(prev => prev.filter(c => c.id !== id));
-  };
-
   return { isOpen, setIsOpen, isExpanded, setIsExpanded, activePlan, activeDayTab, setActiveDayTab,
-    isCheckingOut, isChatCollapsed, setIsChatCollapsed, hoveredCoordinate, hoveredPointId,
+    isChatCollapsed, setIsChatCollapsed, hoveredCoordinate, hoveredPointId,
     setHoveredCoordinate, setHoveredPointId, focusedProductId, isHistoryOpen, setIsHistoryOpen, conversations, activeSessionId,
-    selectedProduct, openProductDetail, closeProductDetail, addPlanItemToCart, addSelectedToCart, cartAddStates,
-    assistantState, isRunning, messages, inputVal, setInputVal, chatScrollRef, addToCart, retry, abort,
-    handleSendMessage, handleQuickPrompt, handleConfirmTripDetails, handleCheckoutPlan,
-    handleStartNewChat, handleSelectConversation, handleDeleteConversation };
+    isSignedIn, historyStatus, loadHistory,
+    selectedProduct, openProductDetail, closeProductDetail, addPlanItemToCart, addSelectedToCart, cartAddStates, bookPlanItem,
+    selectedCanAddToCart, bookSelectedNow, itemActions,
+    selectingStay, chooseStayOption, previewStayOption, cancelStayPreview, previewedStay,
+    assistantState, isRunning, messages, inputVal, setInputVal, chatScrollRef, retry, abort,
+    handleSendMessage, handleQuickPrompt, handleConfirmTripDetails,
+    handleStartNewChat, handleSelectConversation };
 }
 
 export type FloatingWidgetController = ReturnType<typeof useFloatingWidget>;

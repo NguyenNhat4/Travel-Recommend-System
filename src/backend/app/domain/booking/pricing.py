@@ -6,6 +6,11 @@ from datetime import date
 from typing import Any
 
 from src.backend.app.domain.catalog.models import Product
+from src.backend.app.domain.catalog.stay_dates import (  # noqa: F401 — luật cửa sổ dùng chung với bộ lọc ngày của /search
+    HOTEL_MAX_ADVANCE_MONTHS,
+    HOTEL_MAX_NIGHTS,
+    hotel_booking_window,
+)
 
 from .fares import child_unit_price
 
@@ -29,9 +34,13 @@ class LineIssue:
 
 
 def check_product(
-    product: Product, using_date: date, *, snapshot_price: int | None = None
+    product: Product, using_date: date, *, snapshot_price: int | None = None, today: date | None = None,
 ) -> LineIssue | None:
-    """Dùng chung cho thêm giỏ (không có snapshot) và tạo đơn (so với giá lúc thêm giỏ)."""
+    """Dùng chung cho thêm giỏ (không có snapshot) và tạo đơn (so với giá lúc thêm giỏ).
+
+    Khách sạn có `today` thì ngày nhận phòng kiểm theo lịch (không quá khứ, tối đa 3 tháng) thay cho cửa sổ mở bán của dữ liệu;
+    lịch `attributes.availability` không dùng để chặn (FR-CAT-03).
+    """
     if not product.available or not product.is_bookable:
         return LineIssue("PRODUCT_UNAVAILABLE", {"productId": product.product_id})
     if snapshot_price is not None and int(product.unit_price) != snapshot_price:
@@ -39,6 +48,15 @@ def check_product(
             "PRICE_CHANGED",
             {"productId": product.product_id, "oldPrice": snapshot_price, "newPrice": int(product.unit_price)},
         )
+    if product.taxonomy == "hotel" and today is not None:
+        window_from, window_to = hotel_booking_window(today)
+        if not window_from <= using_date <= window_to:
+            return LineIssue(
+                "DATE_OUT_OF_RANGE",
+                {"productId": product.product_id, "availableFrom": window_from.isoformat(),
+                 "availableTo": window_to.isoformat()},
+            )
+        return None
     if (product.available_from and using_date < product.available_from) or (
         product.available_to and using_date > product.available_to
     ):

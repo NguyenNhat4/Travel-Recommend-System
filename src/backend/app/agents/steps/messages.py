@@ -1,12 +1,17 @@
 """Câu chữ trả về người dùng, và ba helper mọi node dùng chung: message, event, failure."""
 from __future__ import annotations
 
+import logging
 import re
+from time import perf_counter
 
 from src.backend.app.application.itinerary.contracts import bounds, error_response
 from src.backend.app.application.ports.llm import ChatModelPort
+from src.backend.app.core.logging_config import log_event
 
 from ..state import make_event
+
+logger = logging.getLogger(__name__)
 
 MESSAGES = {
     "vi": {
@@ -62,7 +67,7 @@ MESSAGES = {
         "stage_planned": "đã gửi lịch trình cho chuyến này",
         "stage_collecting": "đang hỏi thông tin chuyến đi, chưa lập lịch trình",
         "stage_start": "đầu hội thoại",
-        "note_itinerary": "gửi lịch trình {destination} {days} ngày: {products}",
+        "note_itinerary": "gửi lịch trình {destination} {days} ngày",
         "note_no_results": "không tìm thấy sản phẩm phù hợp ở {destination}",
         "note_fallback": "gửi vài sản phẩm tham khảo ở {destination}, chưa dựng được lịch trình",
         "fallback_title": "Chưa dựng được lịch trình hoàn chỉnh",
@@ -149,7 +154,27 @@ MESSAGES = {
         "unmet_ask_relax": "Bạn muốn nới yêu cầu này, hay lập lịch không kèm {noun}?",
         "unmet_ask_other": "Bạn muốn lập lịch không kèm {noun}, hay chọn điểm đến khác?",
         "dropped_date": "Chỉ mở bán từ {start} đến {end}, không khớp ngày khởi hành.",
+        "dropped_duplicate": "Bỏ \"{name}\" vì trùng với \"{kept}\".",
         "section_no_stay": "Chưa có khách sạn",
+        "change_field_origin": "nơi đi",
+        "change_to_origin": "nơi đi thành {value}",
+        "detail_origin": "nơi bạn khởi hành (để mình thêm vé máy bay)",
+        "trip_origin": "đi từ {origin}",
+        "section_flights": "Vé máy bay",
+        "flight_OUTBOUND": "Chặng đi",
+        "flight_RETURN": "Chặng về",
+        "flight_ROUND_TRIP": "Khứ hồi",
+        "flight_nonstop": "bay thẳng",
+        "flight_passengers": "{price}/khách × {count} khách",
+        "flight_warn_NO_ORIGIN": "Lịch trình chưa gồm vé máy bay vì mình chưa biết bạn đi từ đâu. Bạn cho mình biết "
+                                 "nơi khởi hành, mình thêm vé ngay.",
+        "flight_warn_NO_ROUTE": "Chưa có chuyến bay từ {origin} đến {destination} trong dữ liệu, nên lịch trình chưa "
+                                "gồm vé máy bay.",
+        "flight_warn_NO_FLIGHT_ON_DATES": "Chưa có chuyến bay từ {origin} đến {destination} còn bán đúng ngày đi {out} "
+                                          "và ngày về {back}. Bạn thử đổi ngày khởi hành nhé.",
+        "flight_warn_MISSING_RETURN": "Mới có chặng đi; chưa có chuyến từ {destination} về {origin} đúng ngày {back}.",
+        "flight_warn_MISSING_OUTBOUND": "Mới có chặng về; chưa có chuyến từ {origin} đến {destination} đúng ngày {out}.",
+        "flight_warn_UNAVAILABLE": "Chưa tra được vé máy bay lúc này, nên lịch trình chưa gồm vé.",
         "no_stay_DATE": "Khách sạn ở {destination} trong dữ liệu hiện chỉ nhận đặt từ {open_from} đến {open_to}, nên "
                         "lịch này chưa kèm chỗ ở cho chuyến từ {start}.",
         "no_stay_other": "Chưa có khách sạn ở {destination} phù hợp với chuyến này, nên lịch chưa kèm chỗ ở.",
@@ -195,6 +220,29 @@ MESSAGES = {
         "cost_UNKNOWN": "Mình chưa cộng thành một con số tổng vì lịch có mục chưa có giá; "
                         "giá từng mục có vé bạn xem ở khung lịch trình bên phải nhé.",
         "narrate_notes": "Giá là giá tham khảo, chưa gồm ăn uống và đi lại; cần kiểm tra lại khi đặt.",
+        "section_criteria": "Cách mình xếp lịch",
+        "plan_criteria": "Mình chọn điểm, ghép các ngày và chọn nơi ở để tổng quãng đường bạn phải đi là ít nhất; nếu "
+                         "hai cách xếp gần ngang nhau thì mình chọn cách rẻ hơn.",
+        "plan_criteria_change": "Các điểm nằm ở hai khu cách xa nhau, nên từ đêm {night} bạn chuyển từ {first} sang "
+                                "{second}: đỡ đi lại hơn nhiều so với ở một chỗ cả chuyến.",
+        "plan_criteria_budget": "Mình chọn điểm, ghép các ngày và chọn nơi ở để tổng quãng đường bạn phải đi là ít "
+                                "nhất mà tổng chi phí vẫn nằm trong ngân sách của bạn; nếu hai cách xếp gần ngang nhau "
+                                "thì mình chọn cách rẻ hơn, và nếu không cách nào vừa ngân sách thì mình chọn cách rẻ "
+                                "nhất.",
+        "stay_nights_range": "Đêm {first}–{last}",
+        "stay_night_single": "Đêm {first}",
+        "options_total": "Lịch trên: đi lại ≈{km} km cả chuyến.",
+        "option_closer": "• Phương án {n}: thêm {money} — ở {hotels}: bớt ≈{km} km đi lại",
+        "option_cheaper": "• Phương án {n}: bớt {money} — ở {hotels}: đi thêm ≈{km} km",
+        "option_over_budget": " (vượt ngân sách {money})",
+        "options_pick": "Bấm một thẻ khách sạn để đổi ngay, hoặc nhắn \"lấy phương án 1\".",
+        "options_swap_title": "Lịch trình đã đổi khách sạn",
+        "swap_done": "Mình đã đổi sang {hotels}: {money}, {km} so với lịch trước. Cả chuyến đi lại ≈{total_km} km.",
+        "swap_money_more": "thêm {money}",
+        "swap_money_less": "bớt {money}",
+        "swap_money_same": "tổng tiền không đổi",
+        "swap_km_less": "bớt ≈{km} km đi lại",
+        "swap_km_more": "đi thêm ≈{km} km",
         "narrate_outro": "Bấm vào tên sản phẩm để xem chi tiết ở khung lịch trình bên phải, hoặc nhắn mình nếu muốn "
                          "đổi ngày, khách sạn hay hoạt động.",
     },
@@ -255,7 +303,7 @@ MESSAGES = {
         "stage_planned": "an itinerary has been sent for this trip",
         "stage_collecting": "still collecting trip details, no itinerary yet",
         "stage_start": "start of the conversation",
-        "note_itinerary": "sent a {days}-day itinerary for {destination}: {products}",
+        "note_itinerary": "sent a {days}-day itinerary for {destination}",
         "note_no_results": "found no matching products in {destination}",
         "note_fallback": "sent a few candidate products in {destination}, no itinerary built",
         "fallback_title": "Could not build a complete itinerary",
@@ -330,7 +378,28 @@ MESSAGES = {
         "unmet_ask_relax": "Would you like to relax this requirement, or plan without a {noun}?",
         "unmet_ask_other": "Would you like to plan without a {noun}, or pick another destination?",
         "dropped_date": "Only on sale from {start} to {end}, which does not match the departure date.",
+        "dropped_duplicate": "Left out \"{name}\" because it duplicates \"{kept}\".",
         "section_no_stay": "No hotel yet",
+        "change_field_origin": "the departure city",
+        "change_to_origin": "departure city changed to {value}",
+        "detail_origin": "where you are travelling from (so I can add flights)",
+        "trip_origin": "from {origin}",
+        "section_flights": "Flights",
+        "flight_OUTBOUND": "Outbound",
+        "flight_RETURN": "Return",
+        "flight_ROUND_TRIP": "Round trip",
+        "flight_nonstop": "nonstop",
+        "flight_passengers": "{price} per passenger × {count}",
+        "flight_warn_NO_ORIGIN": "Flights are not included yet because I do not know where you are travelling from. "
+                                 "Tell me your departure city and I will add them.",
+        "flight_warn_NO_ROUTE": "There are no flights from {origin} to {destination} in our data, so the itinerary has "
+                                "no flights.",
+        "flight_warn_NO_FLIGHT_ON_DATES": "No flights from {origin} to {destination} are on sale for {out} out and {back} "
+                                          "back. Try another departure date.",
+        "flight_warn_MISSING_RETURN": "Only the outbound flight was found; nothing from {destination} back to {origin} "
+                                      "on {back}.",
+        "flight_warn_MISSING_OUTBOUND": "Only the return flight was found; nothing from {origin} to {destination} on {out}.",
+        "flight_warn_UNAVAILABLE": "Flights could not be looked up right now, so the itinerary has none.",
         "no_stay_DATE": "Hotels in {destination} can currently only be booked from {open_from} to {open_to}, so this "
                         "plan has no stay for a trip starting {start}.",
         "no_stay_other": "No hotel in {destination} fits this trip yet, so the plan has no stay.",
@@ -375,6 +444,29 @@ MESSAGES = {
         "cost_UNKNOWN": "I haven't added a single total because the plan includes items without a price yet; "
                         "check the price of each ticketed item in the panel on the right.",
         "narrate_notes": "Prices are for reference only and exclude meals and transport; check them again when booking.",
+        "section_criteria": "How I arranged the plan",
+        "plan_criteria": "I picked the places, grouped the days and chose where to stay so that your total travel is as "
+                         "short as possible; when two arrangements are about as short, I chose the cheaper one.",
+        "plan_criteria_change": "The places sit in two areas far apart, so from night {night} you move from {first} to "
+                                "{second}: much less travel than staying in one place.",
+        "plan_criteria_budget": "I picked the places, grouped the days and chose where to stay so that your total "
+                                "travel is as short as possible while the total cost stays within your budget; when "
+                                "two arrangements are about as short, I chose the cheaper one, and when none fits the "
+                                "budget, I chose the cheapest.",
+        "stay_nights_range": "Nights {first}–{last}",
+        "stay_night_single": "Night {first}",
+        "options_total": "The plan above: ≈{km} km of travel for the whole trip.",
+        "option_closer": "• Option {n}: {money} more — stay at {hotels}: ≈{km} km less travel",
+        "option_cheaper": "• Option {n}: {money} less — stay at {hotels}: ≈{km} km more travel",
+        "option_over_budget": " ({money} over budget)",
+        "options_pick": "Tap a hotel card to switch right away, or reply \"take option 1\".",
+        "options_swap_title": "Itinerary with a new hotel",
+        "swap_done": "Switched to {hotels}: {money}, {km} compared with the previous plan. ≈{total_km} km of travel for the whole trip.",
+        "swap_money_more": "{money} more",
+        "swap_money_less": "{money} less",
+        "swap_money_same": "same total cost",
+        "swap_km_less": "≈{km} km less travel",
+        "swap_km_more": "≈{km} km more travel",
         "narrate_outro": "Tap a product name to see its details in the itinerary panel on the right, or tell me if you "
                          "want to change the date, hotel or activities.",
     },
@@ -444,6 +536,12 @@ def display_date(iso: str) -> str:
     return f"{day}/{month}/{year}"
 
 
+def distance(value: float, language: str) -> str:
+    """Số km một chữ số thập phân; tiếng Việt dùng dấu phẩy thập phân."""
+    text = f"{value:.1f}"
+    return text.replace(".", ",") if language == "vi" else text
+
+
 def money(value: int, language: str) -> str:
     grouped = f"{int(value):,}"
     return f"{grouped.replace(',', '.')} ₫" if language == "vi" else f"{grouped} VND"
@@ -467,8 +565,56 @@ def failure(state: dict, code: str, text: str, status: int = 503, retryable: boo
             "http_status": status, "decision": "error"}
 
 
+class _LoggedStructured:
+    """Bọc `with_structured_output(X)`: ghi `assistant.llm.call` (schema, thời gian, kết quả), không ghi prompt hay
+    câu trả lời thô (docs/spec/logging-schema.md §4). Mọi thuộc tính khác chuyển thẳng cho runnable gốc."""
+
+    def __init__(self, inner, schema):
+        self._inner, self._schema = inner, getattr(schema, "__name__", str(schema))
+
+    def _log(self, started: float, outcome: str) -> None:
+        log_event(logger, "assistant.llm.call", "INFO" if outcome == "ok" else "WARNING", schema=self._schema,
+                  duration_ms=round((perf_counter() - started) * 1000, 1), outcome=outcome)
+
+    def invoke(self, *args, **kwargs):
+        started = perf_counter()
+        try:
+            result = self._inner.invoke(*args, **kwargs)
+        except BaseException as exc:
+            self._log(started, type(exc).__name__)
+            raise
+        self._log(started, "ok")
+        return result
+
+    async def ainvoke(self, *args, **kwargs):
+        started = perf_counter()
+        try:
+            result = await self._inner.ainvoke(*args, **kwargs)
+        except BaseException as exc:  # gồm CancelledError khi quá hạn `asyncio.wait_for`
+            self._log(started, type(exc).__name__)
+            raise
+        self._log(started, "ok")
+        return result
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+class _LoggedModel:
+    __slots__ = ("_llm",)
+
+    def __init__(self, llm):
+        self._llm = llm
+
+    def with_structured_output(self, schema, *args, **kwargs):
+        return _LoggedStructured(self._llm.with_structured_output(schema, *args, **kwargs), schema)
+
+    def __getattr__(self, name):
+        return getattr(self._llm, name)
+
+
 def chat_model(llm: ChatModelPort | None) -> ChatModelPort:
     """Model do composition root truyền vào; thiếu thì node ghi LLM_UNAVAILABLE như khi provider lỗi."""
     if llm is None:
         raise RuntimeError("LLM chưa được cấu hình cho graph")
-    return llm
+    return _LoggedModel(llm)

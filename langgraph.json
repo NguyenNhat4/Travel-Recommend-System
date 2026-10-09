@@ -1,0 +1,6 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "itinerary": "./src/backend/scripts/langgraph_studio.py:make_graph"
+  }
+}

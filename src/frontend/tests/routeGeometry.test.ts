@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildRouteRequests,
+  getAirportPoints,
   normalizeGeoJsonCoordinates,
   MultimodalRouteProvider,
   OsrmRouteProvider,
@@ -80,6 +81,73 @@ describe('route geometry helpers', () => {
 
     expect(buildRouteRequests(plan, 1)[0].fromPointId).toBe('stay-hotel-a');
     expect(buildRouteRequests(plan, 2)[0].fromPointId).toBe('stay-hotel-b');
+  });
+
+  describe('airport legs (AC-AGT-04, chốt 2026-10-09)', () => {
+    const PQC = { lat: 10.169783, lng: 103.99353 };
+    const SGN = { lat: 10.8188, lng: 106.652 };
+    const flight = (id: string, direction: 'OUTBOUND' | 'RETURN' | 'ROUND_TRIP', attributes: Record<string, unknown>) => ({
+      productId: id,
+      product: { ...product(id, 0, 0), taxonomy: 'flight' as const, attributes },
+      direction,
+      date: '2026-10-10',
+      returnDate: null,
+      passengers: 1,
+    });
+    const going = flight('vn-out', 'OUTBOUND', {
+      latitude: PQC.lat, longitude: PQC.lng, originLatitude: SGN.lat, originLongitude: SGN.lng, destinationAirport: 'PQC',
+    });
+    const coming = flight('vn-back', 'RETURN', {
+      latitude: SGN.lat, longitude: SGN.lng, originLatitude: PQC.lat, originLongitude: PQC.lng, originAirport: 'PQC',
+    });
+    const trip = (flights: GroundedPlan['flights']) => makePlan({
+      stay: { productId: 'hotel-a', product: product('hotel-a', 10.2, 104.0), note: '', source: 'search' },
+      flights,
+      days: [
+        { day: 1, title: 'Ngày 1', slots: [slot('noon', 'stop-a', 10.3, 104.0)] },
+        { day: 2, title: 'Ngày 2', slots: [] },
+        { day: 3, title: 'Ngày 3', slots: [slot('morning', 'stop-b', 10.25, 104.05)] },
+      ],
+    });
+    const legs = (plan: GroundedPlan, day = 0) =>
+      buildRouteRequests(plan, day).map(({ fromPointId, toPointId }) => [fromPointId, toPointId]);
+
+    it('starts day one at the arrival airport and ends the last day at the departure airport', () => {
+      expect(legs(trip([going, coming]))).toEqual([
+        ['airport-arrival', 'stay-hotel-a'],
+        ['stay-hotel-a', 'day-1-slot-noon-1'],
+        ['day-1-slot-noon-1', 'stay-hotel-a'],
+        ['stay-hotel-a', 'day-3-slot-morning-1'],
+        ['day-3-slot-morning-1', 'airport-departure'],
+      ]);
+      const [toHotel] = buildRouteRequests(trip([going, coming]), 1);
+      expect(toHotel).toMatchObject({ from: PQC, fromTitle: 'Sân bay PQC', mode: 'driving' });
+      expect(buildRouteRequests(trip([going, coming]), 3).at(-1)?.to).toEqual(PQC);
+    });
+
+    it('uses the one airport it knows for both ends', () => {
+      expect(getAirportPoints(trip([going])).departure?.coordinates).toEqual(PQC);
+      expect(getAirportPoints(trip([coming])).arrival?.coordinates).toEqual(PQC);
+      const roundTrip = flight('vn-rt', 'ROUND_TRIP', { latitude: PQC.lat, longitude: PQC.lng });
+      expect(getAirportPoints(trip([roundTrip])).departure?.coordinates).toEqual(PQC);
+    });
+
+    it('keeps the old day routes without flights or airport coordinates', () => {
+      const old = [
+        ['stay-hotel-a', 'day-1-slot-noon-1'],
+        ['day-1-slot-noon-1', 'stay-hotel-a'],
+        ['stay-hotel-a', 'day-3-slot-morning-1'],
+        ['day-3-slot-morning-1', 'stay-hotel-a'],
+      ];
+      expect(legs(trip(undefined))).toEqual(old);
+      expect(legs(trip([flight('x', 'OUTBOUND', {})]))).toEqual(old);
+    });
+
+    it('draws the airport leg on a day without places', () => {
+      const plan = trip([going, coming]);
+      plan.days[0].slots = [];
+      expect(legs(plan, 1)).toEqual([['airport-arrival', 'stay-hotel-a']]);
+    });
   });
 
   it('requests an OSRM driving route and preserves GeoJSON geometry plus metrics', async () => {

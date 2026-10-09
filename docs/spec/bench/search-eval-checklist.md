@@ -6,6 +6,8 @@ Bản 23/09/2026 — rev 2: ngày 4–8 chạy theo cổng (`sb run --stage`, `s
 
 Rev 3 (24/09/2026): gộp bản sửa người dùng đưa vào ngày 24/09 (`SEARCH_EVAL_CHECKLIST.md`, đã gộp rồi xoá) vào file này (file này là chuẩn, giữ nguyên các mục đã tick). Nội dung mới lấy từ bản sửa: tóm tắt LLM (T3) chuyển lên ngày 1 (B dựng text builder tối thiểu T1/T3 + `R`, chạy `sb enrich summaries`), A soát `summaries_review.csv` sáng ngày 2 trước khi B embed toàn catalog, mục text builder ngày 4 của B chỉ còn phần base/modifier chưa làm (T0, T2, DF, KV, NUM, w30/w150/wfull), và thêm một dòng buffer "Tóm tắt LLM chưa xong cuối ngày 1".
 
+> **Rà 05/10/2026:** từ 28/09 tiến độ theo `docs/plan/2026-09-28-lich-10-ngay-3-engine.md` (lịch 10 ngày) và `docs/plan/2026-10-01-chia-task-day4-search-rec.md` (bàn giao Day 4). Checklist này **không còn cập nhật**: nhóm chạy arm trực tiếp bằng `sb run --arm`, chưa dùng chuỗi cổng `stages.yaml`, nên các ô ngày 4–8 dưới đây không phản ánh tiến độ thật. Giữ lại để tra thiết kế.
+
 **Người A** = Eval & Data (sở hữu gold, metric, report, QU/alias). **Người B** = Search & Infra (sở hữu Weaviate, Cohere client, text builder, arm, latency).
 Quy tắc: gold chỉ được **thêm** sau khi tag `gold_v1` (holes, query mới, retire) — không sửa nhãn cũ; A gán mọi hole. B không đọc nhãn gold trong lúc chỉnh text builder (chỉ xem metric tổng hợp). Mỗi arm chỉ đổi một nhóm trường so với `parent`. Promote khác đề xuất của `select()` phải có `--note`.
 

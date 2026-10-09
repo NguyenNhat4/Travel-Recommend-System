@@ -14,6 +14,8 @@ interface LandingHeroProps {
   destination?: string;
   /** Lần tìm vé máy bay của URL: điền sẵn tấm tìm kiếm. */
   search?: { origin: string; trip: TripContext };
+  /** Chữ tự do của lần tìm (`?q=` khi không có điểm đến chuẩn): điền sẵn ô địa điểm. */
+  initialText?: string;
   /** Hero thấp hơn để kết quả bên dưới lên gần hơn. */
   compact?: boolean;
   /** Vé máy bay: tìm ngay trên trang này thay vì điều hướng đi nơi khác. */
@@ -24,7 +26,7 @@ interface LandingHeroProps {
  * Hero ~500 px: ảnh nền + lớp phủ tối 36%, tiêu đề, (tab loại dịch vụ), tấm tìm kiếm. Header nổi (fixed) đè lên phần đầu
  * nên hero chừa `pt-28`. Khối nội dung `z-30` để popover của tấm tìm kiếm nằm trên tờ nền trắng bên dưới.
  */
-export function LandingHero({ config, tab, activeGroup, destination, search, compact, onFlightSearch }: LandingHeroProps) {
+export function LandingHero({ config, tab, activeGroup, destination, search, initialText, compact, onFlightSearch }: LandingHeroProps) {
   const tabHref = (taxonomy: string) => {
     const params = new URLSearchParams();
     if (taxonomy !== config.tabs[0].taxonomy) params.set('type', taxonomy);
@@ -70,7 +72,7 @@ export function LandingHero({ config, tab, activeGroup, destination, search, com
           </nav>
         )}
 
-        <LandingSearchSheet config={config} tab={tab} initialDestination={destination} initialSearch={search} onFlightSearch={onFlightSearch} />
+        <LandingSearchSheet config={config} tab={tab} initialDestination={destination} initialText={initialText} initialSearch={search} onFlightSearch={onFlightSearch} />
       </div>
     </section>
   );

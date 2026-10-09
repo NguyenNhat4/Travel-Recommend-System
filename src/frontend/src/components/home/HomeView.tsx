@@ -13,7 +13,8 @@ import { VerticalChips } from '../layout/nav/VerticalChips';
 import { categoryShortcuts } from '../layout/nav/navConfig';
 import { CatalogShelf } from '../../features/catalog/landing/ProductShelf';
 import { DestinationTiles } from '../../features/catalog/landing/DestinationTiles';
-import { buildSearchHref } from '../../features/catalog/landing/searchHref';
+import { InstantSearchPanel } from '../../features/search/instant/InstantSearchPanel';
+import { useInstantSearchBox } from '../../features/search/instant/useInstantSearchBox';
 
 /** Gợi ý cá nhân hóa quá 3 giây thì ẩn khối và hiện dòng "Thử lại" (frontend §6.4 RECOMMENDATION_TIMEOUT_MS). */
 const RECOMMENDATION_TIMEOUT_MS = 3000;
@@ -87,12 +88,18 @@ export const HomeView: React.FC = () => {
   const [isLoadingRecs, setIsLoadingRecs] = useState(false);
   const [showSectionWhy, setShowSectionWhy] = useState(false);
 
+  // Chỉ phụ thuộc vào giá trị thật sự đổi kết quả. Đưa cả `currentPersona`/`activeEvents` vào deps thì mỗi lần
+  // đối tượng/mảng đổi tham chiếu (nạp lại phiên, `resetClientState` gán `[]` mới) effect huỷ request đang bay.
+  const personaId = currentPersona?.id;
+  const personaDestination = currentPersona?.activeDestination;
+  const eventCount = activeEvents.length;
+
   useEffect(() => {
     const controller = new AbortController();
     let timedOut = false;
 
     // Danh tính do BFF gắn từ cookie phiên; đổi tài khoản = đổi phiên nên effect chạy lại. Khách không gọi.
-    if (!currentPersona) {
+    if (!personaId) {
       setRecResponse(null);
       setRecsFailed(false);
       return () => controller.abort();
@@ -100,7 +107,7 @@ export const HomeView: React.FC = () => {
     const timer = setTimeout(() => { timedOut = true; controller.abort(); }, RECOMMENDATION_TIMEOUT_MS);
     setIsLoadingRecs(true);
     setRecsFailed(false);
-    fetchRecommendations({ k: 4, destination: currentPersona.activeDestination, signal: controller.signal })
+    fetchRecommendations({ k: 4, destination: personaDestination, signal: controller.signal })
       .then((data) => setRecResponse(data))
       .catch(() => {
         if (!controller.signal.aborted || timedOut) {
@@ -117,23 +124,27 @@ export const HomeView: React.FC = () => {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [currentPersona, activeEvents, recsRetry]);
+  }, [personaId, personaDestination, eventCount, recsRetry]);
 
   const strategy = recResponse?.strategy ?? 'popular';
   const destination = recResponse?.destination ?? '';
   const recommendations = recResponse?.recommendations ?? [];
   const excludedVerticals = recResponse?.diagnostics.excludedVerticals ?? [];
 
+  // Gợi ý tức thì khi gõ (FR-SRC-05): chọn điểm đến hoặc từ khoá thì tìm như Enter, chọn sản phẩm thì mở trang chi tiết.
+  const { containerRef: instantContainerRef, ...instant } = useInstantSearchBox({
+    value: aiQuery,
+    onSearch: (query) => {
+      showToast(`Đang tìm kiếm: "${query.slice(0, 32)}..."`);
+      navigate(`/search?q=${encodeURIComponent(query)}`);
+    },
+    onOpenProduct: (productId) => navigate(`/product/${encodeURIComponent(productId)}`),
+  });
+
   const submitAi = (event: React.FormEvent) => {
     event.preventDefault();
-    const query = aiQuery.trim() || placeholder || 'Resort V-OTA';
-    showToast(`Đang tìm kiếm: "${query.slice(0, 32)}..."`);
-    navigate(`/search?q=${encodeURIComponent(query)}`);
+    instant.search(aiQuery.trim() || placeholder || 'Resort V-OTA');
   };
-
-  const popularMoreHref = popularTab.taxonomy
-    ? buildSearchHref({ taxonomy: popularTab.taxonomy, origin: '', location: '', destination: null, trip: {} })
-    : undefined;
 
   return (
     <div className="flex flex-col bg-[#f8fafc] font-sans text-slate-800 antialiased">
@@ -151,7 +162,8 @@ export const HomeView: React.FC = () => {
           <div className="absolute inset-0 bg-gradient-to-b from-slate-900/60 via-slate-900/30 to-slate-950/80" />
         </div>
 
-        <div className="relative z-10 mx-auto flex w-full max-w-5xl flex-col items-center gap-6 text-center">
+        {/* z-20: panel gợi ý của ô tìm kiếm phải nằm trên dải danh mục (z-10) ngay bên dưới hero. */}
+        <div className="relative z-20 mx-auto flex w-full max-w-5xl flex-col items-center gap-6 text-center">
           <VerticalChips activeGroup={null} />
           <div>
             <h1 className="type-hero text-white drop-shadow-md">
@@ -163,15 +175,17 @@ export const HomeView: React.FC = () => {
           </div>
 
           <div className="w-full max-w-4xl space-y-3">
+            <div ref={instantContainerRef} className="relative">
             <form
               onSubmit={submitAi}
               role="search"
-              className="glass-sheet flex items-center justify-between gap-2 rounded-2xl p-2 shadow-2xl ring-2 ring-blue-500/20 sm:rounded-full sm:p-2.5"
+              className="glass-sheet flex items-center justify-between gap-2 rounded-2xl p-2 shadow-2xl ring-2 ring-brand-500/20 sm:rounded-full sm:p-2.5"
             >
               <input
                 type="text"
                 value={aiQuery}
-                onChange={(e) => setAiQuery(e.target.value)}
+                onChange={(e) => { setAiQuery(e.target.value); instant.onType(); }}
+                {...instant.inputProps}
                 aria-label="Mô tả chuyến đi bạn muốn"
                 placeholder={placeholder || 'Hỏi AI: Tìm resort V-OTA view biển cho gia đình 4 người...'}
                 className="min-w-0 flex-1 truncate bg-transparent pl-3.5 text-base font-medium text-slate-800 outline-none placeholder:text-slate-500 sm:pl-4"
@@ -179,11 +193,13 @@ export const HomeView: React.FC = () => {
               <button
                 type="submit"
                 aria-label="Tìm kiếm"
-                className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full bg-blue-600 text-white shadow-md transition hover:bg-blue-700 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+                className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full bg-brand-600 text-white shadow-md transition hover:bg-brand-700 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
               >
                 <Search className="h-5 w-5" aria-hidden="true" />
               </button>
             </form>
+            {instant.open && <InstantSearchPanel {...instant.panel} />}
+            </div>
 
             <div className="flex flex-wrap items-center justify-center gap-2 text-[13px]">
               <span className="font-medium text-white/80 drop-shadow">Gợi ý câu hỏi:</span>
@@ -191,6 +207,7 @@ export const HomeView: React.FC = () => {
                 <Link
                   key={chip}
                   href={`/search?q=${encodeURIComponent(chip)}`}
+                  onClick={() => instant.remember(chip)}
                   className="inline-flex min-h-10 items-center rounded-full border border-white/25 bg-white/20 px-4 font-medium text-white backdrop-blur-md transition-colors duration-200 hover:bg-white/35 focus-visible:outline-2 focus-visible:outline-white"
                 >
                   {chip}
@@ -209,9 +226,9 @@ export const HomeView: React.FC = () => {
               <li key={shortcut.id}>
                 <Link
                   href={shortcut.href}
-                  className="flex h-full items-center gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+                  className="flex h-full items-center gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
                 >
-                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-600">
                     <NavIcon name={shortcut.icon} className="h-5 w-5" />
                   </span>
                   <span className="min-w-0">
@@ -229,7 +246,7 @@ export const HomeView: React.FC = () => {
           <section className="mx-auto max-w-7xl px-4 pt-6 sm:px-6 lg:px-8">
             <p className="text-xs text-slate-500">
               Chưa tải được gợi ý cho bạn ·{' '}
-              <button onClick={() => setRecsRetry((n) => n + 1)} className="cursor-pointer font-semibold text-blue-600 hover:underline">
+              <button onClick={() => setRecsRetry((n) => n + 1)} className="cursor-pointer font-semibold text-brand-600 hover:underline">
                 Thử lại
               </button>
             </p>
@@ -242,7 +259,7 @@ export const HomeView: React.FC = () => {
                 <h2 className="type-title text-slate-900">Gợi ý</h2>
                 <button
                   onClick={() => setShowSectionWhy(true)}
-                  className="inline-flex cursor-pointer items-center gap-1 rounded-xl border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition-colors hover:bg-blue-100"
+                  className="inline-flex cursor-pointer items-center gap-1 rounded-xl border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700 transition-colors hover:bg-brand-100"
                 >
                   <HelpCircle className="h-3.5 w-3.5" aria-hidden="true" />
                   <span>Vì sao có gợi ý này?</span>
@@ -290,7 +307,7 @@ export const HomeView: React.FC = () => {
                     role="tab"
                     aria-selected={selected}
                     onClick={() => setPopularTab(tab)}
-                    className={`h-11 shrink-0 cursor-pointer rounded-full border px-5 text-sm font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${
+                    className={`h-11 shrink-0 cursor-pointer rounded-full border px-5 text-sm font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 ${
                       selected ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
                     }`}
                   >
@@ -304,7 +321,6 @@ export const HomeView: React.FC = () => {
             key={popularTab.id}
             title="Phổ biến tại các điểm đến Việt Nam"
             params={{ ...(popularTab.taxonomy ? { taxonomy: popularTab.taxonomy } : {}), sort: 'popular', availableOnly: true, limit: 8 }}
-            moreHref={popularMoreHref}
             empty={{ text: 'Chưa có dịch vụ nào trong danh mục này.' }}
           />
         </div>
@@ -332,7 +348,7 @@ export const HomeView: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {/* Trust Badge 1 */}
               <div className="glass-card rounded-2xl p-6 border border-white/70 shadow-lg hover:shadow-2xl transition duration-300 flex flex-col items-start">
-                <div className="w-12 h-12 rounded-xl bg-blue-50 border border-blue-100/80 flex items-center justify-center mb-4 shadow-md shadow-blue-500/10 overflow-hidden">
+                <div className="w-12 h-12 rounded-xl bg-brand-50 border border-brand-100/80 flex items-center justify-center mb-4 shadow-md shadow-brand-500/10 overflow-hidden">
                   <img
                     src="/trust_badge_ecosystem.webp"
                     alt="Hệ sinh thái du lịch & giải trí toàn diện"
@@ -349,7 +365,7 @@ export const HomeView: React.FC = () => {
 
               {/* Trust Badge 2 */}
               <div className="glass-card rounded-2xl p-6 border border-white/70 shadow-lg hover:shadow-2xl transition duration-300 flex flex-col items-start">
-                <div className="w-12 h-12 rounded-xl bg-blue-50 border border-blue-100/80 flex items-center justify-center mb-4 shadow-md shadow-blue-500/10 overflow-hidden">
+                <div className="w-12 h-12 rounded-xl bg-brand-50 border border-brand-100/80 flex items-center justify-center mb-4 shadow-md shadow-brand-500/10 overflow-hidden">
                   <img
                     src="/trust_badge_booking.webp"
                     alt="Trải nghiệm đặt dịch vụ liền mạch"
@@ -366,7 +382,7 @@ export const HomeView: React.FC = () => {
 
               {/* Trust Badge 3 */}
               <div className="glass-card rounded-2xl p-6 border border-white/70 shadow-lg hover:shadow-2xl transition duration-300 flex flex-col items-start">
-                <div className="w-12 h-12 rounded-xl bg-blue-50 border border-blue-100/80 flex items-center justify-center mb-4 shadow-md shadow-blue-500/10 overflow-hidden">
+                <div className="w-12 h-12 rounded-xl bg-brand-50 border border-brand-100/80 flex items-center justify-center mb-4 shadow-md shadow-brand-500/10 overflow-hidden">
                   <img
                     src="/trust_badge_ai_assistant.webp"
                     alt="Trợ lý AI đồng hành du lịch"

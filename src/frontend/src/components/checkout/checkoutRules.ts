@@ -8,7 +8,27 @@
  * Code thuần, không import React. Ngày là chuỗi `YYYY-MM-DD` (theo lịch Việt Nam), không đi qua `Date` để tránh lệch múi giờ.
  */
 
-export const MAX_PARTY = 9;
+export const MAX_PARTY = 9; // tối đa mỗi mục (vé, golf, combo, chuyến bay) và mỗi phòng khách sạn (FR-BKG-08)
+export const MAX_ROOMS = 9; // số phòng tối đa của một mục khách sạn
+
+/** Số khách tối đa của một phòng: sức chứa của hạng phòng nếu có, và không quá `MAX_PARTY`. */
+export function roomCapacity(maxOccupancy: number | null): number {
+  return maxOccupancy ? Math.min(maxOccupancy, MAX_PARTY) : MAX_PARTY;
+}
+
+/** Số khách tối đa của một mục: khách sạn 9 khách mỗi phòng, loại khác 9 khách. */
+export function itemPartyCap(taxonomy: string, quantity: number): number {
+  return taxonomy === 'hotel' ? MAX_PARTY * Math.max(quantity, 1) : MAX_PARTY;
+}
+
+/**
+ * Trần của đoàn khai ở checkout, từ `taxonomy` và `quantity` của các mục trong đơn: đơn chỉ có khách sạn thì theo mục lớn nhất,
+ * đơn có mục khác thì `MAX_PARTY`. Phản chiếu `order_party_cap` ở Backend.
+ */
+export function orderPartyCap(items: Array<{ taxonomy: string; quantity: number }>): number {
+  if (!items.length || items.some((i) => i.taxonomy !== 'hotel')) return MAX_PARTY;
+  return Math.max(...items.map((i) => itemPartyCap(i.taxonomy, i.quantity)));
+}
 export const ADULT_MIN_AGE = 12;
 export const INFANT_MAX_AGE = 2; // dưới 2 tuổi
 const NAME_PART_MAX = 50;
@@ -213,15 +233,17 @@ export function checkContact(contact: ContactInput): Violation[] {
 
 /**
  * R-TRV-01…06, R-DOC-01…08. Trả về đoàn đã chuẩn hoá (để luật theo dịch vụ dùng tiếp) cùng danh sách vi phạm.
- * `flightDates` là ngày bay của các mục vé máy bay trong giỏ; rỗng thì không áp luật giấy tờ (FR-BKG-13).
+ * `flightDates` là ngày bay của các mục vé máy bay trong giỏ; rỗng thì không áp luật giấy tờ (FR-BKG-13). `maxParty` là trần
+ * của đoàn (`orderPartyCap`), mặc định `MAX_PARTY`.
  */
 export function checkParty(
-  inputs: TravelerInput[], opts: { earliest: string | null; today: string; flightDates?: string[] },
+  inputs: TravelerInput[], opts: { earliest: string | null; today: string; flightDates?: string[]; maxParty?: number },
 ): { travelers: Traveler[]; violations: Violation[] } {
   const flightDates = opts.flightDates ?? [];
+  const maxParty = opts.maxParty ?? MAX_PARTY;
   const out: Violation[] = [];
   const travelers: Traveler[] = [];
-  if (inputs.length > MAX_PARTY) out.push({ field: 'travelers', reason: 'PARTY_TOO_LARGE' });
+  if (inputs.length > maxParty) out.push({ field: 'travelers', reason: 'PARTY_TOO_LARGE', params: { maxParty } });
   if (!inputs.some((t) => t.type === 'ADULT')) out.push({ field: 'travelers', reason: 'ADULT_REQUIRED', params: { scope: 'party' } });
   const seen = new Set<string>();
   inputs.forEach((item, index) => {
@@ -430,8 +452,9 @@ function checkHotel(index: number, detail: ItemInput, facts: CartFacts, byRef: M
     }
     const adults = room.travelerRefs.filter((ref) => byRef.has(ref) && fareTypeOn(byRef.get(ref)!, facts.usingDate) === 'ADULT');
     if (!adults.length) out.push({ field: roomPath, reason: 'ADULT_REQUIRED', cartItemId: cid, params: { scope: 'room', roomNo: k + 1 } });
-    if (facts.maxOccupancy && room.travelerRefs.length > facts.maxOccupancy) {
-      out.push({ field: roomPath, reason: 'OCCUPANCY_EXCEEDED', cartItemId: cid, params: { roomNo: k + 1, maxOccupancy: facts.maxOccupancy } });
+    const capacity = roomCapacity(facts.maxOccupancy);
+    if (room.travelerRefs.length > capacity) {
+      out.push({ field: roomPath, reason: 'OCCUPANCY_EXCEEDED', cartItemId: cid, params: { roomNo: k + 1, maxOccupancy: capacity } });
     }
     if (adults.length && !adults.includes(room.leadTravelerRef ?? '')) {
       out.push({ field: `${roomPath}.leadTravelerRef`, reason: 'LEAD_GUEST_INVALID', cartItemId: cid, params: { roomNo: k + 1 } });
@@ -450,10 +473,15 @@ export function checkCheckout(
   contact: ContactInput, inputs: TravelerInput[], details: ItemInput[], cart: CartFacts[], today: string,
 ): { travelers: Traveler[]; violations: Violation[] } {
   const earliest = cart.reduce<string | null>((min, c) => (min === null || c.usingDate < min ? c.usingDate : min), null);
-  const party = checkParty(inputs, { earliest, today, flightDates: flightDatesOf(cart) });
+  const maxParty = orderPartyCap(cart);
+  const party = checkParty(inputs, { earliest, today, flightDates: flightDatesOf(cart), maxParty });
+  // Khách sạn trên 9 khách phải đặt riêng: đơn trộn với dịch vụ khác chỉ khai được đoàn tối đa 9 người.
+  const mixed: Violation[] = cart
+    .filter((c) => c.taxonomy === 'hotel' && c.guests.adults + c.guests.children > maxParty)
+    .map((c) => ({ field: 'itemDetails', reason: 'PARTY_TOO_LARGE', cartItemId: c.cartItemId, params: { scope: 'mixed', itemName: c.name } }));
   return {
     travelers: party.travelers,
-    violations: [...checkContact(contact), ...party.violations, ...checkItems(party.travelers, details, cart)],
+    violations: [...checkContact(contact), ...party.violations, ...mixed, ...checkItems(party.travelers, details, cart)],
   };
 }
 
@@ -501,7 +529,14 @@ export function messageFor(v: Violation): string {
       if (p.scope === 'item') return 'Trẻ em cần đi cùng ít nhất 1 người lớn trong dịch vụ này.';
       if (p.scope === 'room') return 'Mỗi phòng cần ít nhất 1 người lớn.';
       return 'Cần ít nhất 1 người lớn (từ 12 tuổi).';
-    case 'PARTY_TOO_LARGE': return 'Mỗi đơn tối đa 9 khách. Vui lòng tách thành nhiều đơn.';
+    case 'PARTY_TOO_LARGE': {
+      const cap = Number(p.maxParty ?? MAX_PARTY);
+      if (p.scope === 'mixed') return `${p.itemName ?? 'Khách sạn'} trên 9 khách phải đặt riêng, không gộp với dịch vụ khác.`;
+      if (p.rooms) return `Mỗi phòng tối đa 9 khách (${cap} khách cho ${p.rooms} phòng). Vui lòng thêm phòng.`;
+      if (v.field === 'travelers' && cap > MAX_PARTY) return `Mỗi đơn tối đa ${cap} khách. Vui lòng tách thành nhiều đơn.`;
+      return 'Mỗi đơn tối đa 9 khách. Vui lòng tách thành nhiều đơn.';
+    }
+    case 'ROOMS_TOO_MANY': return `Mỗi lần đặt tối đa ${p.maxRooms ?? MAX_ROOMS} phòng.`;
     case 'TRAVELER_UNKNOWN': return 'Hành khách không có trong đoàn.';
     case 'TRAVELER_DUPLICATED':
       return v.field.endsWith('.travelerRef') ? 'Mã hành khách bị trùng.' : `${p.travelerName || 'Hành khách này'} đã được chọn ở chỗ khác trong dịch vụ này.`;

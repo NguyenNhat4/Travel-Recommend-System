@@ -8,6 +8,7 @@ from __future__ import annotations
 from src.backend.app.application.auth.errors import TokenInvalid
 from src.backend.app.application.auth.principal import AuthPrincipal
 from src.backend.app.application.ports.auth import RevokedTokens, TokenVerifier
+from src.backend.app.core.request_context import note_actor
 
 
 def bearer_token(authorization: str | None) -> str | None:
@@ -25,6 +26,7 @@ async def verified_principal(token: str, verifier: TokenVerifier, revoked: Revok
     principal = verifier.verify(token)
     if principal.token_id and revoked is not None and await revoked.is_revoked(principal.token_id):
         raise TokenInvalid("jti đã bị thu hồi")
+    note_actor("user", principal.cdp_user_id)
     return principal
 
 

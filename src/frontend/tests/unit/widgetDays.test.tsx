@@ -33,7 +33,7 @@ const response = {
 function renderDays() {
   const widget = {
     activePlan: convertItineraryCompletedToGroundedPlan(response), activeDayTab: 0,
-    setHoveredCoordinate: vi.fn(), setHoveredPointId: vi.fn(), focusedProductId: null,
+    setHoveredCoordinate: vi.fn(), setHoveredPointId: vi.fn(), focusedProductId: null, itemActions: () => null,
   } as unknown as FloatingWidgetController;
   return render(<WidgetDays widget={widget} />);
 }
@@ -57,5 +57,91 @@ describe('WidgetDays', () => {
     renderDays();
     expect(screen.getAllByText('Ăn uống').length).toBeGreaterThan(0);
     expect(screen.queryByAltText('Ăn uống')).toBeNull();
+  });
+});
+
+describe('WidgetDays flights (AC-AGT-02)', () => {
+  afterEach(cleanup);
+
+  const flight = (productId: string, destination: string, direction: string, date: string, extra: object) => ({
+    product: { ...summary(productId, `Vé ${productId}`, 'attraction'), taxonomy: 'flight', destination, unitPrice: 1_000_000, ...extra },
+    direction, date, passengers: 2, source: 'SEARCH',
+  });
+
+  it('opens the first day with the outbound leg and closes the last day with the return leg', () => {
+    const withFlights = {
+      ...response,
+      intent: { ...response.intent, days: 2 },
+      itinerary: {
+        ...response.itinerary,
+        flights: [
+          flight('out', 'Nha Trang', 'OUTBOUND', '2026-10-15',
+            { attributes: { airline: 'VietJet Air', flightNumber: 'VJ601', departureTimeLocal: '06:45', arrivalTimeLocal: '07:55', nonstop: true } }),
+          flight('back', 'Hà Nội', 'RETURN', '2026-10-16', { attributes: { airline: 'Vietnam Airlines', departureTimeLocal: '19:00' } }),
+        ],
+        days: [response.itinerary.days[0], { day: 2, slots: [] }],
+      },
+    } as unknown as components['schemas']['ItineraryCompleted'];
+    const widget = {
+      activePlan: convertItineraryCompletedToGroundedPlan(withFlights), activeDayTab: 0,
+      setHoveredCoordinate: vi.fn(), setHoveredPointId: vi.fn(), focusedProductId: null, itemActions: () => null,
+    } as unknown as FloatingWidgetController;
+    render(<WidgetDays widget={widget} />);
+
+    const cards = screen.getAllByTestId('itinerary-flight');
+    expect(cards.map((card) => card.getAttribute('data-product-id'))).toEqual(['out', 'back']);
+    expect(cards[0].textContent).toContain('Chặng đi · 15/10/2026');
+    expect(cards[0].textContent).toContain('VietJet Air · VJ601');
+    expect(cards[0].textContent).toContain('06:45 → 07:55');
+    expect(cards[0].textContent).toContain('Bay thẳng');
+    expect(cards[0].textContent).toContain('1.000.000 ₫/khách × 2');
+    expect(cards[1].textContent).toContain('Chặng về · 16/10/2026');
+    expect(cards[1].textContent).not.toContain('Bay thẳng');
+  });
+
+  it('shows the airport transfer line of a late-landing day without an image (chốt 2026-10-07)', () => {
+    const lateLanding = {
+      ...response,
+      itinerary: {
+        ...response.itinerary,
+        days: [{ day: 1, slots: [
+          { time: 'EVENING', product: null, activityType: 'TRANSFER', note: 'Di chuyển từ sân bay, nhận phòng.', source: null },
+        ] }],
+      },
+    } as unknown as components['schemas']['ItineraryCompleted'];
+    const widget = {
+      activePlan: convertItineraryCompletedToGroundedPlan(lateLanding), activeDayTab: 0,
+      setHoveredCoordinate: vi.fn(), setHoveredPointId: vi.fn(), focusedProductId: null, itemActions: () => null,
+    } as unknown as FloatingWidgetController;
+    render(<WidgetDays widget={widget} />);
+    expect(screen.getAllByText('Di chuyển').length).toBeGreaterThan(0);
+    expect(screen.getByText('Di chuyển từ sân bay, nhận phòng.')).toBeTruthy();
+    expect(screen.queryByAltText('Di chuyển')).toBeNull();
+  });
+});
+
+describe('WidgetDays hotel change (AC-AGT-04, contract 1.19.0)', () => {
+  afterEach(cleanup);
+
+  it('shows on each day the hotel of that night, and the last day keeps the hotel of the night before', () => {
+    const north = { product: summary('h1', 'Khách sạn Bắc đảo', 'hotel'), nights: 2, fromNight: 1, note: null };
+    const south = { product: summary('h2', 'Khách sạn Nam đảo', 'hotel'), nights: 2, fromNight: 3, note: null };
+    const fiveDays = {
+      ...response,
+      intent: { ...response.intent, days: 5 },
+      itinerary: {
+        ...response.itinerary, stay: north, stays: [north, south],
+        days: [1, 2, 3, 4, 5].map((day) => ({ day, slots: [] })),
+      },
+    } as unknown as components['schemas']['ItineraryCompleted'];
+    const widget = {
+      activePlan: convertItineraryCompletedToGroundedPlan(fiveDays), activeDayTab: 0,
+      setHoveredCoordinate: vi.fn(), setHoveredPointId: vi.fn(), focusedProductId: null, itemActions: () => null,
+    } as unknown as FloatingWidgetController;
+    const { container } = render(<WidgetDays widget={widget} />);
+    const hotels = Array.from(container.querySelectorAll('[data-product-id="h1"], [data-product-id="h2"]'))
+      .map((card) => card.getAttribute('data-product-id'));
+    expect(hotels).toEqual(['h1', 'h1', 'h2', 'h2', 'h2']);
+    expect(container.textContent).toContain('(Đêm 3–4)');
   });
 });

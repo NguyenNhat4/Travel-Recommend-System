@@ -66,7 +66,7 @@ export const DebugPanel: React.FC = () => {
             <div className="text-slate-400 text-[10px] uppercase tracking-wider font-semibold">User Context</div>
             <div className="bg-slate-800/60 p-2 rounded text-[11px] space-y-0.5">
               <div>Persona: <span className="text-emerald-400 font-bold">{currentPersona ? `${currentPersona.id} (${currentPersona.name})` : 'Guest'}</span></div>
-              <div>ColdStart: <span className="text-blue-300">{recs ? String(recs.diagnostics.coldStart) : '…'}</span></div>
+              <div>ColdStart: <span className="text-brand-300">{recs ? String(recs.diagnostics.coldStart) : '…'}</span></div>
               <div>Events count: <span className="text-amber-300">{recs ? recs.diagnostics.eventsUsed : '…'}</span></div>
               <div>Cart items: <span className="text-slate-300">{cartCount}</span></div>
               <div>Bookings (session): <span className="text-slate-300">{bookings.length}</span></div>

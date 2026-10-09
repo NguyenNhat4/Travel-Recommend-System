@@ -98,6 +98,43 @@ Collection Weaviate: 14–16 collection chính (8–9 text variant, 0–3 độ 
 | **APP.hybrid_nocut** | APP | APP.hybrid | như trên, không cutoff (chỉ hiệu ứng xếp hạng) | không | như trên | ✔ (30/09) |
 | **APP.hybrid_norm** | APP | APP.hybrid | + `QueryNormalizer` của backend (cấu hình production hiện nay) | không | dòng "hybrid + normalize" của M2; contract S10 (abbrev_typo, audience_style) | ✔ (30/09) |
 | **APP.hybrid_norm_nocut** | APP | APP.hybrid_norm | như trên, không cutoff | không | như trên | ✔ (30/09) |
+| **APP.e5s.dense** | APP | E2.e5s | như APP.dense, model e5-small (collection `ProductBench__e5_small`, embedder truy vấn e5-small), cutoff 0,62 giữ nguyên | `ProductBench__e5_small` (vector E2.e5s, hnsw) | Day 5: `/search` production với model đã chốt e5-small | ✔ (05/10) |
+| **APP.e5s.dense_nocut** | APP | APP.e5s.dense | như trên, không cutoff | không | Day 5: `/search` production với model đã chốt e5-small | ✔ (05/10) |
+| **APP.e5s.hybrid** | APP | APP.e5s.dense | như APP.hybrid, model e5-small | không | Day 5: `/search` production với model đã chốt e5-small | ✔ (05/10) |
+| **APP.e5s.hybrid_nocut** | APP | APP.e5s.hybrid | như trên, không cutoff | không | Day 5: `/search` production với model đã chốt e5-small | ✔ (05/10) |
+| **APP.e5s.hybrid_norm** | APP | APP.e5s.hybrid | như APP.hybrid_norm (cấu hình production), model e5-small — nguồn `regression/baseline_v1.json` | không | Day 5: `/search` production với model đã chốt e5-small | ✔ (05/10) |
+| **APP.e5s.hybrid_norm_nocut** | APP | APP.e5s.hybrid_norm | như trên, không cutoff | không | Day 5: `/search` production với model đã chốt e5-small | ✔ (05/10) |
+| **APP.e5s.hybrid_norm_nocut_dest** | APP | APP.e5s.hybrid_norm_nocut | + F1: `dest_filter: true` — lọc cứng điểm đến suy từ câu (FR-SRC-03, `SEARCH_DEST_FILTER`); token địa danh không tính vào độ phủ; F rỗng → chạy lại không lọc | không | `dest_type`; guard `named_entity`, `cross_vertical`, `out_of_catalog`; `filter_recall_loss` | ✔ (05/10) |
+| **APP.e5s.hybrid_norm_nocut_nodia** | APP | APP.e5s.hybrid_norm_nocut | + F2: `no_diacritics_mode: relax` — câu không dấu (≥ 3 token) dùng cổng vớt `lexicalK 20 / lexicalCutoff 0 / phủ 0,4` (tạm) | không | `no_diacritics`; guard `abbrev_typo`, `named_entity` | ✔ (05/10) |
+| **APP.e5s.hybrid_norm_nocut_dest_nodia** | APP | APP.e5s.hybrid_norm_nocut | + F1 + F2 | không | hai slice trên + guard | ✔ (05/10) |
+| **APP.e5s.hybrid_norm_c84** (tên cũ `APP.e5s.hybrid_norm` trong report 05/10) | APP | APP.e5s.hybrid_norm_nocut | như mốc nhưng `cutoff: 0.84` **tạm** (05/10, chọn từ phân bố cosine top-10 của `APP.e5s.dense_nocut` trên toàn gold: giữ 95 % rel ≥ 1, 6/128 câu rỗng ở dense-only; chưa qua dev/test) — mốc có cutoff để đọc zero-result và F2 | không | hiệu ứng cutoff tuyệt đối trên e5; `out_of_catalog`, `no_diacritics` | ✔ (05/10) |
+| **APP.e5s.hybrid_norm_c84_dest** | APP | APP.e5s.hybrid_norm_c84 | + F1 (cutoff 0,84) | không | `dest_type` + guard khi có cutoff | ✔ (05/10) |
+| **APP.e5s.hybrid_norm_c84_nodia** | APP | APP.e5s.hybrid_norm_c84 | + F2 (cutoff 0,84; `no_diacritics.cutoff: null` = dùng cutoff chung). F2 chỉ có tác dụng khi cutoff cắt bớt dense — không cutoff thì top-10 giống mốc 131/131 vì hit chỉ-BM25 luôn xếp dưới hit có ở cả hai danh sách (RRF) | không | `no_diacritics` | ✔ (05/10) |
+| **APP.e5s.hybrid_norm_c84_dest_nodia** | APP | APP.e5s.hybrid_norm_c84 | + F1 + F2 (cutoff 0,84) | không | hai slice + guard | ✔ (05/10) |
+| **APP.e5s.hybrid_norm_c84_nodia_nc80** | APP | APP.e5s.hybrid_norm_c84_nodia | + `no_diacritics.cutoff: 0.80` — cutoff riêng cho câu không dấu (tạm, trong mẫu: 0,80 không cắt kết quả nào trong catalog theo phân bố dense) | không | knob cutoff của F2 có bù được phần `no_diacritics` mất vì cutoff 0,84 không | ✔ (05/10) |
+| **APP.e5s.hybrid_norm_c84_dest_nodia_nc80** | APP | APP.e5s.hybrid_norm_c84_dest_nodia | + F1 + F2 với `no_diacritics.cutoff: 0.80` | không | tổ hợp đầy đủ có cutoff | ✔ (05/10) |
+| **APP.e5s.hybrid_norm_nocut_neg** | APP | APP.e5s.hybrid_norm_nocut | + F3: `negation_filter: true` — phủ định tiện ích: "không có X" → loại unit có ghi nhận tiện ích X (`appliedFilters.hard.mustNotAmenities`, `queryPlan.mustNot`) | không | `amenity_negation`; guard `amenity_*` còn lại, `filter_recall_loss` | ✔ (05/10) — chạy 06/10 (run `2026-10-06-gold-v4-r1`/`-r2`) |
+| **APP.e5s.hybrid_norm_nocut_tax** | APP | APP.e5s.hybrid_norm_nocut | + F4: `taxonomy_filter: true` — loại sản phẩm suy từ câu: câu nêu đúng một loại → lọc cứng `taxonomy` (gazetteer tên unit chứa cue loại khác để không lọc nhầm, `queryPlan.taxonomy`) | không | `cross_vertical`, `dest_type`; guard `named_entity`, `parent_child` | ✔ (05/10) — chạy 06/10 (run `2026-10-06-gold-v4-r1`/`-r2`) |
+| **APP.e5s.hybrid_norm_nocut_route** | APP | APP.e5s.hybrid_norm_nocut | + F5: `route_filter: true` — chiều bay: vé máy bay "từ A đến B" → lọc `originCity` của tuyến (mã sân bay ↔ thành phố, `queryPlan.route`) | không | câu chuyến bay có chiều; guard `named_entity`, `out_of_catalog` | ✔ (05/10) — chạy 06/10 (run `2026-10-06-gold-v4-r1`/`-r2`) |
+| **APP.e5s.hybrid_norm_nocut_num** | APP | APP.e5s.hybrid_norm_nocut | + F6: `numeric_filter: true` — giá-sao suy từ câu: giá = hard (`priceMin` / `priceMax` trên giá thấp nhất của unit), sao = soft (`starRatingMin`; `queryPlan.price` / `.star`) | không | `multi_constraint`, constraint precision; guard `filter_recall_loss` | ✔ (05/10) — chạy 06/10 (run `2026-10-06-gold-v4-r1`/`-r2`) |
+| **APP.e5s.hybrid_norm_nocut_qp** | APP | APP.e5s.hybrid_norm_nocut | + tổ hợp query plan F3 + F4 + F5 + F6 (bốn cờ true), không cutoff, không F1/F2 | không | bốn slice trên so với từng arm đơn — cộng dồn hay triệt tiêu | ✔ (05/10) — chạy 06/10 (run `2026-10-06-gold-v4-r1`/`-r2`) |
+| **APP.e5s.hybrid_norm_c84_dest_nodia_nc80_qp** | APP | APP.e5s.hybrid_norm_c84_dest_nodia_nc80 | + tổ hợp query plan F3 + F4 + F5 + F6 trên arm đầy đủ có cutoff (0,84 + F1 + F2 + `no_diacritics.cutoff: 0.80`) | không | tổ hợp đầy đủ F1–F6 có cutoff — ứng viên production | ✔ (05/10) — chạy 06/10 (run `2026-10-06-gold-v4-r1`/`-r2`) |
+| **APP.e5s.hybrid_norm_nocut_tax_strong** | APP | APP.e5s.hybrid_norm_nocut | + F4 chỉ khi câu có cue loại MẠNH (`taxonomy_filter` + `taxonomy_strong_only`; bảng yếu `constraints.WEAK_VERTICAL_CUES`) | không | so `_tax`: cue yếu ("nghỉ dưỡng", "phòng", tên VinWonders/Safari) có làm mất item đúng không | ✔ (06/10) |
+| **APP.e5s.hybrid_norm_nocut_party** | APP | APP.e5s.hybrid_norm_nocut | + `party_filter`: "N người" → `minOccupancy` (hard, sức chứa unit ∪ phòng con; không khai → giữ) | không | `parent_child`, `audience_style`, `multi_constraint` có số khách | ✔ (06/10) |
+| **APP.e5s.hybrid_norm_nocut_tone** | APP | APP.e5s.hybrid_norm_nocut | + `tone_normalize`: vị trí dấu thanh (oà/òa…) theo kiểu đa số của catalog | không | `no_diacritics`, `abbrev_typo`; guard toàn bộ | ✔ (06/10) |
+| **APP.e5s.hybrid_norm_nocut_fuzzy** / **_fuzzy60** | APP | APP.e5s.hybrid_norm_nocut | + kênh fuzzy tên (trigram trong tiến trình): `fuzzy_k: 10`, `fuzzy_min_sim` 0,75 / 0,6 | không | `abbrev_typo`, `named_entity`, `no_diacritics`; guard `out_of_catalog` | ✔ (06/10) |
+| **APP.e5s.hybrid_norm_nocut_wrrf** / **_wrrf_d** | APP | APP.e5s.hybrid_norm_nocut | RRF có trọng số: `lexical_weight 0.5` / `dense_weight 0.5` | không | độ nhạy fusion — `cross_vertical` (luật vớt BM25) vs `named_entity` | ✔ (06/10) |
+| **APP.e5s.hybrid_norm_nocut_lexonly** | APP | APP.e5s.hybrid_norm_nocut | `retrieval_mode: lexical` — chỉ BM25 qua đúng đường app (`candidate_k: 0` → dense rỗng; cùng mask / filter / cutoff / vớt) | không | lexical-only của kiến trúc Phase B | ✔ (06/10) |
+| **APP.e5s.hybrid_norm_nocut_all** | APP | APP.e5s.hybrid_norm_nocut | ALL: F1 + F2 (relax, `no_diacritics.cutoff: null`) + F3–F6 + `taxonomy_strong_only` + party + tone + fuzzy (10 / 0,75), không cutoff | không | tổ hợp mọi phần kiến trúc Phase A/B đã có | ✔ (06/10) |
+| **APP.e5s.hybrid_norm_nocut_all_minus_{dest,nodia,neg,tax,route,num,party,tone,fuzzy}** | APP | APP.e5s.hybrid_norm_nocut_all | leave-one-out: tắt đúng một phần của ALL | không | đóng góp biên của từng phần khi các phần khác đã bật | ✔ (06/10) |
+| **APP.e5s.hybrid_norm_nocut_all_c84** | APP | APP.e5s.hybrid_norm_nocut_all | ALL + cutoff 0,84 / `no_diacritics.cutoff` 0,80 (tạm) | không | `out_of_catalog`, zero-result — ngưỡng tuyệt đối trên e5 | ✔ (06/10) |
+| **APP.e5s.hybrid_norm_nocut_rr** / **_all_rr** | APP | APP.e5s.hybrid_norm_nocut / _all | rerank offline cross-encoder `BAAI/bge-reranker-v2-m3` top-30 (câu gốc, text T3+R), CPU, cache `bench_out/search/cache/rerank.sqlite`; `latency_ms` chỉ là thời gian `SearchProducts` (rerank ghi `extra.rerank.ms`) | không | kiến trúc Phase D "reranker offline" — lợi ích trên gold trước khi tính tới online | ✔ (06/10) |
+| **APP.e5s.hybrid_norm_nocut_f1f6** | APP | APP.e5s.hybrid_norm_nocut | ỨNG VIÊN PRODUCTION (chọn sau ma trận 06/10): F1 + F2 relax + F3 + F4 (mọi cue) + F5 + F6, không cutoff, không party / tone / fuzzy | không | cấu hình đề xuất bật — WIN +10,7 nDCG trên `gold_v5`, mọi guard Phase A PASS (`eval-2026-10-06-search-query-plan-gold-v4.md`) | ✔ (06/10) |
+| **APP.e5s.hybrid_norm_nocut_f1f6_wrrf** | APP | APP.e5s.hybrid_norm_nocut | `_f1f6` + `lexical_weight 0.5` | không | trọng số RRF khi đã có F1–F6 (+1,2, TIE) | ✔ (06/10) |
+| **APP.e5s.hybrid_norm_nocut_f1f6_rr** | APP | APP.e5s.hybrid_norm_nocut_f1f6 | `_f1f6` + rerank offline bge-reranker-v2-m3 top-30 | không | trần offline của Phase D trên ứng viên production | ✔ (06/10) |
+| **APP.e5s.prod_f12356** | APP | APP.e5s.hybrid_norm | CẤU HÌNH PRODUCTION 06/10 (người dùng chốt): e5-small, cutoff 0,84, F1 + F2 relax (0,80) + F3 + F5 + F6, **F4 tắt** — đúng mặc định `core/config.py`; mốc regression `baseline_v1` | không | WIN +8,7 nDCG trên `gold_v5`; Forbidden@10 0,065 (do F4 tắt) | ✔ (06/10) |
+| **APP.e5s.prod_f12356_nocut** | APP | APP.e5s.prod_f12356 | như trên, cutoff −1 | không | hiệu ứng cutoff 0,84 (TIE) | ✔ (06/10) |
+| **APP.e5s.prod_f12356_llm** | APP | APP.e5s.prod_f12356 | + `app.llm {mode: on, min_confidence: 0.75, cache_path}` — LLM fallback phát lại cache JSONL (`cache_only`, không gọi API) | không | lợi ích LLM fallback trên câu độ tin cậy thấp (`_llm100`: ngưỡng 1,0) | ✔ (06/10) — TIE tuyệt đối, 0 trường nhận |
 
 `@<cổng>` = arm được promote ở cổng đó (ví dụ `@E1a` = text base thắng E1a; `@S4` = cách xử lý amenity thắng S4). `arms/*.yaml` ghi đúng tham chiếu này; giá trị thật giải lúc chạy từ `state/promotions.yaml` (spec Part 12) — `sb list-arms --resolved` in ra. Cột **Cổng** là cổng mà arm thuộc về; thứ tự cổng ở §3.
 
@@ -167,6 +204,16 @@ Ví dụ câu bị loại: *"Khách sạn cung cấp dịch vụ lễ tân 24 gi
 ---
 
 ### Nhóm E2 — model (cùng text, đổi model)
+
+**Day 4 (01/10, benchmark local):** Các arm đã có file YAML dùng chung `T3+R`, dense-only, cùng filter/cutoff với `E2.e5`; khác model và dimension. Đây là arm đánh giá, không đổi model `Product` production của FR-SRC-02.
+
+| Arm YAML | Model cấu hình | Chiều | Ghi chú |
+|---|---|---:|---|
+| `E2.e5s` | `e5-small` | 384 | `query:` / `passage:`, CPU |
+| `E2.gte` | `gte-mb` | 768 | `trust_remote_code`, ghi revision thực tế khi report |
+| `E2.bge` | `bge-m3` | 1024 | fp32 theo adapter hiện tại; int8 chưa chốt |
+| `E2.v4-1536`, `E2.v4-1024`, `E2.v4-512`, `E2.v4-256` | `cohere-v4-*` / `cohere-v4` | 1536 / 1024 / 512 / 256 | Cùng `embed-v4.0`, cache và collection tách theo dimension; chỉ chạy khi được phép gửi text tới Cohere |
+
 
 **E2.v4 — `embed-v4.0`, `output_dimension = 1024`.** Cùng `embed_text` thắng E1. Đo nDCG@10 × latency; v4 có context 128k nên E4.full có thể chạy lại trên v4 nếu v3 bị gate 512 token.
 
@@ -288,8 +335,35 @@ Lịch 10 ngày M2 cần số cho **dense-only / hybrid / hybrid + normalize** �
 | APP.dense / APP.dense_nocut | `hybrid: false`, `normalize: false`; cutoff 0,62 / −1 | Dense-only production; bản không cutoff ≈ B0 (khác chỉ do hnsw) → tách hiệu ứng ngưỡng khỏi xếp hạng |
 | APP.hybrid / APP.hybrid_nocut | `hybrid: true`, `normalize: false` | Hybrid production có / không cutoff — đầu vào cho contract S9 (lexicalK / lexicalCutoff / minCoverage) |
 | APP.hybrid_norm / APP.hybrid_norm_nocut | `hybrid: true`, `normalize: true` | Cấu hình production hiện nay; Δ so với APP.hybrid trên `abbrev_typo`, `audience_style` = số cho contract S10. **Caveat:** 15 câu gold `abbrev_typo` đã được dùng để viết và test `QueryNormalizer` (`history/2026-09-25-search-chuan-hoa-truy-van.md`) → số slice này là số đo trong mẫu |
+| APP.e5s.* (05/10) | `model: e5-small`; `cutoff: -1` (arm `*_nocut`) hoặc `0.84` **tạm** (chưa qua dev/test; `no_diacritics.cutoff` 0,80 ở arm `*_nc80`); khối `app` thêm `dest_filter`, `dest_filter_fallback`, `no_diacritics_mode` (`off` \| `relax`, **quote** trong yaml vì YAML 1.1 đọc `off` thành false), `no_diacritics: {lexical_k, lexical_cutoff, min_coverage, cutoff, min_tokens}`; 05/10 thêm bốn cờ query plan `negation_filter` (F3), `taxonomy_filter` (F4), `route_filter` (F5), `numeric_filter` (F6) — bool, mặc định false = production; arm `*_neg` / `*_tax` / `*_route` / `*_num` bật từng cờ, `*_qp` bật cả bốn — bắt buộc ở **mọi** arm APP (`app_params`) | Cổng APP trên model local: `app_adapter.app_collection` chọn collection `ProductBench__<model>`, `modelVersion = <hf_model>:catalog-text-v2`, số chiều theo `config/sbench.yaml`; `sb app-load --model e5-small`; `sb run` mở một `AppContext` mỗi model. Nhóm chốt 05/10 chuyển sang e5-small và không gọi Cohere nữa, nên trên máy không có vector Cohere chỉ chạy được nhóm arm này. `dest_filter` / `no_diacritics_mode` là hai cờ backend mới (contract 1.14.0); mặc định tắt = production hôm nay. Bốn cờ query plan (05/10) đi vào kwargs cùng tên của `SearchProducts`; `diagnostics.queryPlan` ghi vào `extra.queryPlan`; `appliedFilters.hard` (destination / taxonomy / origin / mustNotAmenities / priceMin / priceMax) → `applied_filter` cho `filter_recall_loss` qua `app_adapter.applied_filter_of` (trường items `destination`, `taxonomy`, `origin_city`, `features`, `unit_price_min`) |
+
+**Khối tuỳ chọn `app.llm` (06/10, contract 1.17.0):** `{mode: on | shadow, min_confidence, cache_path, timeout_ms?}` — vắng = off; bench chỉ phát lại cache giả thuyết LLM (nạp bằng `src/backend/jobs/prewarm_llm_hypotheses.py`).
+
+**Knob 06/10 (contract 1.16.0, bắt buộc ở mọi arm APP):** `tone_normalize`, `taxonomy_strong_only`, `party_filter` (bool → kwargs
+cùng tên của `SearchProducts`); `fuzzy_k` (0 = tắt), `fuzzy_candidate_k`, `fuzzy_min_sim`, `dense_weight`, `lexical_weight`,
+`fuzzy_weight` (→ `HybridConfig`, cả cấu hình chính lẫn cấu hình câu không dấu — như `main.py`); `retrieval_mode` ∈ {hybrid, dense,
+lexical} (`hybrid: false` ⇔ `dense`). Khối `rerank: {model, top_n, parent_engine: app, query, batch_size, max_length}` cho arm
+rerank offline (`rerank.py`). `extra` giữ nguyên `queryPlan` (cả khoá mở rộng) và mọi khoá diagnostics theo câu (`fuzzyCount`,
+`stageMs`…).
+
+**Knob 07/10 (contract 1.18.0, tuỳ chọn như `app.llm`):** `duration_filter` (F7 thời lượng — parse "3 ngày 2 đêm" / 3N2Đ, bỏ cụm
+khỏi `lexicalText`, chưa lọc), `poi_resolve` (địa danh gazetteer `domain/search/gazetteer.py` → điểm đến catalog vào F1,
+`appliedFilters.hard.destinationSource = poi`), `entity_filter` (entity gate CỨNG: câu nêu VinWonders / Safari / Grand World… →
+chỉ attraction / combo có tên chứa entity; `emptyReason = entity`). Bool → kwargs cùng tên của `SearchProducts`
+(`app_adapter.V118_FLAG_KEYS`); **vắng trong YAML ≡ false** nên 55 arm cũ, `config_hash` của chúng và `regression/baseline_v1.json`
+không đổi — khác knob 06/10 (bắt buộc ở mọi arm). Giá trị phải là bool thật (`app_params` từ chối `1` / `"on"`); bật trên backend
+thiếu field thì `supported_kwargs` lỗi như các núm trước. Backend chỉ phát `queryPlan.duration` / `entity` / `location` khi cờ bật,
+nên năm trường parse mới (`duration_days`, `duration_nights`, `entity`, `entity_role`, `location_entity` — `metrics.PARSE_FIELDS`)
+chỉ chấm được trên arm bật cờ. Plan: `docs/plan/2026-10-07-search-duration-entity-poi.md` §5.
+
+| Arm | Tham số | Trả lời |
+|---|---|---|
+| APP.e5s.prod_f12356_dur / _poi / _ent | `APP.e5s.prod_f12356` + một cờ 1.18.0 = `true` (cha: `APP.e5s.prod_f12356`) | Từng họ một trên mốc production 06/10: F7 có bỏ được hotel "Chợ Đêm" / "Ngay trung tâm" khỏi câu "3 ngày 2 đêm" không (slice `duration_false_positive`); POI có quy "Hồ Hoàn Kiếm" / "Cầu Rồng" về đúng điểm đến không (slice `poi_resolution`, `parse_accuracy.location_entity`); entity gate có giữ c0697 / c0709 / c0703 / c0700 / c0472 / c0372 và `forbidden_at_10 = 0` không |
+| APP.e5s.prod_f12356_dur_poi_ent | cả ba cờ `true` (`composite: true`) | Ứng viên production sau bench; `SEARCH_ENTITY_FILTER` chỉ lên sau Web ký (`docs/spec/product.md` §4.2.3) |
 
 Cutoff mốc 0,62 theo contract §2.4 và `.env` (`SEARCH_CUTOFF=0.62`); mặc định trong code là 0,52 (`core/config.py`, đổi ở commit `dbc22c1` không có history) — bench không sửa config production, chỉ báo. `multi_constraint` trên cổng APP báo riêng: `/search` không có filter sao / giá nên arm APP không thể thoả các câu này như pool có filter. Lệnh: `sb app-load` (dựng / kiểm ProductBench), `sb run --arm APP.dense --arm APP.hybrid --arm APP.hybrid_norm …`; `sb run` tự gọi `app-load` khi có arm APP.
+
+**Model khác Cohere (05/10).** Arm APP lấy model từ trường `model`: `cohere-v3` → collection `ProductBench` (như trên); model khác → `ProductBench__<model>` nạp từ `vec_T3+R_<model>.npy` của bench (`modelVersion = <cache_model>:catalog-text-v2`), embedder truy vấn cùng model, số chiều theo vector. `sb app-load --model e5-small` dựng trước. Sáu arm `APP.e5s.*` giữ nguyên khối `app` của bản Cohere, kể cả cutoff 0,62 — với e5 ngưỡng này không lọc gì (cosine 0,85–0,92); sweep cutoff ở `src/evaluation/reports/eval-2026-10-05-search-day5-e5s-app.md` §3. ~60 s đầu sau khi nạp collection, BM25 của Weaviate xếp sai thứ tự (số hybrid Day 4 lệch vì vậy); từ 05/10 `load_collection` chờ thêm `wait_bm25_settled` (kết quả BM25 câu thăm dò đổi rồi đứng yên, tối đa 90 s).
 
 ---
 

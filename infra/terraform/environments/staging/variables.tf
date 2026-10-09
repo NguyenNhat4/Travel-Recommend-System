@@ -11,7 +11,7 @@ variable "region" {
 }
 
 variable "zone" {
-  description = "Zone of the existing DB VM. The replica is created in the same zone."
+  description = "Zone of the existing DB primary VM. The replica goes to a DIFFERENT zone (db_replica_zone)."
   type        = string
   default     = "asia-southeast1-a"
 }
@@ -43,6 +43,17 @@ variable "app_service_account_email" {
   description = "Service account of the app VM (the project's default Compute Engine account). The 8000 and 8765 firewall rules target it."
   type        = string
   default     = "365721936833-compute@developer.gserviceaccount.com"
+}
+
+variable "db_replica_zone" {
+  description = "Zone of the replica VM, same region as the primary but a different zone: a replica in the primary's zone is lost together with it, so it is no zone-level insurance. Changing it replaces the replica VM (CI blocks that unless allow_destroy=true); then re-run the replication job to rebuild it from the primary."
+  type        = string
+  default     = "asia-southeast1-b"
+
+  validation {
+    condition     = var.db_replica_zone != var.zone
+    error_message = "db_replica_zone must differ from zone (the primary's zone); same-zone replica does not survive a zone outage."
+  }
 }
 
 variable "db_replica_vm_name" {

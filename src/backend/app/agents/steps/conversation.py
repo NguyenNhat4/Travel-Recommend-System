@@ -8,7 +8,7 @@ from src.backend.app.domain.itinerary.planning import empty_intent
 
 from ..models import ConversationalAnswer
 from . import messages
-from .classification import vietnam_today
+from .classification import TRIP_DETAILS, vietnam_today
 from .explanations import constraint_question
 from .history import llm_context, prompt_yaml
 from .messages import display_date, event, failure, message, titled
@@ -16,7 +16,7 @@ from .prompts import CONVERSATION_PROMPT
 from .turn_notes import question_note
 
 #: Form gợi ý phủ mọi trường bắt buộc của chuyến đi, kể cả trường người dùng đã nói, để sửa được tại chỗ.
-FORM_FIELDS = ("destination", "days", "startDate", "party", "budget")
+FORM_FIELDS = ("destination", "days", "startDate", "party", "budget", "origin")
 #: Số ngày điền sẵn; người dùng chỉnh ngay trên form (giới hạn 1–7 lấy từ contract).
 DEFAULT_FORM_DAYS = 1
 DEFAULT_FORM_PARTY = {"type": None, "adults": 2, "children": 0}
@@ -57,12 +57,16 @@ def _invalid_for_llm(state: dict) -> list[dict]:
 
 
 def _form_shown(state: dict) -> bool:
-    """Câu hỏi kèm `clarificationForm`: đã hỏi một lượt mà vẫn thiếu điểm đến/số ngày.
+    """Câu hỏi kèm `clarificationForm`: đã hỏi một lượt mà vẫn thiếu trường bắt buộc (`suggest_form`), hoặc giá trị
+    không hợp lệ ở lượt đã hỏi một lần mà vẫn thiếu điểm đến/số ngày.
 
     Không kèm khi đang hỏi chọn điểm đến theo loại ("đi biển"): form điền sẵn điểm đến đầu catalog, có thể không hợp loại.
     """
-    if state.get("clarification_reason") == "destination_kind":
+    reason = state.get("clarification_reason")
+    if reason == "destination_kind":
         return False
+    if reason == "suggest_form":
+        return True
     return state.get("clarification_rounds", 0) >= 2 and bool({"destination", "days"} & set(state.get("missing_fields") or []))
 
 
@@ -93,7 +97,7 @@ def reply_title(state: dict) -> str | None:
     if state.get("refusal"):
         return message(state, "title_out_of_scope")
     missing = state.get("missing_fields", [])
-    if missing and set(missing) <= {"startDate", "party", "budget"}:
+    if missing and set(missing) <= set(TRIP_DETAILS):
         return message(state, "title_trip_details")
     if {"destination", "days"} <= set(missing):
         return message(state, "title_missing_both")
@@ -172,7 +176,7 @@ def _invalid_input_question(state: dict) -> str:
         lines.append(message(state, "missing_destination"))
     elif "days" in rest:
         lines.append(message(state, "missing_days"))
-    details = [key for key in rest if key in ("startDate", "party", "budget")]
+    details = [key for key in rest if key in TRIP_DETAILS]
     if details:
         joined = message(state, "detail_joiner").join(message(state, f"detail_{key}") for key in details)
         lines.append(message(state, "missing_trip_details", details=joined))
@@ -197,7 +201,7 @@ def clarification_fallback(state: dict) -> dict:
         question = messages.CLARIFY_CONFLICT
     elif reason == "unverified":
         question = messages.CLARIFY_UNVERIFIED
-    elif missing and set(missing) <= {"startDate", "party", "budget"}:
+    elif missing and set(missing) <= set(TRIP_DETAILS):
         details = message(state, "detail_joiner").join(message(state, f"detail_{key}") for key in missing)
         question = message(state, "missing_trip_details", details=details)
     elif len(missing) == 2:

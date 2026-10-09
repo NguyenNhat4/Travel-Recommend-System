@@ -87,12 +87,16 @@ Planner có ba tool: `search_products`, `get_recommendations` và `get_similar_p
 ### 2.1. API semantic search
 
 ```http
-GET /api/v1/search?q=khu%20nghỉ%20dưỡng&destination=Nha%20Trang&taxonomy=hotel&limit=10
+POST /api/v1/search
+{"query": "khu nghỉ dưỡng", "destination": "Nha Trang", "taxonomy": "hotel", "limit": 50,
+ "travelContext": {"guests": {"adults": 2, "children": 1}}}
 ```
 
 #### Query parameters
 
-`q` là bắt buộc; `destination`, `taxonomy`, `limit`, `offset` là tùy chọn. Agent không lấy `limit` từ LLM: server cố định `limit=10` cho mọi lời gọi search và `k=10` cho `get_recommendations` (§2.4), ở hằng `SEARCH_LIMIT`/`RECOMMENDATION_K` trong `agents/steps/tool_planning.py`, nên mọi mode nhận cùng số ứng viên. Tool planner vẫn dùng tên `query`; chỉ adapter HTTP đổi sang `q`, adapter `inprocess` truyền thẳng vào engine. Cả hai chỉ chuyển `taxonomy`, `destination`, `limit`, `offset`, bỏ `cutoff` và `diagnostics` khỏi kết quả, và không bao giờ gắn danh tính người dùng (không JWT, không `cdpUserId`). Search MVP không nhận ngày, party hoặc bộ lọc giá/sao; Agent giữ và hậu kiểm các ràng buộc đó sau retrieval.
+`query` là bắt buộc; còn lại tùy chọn theo `SearchRequest`. Agent không lấy `limit` từ LLM: server cố định `limit=50` cho search `hotel` (tối đa contract, để luật ít di chuyển AC-AGT-04 có nhiều vị trí khách sạn mà chọn) và `limit=10` cho mọi search khác, `k=10` cho `get_recommendations` (§2.4), ở hằng `HOTEL_SEARCH_LIMIT`/`SEARCH_LIMIT`/`RECOMMENDATION_K` trong `agents/steps/tool_planning.py`, nên mọi mode nhận cùng số ứng viên. Adapter HTTP gọi `POST /search` (route duy nhất nhận số khách), adapter `inprocess` truyền thẳng vào engine; cả hai chuyển cùng bộ tham số `taxonomy`, `destination`, `limit`, `offset`, `origin`, `priceMin`, `priceMax`, `starRatingMin`, `availableOnly` và `travelContext.guests` (`engine_tools.SEARCH_ENGINE_ARGUMENTS`), bỏ `cutoff` và `diagnostics` khỏi kết quả, và không bao giờ gắn danh tính người dùng (không JWT, không `cdpUserId`). `sort`, `includeVariants` và ngày trong `travelContext` engine chưa dùng nên không chuyển. Các giá trị filter do server đặt, không lấy từ LLM: `_validated_args` đặt `priceMax`/`starRatingMin` của search `hotel` từ constraints, bỏ `priceMin`/`priceMax` khi không có trần giá khách sạn (ngân sách cả chuyến không phải filter từng sản phẩm), và đặt `travelContext.guests` (filter sức chứa, contract 1.16.0) cho search `hotel` từ `intent.party`; loại khác không mang `travelContext`. Agent vẫn hậu kiểm các ràng buộc sau retrieval.
+
+**Nội dung `query`.** `query` chỉ mang phần ngữ nghĩa của lời gọi: loại nơi hoặc hoạt động, phong cách, và gợi ý `search_hints` của đúng taxonomy (`domain/itinerary/search_hints.py`: tiện ích khách sạn từ `hotel_attributes = true`, gia đình có trẻ nhỏ, `interests`, tên trong `specific_hotel`/`specific_activity`, viết đúng nhãn mà text embed của catalog dùng). Không chứa số, giá, ngân sách, ngày, số ngày/đêm, số người, số sao, tên điểm đến hay phủ định, vì hai lý do: text embed của catalog không có các thông tin đó nên chúng chỉ làm nhiễu xếp hạng, và query plan của `/search` đọc chúng thành filter từng sản phẩm ("ngân sách 5 triệu" → `priceMax` 5 triệu cho mỗi sản phẩm). `TOOL_PLAN_PROMPT` yêu cầu planner viết như vậy và payload planner chỉ còn `intent` rút gọn (`destination`, `interests`, `partyType`, `hasChildren`) cùng `search_hints`; server không chỉ dựa vào prompt: `_validated_args` chạy `search_query_text` cắt mọi cụm trên (tái dùng parser giá/số khách/phủ định của `/search`), thêm gợi ý còn thiếu, và query rỗng sau khi cắt thì thành danh từ loại kèm gợi ý ("khách sạn", "điểm tham quan", "sân golf"); search không lọc loại thì giữ tên điểm đến. Hàm lũy đẳng nên kiểm lại một plan đã kiểm vẫn ra đúng plan đó.
 
 #### Response
 
@@ -191,7 +195,7 @@ Quy tắc:
 - **Chỉ mời ở lượt đổi món.** Tool và đoạn gợi ý thêm vào prompt lập plan chỉ đưa cho LLM khi lượt có `previous_selection` (sản phẩm đã hiển thị ở lượt `COMPLETED` trước, lưu phía server) và gateway có port Similar. Payload lập plan của mọi lượt vẫn mang ngữ cảnh chung (`llm_context`, `docs/prd/architecture.md` §3), trong đó có `previous_selection` (rỗng ở lượt đầu); khi mời Similar, khoá này chỉ giữ `productId`, `name`, `taxonomy`. Tên sản phẩm là dữ liệu, không phải instruction. Lượt đầu giữ nguyên bộ tool và prompt như trước.
 - **Sản phẩm gốc chỉ lấy từ `previous_selection`.** Lời gọi có `productId` ngoài danh sách đó bị bỏ; log ghi lý do bỏ, không ghi id.
 - **Giới hạn.** Tối đa 2 lời gọi similar mỗi lượt, khử trùng theo sản phẩm gốc. `limit` do server cố định ở mức tối đa của contract (20), không lấy từ LLM. Similar vẫn nằm trong trần 5 lời gọi mỗi lượt (gợi ý prompt nói rõ điều này): plan quá 5 lời gọi vì similar thì server bỏ lời gọi similar cuối cho tới khi vừa trần, không huỷ cả lượt; plan quá trần mà không còn similar để bỏ vẫn là `INVALID_TOOL_PLAN` như trước. Request có JWT mà plan thiếu `get_recommendations` thì server chèn lời gọi đó, và nếu plan đã đủ 5 thì bỏ bớt một lời gọi similar.
-- **Lưới an toàn.** Gợi ý prompt yêu cầu LLM vẫn lập `search_products` cho loại đang đổi và các loại khác chuyến đi cần; server không chỉ dựa vào prompt. Khi planner đề xuất lời gọi similar (kể cả lời gọi vừa bị bỏ), với mỗi loại đang đổi (taxonomy của sản phẩm gốc có trong `previous_selection`, trừ loại người dùng đã loại trừ) mà plan chưa có `search_products` cùng loại hoặc không lọc loại, server thêm `search_products(query=<điểm đến đã chuẩn hóa>, taxonomy=<loại đó>)` tất định. Sản phẩm gốc bịa không cho biết loại: plan không còn `search_products` nào thì server thêm `search_products(query=<điểm đến đã chuẩn hóa>)`. Plan chỉ có sản phẩm gốc bịa vì vậy thành đúng lời gọi search đó, cộng `get_recommendations` nếu request có JWT. `get_recommendations` bắt buộc được xếp chỗ trước; mỗi search của lưới an toàn cần chỗ thì bỏ một lời gọi similar. Hết chỗ mà không còn similar để bỏ thì search theo loại được bỏ qua (plan lúc đó như plan không có similar, không huỷ lượt), còn plan không có `search_products` nào là `INVALID_TOOL_PLAN`. Plan không đề xuất similar giữ nguyên như trước. Id lời gọi được đánh số lại liên tục (`call-0`, `call-1`…) sau khi lọc; kiểm lại một plan đã kiểm cho ra đúng plan đó.
+- **Lưới an toàn.** Gợi ý prompt yêu cầu LLM vẫn lập `search_products` cho loại đang đổi và các loại khác chuyến đi cần; server không chỉ dựa vào prompt. Khi planner đề xuất lời gọi similar (kể cả lời gọi vừa bị bỏ), với mỗi loại đang đổi (taxonomy của sản phẩm gốc có trong `previous_selection`, trừ loại người dùng đã loại trừ) mà plan chưa có `search_products` cùng loại hoặc không lọc loại, server thêm `search_products(taxonomy=<loại đó>)` tất định cho điểm đến đã chuẩn hóa (query là danh từ loại kèm gợi ý, §2 "Nội dung `query`"). Sản phẩm gốc bịa không cho biết loại: plan không còn `search_products` nào thì server thêm `search_products(query=<điểm đến đã chuẩn hóa>)`. Plan chỉ có sản phẩm gốc bịa vì vậy thành đúng lời gọi search đó, cộng `get_recommendations` nếu request có JWT. `get_recommendations` bắt buộc được xếp chỗ trước; mỗi search của lưới an toàn cần chỗ thì bỏ một lời gọi similar. Hết chỗ mà không còn similar để bỏ thì search theo loại được bỏ qua (plan lúc đó như plan không có similar, không huỷ lượt), còn plan không có `search_products` nào là `INVALID_TOOL_PLAN`. Plan không đề xuất similar giữ nguyên như trước. Id lời gọi được đánh số lại liên tục (`call-0`, `call-1`…) sau khi lọc; kiểm lại một plan đã kiểm cho ra đúng plan đó.
 - **Lỗi mềm.** Similar là best-effort. `PRODUCT_NOT_FOUND` (404) và `PRODUCT_NOT_INDEXED` (409) nghĩa là "không có phương án", luôn mềm. Similar không dùng được (`SEARCH_UNAVAILABLE` 503, `TOOL_TIMEOUT`; ở mode `http` còn có mọi lỗi 5xx, kể cả 500 dạng text mà adapter đọc thành `INVALID_TOOL_RESPONSE` kèm `httpStatus`, và lỗi kết nối `TOOL_HTTP_ERROR`) mềm khi có ít nhất một lời gọi `search_products` trả dữ liệu; không có thì xử lý như lỗi tool thường (§4.6). Response 2xx sai hợp đồng vẫn là lỗi vĩnh viễn. Nhờ vậy similar hỏng không đẩy lượt đổi món sang thử lại rồi `FALLBACK`, ở cả hai mode.
 - **Kết quả.** Kết quả similar vào cùng tập ứng viên với Search, gắn nhãn nguồn `SEARCH` (`ItemSource` không thêm giá trị) và qua cùng bước hậu kiểm. Similar không lọc theo điểm đến, nên sản phẩm lệch điểm đến của chuyến bị bỏ lặng lẽ, không sinh warning. Tên, giá, `productId` lấy nguyên từ response engine (§5). `compose` vẫn xếp theo luật cố định, không ưu tiên riêng kết quả similar cho ô đang đổi, nên món mới có thể đến từ search của lưới an toàn thay vì từ similar.
 
@@ -207,9 +211,52 @@ Similar không mang danh tính người dùng ở mọi mode: endpoint trả gi�
 
 Phục vụ FR-AGT-02, FR-AGT-03.
 
-`TOOL_PLAN_PROMPT` yêu cầu planner mặc định tìm cả ba category chuyến đi có thể dùng — `hotel`, `attraction` (tour/tham quan) và `golf` — mỗi loại một lời gọi `search_products` cho điểm đến, thay vì chỉ tìm `hotel`. Planner chỉ bỏ một loại khi người dùng chủ động yêu cầu loại trừ (`constraints.exclude_taxonomies`).
+`TOOL_PLAN_PROMPT` yêu cầu planner mặc định tìm hai category mọi chuyến đi dùng — `hotel` và `attraction` (tour/tham quan) — mỗi loại một lời gọi `search_products` cho điểm đến, thay vì chỉ tìm `hotel`; `golf` chỉ khi người dùng nhắc tới golf (`tool_planning.wants_golf`: câu chat lượt này, các lượt trước của người dùng, `interests`, `specific_activity`; "golf", "đánh gôn", "sân gôn"). Không ai nhắc thì `validated_plan` bỏ mọi search golf planner tự thêm (trace 2026-10-08: gia đình có bé ở TP.HCM). Planner chỉ bỏ hotel/attraction khi người dùng chủ động yêu cầu loại trừ (`constraints.exclude_taxonomies`).
 
-Server không chỉ dựa vào prompt: `validated_plan` có lưới an toàn tất định chạy sau lưới an toàn Similar (§2.5) — với mỗi category trong `{hotel, attraction, golf}` không nằm trong `exclude_taxonomies` mà plan chưa có `search_products` cùng loại (hoặc một `search_products` không lọc `taxonomy`, vì search không lọc loại đã trả kết quả hỗn hợp mọi loại), server thêm `search_products(query=<điểm đến đã chuẩn hóa>, taxonomy=<loại đó>)` tất định. Best-effort như mọi lưới an toàn khác: hết trần 5 lời gọi mỗi lượt (§2.5) thì bỏ qua phần category còn thiếu, không huỷ lượt và không lỗi. Không có điểm đến chuẩn hóa (`intent.destination` trống) thì bỏ qua lưới này.
+Server không chỉ dựa vào prompt: `validated_plan` có lưới an toàn tất định chạy sau lưới an toàn Similar (§2.5) — với mỗi category trong `{hotel, attraction}` (thêm `golf` khi người dùng nhắc tới) không nằm trong `exclude_taxonomies` mà plan chưa có `search_products` cùng loại (hoặc một `search_products` không lọc `taxonomy`, vì search không lọc loại đã trả kết quả hỗn hợp mọi loại), server thêm `search_products(taxonomy=<loại đó>)` tất định cho điểm đến đã chuẩn hóa (query là danh từ loại kèm gợi ý). Best-effort như mọi lưới an toàn khác: hết trần 5 lời gọi mỗi lượt (§2.5) thì bỏ qua phần category còn thiếu, không huỷ lượt và không lỗi. Không có điểm đến chuẩn hóa (`intent.destination` trống) thì bỏ qua lưới này.
+
+### 2.7. Vé máy bay trong lịch trình
+
+Phục vụ FR-AGT-02, FR-AGT-03, AC-AGT-02, AC-AGT-03 (chốt 2026-10-06, đề xuất `docs/prd/update-archive/2026-10-06-ve-may-bay-trong-lich-trinh-va-vi-tri.md`).
+
+- **Nơi đi.** `TripIntent.origin` (contract 1.18.0, tuỳ chọn). `extract` trích từ câu ("từ Hà Nội", "bay từ Đà Nẵng"); thiếu thì hỏi cùng câu hỏi gộp ngày đi/số người/ngân sách và là ô `origin` của form gợi ý. Không bắt buộc, như ngân sách. "Đã có vé", "đi ô tô" đưa `flight` vào `exclude_taxonomies`; hỏi rõ vé máy bay đặt `constraints.require_flight`.
+- **Tra cứu tất định, không qua planner.** Node `tool` chạy `application/itinerary/flights.flight_options` song song với các lời gọi của planner, qua `CatalogPort.list_products` (GET /products): tuyến về điểm đến có `originCity` là nơi đi, tuyến về nơi đi có `originCity` là điểm đến, rồi chuyến của từng tuyến (`parentProductId`, gồm vé khứ hồi dưới tuyến chiều đi). Nơi đi được đưa về tên catalog (alias "Sài Gòn" → "TP. Hồ Chí Minh", rồi `originCity` của tuyến) và ghi lại vào `intent.origin`. Kết quả ở `state.flight_options`, không vào `tool_results`/`candidates`: chặng về đến nơi đi chứ không phải điểm đến, và bay ngày cuối chứ không phải ngày khởi hành. Tra lỗi chỉ mất chặng bay (`FLIGHT_UNAVAILABLE`), không mất lượt.
+- **Chọn vé** (`domain/itinerary/flights.choose_flights`, luật trong AC-AGT-02): đi ngày `startDate`, về ngày `startDate + days − 1`; vé khứ hồi khớp cả hai ngày trước, không có thì ghép hai chặng một chiều; bay thẳng trước, rồi giá thấp, rồi đi sớm/về muộn; bỏ chuyến hết chỗ hoặc không có giá. Không tra khi chưa có nơi đi, đã loại trừ, nơi đi trùng điểm đến hoặc chuyến 1 ngày (trừ `require_flight`).
+- **Response.** `itinerary.flights[]` (`ItineraryFlight`: `product`, `direction` OUTBOUND/RETURN/ROUND_TRIP, `date`, `returnDate`, `passengers`, `source`). `estimatedTotal` cộng `unitPrice × passengers` mỗi vé; vé không bị bỏ vì vượt ngân sách. Lý do không có (đủ) vé ở `warnings`: `FLIGHT_NO_ORIGIN`, `FLIGHT_NO_ROUTE`, `FLIGHT_NO_FLIGHT_ON_DATES`, `FLIGHT_ONE_WAY_ONLY`, `FLIGHT_UNAVAILABLE`; loại trừ, chuyến trong ngày và nơi đi trùng điểm đến không cảnh báo. Lời diễn giải có mục **Vé máy bay** do hệ thống viết từ `flights` và các warning đó; LLM không nói về vé.
+- **Grounding.** `validate_plan` kiểm mỗi vé đúng bằng `summary` của chuyến đã tra trong lượt (`flight_candidates`), có giá và còn bán. `summary` giữ thêm các khoá thẻ vé (`airline`, `flightNumber`, `departureAt`/`arrivalAt`, `departureTimeLocal`/`arrivalTimeLocal`, `nonstop`, `tripType`, `returnDate`, `returnFlight`, sân bay, thành phố đi/đến).
+- **Xếp lịch theo giờ bay** (AC-AGT-02, chốt 2026-10-07, đề xuất `docs/prd/update-archive/2026-10-07-xep-lich-theo-gio-bay.md`).
+  - Vé được chọn trước khi xếp lịch.
+  - Ngày đến chỉ có hoạt động ở buổi bắt đầu từ 90 phút sau giờ hạ cánh. Ngày về chỉ có hoạt động ở buổi kết thúc trước
+    giờ cất cánh ít nhất 150 phút.
+  - Hai ngày này có slot `activityType: TRANSFER`, `product: null` ở buổi hạ cánh/cất cánh.
+  - Giờ đọc từ `arrivalAt`/`arrivalTimeLocal` của chặng đi và `departureAt`/`departureTimeLocal` của chặng về (vé khứ
+    hồi: `returnFlight.departureAt`).
+  - Khung buổi và luật chi tiết: `docs/spec/agent/nghiep-vu/xep-lich.md`. Contract không đổi.
+- **Lịch trình ít di chuyển** (AC-AGT-04, chốt 2026-10-07, đề xuất `docs/prd/update-archive/2026-10-07-lich-trinh-it-di-chuyen.md`).
+  - Agent cần `attributes.latitude`/`longitude` trong kết quả Search/Recommendation của khách sạn, điểm tham quan và golf
+    (đã có). Toạ độ tâm thành phố bị coi là chưa rõ vị trí; Team Data nên đánh dấu độ chính xác ở nguồn.
+  - Luật chi tiết: `docs/spec/agent/nghiep-vu/xep-lich.md` mục "Tối ưu quãng đường". Warning mới `PLAN_CRITERIA`
+    (`code` là chuỗi tự do).
+  - **Nhiều khách sạn** (chốt 2026-10-07, đề xuất `update-archive/2026-10-07-toi-uu-quang-duong-nhieu-khach-san.md`,
+    contract 1.19.0): `itinerary.stays[]` (1–2 `ItineraryStay`, theo `fromNight`) liệt kê khách sạn theo đêm; đổi khách
+    sạn chỉ với chuyến từ 5 ngày, một lần, mỗi khách sạn ≥ 2 đêm. `itinerary.stay` = `stays[0]` cho client cũ. Ngày đổi
+    có slot `TRANSFER` "Trả phòng, chuyển sang khách sạn mới."
+  - **Ngân sách và phương án khác** (chốt 2026-10-08, đề xuất
+    `update-archive/2026-10-08-khach-san-theo-ngan-sach-va-phuong-an-khac.md`): có ngân sách thì chỉ chọn lịch vừa ngân
+    sách (gồm vé), không lịch nào vừa thì lịch rẻ nhất. Warning mới `STAY_OPTIONS`: mục "Phương án khác" trong
+    `message` (tổng km của lịch, tối đa 3 dòng "thêm/bớt X ₫ → bớt/thêm Y km", vượt ngân sách bao nhiêu). Người dùng
+    chọn bằng "lấy phương án N".
+  - **Hàng thẻ chọn phương án** (contract 1.20.0, chốt 2026-10-08, đề xuất
+    `update-archive/2026-10-08-chon-phuong-an-bang-nut.md`): `ItineraryCompleted.stayOptions = {distanceKm, options[]}`;
+    mỗi option có `index`, `kmDelta`, `moneyDelta`, `overBudget` và `itinerary` (lịch đầy đủ, để client xem trước không
+    gọi server). Vắng mặt khi không có phương án. Khi có `stayOptions`, `message` không còn mục chữ "Phương án khác"
+    (warning `STAY_OPTIONS` vẫn giữ cho client cũ). Request `selectStayOption: {index}` (cần `conversationId`, không cần
+    `message`) đổi sang phương án đó qua node `apply_option`: không tìm lại, không gọi LLM, response `COMPLETED` với lịch
+    đã báo và `stayOptions` mới (lịch vừa bỏ thành một phương án), **không có `message`** và không thêm lượt hội thoại;
+    archive cập nhật câu trả lời gần nhất (`update_last_turn`) thay vì thêm tin nhắn (chốt 2026-10-08, đề xuất
+    `update-archive/2026-10-08-bam-the-doi-ngay.md`). Câu gõ "lấy phương án N" đi cùng node nhưng có lời đáp ngắn do code
+    dựng và thêm lượt như thường. `finalize` kiểm cả lịch của từng phương án (`option_grounding`).
+- **Vị trí trình duyệt** chỉ ở Web (spec Frontend §4.8): toạ độ không vào request, state hay log của agent.
 
 ---
 
@@ -290,7 +337,7 @@ JWT là tùy chọn.
 
 Request hợp lệ khi có `message`, hoặc có đồng thời `conversationId` và `intentOverride`. `message` có tối đa 1.000 ký tự.
 
-`destination` và `days` là dữ liệu nghiệp vụ bắt buộc để bắt đầu retrieval và lập kế hoạch, nhưng không bắt buộc có sẵn trong request đầu tiên. Khi thiếu một hoặc cả hai, Agent trả `NEEDS_CLARIFICATION`, lưu phần intent đã biết cùng lịch sử chat gần đây theo `conversationId` và không gọi Search, Recommendation hoặc Catalog. Khi đã đủ điểm đến và số ngày, Agent hỏi **gộp một câu, một lần** những gì còn thiếu trong ngày đi (`startDate`), số người (`party`) và ngân sách (`budget`): trả `NEEDS_CLARIFICATION` với `missingFields` là tập con của `["startDate", "party", "budget"]` và chưa gọi tool (AC-AGT-01). Người dùng trả lời đủ, một phần hay nói chưa chốt thì lượt sau vẫn lập lịch với phần đã biết (trường còn thiếu để `null`), không hỏi lại. Chỉ hỏi trước lần lập lịch đầu tiên của hội thoại; câu đầu đã nói chưa chốt ngày thì ngày đi không tính là thiếu. Agent không tự điền `startDate` khi người dùng không nói ngày. Ngày không nêu năm dùng năm hiện tại theo giờ Việt Nam: nếu LLM trích ra năm cũ hơn (ví dụ `2023-09-20` cho "20/9") thì backend sửa về năm nay (`2026-09-20`); ngày không bị từ chối dù đã qua. Yêu cầu chỉ gồm `intentOverride` (chip sửa tay) không bị hỏi thêm. Trước bước này, `classify` phân luồng lượt chat: đặt chỗ, thanh toán, chèn lệnh hoặc đòi secret là ngoài phạm vi và bị từ chối (400 `VALIDATION_ERROR`) mà không trích intent. Trước cả LLM của `classify`, luật tất định lọc tin nhắn rác (NFR-SEC-04): gõ bậy, ký tự lặp, toàn ký hiệu trả `NEEDS_CLARIFICATION` 200 với câu cố định "Mình chưa hiểu ý bạn"; tục tĩu không kèm yêu cầu hợp lệ bị từ chối như chèn lệnh; cả hai không gọi LLM. Mỗi người gửi (user đăng nhập theo `cdp_user_id`, khách theo IP) gửi tối đa 10 tin/60 giây, vượt ngưỡng trả 429 `TOO_MANY_ATTEMPTS` kèm `Retry-After` (chi tiết: `docs/spec/agent/langgraph-nodes.md` mục "Guardrail tầng 1"). MVP không tự phát hiện ngôn ngữ để tránh kết quả không ổn định; thứ tự ưu tiên là `context.language` tường minh, ngôn ngữ đã lưu của conversation, rồi `vi`.
+`destination` và `days` là dữ liệu nghiệp vụ bắt buộc để bắt đầu retrieval và lập kế hoạch, nhưng không bắt buộc có sẵn trong request đầu tiên. Khi thiếu một hoặc cả hai, Agent trả `NEEDS_CLARIFICATION`, lưu phần intent đã biết cùng lịch sử chat gần đây theo `conversationId` và không gọi Search, Recommendation hoặc Catalog. Khi đã đủ điểm đến và số ngày, Agent hỏi **gộp một câu, một lần** những gì còn thiếu trong ngày đi (`startDate`), số người (`party`) và ngân sách (`budget`): trả `NEEDS_CLARIFICATION` với `missingFields` là tập con của `["startDate", "party", "budget"]` và chưa gọi tool (AC-AGT-01). Câu hỏi gộp bằng câu chữ chỉ hỏi một lần mỗi hội thoại. Từ lượt sau, còn thiếu `startDate` hoặc `party` (người dùng trả lời một phần, nói chưa chốt hay "không biết") thì Agent trả `NEEDS_CLARIFICATION` kèm `clarificationForm` ở mỗi lượt cho tới khi đủ, không gọi tool; `budget` không bắt buộc, thiếu thì lập lịch với `budget = null`. "Chưa chốt ngày" không miễn ngày đi. Agent không tự điền `startDate` khi người dùng không nói ngày. Ngày không nêu năm dùng năm hiện tại theo giờ Việt Nam: nếu LLM trích ra năm cũ hơn (ví dụ `2023-09-20` cho "20/9") thì backend sửa về năm nay (`2026-09-20`); ngày không bị từ chối dù đã qua. Yêu cầu chỉ gồm `intentOverride` (chip sửa tay) không bị hỏi thêm. Trước bước này, `classify` phân luồng lượt chat: đặt chỗ, thanh toán, chèn lệnh hoặc đòi secret là ngoài phạm vi và bị từ chối (400 `VALIDATION_ERROR`) mà không trích intent. Trước cả LLM của `classify`, luật tất định lọc tin nhắn rác (NFR-SEC-04): gõ bậy, ký tự lặp, toàn ký hiệu trả `NEEDS_CLARIFICATION` 200 với câu cố định "Mình chưa hiểu ý bạn"; tục tĩu không kèm yêu cầu hợp lệ bị từ chối như chèn lệnh; cả hai không gọi LLM. Mỗi người gửi (user đăng nhập theo `cdp_user_id`, khách theo IP) gửi tối đa 10 tin/60 giây, vượt ngưỡng trả 429 `TOO_MANY_ATTEMPTS` kèm `Retry-After` (chi tiết: `docs/spec/agent/langgraph-nodes.md` mục "Guardrail tầng 1"). MVP không tự phát hiện ngôn ngữ để tránh kết quả không ổn định; thứ tự ưu tiên là `context.language` tường minh, ngôn ngữ đã lưu của conversation, rồi `vi`.
 
 #### API stream cho UI demo
 
@@ -370,6 +417,8 @@ người dùng có muốn thêm không. Bấm link của gói thì mở trang ch
 
 Nếu `estimatedTotal=null`, `budgetStatus` bắt buộc là `UNKNOWN` và cần warning. Backend tính tổng khi đủ căn cứ; LLM không tính hoặc sửa giá. Điểm tham quan tự do tính 0 đ, không phải "thiếu căn cứ".
 
+Từ 1.21.0 (chốt 2026-10-09, `docs/prd/update-archive/2026-10-09-ngan-sach-du-tinh.md`): khi `estimatedTotal` khác `null`, `itinerary.costBreakdown = {flights, stays, activities}` chia tổng theo vé máy bay, khách sạn và hoạt động (tự do 0 đ), cộng lại đúng bằng `estimatedTotal`; vắng khi tổng chưa biết. Backend tính cùng chỗ với tổng (`planning.price_plan`) và `validate_plan` kiểm cả phần chia. Không có khoản ước tính ngoài sản phẩm.
+
 ### 4.3. Response cần hỏi thêm
 
 ```json
@@ -391,6 +440,11 @@ Nếu `estimatedTotal=null`, `budgetStatus` bắt buộc là `UNKNOWN` và cần
 ```
 
 Payload tối thiểu chỉ bắt buộc `status`, `conversationId`, `question`. Thông tin bắt buộc tối thiểu để lập lịch gồm điểm đến và số ngày từ 1 đến 7. Mỗi lượt chỉ hỏi một câu rõ ràng; các trường còn lại có thể để trống.
+
+**Form cho tới khi đủ trường bắt buộc (đề xuất `docs/prd/update-archive/2026-10-05-classify-route-clarify.md`, đã áp dụng).**
+Tool chỉ chạy khi đủ `destination`, `days`, `startDate`, `party`; `budget` không bắt buộc. Ngày đi/số người/ngân sách được
+hỏi gộp một lần bằng câu chữ; từ lượt sau, còn thiếu `startDate` hoặc `party` (kể cả khi người dùng trả lời một phần) thì
+response là `NEEDS_CLARIFICATION`, `clarification_reason = "suggest_form"`, kèm `clarificationForm`, ở mỗi lượt cho tới khi đủ.
 
 **Hai lượt hỏi rồi chuyển sang form gợi ý (AGENTS.md §8, đề xuất `docs/prd/update-archive/2026-09-29-form-goi-y-thong-tin-chuyen-di.md`, đã áp dụng).**
 Backend đếm `clarification_rounds` theo hội thoại (0, 1, 2…), chỉ tăng khi `missingFields` còn `destination` hoặc `days`:
@@ -422,9 +476,8 @@ Backend đếm `clarification_rounds` theo hội thoại (0, 1, 2…), chỉ tă
   `startDate` = hôm nay theo giờ Việt Nam (không được sớm hơn `startDateMin`), `party` = 2 người lớn, `budget` = `null`
   (không giới hạn), `destination` = điểm đến đầu tiên trong `supported_destinations` nếu hội thoại đã từng gọi tool.
   Frontend tự nạp danh sách điểm đến cho ô chọn (`GET /destinations`, chỉ hiện vài điểm đến tiêu biểu, không đổ hết catalog)
-  và chặn tại chỗ: số ngày trong 1–7, `startDate ≥ startDateMin`. Bấm xác nhận dựng một câu yêu cầu hoàn chỉnh và **đặt vào ô
-  nhập tin nhắn, không tự gửi**; người dùng đọc lại, sửa nếu muốn rồi gửi như một lượt chat bình thường (không dùng
-  `intentOverride`). `suggestedValues` giữ nguyên hành vi cũ, không đổi.
+  và chặn tại chỗ: số ngày trong 1–7, `startDate ≥ startDateMin`. Bấm xác nhận dựng một câu yêu cầu hoàn chỉnh và **gửi
+  ngay** như một lượt chat bình thường (không dùng `intentOverride`). `suggestedValues` giữ nguyên hành vi cũ, không đổi.
 
 **Giá trị không hợp lệ thì hỏi lại (đề xuất `docs/prd/update-archive/2026-09-30-bao-loi-dau-vao-khong-hop-le.md`, đã áp dụng; thay `2026-09-30-hoi-lai-khi-ngay-di-da-qua.md`).**
 Không hợp lệ gồm: `startDate` sớm hơn hôm nay theo giờ Việt Nam, `days` ngoài 1–7, `party.adults` < 1 hoặc `party.children` < 0,
@@ -534,6 +587,10 @@ ngày), ngày khởi hành gần nhất còn bán; hoặc `count = 0` khi tìm r
   "**Chưa có khách sạn**" do backend chèn trước mục chi phí; LLM được báo `no_stay_explained` để không tự nói lý do.
 - Cảnh báo `PRODUCT_DROPPED_DATE` của từng sản phẩm ghi cửa sổ mở bán thật ("Chỉ mở bán từ 15/10/2026 đến
   16/10/2026, không khớp ngày khởi hành."); lý do loại khác giữ câu chung.
+- Cảnh báo `PRODUCT_DROPPED_DUPLICATE` (node `filter`, AC-AGT-04, chốt 2026-10-08): một mục cho mỗi điểm tham quan bị bỏ
+  vì trùng nơi với điểm khác, `productId` là mã bị bỏ, `message` "Bỏ "X" vì trùng với "Y"." (Y là tên mã được giữ). Trùng
+  nhận ra bằng luật (cùng tên) hoặc LLM (chỉ thấy mã + tên, chỉ trả cặp mã có trong danh sách); giữ mã nào do luật
+  (Search trước Recommendation, rẻ hơn, mã nhỏ hơn). Contract không đổi: `ItineraryWarning.code` là chuỗi tự do.
 
 ### 4.5. Response suy giảm
 
@@ -665,7 +722,7 @@ Log không được chứa:
 - Thông tin thanh toán đầy đủ.
 - Dữ liệu cá nhân không cần thiết.
 
-Mỗi lời gọi tool kết thúc trong hạn ghi một dòng `itinerary.tool requestId= name= outcome= code= retryable= durationMs=`, thay cho access log mà mode `http` từng có. Lời gọi quá hạn bị huỷ trước khi tới dòng đó, nên chỉ ghi WARNING `itinerary.tool.timeout requestId= name=`. Ở mode `inprocess`, engine chưa sẵn sàng ghi WARNING `itinerary.tool.unavailable ... reason=not_ready`; engine lỗi bất ngờ ghi cùng dòng đó với tên kiểu lỗi, kèm các frame traceback (file, dòng, mã nguồn) để lần ra bug. Các dòng này không ghi tham số tool, thông điệp lỗi hay token.
+Mỗi lời gọi tool kết thúc trong hạn ghi một dòng `itinerary.tool requestId= name= outcome= code= retryable= durationMs=`, thay cho access log mà mode `http` từng có. Lời gọi quá hạn bị huỷ trước khi tới dòng đó, nên chỉ ghi WARNING `itinerary.tool.timeout requestId= name=`. Ở mode `inprocess`, engine chưa sẵn sàng ghi WARNING `itinerary.tool.unavailable ... reason=not_ready`; engine lỗi bất ngờ ghi cùng dòng đó với tên kiểu lỗi, kèm các frame traceback (file, dòng, mã nguồn) để lần ra bug. Embedding (Cohere) lỗi thì tool trả `SEARCH_UNAVAILABLE` 503 trong vài giây, không chờ tới `TOOL_TIMEOUT`; `error` trong `tool_results` có thêm `reason: embed:<lý do>` (`quota_exhausted` — không retryable, `rate_limited`, `upstream_5xx`, `timeout`, `http_error`), nên lý do hiện ngay ở output node `tool` trên trace. Khoá `reason` chỉ dùng nội bộ, không đi ra API của trợ lý; nơi raise không biết lý do thì bỏ trống khoá này. Các dòng này không ghi tham số tool, thông điệp lỗi hay token.
 
 ### 7.4. Versioning
 

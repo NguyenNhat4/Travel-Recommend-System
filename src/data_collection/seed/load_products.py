@@ -14,10 +14,11 @@ Quy tắc (--as-of mặc định là hôm nay; chạy lại trước demo để 
     Vé có báo giá ngày cố định (fixedDepartureDate, gồm khứ hồi): giữ ngày đi thật nếu trong cửa sổ, không thì dời như trên; hai chặng
     dời cùng số ngày, returnDate và ngày trong tên/mô tả đổi theo; ngày đã có cùng hành trình thì lùi sang ngày kế tiếp
     (PRD data-model §3, chỉ seed demo — job cào giữ ngày thật).
+  * hạng phòng: available_from/to = nguyên cửa sổ, không cắt theo khoảng ngày của nguồn (chốt 02/10/2026).
   * attributes.availability = {"from": as_of, "days": 30, "calendar": <30 ký tự 1/0>} chỉ cho hạng phòng, điểm tham quan, golf:
-    hạng phòng Vinpearl dùng lịch thật khi `pricesByDateQueried` phủ ít nhất 85% cửa sổ; dữ liệu thưa fallback sang lịch mô phỏng kín
-    25–40% theo cụm 1–4 đêm (T6/T7 ×1,5, Vinpearl ×1,3 tối đa 40%). Điểm tham quan / golf toàn trống trừ 15% sản phẩm
-    blackout 2–3 ngày. Ngày ngoài khoảng bán của nguồn luôn đóng. Chuyến bay, property, tuyến, combo không có khoá này.
+    hạng phòng Vinpearl dùng lịch thật khi `pricesByDateQueried` phủ ít nhất 85% cửa sổ; dữ liệu thưa thì mở đủ 30 đêm.
+    Điểm tham quan / golf toàn trống trừ 15% sản phẩm blackout 2–3 ngày. Ngày ngoài khoảng bán của nguồn luôn đóng (trừ hạng
+    phòng, xem trên). Chuyến bay, property, tuyến, combo không có khoá này.
   * khách sạn (property) thiếu giờ thì gán checkInTime / checkOutTime mặc định.
   * combo: gán thêm attributes.priceBasis / nights / minPax từ combo_attributes.json (kết quả parse_combos.py).
 Đầu ra: cdp_products.jsonl / .csv (cột snake_case như ERD), catalog_combo_items.jsonl, loader_report.md. Kết quả xác định.
@@ -31,6 +32,8 @@ import shutil
 from collections import Counter
 from datetime import date, datetime, timedelta
 from pathlib import Path
+
+from data_collection.collectors.textutil import trip_combo_dates
 
 from . import config
 from .catalog_meta import WINDOW_DAYS, build_meta, room_calendar, stable_order_key, ticket_calendar, variant, window
@@ -99,7 +102,7 @@ def seed_fixed_flight_date(product_id: str, attrs: dict, lo: date, hi: date,
     """Seed demo (PRD data-model §3): vé có báo giá ngày cố định giữ ngày đi thật nếu nằm trong cửa sổ, không thì dời vào cửa sổ
     như vé không cố định ngày (as_of + crc32(productId) % 30; `product_id` là ID đại diện của hành trình). Ô (hành trình, ngày)
     đã có hành trình khác cùng chuyến thì lùi sang ngày kế tiếp. Không xét priceValidUntil: vé seed vẫn đặt được, fareClasses báo
-    EXPIRED. Job cào không dùng hàm này (fresh_catalog_db.apply_window giữ ngày thật và khoá vé hết hạn báo giá)."""
+    EXPIRED. Job cào (fresh_catalog_db.apply_window) dùng cùng hàm này (PRD data-model §3.1, chốt 06/10)."""
     departure = _departure_day(attrs)
     if departure is None:
         return None, None
@@ -185,7 +188,8 @@ def convert(rows: list[dict], combo_attrs: dict[str, dict], as_of: date,
             attrs["sourceAvailableFrom"] = r["availableFrom"]
         if r["availableTo"] is not None:
             attrs["sourceAvailableTo"] = r["availableTo"]
-        f, t = clip(r["availableFrom"], r["availableTo"], lo, hi)
+        # Hạng phòng: nguyên cửa sổ, không cắt theo ngày nguồn (ngày nguồn chỉ là ngày đã hỏi giá; giá dùng làm giá tham khảo).
+        f, t = (lo.isoformat(), hi.isoformat()) if v == "hotel_room" else clip(r["availableFrom"], r["availableTo"], lo, hi)
         available = bool(r["available"])
         name, description = r["name"], r["description"]
         if v == "flight" and attrs.get('fixedDepartureDate') and real_flight_dates:
@@ -225,6 +229,10 @@ def convert(rows: list[dict], combo_attrs: dict[str, dict], as_of: date,
                 if not attrs.get(key):
                     attrs[key] = default
                     stats[f"khách sạn: gán {key} mặc định"] += 1
+        if v == "combo":  # combo bay+ở trip.com: ngày "14/10" → ISO (snapshot cũ còn dạng trang ghi)
+            fixed_dates = trip_combo_dates(attrs)
+            stats["combo trip: ngày bay về ISO"] += fixed_dates is not attrs
+            attrs = fixed_dates
         if v == "combo" and r["productId"] in combo_attrs:
             attrs.update(combo_attrs[r["productId"]]["attributes"])
             stats["combo gán priceBasis/nights/minPax"] += 1
@@ -247,6 +255,15 @@ def convert(rows: list[dict], combo_attrs: dict[str, dict], as_of: date,
             p["available_from"] = p["available_to"] = None
         elif p["_variant"] not in ("flight", "flight_route") and (p["available_from"] > lo.isoformat() or p["available_to"] < hi.isoformat()):
             stats["khoảng bị cắt hẹp hơn cửa sổ (theo khoảng bán của nguồn)"] += 1
+    # PRD FR-CAT-02 (chốt 06/10): khách sạn tổng quan không có hạng phòng con đặt được → available = false (như job cào).
+    bookable = {p["attributes"].get("parentProductId") for p in out.values()
+                if p["_variant"] == "hotel_room" and p["available"] and p["unit_price"] is not None
+                and p["attributes"].get("ticketed") is not False}
+    for pid, p in out.items():
+        if p["_variant"] == "hotel_property" and p["available"] and pid not in bookable:
+            p["available"] = False
+            p["attributes"]["noBookableRoom"] = True
+            stats["khách sạn không có phòng đặt được → available=false"] += 1
     stats["hạng phòng: tỷ lệ đêm kín trung bình (%)"] = round(100 * sum(closed_frac) / max(1, len(closed_frac)))
     stats["available=true"] = sum(1 for p in out.values() if p["available"])
     stats["is_bookable"] = sum(1 for m in meta.values() if m["is_bookable"])

@@ -1,6 +1,5 @@
 """Hồi quy cho catalog_meta.py và load_products.py theo MOCK_DATA_SPEC §2: cửa sổ 30 ngày, ngày bay, lịch khả dụng, giờ nhận/trả phòng."""
 import json
-import re
 import tempfile
 import unittest
 from datetime import date, timedelta
@@ -67,22 +66,19 @@ class MetaTests(unittest.TestCase):
         self.assertFalse(cm.open_nights("1111", AS_OF, date(2026, 9, 19), 1))    # trước cửa sổ
 
 
-    def test_room_calendars_follow_spec(self):
-        rooms = [product(f"x{i}", "x", "hotel", "room", parent="h1") for i in range(300)]
-        vin_rooms = [product(f"v{i}", "x", "hotel", "room", parent="h1", brand="Vinpearl") for i in range(300)]
-        cals = [cm.room_calendar(r, AS_OF) for r in rooms]
-        vin = [cm.room_calendar(r, AS_OF) for r in vin_rooms]
-        for c in cals + vin:                                           # mọi phòng kín 25–40% (Vinpearl chặn trên 40%)
-            self.assertTrue(C.ROOM_CLOSED_SHARE[0] <= c.count("0") / 30 <= C.ROOM_CLOSED_CAP, c)
-            self.assertTrue(all(len(run) <= C.ROOM_CLOSED_CLUSTER[1] for run in re.findall("0+", c)), c)   # cụm 1–4 đêm
-        self.assertGreater(sum(c.count("0") for c in vin), sum(c.count("0") for c in cals))              # Vinpearl kín nhiều hơn
-        weekend = [i for i in range(30) if (AS_OF + timedelta(days=i)).weekday() in (4, 5)]
-        other = [i for i in range(30) if i not in weekend]
-
-        def rate(idx):
-            return sum(c[i] == "0" for c in cals for i in idx) / (len(cals) * len(idx))
-
-        self.assertAlmostEqual(rate(weekend) / rate(other), C.ROOM_WEEKEND_MULT, delta=0.2)   # T6/T7 dễ kín ×1,5 mỗi đêm
+    def test_rooms_without_real_calendar_are_open_all_window(self):
+        rooms = [product(f"x{i}", "x", "hotel", "room", parent="h1") for i in range(50)]
+        vin_rooms = [product(f"v{i}", "x", "hotel", "room", parent="h1", brand="Vinpearl") for i in range(50)]
+        for r in rooms + vin_rooms:                                    # chốt 02/10/2026: mở đủ 30 đêm
+            self.assertEqual(cm.room_calendar(r, AS_OF), "1" * 30)
+        narrow = product("rn", "x", "hotel", "room", parent="h1", src_from="2026-10-03", src_to="2026-10-04")
+        expired = product("rx", "x", "hotel", "room", parent="h1", src_from="2026-09-01", src_to="2026-09-02")
+        out = {p["product_id"]: p for p in lc.convert(fixture()[:1] + [narrow, expired], {}, AS_OF)[0]}
+        for pid in ("rn", "rx"):                                       # không cắt theo ngày nguồn
+            self.assertEqual((out[pid]["available_from"], out[pid]["available_to"]), ("2026-09-20", "2026-10-19"))
+            self.assertTrue(out[pid]["available"])
+            self.assertEqual(out[pid]["attributes"]["availability"]["calendar"], "1" * 30)
+        self.assertEqual(out["rn"]["attributes"]["sourceAvailableFrom"], "2026-10-03")  # ngày nguồn vẫn giữ
         by_id = {"hv": product("hv", "Vinpearl Resort", "hotel", "property", ref="vinpearl:hotel:hv")}
         child = product("rv", "Vinpearl Resort - Deluxe", "hotel", "room", parent="hv")
         self.assertTrue(cm.is_vinpearl(child, by_id))                  # phòng nhận brand của property cha
@@ -100,6 +96,14 @@ class LoaderTests(unittest.TestCase):
     def setUp(self):
         self.rows, self.stats = lc.convert(fixture(), {"c1": {"attributes": {"priceBasis": "per_person", "nights": 2}}}, AS_OF)
         self.by = {r["product_id"]: r for r in self.rows}
+
+    def test_trip_combo_dates_from_old_snapshot_become_iso(self):
+        url = "https://vn.trip.com/packages/list?dDate=2026-10-14&rDate=2026-10-15"
+        rows, stats = lc.convert([product("c2", "Combo trip", "combo", comboKind="trip_real_flight_hotel", url=url,
+                                          departDate="14/10", returnDate="15/10")], {}, AS_OF)
+        attrs = rows[0]["attributes"]
+        self.assertEqual((attrs["departDate"], attrs["returnDate"]), ("2026-10-14", "2026-10-15"))
+        self.assertEqual(stats["combo trip: ngày bay về ISO"], 1)
 
     def test_clip_rules(self):
         lo, hi = date(2026, 9, 20), date(2026, 10, 19)

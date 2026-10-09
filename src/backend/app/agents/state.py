@@ -57,7 +57,10 @@ class AgentState(TypedDict, total=False):
     sources: Sources
     warnings: list[PlanWarning]
     nearest_open_date: str | None
+    flight_options: dict[str, Any]  # `application/itinerary/flights.flight_options` của lượt này (AC-AGT-02)
     drop_summary: dict[str, DropSummary]
+    # Mã điểm tham quan node `filter` bỏ vì trùng (`domain/itinerary/dedupe.apply_pairs`), AC-AGT-04 chốt 2026-10-08.
+    dropped_duplicates: list[dict[str, Any]]
     response: dict[str, Any]  # `ItineraryResponse` envelope; contract-owned, see domain/itinerary/types.py
     http_status: int
     decision: str
@@ -71,6 +74,16 @@ class AgentState(TypedDict, total=False):
     destination_kind: str | None
     language: str
     previous_selection: list[Product]
+    # Phương án khác của lịch lượt này (`composition._stay_options`) và của lịch đã hiện ở lượt trước, để "lấy phương
+    # án N" biết khách sạn nào (AC-AGT-04, chốt 2026-10-08).
+    stay_options: list[dict[str, Any]]
+    previous_options: list[dict[str, Any]]
+    # Lượt chọn phương án bằng hàng thẻ (contract 1.20.0 `selectStayOption`, chốt 2026-10-08): lựa chọn trong request,
+    # lịch đang chọn của lượt này (`composition.composed`/`option_swap.swapped`) và của lượt trước. Mỗi phương án trong
+    # `stay_options`/`previous_options` mang lịch đầy đủ (`itinerary`, `warnings`, `distanceKm`) để chọn không tìm lại.
+    select_stay_option: dict[str, Any] | None
+    current_plan: dict[str, Any] | None
+    previous_plan: dict[str, Any] | None
 
 
 def make_event(node: str, event_type: str, message: str, **metadata: Any) -> dict[str, Any]:

@@ -13,16 +13,16 @@ export const TaxonomyBadge: React.FC<TaxonomyBadgeProps> = ({ taxonomy, size = '
     hotel: {
       label: 'Khách sạn',
       icon: <Building2 className={size === 'sm' ? 'w-3 h-3' : 'w-3.5 h-3.5'} />,
-      bg: 'bg-blue-50',
-      text: 'text-blue-700',
-      border: 'border-blue-200'
+      bg: 'bg-brand-50',
+      text: 'text-brand-700',
+      border: 'border-brand-200'
     },
     flight: {
       label: 'Vé máy bay',
       icon: <Plane className={size === 'sm' ? 'w-3 h-3' : 'w-3.5 h-3.5'} />,
-      bg: 'bg-indigo-50',
-      text: 'text-indigo-700',
-      border: 'border-indigo-200'
+      bg: 'bg-brand-50',
+      text: 'text-brand-700',
+      border: 'border-brand-200'
     },
     attraction: {
       label: 'Vé tham quan',

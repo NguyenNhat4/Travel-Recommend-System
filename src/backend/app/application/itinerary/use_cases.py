@@ -24,6 +24,7 @@ class PlanItinerary:
             "query": request.get("message") or "",
             "conversation_id": request.get("conversationId"),
             "intent_override": request.get("intentOverride") or {},
+            "select_stay_option": request.get("selectStayOption"),
             "language": context["language"] if context else None,
             "request_id": request_id,
         }

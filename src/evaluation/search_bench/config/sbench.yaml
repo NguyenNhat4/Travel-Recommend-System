@@ -31,15 +31,24 @@ embedding:                        # Part 3
   models:
     cohere-v3: {api_model: embed-multilingual-v3.0, dim: 1024, max_batch: 96, truncate: NONE}
     cohere-v4: {api_model: embed-v4.0, dim: 1024, max_batch: 96, output_dimension: 1024, truncate: NONE}
-    bge-m3:    {hf_model: BAAI/bge-m3, dim: 1024, max_seq_length: 512, device: cpu, batch_size: 16, pooling: cls}
+    cohere-v4-1536: {api_model: embed-v4.0, dim: 1536, max_batch: 96, output_dimension: 1536, truncate: NONE}
+    cohere-v4-512: {api_model: embed-v4.0, dim: 512, max_batch: 96, output_dimension: 512, truncate: NONE}
+    cohere-v4-256: {api_model: embed-v4.0, dim: 256, max_batch: 96, output_dimension: 256, truncate: NONE}
+    bge-m3:    {hf_model: BAAI/bge-m3, dim: 1024, max_seq_length: 512, device: cpu, batch_size: 32, pooling: cls, input_type_mode: symmetric}
     e5-base:   {hf_model: intfloat/multilingual-e5-base, dim: 768, max_seq_length: 512, device: cpu, batch_size: 32, pooling: mean,
                 query_prefix: "query: ", passage_prefix: "passage: "}   # E2.e5 (lịch 10 ngày M2: Cohere vs e5-base); sai prefix = arm không công bằng
-    gte-mb:    {hf_model: Alibaba-NLP/gte-multilingual-base, dim: 768, max_seq_length: 512, device: cpu, batch_size: 32, trust_remote_code: true, pooling: cls}   # E2.gte, tuỳ chọn
+    e5-small:  {hf_model: intfloat/multilingual-e5-small, dim: 384, max_seq_length: 512, device: cpu, batch_size: 32, pooling: mean,
+                query_prefix: "query: ", passage_prefix: "passage: "}
+    e5-large-instruct: {hf_model: intfloat/multilingual-e5-large-instruct, dim: 1024, max_seq_length: 512, device: cpu,
+                        batch_size: 4, pooling: mean,
+                        query_prefix: "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery: ",
+                        passage_prefix: ""}
+    gte-mb:    {hf_model: Alibaba-NLP/gte-multilingual-base, dim: 768, max_seq_length: 512, device: cpu, batch_size: 32, trust_remote_code: true, pooling: cls, input_type_mode: symmetric}   # E2.gte, tuỳ chọn
     fake:      {dim: 1024}
   input_type: {document: search_document, query: search_query}
   bedrock: {model_id: cohere.embed-multilingual-v3, region: ap-southeast-1}
   retry: {max_attempts: 6, backoff_s: [1, 2, 4, 8, 16, 32]}
-  cost_per_1m_tokens_usd: {cohere-v3: 0.10, cohere-v4: 0.12}   # xác nhận lại trên trang giá chính thức
+  cost_per_1m_tokens_usd: {cohere-v3: 0.10, cohere-v4: 0.12, cohere-v4-1536: 0.12, cohere-v4-512: 0.12, cohere-v4-256: 0.12}   # benchmark accounting; xác nhận giá trước khi báo chi phí
   max_inputs_per_min: 2000        # (đề xuất) giới hạn tốc độ Cohere — pacer phía app
   max_tokens_per_min: 90000       # (đề xuất) đo 24/09: key trial trả 429 quanh 90–100k token/phút — pacer đếm token offline
 
@@ -60,8 +69,8 @@ doctor:                           # (đề xuất) Part 0
   min_weaviate_version: "1.37"
 
 gold:                             # Part 5
-  target: 200                     # mục tiêu tham khảo (= tổng slices) — 28/09: KHÔNG bắt buộc đủ, lấy mọi câu người soát chọn
-  minimum: 39                     # 28/09: 13 slice × min_per_slice (trước: 150)
+  target: 232                     # mục tiêu tham khảo (= tổng slices); 05/10: +taxonomy_collision 5, +flight_direction 6 (gold_v4); 07/10: +duration_false_positive 9, +poi_resolution 12 (gold_v6) — 28/09: KHÔNG bắt buộc đủ, lấy mọi câu người soát chọn
+  minimum: 51                     # 07/10: 17 slice × min_per_slice (05/10: 15 × 3 = 45; 28/09: 13 × 3 = 39; trước: 150)
   pool_depth: 15
   overlap_queries: 25
   kappa_min: 0.6
@@ -82,6 +91,10 @@ gold:                             # Part 5
     multi_constraint: 20
     cross_vertical: 10
     out_of_catalog: 10
+    taxonomy_collision: 5          # 05/10 (D3): gold_v4 — va chạm loại sản phẩm cùng nơi
+    flight_direction: 6            # 05/10 (D3): gold_v4 — vé máy bay có chiều / chỉ điểm đi hoặc đến
+    duration_false_positive: 9     # 07/10: gold_v6 — "3 ngày 2 đêm" / "chợ đêm" / "2 triệu/đêm" (F7 không vớt nhầm hotel "Chợ Đêm")
+    poi_resolution: 12             # 07/10: gold_v6 — địa danh gazetteer (Hồ Hoàn Kiếm, Cầu Rồng…) → điểm đến catalog
 
 synth:                            # Part 7
   per_unit: 8
@@ -104,8 +117,41 @@ metrics:                          # Part 8
     zero_result_in_catalog_max: 0.02
     hub_score_max: 3.0
     p95_cache_miss_ms_max: 250      # = NFR-PERF-01 (p95 ≤ 250 ms); p99 được đo và báo cáo, không có ngưỡng (PRD không đặt)
+    # Phase A (05/10) — guard an toàn cho filter suy từ câu (đề xuất, chờ chốt — Sprint 2). Chưa có select() nên chưa ép;
+    # metric vẫn được tính và ghi vào results.json (overall / by_slice). Bỏ ghi chú khi chốt. Bản đọc được bằng `sb guards`:
+    # khối `guards_proposed` bên dưới.
+    # forbidden_at_10_max: 0          # (đề xuất, chờ chốt — Sprint 2) không kết quả cấm nào trong top-10
+    # direction_accuracy_min: 1.0     # (đề xuất, chờ chốt — Sprint 2) mọi câu nêu chiều bay đều đúng chiều
+    # filter_pass_min: 1.0            # (đề xuất, chờ chốt — Sprint 2) kết quả luôn thoả filter cứng arm đã áp
+    # parse_accuracy_min: 0.9         # (đề xuất, chờ chốt — Sprint 2) mỗi trường expected_parse đúng ≥ 90% câu
+  # sb guards (06/10): ngưỡng guard Phase A cho từng arm — CHỈ BÁO PASS/FAIL, không chặn (kiến trúc search OTA §15
+  # "Hard fail khi forbidden taxonomy/route/negation item xuất hiện"). Khác `guards` ở trên: khối này chưa ai chốt.
+  guards_proposed:
+    forbidden_at_10_max: 0.0          # (đề xuất 06/10, chưa chốt) không kết quả cấm nào trong top-10
+    direction_accuracy_min: 1.0       # (đề xuất 06/10, chưa chốt) mọi câu nêu chiều bay đều đúng chiều
+    filter_pass_min: 1.0              # (đề xuất 06/10, chưa chốt) kết quả luôn thoả filter cứng arm đã áp
+    parse_accuracy_min: 0.9           # (đề xuất 06/10, chưa chốt) từng trường expected_parse đúng ≥ 90% câu
+    constraint_precision_min: 0.95    # (đề xuất 06/10, chưa chốt) = guards.constraint_precision_min
+    zero_result_in_catalog_max: 0.02  # (đề xuất 06/10, chưa chốt) = guards.zero_result_in_catalog_max
+  # sb weak-results (06/10): lưới thử quy tắc "kết quả yếu" của hợp đồng search §3.4 (weak khi topScore < T HOẶC
+  # topScore − backgroundScore < M; giá trị tạm của hợp đồng 0.70 / 0.06 — mục S2 §10). e5-small có dải cosine nén.
+  weak_results:
+    top_score_grid: [0.70, 0.80, 0.82, 0.84, 0.86, 0.88, 0.90]
+    margin_grid: [0.0, 0.02, 0.04, 0.06, 0.08, 0.10, 0.12]
   rerank_keep_if_delta_ndcg: 3.0
   hub_random_queries: 500
+  # 06/10: nhãn theo câu (forbidden_filter, origin, destination_city, expected_parse, family) cho câu gold CHƯA có trường đó
+  # (gold thắng) — NHÃN MÁY, chưa duyệt; tương đối theo thư mục gói search_bench; null = không gắn. Thay `forbidden_overrides`
+  # (config/forbidden_v3.yaml, 05/10 — 8 mục đã chuyển vào file này); nếu cấu hình cả hai thì annotations thắng forbidden_filter.
+  annotations: config/query_annotations.yaml
+  # 06/10 (người dùng chốt, phương án b): chiếu rubric v4 lúc chấm — nhãn ≥ 1 của sản phẩm có variant ngoài `allowed_variants`
+  # của câu (annotations) tính là 0; gold.jsonl không đổi (161 nhãn 1 cũ "đúng nơi sai loại" của câu v3). results.json ghi
+  # `rubric_v4_projection {pairs, queries}`, per_query ghi `v4_projected_n`. false = chấm nguyên nhãn gold.
+  rubric_v4_projection: true
+  forbidden_overrides: null
+  # gold_fields: tên trường gold v4 → tên nội bộ (mặc định = cùng tên; chờ máy gán nhãn chốt tên). Ví dụ:
+  # gold_fields: {forbidden_filter: forbidden_filter, forbidden: forbidden, origin: origin,
+  #               destination_city: destination_city, expected_parse: expected_parse, family: family}
 
 latency:                          # Part 9
   embed_calls: 500
@@ -140,6 +186,12 @@ stages:                           # Part 12 (cấu trúc cổng ở config/stage
   default_model: cohere-v3        # quyết định team 23/09; cổng E2 không tự đổi model
 
 regression:                       # Part 13
+  baseline_file: regression/baseline_v1.json   # Day 5 bản gọn (`sb regress`), tương đối theo thư mục gói search_bench
+  regress_v1:                     # Day 5 bản gọn (plan Day 4–5 §2.3 việc 5): FAIL khi tụt quá ngưỡng, không cần p
+    metrics: [ndcg@10, recall@10]
+    max_drop_overall: 1.0         # điểm (×100) trên tập câu chung
+    max_drop_slice: 3.0
+    worst_n: 10                   # số câu tụt nhiều nhất in kèm
   max_drop_ndcg: 2.0              # điểm nDCG@10 overall, kèm p < 0.05
   max_slice_drop: 3.0
   p_max: 0.05

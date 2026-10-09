@@ -12,6 +12,49 @@
   --font-display: 'Cal Sans', 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', Arial, sans-serif;
 }
 
+
+/*
+ * Màu thương hiệu "Travel Blue" (nguồn: đề xuất thương hiệu 2026-10-08). Mỗi màu một vai trò, dùng qua tên token, không dùng
+ * `blue-*`/`indigo-*`/`violet-*` trực tiếp; đổi màu cả app chỉ sửa ở đây:
+ *  - `brand`: đặt chỗ và điều hướng (nút chính, liên kết, trạng thái chọn, nền hero, thanh tìm kiếm). 600 = #2563EB, 700 = Primary Dark.
+ *  - `secondary`: sky #0EA5E9, màu phụ cho điểm nhấn thông tin (huy hiệu, minh hoạ), không dùng cho nút.
+ *  - `accent`: amber #F59E0B, khuyến mãi và một hành động nổi bật mỗi màn hình (nút Tìm ở trang chi tiết khách sạn).
+ *  - `ai`: xanh, cùng thang với `brand` (đổi 2026-10-08 từ tím #7C3AED), dùng cho Trợ lý AI và gợi ý (widget nổi, banner trợ lý). Vẫn là token riêng để tách màu AI khỏi đặt chỗ khi cần.
+ * Giữ màu theo nghĩa: emerald (thành công), amber (cảnh báo), rose/red (lỗi). Giá tiền dùng màu chữ `slate-900`, không dùng brand.
+ * Bảng "đen vàng" đã thử trước đó nằm ở history/2026-10-08-thu-bang-mau-den-vang.md.
+ */
+@theme static {
+  --color-brand-50: #eff6ff;
+  --color-brand-100: #dbeafe;
+  --color-brand-200: #bfdbfe;
+  --color-brand-300: #93c5fd;
+  --color-brand-400: #60a5fa;
+  --color-brand-500: #3b82f6;
+  --color-brand-600: #2563eb;
+  --color-brand-700: #1d4ed8;
+  --color-brand-800: #1e40af;
+  --color-brand-900: #1e3a8a;
+  --color-brand-950: #172554;
+  --color-secondary-50: #f0f9ff;
+  --color-secondary-100: #e0f2fe;
+  --color-secondary-500: #0ea5e9;
+  --color-secondary-600: #0284c7;
+  --color-accent-300: #fcd34d;
+  --color-accent-400: #f59e0b;
+  --color-accent-500: #d97706;
+  --color-ai-50: #eff6ff;
+  --color-ai-100: #dbeafe;
+  --color-ai-200: #bfdbfe;
+  --color-ai-300: #93c5fd;
+  --color-ai-400: #60a5fa;
+  --color-ai-500: #3b82f6;
+  --color-ai-600: #2563eb;
+  --color-ai-700: #1d4ed8;
+  --color-ai-800: #1e40af;
+  --color-ai-900: #1e3a8a;
+  --color-ai-950: #172554;
+}
+
 @layer base {
   /* Cal Sans không có bản đậm: chặn trình duyệt tự làm đậm giả khi gặp `font-bold`, `font-black`... */
   html {
@@ -24,7 +67,8 @@
 
 body {
   font-family: var(--font-sans);
-  background-color: #f6f8fb;
+  background-color: #f8fafc;
+  color: #0f172a;
 }
 
 /*
@@ -62,7 +106,7 @@ body {
 
 /* Traditional OTA Hero Background */
 .ota-hero-bg {
-  background: linear-gradient(135deg, #0b4fc7 0%, #1565d8 50%, #1e40af 100%);
+  background: linear-gradient(135deg, var(--color-brand-700) 0%, var(--color-brand-600) 50%, var(--color-brand-800) 100%);
   position: relative;
 }
 
@@ -134,6 +178,31 @@ body {
 }
 
 
+/* Tin nhắn của người dùng vừa gửi: trượt lên và hiện dần, dùng chung cho gõ tay và xác nhận form gợi ý */
+@keyframes messageSendIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.message-send-in {
+  transform-origin: bottom right;
+  animation: messageSendIn 0.22s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .message-send-in { animation: none; }
+}
+
+/* Đổi khách sạn bằng hàng thẻ "Phương án khác" (AC-AGT-04): lịch mới ở cột phải trượt vào từ bên phải */
+@keyframes staySwapIn {
+  from { opacity: 0; transform: translateX(16px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.stay-swap-in {
+  animation: staySwapIn 0.3s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .stay-swap-in { animation: none; }
+}
+
 /* Kính mờ: header nổi trên hero và tấm tìm kiếm của trang danh mục (docs/plan/2026-09-29-ui-trang-danh-muc-va-header.md §7) */
 .glass-pill {
   background-color: rgba(15, 23, 42, 0.28);
@@ -171,6 +240,34 @@ body {
 }
 @keyframes skeletonWave {
   100% { transform: translateX(100%); }
+}
+
+/* Hộp cảnh báo rời trang thanh toán: trượt lên từ đáy trên điện thoại, hiện dần ở giữa màn hình từ `sm` trở lên */
+@keyframes leaveScrimIn {
+  from { opacity: 0; }
+}
+@keyframes leaveSheetIn {
+  from { transform: translateY(100%); }
+}
+@keyframes leaveDialogIn {
+  from { opacity: 0; transform: translateY(6px) scale(0.97); }
+}
+.leave-scrim-in {
+  animation: leaveScrimIn 0.18s ease-out both;
+}
+.leave-dialog-in {
+  animation: leaveSheetIn 0.24s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@media (min-width: 40rem) {
+  .leave-dialog-in {
+    animation: leaveDialogIn 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .leave-scrim-in,
+  .leave-dialog-in {
+    animation: none;
+  }
 }
 
 /* Hàng cuộn ngang có điểm dừng để lộ một phần thẻ kế tiếp (product.md §7.1) */

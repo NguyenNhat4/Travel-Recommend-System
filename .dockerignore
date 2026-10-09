@@ -21,7 +21,10 @@ secrets
 **/secrets
 **/*.pem
 docs
-db
+db/*
+!db/migrations
+!db/migrations/*.sql
+!db/migrations/run.py
 src/cdp_clone
 src/data_collection
 src/evaluation

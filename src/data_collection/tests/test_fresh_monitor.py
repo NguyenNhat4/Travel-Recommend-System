@@ -103,7 +103,7 @@ class SettingsTests(Workspace):
 
     def test_tick_rechecks_schedule_under_lock_and_records_only_one_run(self):
         env = {'CATALOG_STATE_DIR': str(self.state), 'CATALOG_RUN_ROOT': str(self.runs),
-               'DB_TARGET': 'local', 'SEED_DATABASE_URL': 'postgresql://unused'}
+               'CATALOG_DB_RUN_LOCK': 'off', 'DB_TARGET': 'local', 'SEED_DATABASE_URL': 'postgresql://unused'}
         settings.save(self.state, {'schedule.time': '00:00'}, {})
         with patch.dict(os.environ, env), patch.object(fresh_catalog, 'index_settings'), \
                 patch.object(fresh_catalog, 'execute', return_value=0) as execute:
@@ -117,7 +117,7 @@ class SettingsTests(Workspace):
 
     def test_stop_during_final_database_step_is_not_reported_as_success(self):
         env = {'CATALOG_STATE_DIR': str(self.state), 'CATALOG_RUN_ROOT': str(self.runs),
-               'DB_TARGET': 'local', 'SEED_DATABASE_URL': 'postgresql://unused'}
+               'CATALOG_DB_RUN_LOCK': 'off', 'DB_TARGET': 'local', 'SEED_DATABASE_URL': 'postgresql://unused'}
 
         def finish_after_stop(selected, recorder, *args):
             recorder.stop_event.set()
@@ -360,6 +360,27 @@ class DockerRunnerTests(unittest.TestCase):
             subprocess.run(['bash', str(ROOT / 'run_daily_docker.sh'), 'monitor'], check=True, env=env, capture_output=True)
             call = json.loads((root / 'calls').read_text().splitlines()[-1])
             self.assertEqual(call[-5:], ['python', 'monitor.py', '--host', '0.0.0.0', '--allow-public-host'])
+
+    def test_fresh_job_container_memory_is_capped(self):
+        """VM 4 GB chạy chung backend: hết RAM thì chỉ tiến trình trong job cào bị giết (FRESH_MEMORY, mặc định 2500m)."""
+        with tempfile.TemporaryDirectory() as t:
+            root = Path(t)
+            (root / 'data').mkdir()
+            fake = root / 'docker'
+            fake.write_text('#!/usr/bin/env python3\nimport os,sys,json\nopen(os.environ["CALLS"],"a").write(json.dumps(sys.argv[1:])+"\\n")\n')
+            fake.chmod(0o755)
+            env = dict(os.environ, PATH=f'{root}:/usr/bin:/bin', CALLS=str(root / 'calls'), FRESH_DATA_DIR=str(root / 'data'),
+                       CATALOG_LOG_DIR=str(root / 'logs'), CATALOG_ENV_FILE=str(root / 'missing.env'), PULL='0')
+            env.pop('FRESH_MEMORY', None)
+
+            def memory(**extra):
+                subprocess.run(['bash', str(ROOT / 'run_daily_docker.sh'), 'fresh-run', 'due'], check=True,
+                               env={**env, **extra}, capture_output=True)
+                call = json.loads((root / 'calls').read_text().splitlines()[-1])
+                return (call[call.index('--memory') + 1], call[call.index('--memory-swap') + 1]) if '--memory' in call else None
+            self.assertEqual(memory(), ('2500m', '2500m'))
+            self.assertEqual(memory(FRESH_MEMORY='3g'), ('3g', '3g'))
+            self.assertIsNone(memory(FRESH_MEMORY=''))
 
     def test_monitor_main_resolves_dirs_from_args_env_then_data_dir(self):
         seen = {}

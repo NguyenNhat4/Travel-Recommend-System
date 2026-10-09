@@ -1,4 +1,5 @@
-"""Giỏ hàng, giữ chỗ, webhook và huỷ đơn ở biên HTTP thật (spec booking §6–§10).
+"""Giỏ hàng, đơn nháp của Đặt ngay, giữ chỗ, webhook và huỷ đơn ở biên HTTP thật (spec booking §6–§10;
+spec dat-truc-tiep-theo-don-nhap.md).
 
 Mỗi response phải khớp schema contract gán cho status đó và status phải được khai báo trong
 `paths/booking.yaml` / `paths/payments.yaml`. Use case chạy trên bản giả (`tests/fakes/booking.py`).
@@ -13,12 +14,14 @@ import pytest
 from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator, FormatChecker
 
-from src.backend.app.api.deps import current_principal
+from src.backend.app.api.deps import cart_owner, current_principal
+from src.backend.app.application.booking import CartOwner
+from src.backend.app.core.config import Settings, get_settings
 from src.backend.app.application.auth.errors import Unauthenticated
 from src.backend.app.domain.booking.status import BookingStatus
 from src.backend.app.infrastructure.payments.fake_gateway import VALID_SIGNATURE
 from src.backend.app.main import app
-from src.backend.tests.fakes.booking import HOTEL, PRINCIPAL, TICKET, World
+from src.backend.tests.fakes.booking import GUEST, HOTEL, PRINCIPAL, TICKET, USER, World
 from src.shared.contracts.scripts.bundle_openapi import bundle
 
 DOC = bundle()
@@ -33,6 +36,7 @@ def world():
     for name, value in w.state().items():
         setattr(app.state, name, value)
     app.dependency_overrides[current_principal] = lambda: PRINCIPAL
+    app.dependency_overrides[cart_owner] = lambda: CartOwner.user(PRINCIPAL.cdp_user_id)
     try:
         yield w
     finally:
@@ -67,19 +71,28 @@ def assert_contract(response, path: str, method: str) -> dict | None:
 
 
 def fill(client) -> dict:
-    client.post("/api/v1/cart/items", json={"productId": HOTEL, "usingDate": "2026-10-15", "quantity": 1, "nights": 3})
-    response = client.post("/api/v1/cart/items", json={"productId": TICKET, "usingDate": "2026-10-15", "quantity": 2})
-    return assert_contract(response, "/cart/items", "post")
+    """Một lần Đặt ngay gồm phòng khách sạn và vé tham quan: tạo đơn nháp và nhớ mã để thanh toán."""
+    response = client.post("/api/v1/booking-drafts", json={"items": [
+        {"productId": HOTEL, "usingDate": "2026-10-15", "quantity": 1, "nights": 3},
+        {"productId": TICKET, "usingDate": "2026-10-15", "quantity": 2}]})
+    draft = assert_contract(response, "/booking-drafts", "post")
+    client.draft_id = draft["draftId"]
+    return draft
 
 
 def checkout_body(client) -> dict:
-    """Request kiểu cũ (không có `travelers`): mỗi mục giỏ một itemDetails; khách sạn 1 tên, vé máy bay đủ số tên."""
+    """Request kiểu cũ (không có `travelers`): mỗi mục một itemDetails; khách sạn 1 tên, vé máy bay đủ số tên.
+
+    Nguồn là đơn nháp vừa tạo bằng `fill` (gửi kèm `draftId`), nếu không thì là giỏ.
+    """
+    draft_id = getattr(client, "draft_id", None)
+    source = client.get(f"/api/v1/booking-drafts/{draft_id}" if draft_id else "/api/v1/cart").json()
     details = []
-    for item in client.get("/api/v1/cart").json()["items"]:
+    for item in source["items"]:
         taxonomy = item["product"]["taxonomy"]
         names = ["Nguyễn Minh Anh"] * (item["quantity"] if taxonomy == "flight" else 1 if taxonomy == "hotel" else 0)
         details.append({"cartItemId": item["cartItemId"], **({"guestNames": names} if names else {})})
-    return {"contact": CONTACT, "itemDetails": details}
+    return {"contact": CONTACT, "itemDetails": details, **({"draftId": draft_id} if draft_id else {})}
 
 
 def webhook(client, event, signature=VALID_SIGNATURE):
@@ -94,17 +107,27 @@ def test_cart_crud_matches_contract(client):
     empty = assert_contract(client.get("/api/v1/cart"), "/cart", "get")
     assert empty["items"] == [] and empty["total"] == 0
 
-    cart = fill(client)
-    assert cart["itemCount"] == 2 and cart["total"] == 3_400_000 * 3 + 880_000 * 2
-    hotel = next(i for i in cart["items"] if i["product"]["productId"] == HOTEL)
+    cart = assert_contract(client.post("/api/v1/cart/items", json={
+        "productId": TICKET, "usingDate": "2026-10-15", "quantity": 2}), "/cart/items", "post")
+    assert cart["itemCount"] == 1 and cart["total"] == 880_000 * 2 and cart["cdpUserId"] == USER
+    ticket = cart["items"][0]
 
-    patched = assert_contract(client.patch(f"/api/v1/cart/items/{hotel['cartItemId']}", json={"quantity": 2}),
+    patched = assert_contract(client.patch(f"/api/v1/cart/items/{ticket['cartItemId']}", json={"quantity": 3}),
                               "/cart/items/{cartItemId}", "patch")
-    assert next(i for i in patched["items"] if i["cartItemId"] == hotel["cartItemId"])["lineTotal"] == 3_400_000 * 3 * 2
+    assert patched["items"][0]["lineTotal"] == 880_000 * 3
 
-    removed = assert_contract(client.delete(f"/api/v1/cart/items/{hotel['cartItemId']}"),
+    removed = assert_contract(client.delete(f"/api/v1/cart/items/{ticket['cartItemId']}"),
                               "/cart/items/{cartItemId}", "delete")
-    assert removed["itemCount"] == 1
+    assert removed["itemCount"] == 0
+
+
+def test_cart_rejects_hotel_with_direct_booking_only(client, world):
+    """AC-BKG-15: khách sạn và vé máy bay không vào giỏ."""
+    response = client.post("/api/v1/cart/items", json={"productId": HOTEL, "usingDate": "2026-10-15", "quantity": 1, "nights": 2})
+    error = assert_contract(response, "/cart/items", "post")["error"]
+    assert response.status_code == 422 and error["code"] == "DIRECT_BOOKING_ONLY"
+    assert error["details"] == {"productId": HOTEL, "taxonomy": "hotel"} and "đặt trực tiếp" in error["message"]
+    assert client.get("/api/v1/cart").json()["items"] == [] and world.recorder.events == []
 
 
 def test_cart_errors_match_contract(client):
@@ -114,7 +137,7 @@ def test_cart_errors_match_contract(client):
     assert unknown["error"]["code"] == "PRODUCT_NOT_FOUND"
 
     out_of_range = assert_contract(client.post("/api/v1/cart/items", json={
-        "productId": HOTEL, "usingDate": "2027-03-01", "quantity": 1}), "/cart/items", "post")
+        "productId": TICKET, "usingDate": "2027-03-01", "quantity": 1}), "/cart/items", "post")
     assert out_of_range["error"]["code"] == "DATE_OUT_OF_RANGE" and out_of_range["error"]["details"]["availableTo"]
 
     missing = assert_contract(client.delete("/api/v1/cart/items/not-a-uuid"), "/cart/items/{cartItemId}", "delete")
@@ -129,8 +152,10 @@ def test_booking_routes_require_login(client):
         raise Unauthenticated("cần đăng nhập")
 
     app.dependency_overrides[current_principal] = reject
-    for method, path in [("get", "/api/v1/cart"), ("post", "/api/v1/bookings"),
-                         ("get", "/api/v1/bookings/VOTA-20260916-AB12")]:
+    app.dependency_overrides[cart_owner] = reject
+    for method, path in [("get", "/api/v1/cart"), ("post", "/api/v1/bookings"), ("get", "/api/v1/bookings"),
+                         ("get", "/api/v1/bookings/VOTA-20260916-AB12"),
+                         ("get", "/api/v1/booking-drafts/5f0c1c2e-6b1f-4a57-9d0a-2f4d6c1a9b01")]:
         response = getattr(client, method)(path, **({"json": CHECKOUT} if method == "post" else {}))
         assert response.status_code == 401
 
@@ -141,12 +166,13 @@ def test_create_hold_then_second_attempt_conflicts(client, world):
     assert assert_contract(client.post("/api/v1/bookings", json=CHECKOUT), "/bookings", "post")["error"]["code"] \
         == "CART_EMPTY"
     fill(client)
-    held = assert_contract(client.post("/api/v1/bookings", json=checkout_body(client)), "/bookings", "post")
+    body = checkout_body(client)
+    held = assert_contract(client.post("/api/v1/bookings", json=body), "/bookings", "post")
     assert held["status"] == "PENDING_PAYMENT" and held["payment"]["status"] == "OPEN"
     assert held["payment"]["checkoutUrl"].startswith("https://checkout.fake/") and held["holdExpiresAt"]
     assert held["cancellableUntil"] is None and held["cancellation"] is None
 
-    again = assert_contract(client.post("/api/v1/bookings", json=checkout_body(client)), "/bookings", "post")
+    again = assert_contract(client.post("/api/v1/bookings", json=body), "/bookings", "post")
     assert again["error"]["code"] == "BOOKING_PENDING_PAYMENT"
     assert again["error"]["details"]["referenceCode"] == held["referenceCode"]
 
@@ -235,17 +261,17 @@ def test_cancel_too_late_reports_deadline(client, world):
 # --- checkout nhiều bước: đoàn khách, giá theo loại khách, mọi vi phạm trong một lần (contract 1.10.0) -------------
 
 def _family_cart(client) -> dict:
-    """Giỏ của ví dụ gia đình: khách sạn 1 phòng + vé tham quan, cho 2 người lớn và 1 trẻ em."""
+    """Đơn nháp của ví dụ gia đình: khách sạn 1 phòng + vé tham quan, cho 2 người lớn và 1 trẻ em."""
     guests = {"adults": 2, "children": 1}
-    client.post("/api/v1/cart/items", json={"productId": HOTEL, "usingDate": "2026-10-15", "quantity": 1, "nights": 2,
-                                            "guests": guests})
-    return assert_contract(client.post("/api/v1/cart/items", json={
-        "productId": TICKET, "usingDate": "2026-10-16", "guests": guests}), "/cart/items", "post")
+    return assert_contract(client.post("/api/v1/booking-drafts", json={"items": [
+        {"productId": HOTEL, "usingDate": "2026-10-15", "quantity": 1, "nights": 2, "guests": guests},
+        {"productId": TICKET, "usingDate": "2026-10-16", "guests": guests}]}), "/booking-drafts", "post")
 
 
 def _family_body(cart: dict) -> dict:
     by = {i["product"]["productId"]: i["cartItemId"] for i in cart["items"]}
     return {
+        "draftId": cart["draftId"],
         "contact": CONTACT,
         "travelers": [
             {"travelerRef": "t1", "type": "ADULT", "surname": "Nguyễn", "givenNames": "Minh Anh"},
@@ -317,8 +343,163 @@ def test_patching_guests_recomputes_quantity_and_fares(client):
     cart = _family_cart(client)
     ticket = next(i for i in cart["items"] if i["product"]["productId"] == TICKET)
     patched = assert_contract(
-        client.patch(f"/api/v1/cart/items/{ticket['cartItemId']}", json={"guests": {"adults": 2, "children": 2}}),
-        "/cart/items/{cartItemId}", "patch")
+        client.patch(f"/api/v1/booking-drafts/{cart['draftId']}/items/{ticket['cartItemId']}",
+                     json={"guests": {"adults": 2, "children": 2}}),
+        "/booking-drafts/{draftId}/items/{cartItemId}", "patch")
     item = next(i for i in patched["items"] if i["cartItemId"] == ticket["cartItemId"])
     assert item["quantity"] == 4 and item["guests"] == {"adults": 2, "children": 2}
     assert next(f for f in item["fares"] if f["fareType"] == "CHILD")["count"] == 2
+
+
+# --- đặt trực tiếp qua đơn nháp, khách chưa đăng nhập, gộp (contract 1.13.0) -------------------------------------
+
+DRAFTS = "/booking-drafts"
+DRAFT = "/booking-drafts/{draftId}"
+SERVICE_TOKEN = "s" * 40
+GUEST_HEADERS = {"X-Service-Token": SERVICE_TOKEN, "X-Guest-Id": GUEST}
+
+
+def test_book_now_draft_lifecycle_matches_contract(client, world):
+    """AC-BKG-13, AC-BKG-14: tạo, đọc, thanh toán đúng đơn nháp; hết hạn trả 410 kèm mục còn trong giỏ; lạ trả 404."""
+    client.post("/api/v1/cart/items", json={"productId": TICKET, "usingDate": "2026-10-20", "quantity": 1})
+    draft = assert_contract(client.post("/api/v1/booking-drafts", json={"items": [
+        {"productId": HOTEL, "usingDate": "2026-10-15", "quantity": 1, "nights": 2}]}), DRAFTS, "post")
+    assert draft["itemCount"] == 1 and draft["total"] == 3_400_000 * 2 and draft["expiresAt"] == "2026-09-16T03:30:00Z"
+    read = assert_contract(client.get(f"/api/v1/booking-drafts/{draft['draftId']}"), DRAFT, "get")
+    assert read["items"][0]["cartItemId"] == draft["items"][0]["cartItemId"]
+    unknown = assert_contract(client.post("/api/v1/bookings", json={"draftId": "khong-co", **CHECKOUT}), "/bookings", "post")
+    assert unknown["error"]["code"] == "BOOKING_DRAFT_NOT_FOUND"
+
+    held = assert_contract(client.post("/api/v1/bookings", json={
+        "draftId": draft["draftId"], "contact": CONTACT,
+        "itemDetails": [{"cartItemId": draft["items"][0]["cartItemId"], "guestNames": ["Nguyễn Minh Anh"]}]}),
+        "/bookings", "post")
+    assert held["total"] == 3_400_000 * 2                                   # không kèm vé đang nằm trong giỏ
+    gone = assert_contract(client.get(f"/api/v1/booking-drafts/{draft['draftId']}"), DRAFT, "get")
+    assert gone["error"]["code"] == "BOOKING_DRAFT_NOT_FOUND"
+
+
+def test_expired_draft_is_410_on_read_patch_and_checkout(client, world):
+    draft = fill(client)
+    body = checkout_body(client)
+    world.clock.advance(minutes=30)
+    response = client.get(f"/api/v1/booking-drafts/{draft['draftId']}")
+    error = assert_contract(response, DRAFT, "get")["error"]
+    assert response.status_code == 410 and error["code"] == "BOOKING_DRAFT_EXPIRED" and error["retryable"] is False
+    assert {(i["taxonomy"], i["inCart"]) for i in error["details"]["items"]} == {("hotel", False), ("attraction", True)}
+    item = draft["items"][0]["cartItemId"]
+    patched = client.patch(f"/api/v1/booking-drafts/{draft['draftId']}/items/{item}", json={"quantity": 1})
+    assert assert_contract(patched, "/booking-drafts/{draftId}/items/{cartItemId}", "patch")["error"]["code"] == "BOOKING_DRAFT_EXPIRED"
+    paid = client.post("/api/v1/bookings", json=body)
+    assert paid.status_code == 410 and assert_contract(paid, "/bookings", "post")["error"]["code"] == "BOOKING_DRAFT_EXPIRED"
+    assert world.store.bookings == {}
+
+
+def test_removing_draft_items_matches_contract(client, world):
+    draft = fill(client)
+    path = "/booking-drafts/{draftId}/items/{cartItemId}"
+    first, second = (i["cartItemId"] for i in draft["items"])
+    left = assert_contract(client.delete(f"/api/v1/booking-drafts/{draft['draftId']}/items/{first}"), path, "delete")
+    assert left["itemCount"] == 1
+    again = client.delete(f"/api/v1/booking-drafts/{draft['draftId']}/items/{first}")
+    assert again.status_code == 404 and assert_contract(again, path, "delete")["error"]["code"] == "CART_ITEM_NOT_FOUND"
+    empty = assert_contract(client.delete(f"/api/v1/booking-drafts/{draft['draftId']}/items/{second}"), path, "delete")
+    assert empty["items"] == [] and empty["total"] == 0
+    assert client.get(f"/api/v1/booking-drafts/{draft['draftId']}").status_code == 404
+
+
+def test_draft_request_shape_partial_and_rebook_errors_match_contract(client, world):
+    both = client.post("/api/v1/booking-drafts", json={"items": [], "fromBooking": "VOTA-20260916-AB12"})
+    assert both.status_code == 400 and assert_contract(both, DRAFTS, "post")["error"]["code"] == "VALIDATION_ERROR"
+    neither = client.post("/api/v1/booking-drafts", json={})
+    assert neither.status_code == 400
+    ticket = {"productId": TICKET, "usingDate": "2026-10-15", "quantity": 1}
+    duplicate = assert_contract(client.post("/api/v1/booking-drafts", json={"items": [ticket, ticket]}), DRAFTS, "post")
+    assert duplicate["error"]["details"]["fields"][0]["reason"] == "DUPLICATE_ITEM"
+    world.catalog.products[TICKET].available = False
+    none_left = client.post("/api/v1/booking-drafts", json={"items": [ticket], "allowPartial": True})
+    error = assert_contract(none_left, DRAFTS, "post")["error"]
+    assert none_left.status_code == 409 and error["code"] == "PRODUCT_UNAVAILABLE"
+    assert error["details"]["rejectedItems"][0]["productId"] == TICKET
+    partial = assert_contract(client.post("/api/v1/booking-drafts", json={"allowPartial": True, "items": [
+        ticket, {"productId": HOTEL, "usingDate": "2026-10-15", "quantity": 1, "nights": 1}]}), DRAFTS, "post")
+    assert partial["itemCount"] == 1 and partial["rejectedItems"][0]["code"] == "PRODUCT_UNAVAILABLE"
+    missing = assert_contract(client.post("/api/v1/booking-drafts", json={"fromBooking": "VOTA-20260916-ZZZZ"}), DRAFTS, "post")
+    assert missing["error"]["code"] == "BOOKING_NOT_FOUND"
+
+
+def test_rebook_from_expired_booking_creates_a_fresh_draft(client, world):
+    fill(client)
+    ref = client.post("/api/v1/bookings", json=checkout_body(client)).json()["referenceCode"]
+    webhook(client, world.gateway.expire_event(world.booking(ref).payment.checkout_session_id))
+    again = assert_contract(client.post("/api/v1/booking-drafts", json={"fromBooking": ref}), DRAFTS, "post")
+    assert {i["product"]["productId"] for i in again["items"]} == {HOTEL, TICKET}
+
+
+@pytest.fixture
+def guest_client(world):
+    """Dùng dependency `cart_owner` thật: khách được nhận qua X-Service-Token + X-Guest-Id như khi BFF gọi."""
+    del app.dependency_overrides[cart_owner]
+    app.dependency_overrides[get_settings] = lambda: Settings(auth_service_token=SERVICE_TOKEN)
+    saved = getattr(app.state, "token_verifier", None)
+    app.state.token_verifier = object()
+    try:
+        yield TestClient(app)
+    finally:
+        app.state.token_verifier = saved
+
+
+def test_guest_cart_and_draft_work_through_the_bff_headers_only(guest_client, world):
+    """AC-BKG-17, R-GST-03: khách có giỏ và đơn nháp; thiếu service token thì X-Guest-Id bị bỏ qua (401)."""
+    c = guest_client
+    for headers in ({}, {"X-Guest-Id": GUEST}, {"X-Service-Token": "sai" * 12, "X-Guest-Id": GUEST},
+                    {"X-Service-Token": SERVICE_TOKEN, "X-Guest-Id": "VP0000001"}):
+        denied = c.get("/api/v1/cart", headers=headers)
+        assert denied.status_code == 401 and assert_contract(denied, "/cart", "get")["error"]["code"] == "UNAUTHENTICATED"
+
+    cart = assert_contract(c.post("/api/v1/cart/items", headers=GUEST_HEADERS, json={
+        "productId": TICKET, "usingDate": "2026-10-15", "quantity": 2}), "/cart/items", "post")
+    assert cart["cdpUserId"] is None and cart["itemCount"] == 1
+    draft = assert_contract(c.post("/api/v1/booking-drafts", headers=GUEST_HEADERS, json={"items": [
+        {"productId": HOTEL, "usingDate": "2026-10-15", "quantity": 1, "nights": 2}]}), DRAFTS, "post")
+    assert draft["cdpUserId"] is None
+    assert_contract(c.get(f"/api/v1/booking-drafts/{draft['draftId']}", headers=GUEST_HEADERS), DRAFT, "get")
+    other = {"X-Service-Token": SERVICE_TOKEN, "X-Guest-Id": "g_" + "b" * 22}
+    assert c.get(f"/api/v1/booking-drafts/{draft['draftId']}", headers=other).status_code == 404
+    assert c.get("/api/v1/cart", headers=other).json()["items"] == []
+    rebook = c.post("/api/v1/booking-drafts", headers=GUEST_HEADERS, json={"fromBooking": "VOTA-20260916-AB12"})
+    assert rebook.status_code == 401                                      # đặt lại cần tài khoản
+    assert world.recorder.events == []                                    # khách không sinh event CDP
+
+    # Gộp: chỉ BFF (service token) gọi được, kèm Bearer của tài khoản đích (ở đây là PRINCIPAL qua override).
+    path = "/guest-bookings/merge"
+    assert c.post("/api/v1/guest-bookings/merge", json={"guestId": GUEST}).status_code == 401
+    merged = assert_contract(c.post("/api/v1/guest-bookings/merge", headers={"X-Service-Token": SERVICE_TOKEN},
+                                    json={"guestId": GUEST}), path, "post")
+    assert merged == {"mergedCartItems": 1, "skippedDuplicates": 0, "mergedDrafts": 1}
+    bad = c.post("/api/v1/guest-bookings/merge", headers={"X-Service-Token": SERVICE_TOKEN}, json={"guestId": "x"})
+    assert bad.status_code == 400 and assert_contract(bad, path, "post")["error"]["code"] == "VALIDATION_ERROR"
+    assert [e.product_id for e in world.recorder.events] == [TICKET, HOTEL]
+    assert c.get("/api/v1/cart", headers=GUEST_HEADERS).json()["items"] == []
+
+
+# --- danh sách đơn (FR-BKG-14) -------------------------------------------------------------------
+
+def test_list_bookings_matches_contract_for_each_tab_and_when_empty(client, world):
+    empty = assert_contract(client.get("/api/v1/bookings"), "/bookings", "get")
+    assert empty == {"data": [], "pagination": {"page": 1, "pageSize": 20, "totalItems": 0, "totalPages": 0}}
+    fill(client)
+    created = assert_contract(client.post("/api/v1/bookings", json=checkout_body(client)), "/bookings", "post")
+    assert created["status"] == "PENDING_PAYMENT"
+    for tab in ("upcoming", "done", "cancelled"):
+        page = assert_contract(client.get("/api/v1/bookings", params={"tab": tab}), "/bookings", "get")
+        assert [b["referenceCode"] for b in page["data"]] == ([created["referenceCode"]] if tab == "upcoming" else [])
+    filtered = assert_contract(client.get("/api/v1/bookings", params={
+        "tab": "upcoming", "taxonomy": "hotel", "days": 7, "page": 1, "pageSize": 5}), "/bookings", "get")
+    assert filtered["pagination"]["totalItems"] == 1 and filtered["data"][0]["tab"] == "upcoming"
+
+
+@pytest.mark.parametrize("params", [{"tab": "all"}, {"taxonomy": "train"}, {"days": 14}, {"page": 0}, {"pageSize": 51}])
+def test_list_bookings_rejects_invalid_filters_with_422(client, params):
+    body = assert_contract(client.get("/api/v1/bookings", params=params), "/bookings", "get")
+    assert body["error"]["code"] == "VALIDATION_ERROR"

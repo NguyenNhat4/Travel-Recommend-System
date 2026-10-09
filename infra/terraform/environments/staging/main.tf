@@ -14,7 +14,7 @@ locals {
 resource "google_compute_instance" "db_replica" {
   name         = var.db_replica_vm_name
   machine_type = var.machine_type
-  zone         = var.zone
+  zone         = var.db_replica_zone
   labels       = local.labels
 
   allow_stopping_for_update = true
