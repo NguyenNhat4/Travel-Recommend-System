@@ -1,4 +1,4 @@
-"""Compile the twelve-node itinerary graph with request-scoped runtime dependencies."""
+"""Compile the fourteen-node itinerary graph with request-scoped runtime dependencies."""
 
 from __future__ import annotations
 
@@ -63,11 +63,14 @@ def build_graph(checkpointer: Any | None = None, *, tools: ToolExecutorPort | No
         classify_node_async,
         extract_node,
         extract_node_async,
+        apply_option_node,
         compose_node,
         converse_node,
         converse_node_async,
         dead_letter_node,
         evaluate_node,
+        filter_node,
+        filter_node_async,
         finalize_node,
         finalize_node_async,
         intake_node,
@@ -81,6 +84,7 @@ def build_graph(checkpointer: Any | None = None, *, tools: ToolExecutorPort | No
         route_after_classify,
         route_after_evaluate,
         route_after_extract,
+        route_after_intake,
         route_after_retry,
     )
 
@@ -92,7 +96,7 @@ def build_graph(checkpointer: Any | None = None, *, tools: ToolExecutorPort | No
 
     graph = StateGraph(AgentState)
     for name, node in {
-        "evaluate": evaluate_node, "compose": compose_node,
+        "evaluate": evaluate_node, "compose": compose_node, "apply_option": apply_option_node,
         "retry": retry_or_fallback_node, "dead_letter": dead_letter_node,
     }.items():
         graph.add_node(name, RunnableLambda(timed(node), afunc=timed(partial(run_local, node=node))))
@@ -104,24 +108,30 @@ def build_graph(checkpointer: Any | None = None, *, tools: ToolExecutorPort | No
     graph.add_node("extract", RunnableLambda(timed(partial(extract_node, llm=llm)), afunc=timed(partial(extract_node_async, llm=llm, timeout_seconds=llm_timeout_seconds if llm_timeout_seconds is not None else 2, tools=tools, tool_timeout_seconds=tool_timeout_seconds)), name="extract_node"))
     graph.add_node("converse", RunnableLambda(timed(partial(converse_node, llm=llm)), afunc=timed(partial(converse_node_async, llm=llm, timeout_seconds=llm_timeout_seconds if llm_timeout_seconds is not None else 3)), name="converse_node"))
     graph.add_node("clarify", RunnableLambda(timed(partial(ask_clarification_node, llm=llm)), afunc=timed(partial(ask_clarification_node_async, llm=llm, timeout_seconds=llm_timeout_seconds if llm_timeout_seconds is not None else 3)), name="ask_clarification_node"))
+    graph.add_node("filter", RunnableLambda(timed(partial(filter_node, llm=llm)), afunc=timed(partial(filter_node_async, llm=llm, timeout_seconds=llm_timeout_seconds if llm_timeout_seconds is not None else 2)), name="filter_node"))
     graph.add_node("narrate", RunnableLambda(timed(partial(narrate_node, llm=llm)), afunc=timed(partial(narrate_node_async, llm=llm, timeout_seconds=llm_timeout_seconds if llm_timeout_seconds is not None else 3)), name="narrate_node"))
     graph.add_node("tool", timed(partial(tool_node, tools=tools, timeout_seconds=tool_timeout_seconds,
                                    llm=llm, require_recommendations=require_recommendations,
                                    llm_timeout_seconds=llm_timeout_seconds if llm_timeout_seconds is not None else 2)))
 
     graph.add_edge(START, "intake")
-    graph.add_edge("intake", "classify")
+    # Chọn một phương án đã hiện (hàng thẻ, AC-AGT-04): lấy lịch đã dựng, không phân luồng/tìm lại/gọi LLM.
+    graph.add_conditional_edges("intake", route_after_intake,
+                                {name: name for name in ("classify", "apply_option")})
     graph.add_conditional_edges("classify", route_after_classify,
                                 {name: name for name in ("converse", "extract", "clarify", "dead_letter")})
     graph.add_conditional_edges("extract", route_after_extract,
                                 {name: name for name in ("tool", "clarify", "dead_letter")})
     graph.add_edge("tool", "evaluate")
     graph.add_conditional_edges("evaluate", route_after_evaluate,
-                                {name: name for name in ("retry", "dead_letter", "compose", "clarify")})
+                                {name: name for name in ("retry", "dead_letter", "filter", "clarify")})
     graph.add_conditional_edges("retry", route_after_retry,
-                                {name: name for name in ("tool", "dead_letter", "compose")})
+                                {name: name for name in ("tool", "dead_letter", "filter")})
+    # Bỏ điểm tham quan trùng (luật rồi LLM chỉ ra cặp) trước khi xếp lịch (AC-AGT-04, chốt 2026-10-08).
+    graph.add_edge("filter", "compose")
     graph.add_edge("converse", "finalize")
     graph.add_edge("compose", "narrate")
+    graph.add_edge("apply_option", "finalize")
     graph.add_edge("narrate", "finalize")
     graph.add_edge("clarify", "finalize")
     graph.add_edge("dead_letter", "finalize")

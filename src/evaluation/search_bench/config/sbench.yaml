@@ -69,8 +69,8 @@ doctor:                           # (đề xuất) Part 0
   min_weaviate_version: "1.37"
 
 gold:                             # Part 5
-  target: 211                     # mục tiêu tham khảo (= tổng slices); 05/10: +taxonomy_collision 5, +flight_direction 6 (gold_v4) — 28/09: KHÔNG bắt buộc đủ, lấy mọi câu người soát chọn
-  minimum: 45                     # 05/10: 15 slice × min_per_slice (28/09: 13 × 3 = 39; trước: 150)
+  target: 232                     # mục tiêu tham khảo (= tổng slices); 05/10: +taxonomy_collision 5, +flight_direction 6 (gold_v4); 07/10: +duration_false_positive 9, +poi_resolution 12 (gold_v6) — 28/09: KHÔNG bắt buộc đủ, lấy mọi câu người soát chọn
+  minimum: 51                     # 07/10: 17 slice × min_per_slice (05/10: 15 × 3 = 45; 28/09: 13 × 3 = 39; trước: 150)
   pool_depth: 15
   overlap_queries: 25
   kappa_min: 0.6
@@ -93,6 +93,8 @@ gold:                             # Part 5
     out_of_catalog: 10
     taxonomy_collision: 5          # 05/10 (D3): gold_v4 — va chạm loại sản phẩm cùng nơi
     flight_direction: 6            # 05/10 (D3): gold_v4 — vé máy bay có chiều / chỉ điểm đi hoặc đến
+    duration_false_positive: 9     # 07/10: gold_v6 — "3 ngày 2 đêm" / "chợ đêm" / "2 triệu/đêm" (F7 không vớt nhầm hotel "Chợ Đêm")
+    poi_resolution: 12             # 07/10: gold_v6 — địa danh gazetteer (Hồ Hoàn Kiếm, Cầu Rồng…) → điểm đến catalog
 
 synth:                            # Part 7
   per_unit: 8

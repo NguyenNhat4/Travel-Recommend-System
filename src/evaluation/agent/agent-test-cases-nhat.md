@@ -24,6 +24,7 @@
 | TC-07 | Không tự xác nhận Đà Nẵng | 8 |
 | TC-08 | Không dựng lịch trình hoàn chỉnh khi thiếu ngày | 9 |
 | TC-09 | Không tự sinh hoặc đảo ngày khởi hành | 10 |
+| TC-11 | Lịch không lặp một nơi | — (trace LangSmith 08/10/2026) |
 
 ## TC-01 - Cập nhật ngày qua nhiều lượt chat
 
@@ -353,3 +354,25 @@ Lượt 2 người dùng lại tiếp tục nhắn thiếu thông tin nhưng age
 
 case 9 agent trả lời ngày 10/03 trong khi hội thoại không hề đề cập tới
 ```
+
+## TC-11 - Lịch không lặp một nơi
+
+**Nguồn:** trace LangSmith 08/10/2026 (không có trong PDF). Phục vụ AC-AGT-04 (node `filter`, chốt 2026-10-08).
+
+### Hội thoại tái hiện
+
+```text
+T1: Lên lịch trình 3 ngày tại Phú Quốc, bắt đầu từ ngày 2026-10-08, cho 2 người lớn, đi từ trung quoc.
+A1: Hỏi ngân sách (hội thoại gốc đã trả lời ở lượt trước).
+T2: Chưa có ngân sách, cứ lên lịch giúp mình.
+```
+
+### Lỗi quan sát trong nguồn
+
+Lịch có "hòn Thơm", "Sun World Hòn Thơm", "Cáp Treo Hòn Thơm" (cùng chuyến cáp treo ra đảo) và hai vé "[Grand World Phú
+Quốc] - Vé đi thuyền Venice (Water Taxi)" khác mã, cùng tên.
+
+### Tiêu chí đạt đề xuất
+
+- [ ] Lịch không có hai điểm tham quan cùng một nơi hoặc cùng một trải nghiệm.
+- [ ] Mã bị bỏ có cảnh báo `PRODUCT_DROPPED_DUPLICATE` và hiện ở mục "Đã loại" của eval.

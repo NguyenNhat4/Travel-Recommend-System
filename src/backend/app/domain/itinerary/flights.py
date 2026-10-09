@@ -12,6 +12,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
+from .geo import Point, point_at
 from .normalization import fold
 from .types import FlightLeg, Product, TripIntent
 
@@ -154,6 +155,25 @@ def flight_times(legs: list[FlightLeg]) -> tuple[datetime | None, datetime | Non
         if leg.get("direction") == "ROUND_TRIP":
             take_off = _local((attributes.get("returnFlight") or {}).get("departureAt"))
     return landing, take_off
+
+
+def airports(legs: list[FlightLeg]) -> tuple[Point | None, Point | None]:
+    """(sân bay đến ở điểm đến, sân bay đi khi về) của các chặng đã chọn, để tính km cả chuyến (AC-AGT-04, chốt 2026-10-09).
+
+    Catalog ghi toạ độ sân bay đến của chuyến ở `latitude`/`longitude` và sân bay đi ở `originLatitude`/`originLongitude`:
+    chặng đi và vé khứ hồi cho sân bay đến (vé khứ hồi về từ chính sân bay đó), chặng về cho sân bay đi. Chỉ có một chiều
+    thì dùng sân bay của chiều đó cho cả hai đầu. Không có chặng hay toạ độ thì (None, None): km tính như trước.
+    """
+    arrival = departure = None
+    for leg in legs:
+        attributes = (leg.get("product") or {}).get("attributes") or {}
+        if leg.get("direction") in ("OUTBOUND", "ROUND_TRIP"):
+            arrival = point_at(attributes)
+        if leg.get("direction") == "ROUND_TRIP":
+            departure = arrival
+        if leg.get("direction") == "RETURN":
+            departure = point_at(attributes, "originLatitude", "originLongitude")
+    return arrival or departure, departure or arrival
 
 
 def flight_candidates(options: dict[str, Any]) -> dict[str, Product]:

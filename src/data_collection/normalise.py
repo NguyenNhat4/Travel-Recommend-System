@@ -46,7 +46,7 @@ from collectors import mapexport
 from collectors.common import Paths, default_data_dir, read_jsonl, setup_logging
 from collectors.geo import AIRPORTS, DESTINATION_ALIASES, DESTINATION_CENTERS, clean_coords, destination_in_text, destination_radius_km, km_from_destination, normalise_destination
 from collectors.plan import TARGET_MAX, TARGET_MIN, Budget, budget_with, select_destinations
-from collectors.textutil import clean_text, detect_lang, first_int, fold, iso_date, uniq
+from collectors.textutil import clean_text, detect_lang, first_int, fold, iso_date, trip_combo_dates, uniq
 from collectors.venues import Venue, VenueMatcher, load_venues, ticket_image_slug, ticket_place_name
 
 log = logging.getLogger("normalise")
@@ -1106,28 +1106,6 @@ def trip_hotel(r: dict, rates: dict[str, float]) -> tuple[dict | None, list[dict
     return prop, rooms
 
 
-def _trip_combo_day(value, url: str | None, key: str, crawled_at: str | None) -> str | None:
-    """Ngày đi / về của combo Trip dạng YYYY-MM-DD (contract `ProductAttributes.returnDate` là `date`). Trang chỉ ghi "dd/mm"
-    nên ưu tiên tham số URL (`dDate`, `rDate`); không có thì ghép năm suy từ lúc cào (ngày sớm hơn lúc cào quá 31 ngày → năm sau)."""
-    from urllib.parse import parse_qs, urlparse
-    found = iso_date((parse_qs(urlparse(url or "").query).get(key) or [None])[0])
-    if found:
-        return found
-    if iso_date(value):
-        return iso_date(value)
-    m = re.fullmatch(r"\s*(\d{1,2})/(\d{1,2})\s*", str(value or ""))
-    if not m:
-        return None
-    base = date.fromisoformat(iso_date(crawled_at) or date.today().isoformat())
-    try:
-        day = date(base.year, int(m.group(2)), int(m.group(1)))
-        if day < base - timedelta(days=31):
-            day = date(base.year + 1, day.month, day.day)
-    except ValueError:
-        return None
-    return day.isoformat()
-
-
 def trip_combo_product(r: dict) -> dict | None:
     """Combo bay+ở THẬT từ trip.com/packages (nguồn mới 23/09/2026, xem collectors/trip_combos.py) — khác với
     combo Vinpearl hiện có (vé trọn gói đơn lẻ, phân loại qua từ khoá trong tên, xem vinpearl_taxonomy()).
@@ -1147,6 +1125,9 @@ def trip_combo_product(r: dict) -> dict | None:
     # xỉ, cùng cách trip_route_products() dùng toạ độ sân bay cho flight, để không bị drop_missing_coordinates()
     # loại bỏ vì "thiếu toạ độ". Đánh dấu rõ locationPrecision="destination" (không phải "exact") để phân biệt.
     center = DESTINATION_CENTERS.get(destination or "")
+    # Trang ghi ngày "14/10" không có năm; hợp đồng cần ISO, năm lấy từ dDate/rDate của URL tìm kiếm.
+    dates = trip_combo_dates({"comboKind": "trip_real_flight_hotel", "url": r.get("url"),
+                              "departDate": r.get("departDate"), "returnDate": r.get("returnDate")})
     return make_product(
         meta={"src": "trip_combo"},
         name=title,
@@ -1158,8 +1139,8 @@ def trip_combo_product(r: dict) -> dict | None:
             "priceBasis": "per_person",
             "fromCode": r.get("fromCode"),
             "toCode": r.get("toCode"),
-            "departDate": _trip_combo_day(r.get("departDate"), r.get("url"), "dDate", r.get("crawledAt")),
-            "returnDate": _trip_combo_day(r.get("returnDate"), r.get("url"), "rDate", r.get("crawledAt")),
+            "departDate": dates.get("departDate"),
+            "returnDate": dates.get("returnDate"),
             "outboundFlight": out_seg or None,
             "inboundFlight": in_seg or None,
             "latitude": center[0] if center else None,

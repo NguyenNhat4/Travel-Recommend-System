@@ -119,3 +119,29 @@ describe('WidgetDays flights (AC-AGT-02)', () => {
     expect(screen.queryByAltText('Di chuyển')).toBeNull();
   });
 });
+
+describe('WidgetDays hotel change (AC-AGT-04, contract 1.19.0)', () => {
+  afterEach(cleanup);
+
+  it('shows on each day the hotel of that night, and the last day keeps the hotel of the night before', () => {
+    const north = { product: summary('h1', 'Khách sạn Bắc đảo', 'hotel'), nights: 2, fromNight: 1, note: null };
+    const south = { product: summary('h2', 'Khách sạn Nam đảo', 'hotel'), nights: 2, fromNight: 3, note: null };
+    const fiveDays = {
+      ...response,
+      intent: { ...response.intent, days: 5 },
+      itinerary: {
+        ...response.itinerary, stay: north, stays: [north, south],
+        days: [1, 2, 3, 4, 5].map((day) => ({ day, slots: [] })),
+      },
+    } as unknown as components['schemas']['ItineraryCompleted'];
+    const widget = {
+      activePlan: convertItineraryCompletedToGroundedPlan(fiveDays), activeDayTab: 0,
+      setHoveredCoordinate: vi.fn(), setHoveredPointId: vi.fn(), focusedProductId: null, itemActions: () => null,
+    } as unknown as FloatingWidgetController;
+    const { container } = render(<WidgetDays widget={widget} />);
+    const hotels = Array.from(container.querySelectorAll('[data-product-id="h1"], [data-product-id="h2"]'))
+      .map((card) => card.getAttribute('data-product-id'));
+    expect(hotels).toEqual(['h1', 'h1', 'h2', 'h2', 'h2']);
+    expect(container.textContent).toContain('(Đêm 3–4)');
+  });
+});

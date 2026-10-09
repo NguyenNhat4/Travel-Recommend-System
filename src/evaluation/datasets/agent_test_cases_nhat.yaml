@@ -159,3 +159,24 @@
           - Trợ lý không hỏi lại ngày đi, số người, ngân sách bằng câu chữ y hệt lượt trước; nó mời người dùng chọn hoặc giữ giá trị gợi ý trên form.
           - Câu trả lời không nói như thể người dùng đã chọn các giá trị gợi ý.
    
+# TC-11 — Lịch không lặp một nơi (AC-AGT-04, node `filter`, chốt 2026-10-08). Lỗi gốc (trace LangSmith 08/10/2026): lịch
+# Phú Quốc 3 ngày có "hòn Thơm", "Sun World Hòn Thơm", "Cáp Treo Hòn Thơm" và hai vé Water Taxi cùng tên.
+# LLM của `filter` có thể nhận cặp khác nhau giữa các lần: chạy kèm --repeat.
+- id: TC-11
+  category: duplicate_places
+  fr: [FR-AGT-03, FR-AGT-04]
+  turns:
+    - message: Lên lịch trình 3 ngày tại Phú Quốc, bắt đầu từ ngày {today:iso}, cho 2 người lớn, đi từ trung quoc.
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION, COMPLETED]
+        intent: {destination: Phú Quốc, days: 3, startDate: "{today:iso}", party.adults: 2}
+    # Hội thoại gốc đã trả lời ngân sách ở lượt trước; lượt hỏi ngân sách là luật hỏi chi tiết của `extract`.
+    - message: Chưa có ngân sách, cứ lên lịch giúp mình.
+      expect:
+        httpStatus: 200
+        status: [COMPLETED]
+        nodesInclude: [filter, compose]
+        intent: {destination: Phú Quốc, days: 3, startDate: "{today:iso}", party.adults: 2}
+        judge:
+          - Lịch không có hai điểm tham quan cùng một nơi hoặc cùng một trải nghiệm (ví dụ hai mục Hòn Thơm, hoặc cáp treo Hòn Thơm cùng vé Sun World Hòn Thơm, hoặc hai vé Water Taxi).

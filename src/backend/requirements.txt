@@ -12,6 +12,8 @@ PyJWT>=2.9,<3
 langgraph>=1,<2
 langchain-core>=1,<2
 langchain-openai>=1,<2
+# span riêng cho từng lời gọi tool của agent (agents/tools/itinerary_gateway.py); langchain-core đã kéo theo
+langsmith>=0.3,<1
 # recsys: vector persist ở Weaviate; Cohere (đường lui) gọi qua httpx ở trên
 numpy>=1.26
 # embedding e5-small chạy trong tiến trình (PRD FR-SRC-02). Image cài torch bản CPU từ download.pytorch.org trước file này.

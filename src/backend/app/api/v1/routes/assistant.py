@@ -32,6 +32,13 @@ router = APIRouter(tags=["assistant"])
 logger = logging.getLogger("uvicorn.error")
 
 
+def _trace_label(payload: ItineraryRequestModel) -> str | None:
+    """Tên trace LangSmith: câu người dùng gõ, hoặc "chọn phương án N" khi bấm thẻ phương án (không có message)."""
+    if payload.message or payload.selectStayOption is None:
+        return payload.message
+    return f"chọn phương án {payload.selectStayOption.index}"
+
+
 def _conversation_label(payload: ItineraryRequestModel) -> str:
     return (payload.conversationId or "new")[:64].replace("\n", "_").replace("\r", "_")
 
@@ -76,7 +83,7 @@ async def _run(payload: ItineraryRequestModel, request: Request, authorization: 
         return _unavailable(request_id)
     try:
         state = await use_case.run(planner, payload.model_dump(), request_id, config=use_case.trace_config(
-            payload.message, request_id, conversation, transport="json"))
+            _trace_label(payload), request_id, conversation, transport="json"))
     except TimeoutError:
         log_event(logger, "assistant.run.end", "WARNING", conversation_id=conversation, transport="json",
                   status="TIMEOUT", http_status=503, duration_ms=round((perf_counter() - started) * 1000))
@@ -163,7 +170,7 @@ async def stream_itinerary(payload: ItineraryRequestModel, request: Request,
             async with asyncio.timeout(use_case.request_timeout_seconds):
                 async for state in planner.astream(
                     use_case.inputs(payload.model_dump(), request_id),
-                    config=use_case.trace_config(payload.message, request_id, conversation,
+                    config=use_case.trace_config(_trace_label(payload), request_id, conversation,
                                                  transport="sse", run_id=run_id),
                 ):
                     final_state = state

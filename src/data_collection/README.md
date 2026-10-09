@@ -547,6 +547,8 @@ từ taxonomy. Mọi thông tin nguồn khác nằm trong `attributes`, để kh
 | giờ mở cửa, thời lượng | – | thời gian bay | trip.com (`openingHours`, `suggestedDuration`, `durationMinutes`) |
 | giá khác | `vinpearlPrice`, `otaPrices`, `bookingReviewScore`, `agodaReviewScore` | `monthlyPrices`, `roundTripFrom` | `vinpearlPrice`, `otaPrices` |
 
+Combo bay + ở trip.com (`comboKind: trip_real_flight_hotel`): `departDate`/`returnDate` là ngày ISO. Trang chỉ ghi "14/10", nên năm lấy từ `dDate`/`rDate` của URL tìm kiếm (`collectors/textutil.trip_combo_dates`); không khớp thì bỏ khoá. Seed (`load_products`) và `apply_window` của job cào chuyển luôn các dòng cũ còn dạng "14/10" trong snapshot/DB.
+
 ### Gộp trùng
 
 - **Khách sạn**: so khớp tên (bỏ dấu, bỏ "khách sạn/khu nghỉ dưỡng/hotel", thử cả tên tiếng Anh trong ngoặc của agoda)

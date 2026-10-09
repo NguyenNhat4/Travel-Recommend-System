@@ -5,22 +5,31 @@ import pytest
 from src.backend.app.domain.search.lexical import fold
 
 from src.backend.app.domain.search import (
+    APPLIED_DURATION,
+    APPLIED_ENTITY,
     APPLIED_MUST_NOT,
     APPLIED_PARTY,
     APPLIED_PRICE,
     APPLIED_ROUTE,
     APPLIED_STAR,
     APPLIED_TAXONOMY,
+    ROLE_GATE,
+    ROLE_LOCATION,
     PlanFlags,
     PlanGazetteers,
     PlanParams,
     QueryNormalizer,
     build_query_plan,
+    place_table,
 )
 
 NORM = QueryNormalizer(destinations=["Nha Trang", "Phú Quốc", "Hà Nội", "Đà Nẵng"], names=[], spelling=False)
 ALL_ON = PlanFlags(destination=True, negation=True, taxonomy=True, route=True, numeric=True)
 ALL_OFF = PlanFlags()
+#: ALL_ON + ba cờ 1.18.0 (duration / poi / entity) — các test "cờ mới không đổi confidence" so với ALL_ON.
+ALL_ON118 = PlanFlags(destination=True, negation=True, taxonomy=True, route=True, numeric=True,
+                      duration=True, poi=True, entity=True)
+V118_KEYS = {"duration", "entity", "location"}
 
 
 def plan(q, flags=ALL_ON, **params):
@@ -127,6 +136,10 @@ NEW_FEATURE_QUERIES = [
     "khách sạn 4 sao dưới 2 triệu cho 3 người",
     "khu nghỉ dưỡng Phú Quốc",
     "khách sạn, vé máy bay và vé tham quan ở Nha Trang",
+    # 1.18.0: ba câu gốc của spec tong-hop-chinh-sua-luong-search-ota — cờ tắt thì KHÔNG parse duration / POI / entity
+    "VinWonders 3 ngày 2 đêm",
+    "khách sạn gần Hồ Hoàn Kiếm",
+    "vé Safari Phú Quốc",
 ]
 
 
@@ -137,8 +150,234 @@ def test_default_flags_keep_mask_lexical_text_and_diagnostics_shape(q):
     assert p.mask_kwargs(destination=None) == {"taxonomy": None, "destination": None, "only_available": True}
     assert p.families_in_order() == ()
     d = p.as_diagnostics()                                 # khối 1.15.0: không khoá mới khi chưa bật `extended`
-    assert not {"party", "confidence", "fallbackReasons"} & set(d)
+    assert not ({"party", "confidence", "fallbackReasons"} | V118_KEYS) & set(d)
     assert set(d.get("mustNot", {})) <= {"amenities", "brands"} and "strength" not in d.get("taxonomy", {})
+
+
+@pytest.mark.parametrize("q", NEW_FEATURE_QUERIES)
+def test_v118_families_are_not_parsed_when_their_flags_are_off(q):
+    """Khác F1/F3–F6 (tắt vẫn parse để khai): duration / poi / entity tắt thì trường ở mặc định, không khai kể cả `extended`."""
+    for flags in (ALL_OFF, ALL_ON):
+        p = plan(q, flags)
+        assert (p.duration_days, p.duration_nights, p.duration_source) == (None, None, None)
+        assert p.entity_keys == () and p.entity_role is None and p.location is None and p.poi_destinations == ()
+        assert not p.destination_via_poi
+        assert not V118_KEYS & set(p.as_diagnostics(extended=True))
+        kw = p.mask_kwargs(destination=p.destination.value)
+        assert "require_entities" not in kw and APPLIED_ENTITY not in dict(p.families_in_order())
+        hard = (p.applied_filters() or {}).get("hard", {})
+        assert "entity" not in hard and hard.get("destinationSource") != "poi"
+
+
+# ------------------------------------------------------------------------------------------------ 1.18.0 — F7 thời lượng
+def test_duration_only_behind_flag_and_only_touches_lexical_text():
+    q = "VinWonders 3 ngày 2 đêm"
+    off = plan(q, ALL_OFF)
+    assert off.duration_source is None and "3 ngày 2 đêm" in off.lexical_text
+    assert "duration" not in off.as_diagnostics(extended=True)
+    on = plan(q, PlanFlags(duration=True))
+    assert (on.duration_days, on.duration_nights, on.duration_source) == (3, 2, "query")
+    assert on.applied == (APPLIED_DURATION,) and on.lexical_text == "VinWonders"
+    d = on.as_diagnostics(extended=True)
+    assert d["duration"] == {"days": 3, "nights": 2, "source": "query"}
+    assert d["lexicalText"] == "VinWonders" and d["applied"] == ["duration"]
+    assert on.as_diagnostics()["duration"] == d["duration"]          # khối 1.18.0 khai khi cờ bật, không cần `extended`
+    # không vào mask, không có bước họ → câu chỉ có thời lượng KHÔNG có appliedFilters (emptyReason=duration không bao giờ phát)
+    assert on.applied_filters() is None
+    assert on.mask_kwargs(destination=None) == {"taxonomy": None, "destination": None, "only_available": True}
+    assert on.families_in_order() == ()
+
+
+def test_duration_composes_with_other_families_without_entering_mask():
+    p = plan("khách sạn Nha Trang 2 đêm", PlanFlags(duration=True, taxonomy=True, destination=True))
+    assert (p.duration_days, p.duration_nights) == (None, 2) and p.applied == (APPLIED_DURATION, APPLIED_TAXONOMY)
+    assert p.lexical_text == "Nha Trang" and p.destination.value == "Nha Trang"
+    assert [f for f, _ in p.families_in_order()] == [APPLIED_TAXONOMY]
+    hard = p.applied_filters()["hard"]
+    assert hard == {"taxonomy": "hotel", "taxonomySource": "query", "destination": "Nha Trang", "destinationSource": "query"}
+    assert p.mask_kwargs(destination="Nha Trang") == {"taxonomy": "hotel", "destination": "Nha Trang", "only_available": True}
+
+
+def test_duration_ignores_numbers_already_taken_by_price():
+    p = plan("resort 2 triệu/đêm Phú Quốc", PlanFlags(duration=True, numeric=True))   # "/đêm" nằm trong span giá (không mốc)
+    assert p.duration_source is None and APPLIED_DURATION not in p.applied and "duration" not in p.as_diagnostics(extended=True)
+    assert "unresolved_constraint" in p.fallback_reasons and "2 triệu/đêm" in p.lexical_text
+    q = plan("resort dưới 2 triệu/đêm Phú Quốc", PlanFlags(duration=True, numeric=True))
+    assert q.duration_source is None and q.price_max == 2_000_000 and q.applied == (APPLIED_PRICE,)
+
+
+# ------------------------------------------------------------------------------------------------ 1.18.0 — entity gate / location
+ENTITY_ON = PlanFlags(entity=True)
+
+
+@pytest.mark.parametrize("q, keys", [
+    ("VinWonders 3 ngày 2 đêm", ("vinwonders",)),          # câu chỉ nêu entity (cue yếu attraction)
+    ("combo VinWonders Phú Quốc", ("vinwonders",)),        # cue combo → vẫn gate
+    ("Grand World Phú Quốc", ("grand_world",)),            # entity trần
+    ("vé Safari Phú Quốc", ("safari",)),
+])
+def test_entity_role_gate_enters_mask_and_applied_filters(q, keys):
+    p = plan(q, ENTITY_ON)
+    assert p.entity_keys == keys and p.entity_role == ROLE_GATE and p.applied == (APPLIED_ENTITY,)
+    assert p.taxonomy in (None, "attraction", "combo")
+    assert p.mask_kwargs(destination=None)["require_entities"] == keys
+    assert p.families_in_order() == ((APPLIED_ENTITY, {"require_entities": keys}),)
+    assert p.applied_filters() == {"hard": {"entity": list(keys)}, "soft": {}}
+    assert p.as_diagnostics()["entity"] == {"keys": list(keys), "role": "gate"}
+    assert p.lexical_text == NORM(q).text                   # cụm entity là tên sản phẩm → không tiêu khỏi câu BM25
+
+
+@pytest.mark.parametrize("q, keys", [
+    ("khách sạn ở Grand World Phú Quốc", ("grand_world",)),   # c0697: cue hotel mạnh
+    ("phòng gần Grand World", ("grand_world",)),               # cue hotel YẾU vẫn là location (không bỏ phòng người dùng hỏi)
+    ("khách sạn gần biển và vé VinWonders", ("vinwonders",)),  # ≥ 2 loại (multi)
+])
+def test_entity_role_location_only_declares(q, keys):
+    p = plan(q, ENTITY_ON)
+    assert p.entity_keys == keys and p.entity_role == ROLE_LOCATION and APPLIED_ENTITY not in p.applied
+    assert "require_entities" not in p.mask_kwargs(destination=None) and p.families_in_order() == ()
+    assert p.applied_filters() is None
+    assert p.as_diagnostics()["entity"] == {"keys": list(keys), "role": "location"}
+
+
+def test_entity_inside_negation_scope_is_skipped():
+    p = plan("không lấy VinWonders, vé Safari", ENTITY_ON)
+    assert p.entity_keys == ("safari",) and p.entity_role == ROLE_GATE
+    assert p.mask_kwargs(destination=None)["require_entities"] == ("safari",)
+
+
+def test_entity_gate_ands_with_must_not_taxonomy():
+    """c0703 "vé lẻ VinWonders Nam Hội An, không lấy combo": gate vinwonders ∧ loại combo → còn attraction tên VinWonders."""
+    p = plan("vé lẻ VinWonders Nam Hội An, không lấy combo", PlanFlags(entity=True, negation=True))
+    assert p.entity_keys == ("vinwonders",) and p.entity_role == ROLE_GATE
+    assert set(p.applied) == {APPLIED_MUST_NOT, APPLIED_ENTITY}
+    kw = p.mask_kwargs(destination=None)
+    assert kw["require_entities"] == ("vinwonders",) and kw["exclude_taxonomies"] == ("combo",)
+    assert [f for f, _ in p.families_in_order()] == [APPLIED_ENTITY, APPLIED_MUST_NOT]
+    hard = p.applied_filters()["hard"]
+    assert hard["entity"] == ["vinwonders"] and hard["mustNotTaxonomies"] == ["combo"]
+    assert "vinwonders" in fold(p.lexical_text) and "combo" not in p.lexical_text
+
+
+def test_hotel_brand_is_not_an_entity():
+    p = plan("khách sạn Vinpearl ở Nha Trang", ENTITY_ON)                                 # c0709
+    assert p.entity_keys == () and p.entity_role is None and APPLIED_ENTITY not in p.applied
+    assert "entity" not in p.as_diagnostics(extended=True) and p.applied_filters() is None
+
+
+def test_entity_gate_ands_with_taxonomy_filter_when_f4_on():
+    p = plan("vé VinWonders Nha Trang", PlanFlags(taxonomy=True, entity=True))
+    assert p.applied == (APPLIED_TAXONOMY, APPLIED_ENTITY) and p.entity_role == ROLE_GATE
+    kw = p.mask_kwargs(destination=None)
+    assert kw["taxonomy"] == "attraction" and kw["require_entities"] == ("vinwonders",)
+    assert [f for f, _ in p.families_in_order()] == [APPLIED_TAXONOMY, APPLIED_ENTITY]
+    hard = p.applied_filters()["hard"]
+    assert hard == {"taxonomy": "attraction", "taxonomySource": "query", "entity": ["vinwonders"]}
+
+
+def test_entity_step_comes_right_after_query_taxonomy_step():
+    p = plan("vé VinWonders Nha Trang dưới 1 triệu", ALL_ON118)
+    fam = p.families_in_order()
+    assert [f for f, _ in fam] == [APPLIED_TAXONOMY, APPLIED_ENTITY, APPLIED_PRICE]
+    assert dict(fam)[APPLIED_ENTITY] == {"require_entities": ("vinwonders",)}
+    # tham số taxonomy của request (tab Web) không đổi vai trò: vẫn gate, chỉ giao với mask; không có bước taxonomy (param)
+    tab = plan("VinWonders Nha Trang", ALL_ON118, taxonomy="hotel")
+    assert tab.entity_role == ROLE_GATE and APPLIED_ENTITY in tab.applied
+    assert [f for f, _ in tab.families_in_order()] == [APPLIED_ENTITY]
+    assert tab.mask_kwargs(destination=None)["taxonomy"] == "hotel"
+
+
+def test_entity_table_restricted_to_catalog_disables_gate():
+    gaz = PlanGazetteers(entities={}, places=place_table({"Nha Trang", "Phú Quốc"}))
+    p = build_query_plan(NORM("vé VinWonders Nha Trang"), "vé VinWonders Nha Trang", PlanParams(), ALL_ON118, gaz)
+    assert p.entity_keys == () and p.entity_role is None and APPLIED_ENTITY not in p.applied
+    q = "khách sạn gần Hồ Hoàn Kiếm"                       # Hà Nội không có trong catalog → địa danh bị bỏ lúc dựng bảng
+    r = build_query_plan(NORM(q), q, PlanParams(), ALL_ON118, gaz)
+    assert r.location is None and r.destination.value is None and not r.destination_via_poi
+
+
+# ------------------------------------------------------------------------------------------------ 1.18.0 — POI → điểm đến (F1)
+POI_ON = PlanFlags(poi=True, destination=True)
+
+
+def test_poi_resolves_to_catalog_destination_through_f1():
+    p = plan("khách sạn gần Hồ Hoàn Kiếm", POI_ON)
+    assert (p.destination.value, p.destination.source, p.destination.skipped) == ("Hà Nội", "query", None)
+    assert p.destination.candidates == ("Hà Nội",) and p.poi_destinations == ("Hà Nội",) and p.destination_via_poi
+    assert (p.location.key, p.location.name, p.location.kind, p.location.destination) == \
+        ("ho_hoan_kiem", "Hồ Hoàn Kiếm", "landmark", "Hà Nội")
+    assert p.applied_filters()["hard"] == {"destination": "Hà Nội", "destinationSource": "poi"}
+    assert p.mask_kwargs(destination=p.destination.value)["destination"] == "Hà Nội"
+    d = p.as_diagnostics()
+    assert d["location"] == {"key": "ho_hoan_kiem", "name": "Hồ Hoàn Kiếm", "kind": "landmark", "destination": "Hà Nội"}
+    assert "applied" not in d                                # POI không phải họ `applied`; đi qua F1 như địa danh thường
+    assert "Hồ Hoàn Kiếm" in p.lexical_text and p.drop_tokens == frozenset(fold("Hà Nội").split())
+    assert p.applied_filters(destination_fallback=True) is None     # FR-SRC-04: nới điểm đến thì không khai đã lọc
+
+
+def test_poi_off_declares_nothing_even_with_destination_flag():
+    p = plan("khách sạn gần Hồ Hoàn Kiếm", PlanFlags(destination=True))
+    assert p.destination.value is None and p.location is None and p.poi_destinations == ()
+    assert p.applied_filters() is None and "location" not in p.as_diagnostics(extended=True)
+
+
+def test_poi_does_not_claim_a_destination_the_normalizer_already_found():
+    p = plan("khách sạn Hà Nội gần Hồ Gươm", POI_ON)
+    assert p.destination.value == "Hà Nội" and p.destination.source == "query"
+    assert p.location is not None and p.location.key == "ho_hoan_kiem"
+    assert p.poi_destinations == () and not p.destination_via_poi
+    assert p.applied_filters()["hard"]["destinationSource"] == "query"
+
+
+def test_two_pois_of_different_cities_skip_as_multi():
+    for q in ("khách sạn gần Hồ Gươm hoặc Cầu Rồng", "khách sạn Hà Nội gần Cầu Rồng"):
+        p = plan(q, POI_ON)
+        assert p.destination.value is None and p.destination.skipped == "multi"
+        assert set(p.destination.candidates) == {"Hà Nội", "Đà Nẵng"} and not p.destination_via_poi
+        assert p.location is not None and p.applied_filters() is None
+    assert plan("khách sạn gần Hồ Gươm hoặc Cầu Rồng", POI_ON).location.key == "ho_hoan_kiem"   # địa danh đầu tiên
+    assert plan("khách sạn Hà Nội gần Cầu Rồng", POI_ON).location.key == "cau_rong"
+
+
+def test_two_pois_of_the_same_city_resolve_to_it():
+    p = plan("khách sạn gần Hồ Gươm hoặc Hồ Tây", POI_ON)
+    assert p.destination.value == "Hà Nội" and p.poi_destinations == ("Hà Nội",) and p.destination_via_poi
+    assert p.location.key == "ho_hoan_kiem" and p.applied_filters()["hard"]["destinationSource"] == "poi"
+
+
+def test_route_destination_from_iata_is_not_marked_poi():
+    gaz = PlanGazetteers(iata={"HAN": "Hà Nội", "DAD": "Đà Nẵng"}, flight_cities=("Hà Nội", "Đà Nẵng"))
+    q = "vé máy bay HAN DAD"
+    p = build_query_plan(NORM(q), q, PlanParams(), PlanFlags(destination=True, route=True, poi=True), gaz)
+    assert (p.route_origin, p.route_destination) == ("Hà Nội", "Đà Nẵng") and APPLIED_ROUTE in p.applied
+    assert p.destination.value == "Đà Nẵng" and p.destination.source == "query" and p.destination.candidates == ()
+    assert p.poi_destinations == () and p.location is None and not p.destination_via_poi
+    assert p.applied_filters()["hard"]["destinationSource"] == "query"
+
+
+def test_poi_with_entity_in_one_sentence():
+    p = plan("khách sạn ở Grand World Phú Quốc", ALL_ON118)                       # c0697: entity định vị, site → Phú Quốc
+    assert p.entity_role == ROLE_LOCATION and p.destination.value == "Phú Quốc"
+    assert not p.destination_via_poi                      # "Phú Quốc" do normalizer nhận, không phải POI
+    assert p.applied_filters()["hard"]["destinationSource"] == "query"
+    assert p.mask_kwargs(destination="Phú Quốc")["taxonomy"] == "hotel" and "require_entities" not in p.mask_kwargs(destination=None)
+
+
+# ------------------------------------------------------------------------------------------------ 1.18.0 — không đổi router confidence
+@pytest.mark.parametrize("q, params", [
+    ("VinWonders 3 ngày 2 đêm", {}),
+    ("khách sạn gần Hồ Hoàn Kiếm", {}),
+    ("vé Safari Phú Quốc", {}),
+    ("khách sạn gần biển và vé VinWonders", {}),
+    ("không lấy VinWonders, vé Safari", {}),
+    ("khách sạn gần Hồ Gươm hoặc Cầu Rồng", {}),
+    ("khách sạn gần Hồ Hoàn Kiếm", {"destination": "Đà Nẵng"}),
+    ("resort Nha Trang 3 ngày 2 đêm", {"taxonomy": "golf"}),
+])
+def test_v118_flags_do_not_change_confidence_or_fallback_reasons(q, params):
+    base, on = plan(q, ALL_ON, **params), plan(q, ALL_ON118, **params)
+    assert on.fallback_reasons == base.fallback_reasons and on.confidence == base.confidence
+    assert on.taxonomy == base.taxonomy and on.taxonomy_skipped == base.taxonomy_skipped
 
 
 # ------------------------------------------------------------------------------------------------ mustNot loại sản phẩm / thành phần

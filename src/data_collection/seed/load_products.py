@@ -33,6 +33,8 @@ from collections import Counter
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+from data_collection.collectors.textutil import trip_combo_dates
+
 from . import config
 from .catalog_meta import WINDOW_DAYS, build_meta, room_calendar, stable_order_key, ticket_calendar, variant, window
 
@@ -227,6 +229,10 @@ def convert(rows: list[dict], combo_attrs: dict[str, dict], as_of: date,
                 if not attrs.get(key):
                     attrs[key] = default
                     stats[f"khách sạn: gán {key} mặc định"] += 1
+        if v == "combo":  # combo bay+ở trip.com: ngày "14/10" → ISO (snapshot cũ còn dạng trang ghi)
+            fixed_dates = trip_combo_dates(attrs)
+            stats["combo trip: ngày bay về ISO"] += fixed_dates is not attrs
+            attrs = fixed_dates
         if v == "combo" and r["productId"] in combo_attrs:
             attrs.update(combo_attrs[r["productId"]]["attributes"])
             stats["combo gán priceBasis/nights/minPax"] += 1

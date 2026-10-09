@@ -80,7 +80,7 @@ src/data_collection/
 
 Kết nối: `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/vota`, `INSIDER_DATABASE_URL=…/insider` (env, `.env.example`). Thư viện: `psycopg[binary]`, `numpy` cho phân bố; không ORM. Mọi bước ghi bằng `COPY` hoặc batch insert 1.000 dòng; toàn bộ một bước trong một transaction.
 
-**Seed PostgreSQL không nạp vector.** Vector thuộc collection `Product` của Weaviate và được đồng bộ riêng bằng `python -m src.backend.jobs.embed_products`/`make index-vectors`; job chỉ gọi Cohere lại khi `textHash` hoặc `modelVersion` đổi. **Không nạp `carts`, `conversations`, `recommendation_logs`, `search_logs`** — sinh khi chạy app.
+**Seed PostgreSQL không nạp vector.** Vector thuộc collection `ProductE5` của Weaviate (model local `intfloat/multilingual-e5-small`, 384 chiều; collection `Product` của Cohere chỉ còn cho đường lui) và được đồng bộ riêng bằng `python -m src.backend.jobs.embed_products`/`make index-vectors`; job chỉ embed lại khi `textHash` hoặc `modelVersion` đổi. **Không nạp `carts`, `conversations`, `recommendation_logs`, `search_logs`** — sinh khi chạy app.
 
 ## 1b. Bước 0 — `gen_products.py` (chỉ chạy khi chưa có crawl)
 

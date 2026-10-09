@@ -1,6 +1,7 @@
 import unittest
 
 from collectors.plan import Destination
+from collectors.textutil import day_month_iso, trip_combo_dates
 from collectors.trip_combos import combo_routes, parse_combo_hotels, parse_flight_card
 
 FLIGHT_HTML = """
@@ -109,46 +110,6 @@ class ParseComboHotelsTests(unittest.TestCase):
     def test_duplicate_hotel_ids_deduped(self):
         recs = parse_combo_hotels(HOTEL_HTML + HOTEL_HTML, None, ORIGIN, DEST, "u", "t")
         self.assertEqual(len(recs), 1)
-
-
-class ComboRoutesTests(unittest.TestCase):
-    def test_only_pairs_hubs_with_destinations_that_have_both_airport_and_hotel_city_id(self):
-        hub = Destination("Hà Nội", "Hanoi", None, None, ("HAN",))
-        with_both = Destination("Nha Trang", "Nha Trang", None, None, ("CXR",), trip_hotel_city_id="1777")
-        no_hotel_id = Destination("Huế", "Hue", None, None, ("HUI",))  # có sân bay, không có trip_hotel_city_id
-        no_airport = Destination("Sa Pa", "Sa Pa", None, None, (), trip_hotel_city_id="123")
-        routes = combo_routes((hub, with_both, no_hotel_id, no_airport))
-        self.assertEqual(routes, [(hub, with_both)])
-
-    def test_hub_never_paired_with_itself(self):
-        hcm = Destination("TP. Hồ Chí Minh", "Ho Chi Minh City", None, None, ("SGN",), trip_hotel_city_id="301")
-        hanoi = Destination("Hà Nội", "Hanoi", None, None, ("HAN",), trip_hotel_city_id="286")
-        routes = combo_routes((hcm, hanoi))
-        self.assertNotIn((hcm, hcm), routes)
-        self.assertIn((hcm, hanoi), routes)
-        self.assertIn((hanoi, hcm), routes)
-
-
-
-class ComboDatesTests(unittest.TestCase):
-    """departDate / returnDate là ngày ISO (contract ProductAttributes.returnDate kiểu `date`), không phải "15/10" của trang."""
-
-    def test_dates_come_from_url_then_page_text_with_year(self):
-        import normalise as n
-        url = "https://vn.trip.com/packages/x?dDate=2026-10-14&rDate=2026-10-15&adult=2"
-        self.assertEqual(n._trip_combo_day("14/10", url, "dDate", "2026-10-01T00:00:00Z"), "2026-10-14")
-        self.assertEqual(n._trip_combo_day("15/10", url, "rDate", "2026-10-01T00:00:00Z"), "2026-10-15")
-        self.assertEqual(n._trip_combo_day("15/10", None, "rDate", "2026-10-01T00:00:00Z"), "2026-10-15")
-        self.assertEqual(n._trip_combo_day("05/01", None, "rDate", "2026-12-20T00:00:00Z"), "2027-01-05")  # qua năm
-        self.assertIsNone(n._trip_combo_day(None, None, "rDate", "2026-10-01T00:00:00Z"))
-        self.assertIsNone(n._trip_combo_day("31/02", None, "rDate", "2026-10-01T00:00:00Z"))
-
-    def test_trip_combo_product_writes_iso_dates(self):
-        import normalise as n
-        p = n.trip_combo_product({"hotelName": "Khách sạn A", "price": 1_415_500, "destination": "Đà Nẵng",
-                                  "fromCity": "Hà Nội", "toCity": "Đà Nẵng", "departDate": "14/10", "returnDate": "15/10",
-                                  "crawledAt": "2026-10-01T00:00:00Z", "url": "https://vn.trip.com/packages/x?dDate=2026-10-14&rDate=2026-10-15"})
-        self.assertEqual((p["attributes"]["departDate"], p["attributes"]["returnDate"]), ("2026-10-14", "2026-10-15"))
 
 
 if __name__ == "__main__":

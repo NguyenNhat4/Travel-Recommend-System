@@ -7,6 +7,7 @@ import json
 import re
 import unicodedata
 from typing import Any, Iterable
+from urllib.parse import parse_qs, urlsplit
 
 from bs4 import BeautifulSoup
 
@@ -185,3 +186,38 @@ def iso_date(value: str | None) -> str | None:
     if not m or m.group(1) in ("0001", "1900"):
         return None
     return m.group(0)
+
+
+_ISO_DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
+_DAY_MONTH = re.compile(r"(\d{1,2})/(\d{1,2})")
+
+
+def day_month_iso(text: str | None, hint: str | None) -> str | None:
+    """Ngày trang trip.com ghi '14/10' (không có năm) → '2026-10-14', năm lấy từ `hint` là ngày đầy đủ cùng ngày/tháng.
+    Đã là ISO thì giữ. Không có `hint` hoặc ngày/tháng lệch `hint` → None: không đoán năm."""
+    if not isinstance(text, str):
+        return None
+    if _ISO_DAY.fullmatch(text):
+        return text
+    m, full = _DAY_MONTH.search(text), iso_date(hint)
+    if not m or not full or (int(m.group(1)), int(m.group(2))) != (int(full[8:10]), int(full[5:7])):
+        return None
+    return full
+
+
+def trip_combo_dates(attrs: dict) -> dict:
+    """`departDate`/`returnDate` của combo bay+ở trip.com về ISO (hợp đồng `ProductAttributes.returnDate`: format date).
+    Năm lấy từ `dDate`/`rDate` của `url` trang tìm kiếm combo (collectors/trip_combos.py `search_url`). Không quy được thì
+    bỏ khoá, không giữ chuỗi sai hợp đồng. Combo khác giữ nguyên. Trả bản sao khi có đổi."""
+    if attrs.get("comboKind") != "trip_real_flight_hotel" or not ({"departDate", "returnDate"} & attrs.keys()):
+        return attrs
+    query = parse_qs(urlsplit(attrs.get("url") or "").query)
+    out = dict(attrs)
+    for key, param in (("departDate", "dDate"), ("returnDate", "rDate")):
+        if key in out:
+            value = day_month_iso(out[key], (query.get(param) or [None])[0])
+            if value is None:
+                del out[key]
+            else:
+                out[key] = value
+    return out if out != attrs else attrs

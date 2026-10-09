@@ -111,7 +111,7 @@ export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
   if (!activePlan) return null;
   const focusRing = (productId?: string) => (productId && productId === focusedProductId ? ' ring-2 ring-brand-500' : '');
   return (
-<div ref={listRef} className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain bg-slate-50/70 p-5">
+<div ref={listRef} className="stay-swap-in min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain bg-slate-50/70 p-5">
   {/* Render Days (Tất cả các ngày hoặc ngày đang chọn) */}
   {activePlan.days
     .filter((d) => activeDayTab === 0 || d.day === activeDayTab)
@@ -120,9 +120,12 @@ export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
       const dayStartOrder = activePlan.days
         .slice(0, dayIndex)
         .reduce((total, day) => total + day.slots.length, 0);
-      const stayForThisDay = activePlan.stays && activePlan.stays.length >= 2
-        ? (dayItem.day <= Math.ceil(activePlan.days.length / 2) ? activePlan.stays[0] : activePlan.stays[1])
-        : activePlan.stay;
+      // Khách sạn của đêm ngày này (contract 1.19.0, AC-AGT-04); ngày cuối không có đêm nên lấy khách sạn đêm trước.
+      const nightOfDay = Math.min(dayItem.day, Math.max(1, activePlan.days.length - 1));
+      const stayForThisDay = activePlan.stays?.find((stay) => {
+        const first = stay.fromNight ?? 1;
+        return nightOfDay >= first && nightOfDay < first + stay.nights;
+      }) ?? activePlan.stay;
       const stayHotelName = stayForThisDay?.product?.name || 'Khách sạn lưu trú';
       // Chặng đi và vé khứ hồi mở đầu ngày đầu tiên; chặng về khép lại ngày cuối.
       const isFirstDay = dayIndex === 0;

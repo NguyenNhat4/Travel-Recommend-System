@@ -1,4 +1,5 @@
-"""Composition root nối các biến SEARCH_* 1.16.0 vào `SearchProducts` (main.build_recsys); mặc định tắt / trung tính."""
+"""Composition root nối các biến SEARCH_* 1.16.0 (và ba cờ 1.18.0 SEARCH_DURATION_FILTER / SEARCH_POI_RESOLVE /
+SEARCH_ENTITY_FILTER) vào `SearchProducts` (main.build_recsys); mặc định tắt / trung tính."""
 from src.backend.app.core.config import Settings
 from src.backend.app.main import build_recsys
 from src.backend.tests.conftest import FakeEmbedder
@@ -23,6 +24,40 @@ def test_defaults_are_off_and_identity(data_dir):
     assert not (engine.tone_normalize or engine.taxonomy_strong_only or engine.party_filter)
     assert engine.hybrid.fuzzy_k == 0 and engine.fuzzy_on is False and engine._fuzzy is None
     assert (engine.hybrid.dense_weight, engine.hybrid.lexical_weight, engine.hybrid.fuzzy_weight) == (1.0, 1.0, 1.0)
+
+
+def test_v118_flags_default_off_and_reach_the_engine(data_dir):
+    """07/10 (contract 1.18.0): ba cờ mặc định tắt (tắt không parse → response y hệt 1.17.0) và được truyền tới engine."""
+    s, engine = _build(data_dir)
+    assert (s.search_duration_filter, s.search_poi_resolve, s.search_entity_filter) == (False, False, False)
+    assert (engine.duration_filter, engine.poi_resolve, engine.entity_filter) == (False, False, False)
+    r = engine("VinWonders 3 ngày 2 đêm", limit=50)
+    assert not {"duration", "entity", "location"} & set(r["diagnostics"].get("queryPlan", {}))
+    _, on = _build(data_dir, search_duration_filter=True, search_poi_resolve=True, search_entity_filter=True)
+    assert (on.duration_filter, on.poi_resolve, on.entity_filter) == (True, True, True)
+    qp = on("VinWonders 3 ngày 2 đêm", limit=50)["diagnostics"]["queryPlan"]
+    assert qp["duration"] == {"days": 3, "nights": 2, "source": "query"} and qp["entity"]["role"] == "gate"
+    # mỗi cờ độc lập: bật một cờ không kéo hai cờ kia
+    _, one = _build(data_dir, search_poi_resolve=True)
+    assert (one.duration_filter, one.poi_resolve, one.entity_filter) == (False, True, False)
+
+
+def test_production_defaults_restored(data_dir):
+    """Mặc định production 06/10 (history/2026-10-06-search-e5-production-f12356-llm-fallback.md): F1, F2 relax (cutoff 0,80),
+    F3, F5, F6 bật, F4 tắt; LLM fallback off và không dựng hypothesizer. Merge 21d72ae từng lật các giá trị này về tắt."""
+    s, engine = _build(data_dir)
+    assert (s.search_dest_filter, s.search_negation_filter, s.search_route_filter, s.search_numeric_filter) == (
+        True, True, True, True)
+    assert s.search_taxonomy_filter is False
+    assert (s.search_no_diacritics_mode, s.search_no_diacritics_cutoff) == ("relax", 0.80)
+    assert (s.search_llm_fallback, s.search_llm_fallback_min_confidence, s.search_llm_fallback_timeout_ms) == (
+        "off", 0.75, 1500)
+    assert (engine.dest_filter, engine.negation_filter, engine.route_filter, engine.numeric_filter) == (
+        True, True, True, True)
+    assert engine.taxonomy_filter is False and engine.no_diacritics is not None and engine.no_diacritics_cutoff == 0.80
+    assert engine.llm_fallback == "off" and engine.hypothesizer is None and engine._llm is None
+    # Chuỗi rỗng từ .env = "không đặt" cho cutoff câu không dấu (Settings._OPTIONAL_BLANK_IS_NONE).
+    assert Settings(_env_file=None, search_no_diacritics_cutoff="").search_no_diacritics_cutoff is None
 
 
 def test_settings_reach_the_engine_and_both_hybrid_configs(data_dir):

@@ -23,6 +23,12 @@ def response_issues(state: dict, response: dict, http_status: int) -> list:
                 issues.append("intent")
             if unknown_links(response):
                 issues.append("message_grounding")
+            for option in (response.get("stayOptions") or {}).get("options", []):
+                # Lịch của từng phương án (hàng thẻ, AC-AGT-04) cũng được client hiển thị: cùng chốt chặn grounding.
+                if validate_plan(option["itinerary"], state["candidates"], state["sources"], state["intent"],
+                                 state.get("constraints", {}),
+                                 flight_candidates(state.get("flight_options") or {})):
+                    issues.append("option_grounding")
         if response.get("status") in ("COMPLETED", "FALLBACK") and response.get("searchResults"):
             for products in response["searchResults"].values():
                 if any(p != summary(state.get("candidates", {}).get(p["productId"], {})) for p in products):
@@ -39,8 +45,9 @@ def answer_text(response: dict) -> str:
     if response.get("status") == "COMPLETED":
         names = [slot["product"]["name"] for day in response["itinerary"]["days"]
                  for slot in day["slots"] if slot["product"]]
-        if response["itinerary"].get("stay"):
-            names.insert(0, response["itinerary"]["stay"]["product"]["name"])
+        itinerary = response["itinerary"]
+        for stay in reversed(itinerary.get("stays") or ([itinerary["stay"]] if itinerary.get("stay") else [])):
+            names.insert(0, stay["product"]["name"])
         return "Lịch trình tham khảo: " + "; ".join(names)
     return response.get("question", response.get("message", response.get("error", {}).get("message", "")))
 
@@ -50,9 +57,10 @@ def selection_snapshot(response: dict) -> list[dict]:
     if response.get("status") != "COMPLETED":
         return []
     items = []
-    stay = response["itinerary"].get("stay")
-    if stay and stay.get("product"):
-        items.append({key: stay["product"][key] for key in ("productId", "name", "taxonomy")})
+    itinerary = response["itinerary"]
+    for stay in itinerary.get("stays") or ([itinerary["stay"]] if itinerary.get("stay") else []):
+        if stay.get("product"):
+            items.append({key: stay["product"][key] for key in ("productId", "name", "taxonomy")})
     for day in response["itinerary"]["days"]:
         for slot in day["slots"]:
             if slot["product"]:
