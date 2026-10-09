@@ -67,6 +67,7 @@ Mỗi lượt sinh ra một trace **đặt tên theo chính câu bạn gõ**, n�
   extract → extract_node       ← trích intent
   tool
   evaluate → evaluate_node
+  filter → filter_node         ← lời gọi LLM chỉ ra cặp điểm tham quan trùng (input: mã + tên)
   compose → compose_node
   finalize → finalize_node
 ```

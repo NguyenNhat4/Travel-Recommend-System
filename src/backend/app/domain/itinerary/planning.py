@@ -205,6 +205,12 @@ def _activity_order(sources: Sources, product: Product, distance: float = 0.0) -
             distance, *_price_key(product), product["productId"])
 
 
+def keep_rank(sources: Sources, product: Product) -> tuple[Any, ...]:
+    """Thứ tự giữ lại một trong các điểm trùng nhau (AC-AGT-04, node `filter`): Search trước Recommendation, rẻ hơn, mã
+    nhỏ hơn. Không xét vị trí: lúc lọc chưa có mốc của chuyến."""
+    return (_source_rank(sources, product), *_price_key(product), product["productId"])
+
+
 def _period_at(moment: datetime) -> str:
     """Buổi chứa giờ này; trước buổi sáng tính là buổi sáng, giờ nằm giữa hai buổi tính vào buổi trước đó."""
     minutes = moment.hour * 60 + moment.minute

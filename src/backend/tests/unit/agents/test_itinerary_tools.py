@@ -808,7 +808,7 @@ class SimilarEvaluationTests(unittest.TestCase):
             with self.subTest(code=error.code):
                 evaluated = self.evaluate(error)
                 self.assertEqual(evaluated['decision'], 'compose')
-                self.assertEqual(routing.route_after_evaluate(evaluated), 'compose')
+                self.assertEqual(routing.route_after_evaluate(evaluated), 'filter')
                 self.assertEqual(evaluated['warnings'], [])
 
     def test_http_mode_similar_server_failure_is_soft_like_inprocess(self):

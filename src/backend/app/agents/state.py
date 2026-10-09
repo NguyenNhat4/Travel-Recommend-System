@@ -59,6 +59,8 @@ class AgentState(TypedDict, total=False):
     nearest_open_date: str | None
     flight_options: dict[str, Any]  # `application/itinerary/flights.flight_options` của lượt này (AC-AGT-02)
     drop_summary: dict[str, DropSummary]
+    # Mã điểm tham quan node `filter` bỏ vì trùng (`domain/itinerary/dedupe.apply_pairs`), AC-AGT-04 chốt 2026-10-08.
+    dropped_duplicates: list[dict[str, Any]]
     response: dict[str, Any]  # `ItineraryResponse` envelope; contract-owned, see domain/itinerary/types.py
     http_status: int
     decision: str

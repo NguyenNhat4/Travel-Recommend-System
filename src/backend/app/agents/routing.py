@@ -23,12 +23,12 @@ def route_after_evaluate(state: AgentState) -> str:
     decision = state.get("decision")
     if decision in {"constraint_clarification", "invalid_input"}:
         return "clarify"
-    return {"needs_retry": "retry", "failed": "dead_letter", "error": "dead_letter"}.get(decision, "compose")
+    return {"needs_retry": "retry", "failed": "dead_letter", "error": "dead_letter"}.get(decision, "filter")
 
 
 def route_after_retry(state: AgentState) -> str:
     if state.get("decision") == "fallback" and state.get("candidates"):
-        return "compose"
+        return "filter"
     if state.get("decision") == "error":
         return "dead_letter"
     return "tool" if state.get("attempt", 0) < min(state.get("max_attempts", 2), 2) else "dead_letter"

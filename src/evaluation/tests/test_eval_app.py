@@ -86,7 +86,7 @@ def test_new_case_form_builds_yaml_and_saves(env):
     assert any("Đã nối" in s.value for s in at.success)
 
 
-@pytest.mark.parametrize("case_id", ["TC-01", "TC-02", "TC-03", "TC-04", "TC-10"])
+@pytest.mark.parametrize("case_id", ["TC-01", "TC-02", "TC-03", "TC-04", "TC-10", "TC-11"])
 def test_loading_a_case_as_template_reproduces_its_turns(env, case_id):
     at = _run(AppTest.from_file(str(APP), default_timeout=60))
     at.selectbox(key="nc_template").set_value(case_id)

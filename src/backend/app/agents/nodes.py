@@ -32,13 +32,13 @@ from src.backend.app.application.ports.itinerary_tools import ConversationStoreP
 from src.backend.app.domain.itinerary.normalization import normalize_intent
 from src.backend.app.domain.itinerary.planning import empty_intent
 
-from .steps import (composition, conversation, evaluation, guardrails, messages, narration, option_swap, tool_planning,
-                    turn_notes, validation)
+from .steps import (composition, conversation, evaluation, filtering, guardrails, messages, narration, option_swap,
+                    tool_planning, turn_notes, validation)
 from .steps.classification import extract_result, extraction_input, picked_option, route_input, route_result
 from .steps.failures import terminal_failure
 from .steps.history import append_conversation_turn, sanitize_conversation_history
 from .steps.messages import chat_model, event, failure, message
-from .models import ConversationalAnswer, Extraction, ItineraryNarration, TurnRoute
+from .models import ConversationalAnswer, DuplicatePairs, Extraction, ItineraryNarration, TurnRoute
 from .state import AgentState
 
 logger = logging.getLogger("uvicorn.error")
@@ -414,6 +414,54 @@ async def converse_node_async(state: AgentState, *, llm=None, timeout_seconds: f
                          state.get("request_id", "unknown"), timeout_seconds)
         update = conversation.conversational_fallback(state)
     return {**update, "events": [event("converse", "response drafted")]}
+
+
+def _filter_update(state: AgentState, update: dict, result: DuplicatePairs | None, reason: str) -> dict:
+    done = filtering.filtered(state, update, result)
+    by_llm = sum(1 for item in done["dropped_duplicates"] if item["by"] == "llm")
+    return {**done, "events": [event("filter", "duplicates filtered", reason=reason,
+                                     by_rule=len(done["dropped_duplicates"]) - by_llm, by_llm=by_llm)]}
+
+
+def filter_node(state: AgentState, *, llm=None) -> dict:
+    """Bỏ điểm tham quan trùng trước `compose` (AC-AGT-04, chốt 2026-10-08). **Gọi LLM** khi còn từ hai điểm.
+
+    Đọc: `decision`, `candidates`, `sources`, `intent`, `warnings`.
+    Ghi: `candidates` (đã bỏ mã trùng), `dropped_duplicates`, `warnings` (+ `PRODUCT_DROPPED_DUPLICATE`). Luật cùng tên
+    chạy trước; LLM chỉ nhận mã + tên và trả cặp mã trùng, giữ mã nào do luật. LLM lỗi thì chỉ dùng phần luật. Lượt không
+    đi tới lịch (`decision` khác `compose`) đi qua nguyên vẹn.
+    Đi tiếp: `compose`.
+    """
+    update = filtering.ruled(state)
+    if update is None:
+        return {"events": [event("filter", "skipped (nothing to filter)")]}
+    if not filtering.needs_llm(update):
+        return _filter_update(state, update, None, "rule_only")
+    try:
+        result = DuplicatePairs.model_validate(
+            chat_model(llm).with_structured_output(DuplicatePairs).invoke(filtering.filter_input(state, update)))
+    except Exception:
+        logger.exception("itinerary.llm_failed requestId=%s node=filter mode=sync", state.get("request_id", "unknown"))
+        return _filter_update(state, update, None, "llm_failed")
+    return _filter_update(state, update, result, "llm")
+
+
+async def filter_node_async(state: AgentState, *, llm=None, timeout_seconds: float = 2) -> dict:
+    """`filter` trên đường async: LLM lỗi hoặc quá `timeout_seconds` thì chỉ dùng phần luật."""
+    update = filtering.ruled(state)
+    if update is None:
+        return {"events": [event("filter", "skipped (nothing to filter)")]}
+    if not filtering.needs_llm(update):
+        return _filter_update(state, update, None, "rule_only")
+    try:
+        result = DuplicatePairs.model_validate(await asyncio.wait_for(
+            chat_model(llm).with_structured_output(DuplicatePairs).ainvoke(filtering.filter_input(state, update)),
+            timeout_seconds))
+    except Exception:
+        logger.exception("itinerary.llm_failed requestId=%s node=filter mode=async timeoutSeconds=%s",
+                         state.get("request_id", "unknown"), timeout_seconds)
+        return _filter_update(state, update, None, "llm_failed")
+    return _filter_update(state, update, result, "llm")
 
 
 def compose_node(state: AgentState) -> dict:

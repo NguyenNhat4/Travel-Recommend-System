@@ -1,4 +1,4 @@
-"""Compile the thirteen-node itinerary graph with request-scoped runtime dependencies."""
+"""Compile the fourteen-node itinerary graph with request-scoped runtime dependencies."""
 
 from __future__ import annotations
 
@@ -69,6 +69,8 @@ def build_graph(checkpointer: Any | None = None, *, tools: ToolExecutorPort | No
         converse_node_async,
         dead_letter_node,
         evaluate_node,
+        filter_node,
+        filter_node_async,
         finalize_node,
         finalize_node_async,
         intake_node,
@@ -106,6 +108,7 @@ def build_graph(checkpointer: Any | None = None, *, tools: ToolExecutorPort | No
     graph.add_node("extract", RunnableLambda(timed(partial(extract_node, llm=llm)), afunc=timed(partial(extract_node_async, llm=llm, timeout_seconds=llm_timeout_seconds if llm_timeout_seconds is not None else 2, tools=tools, tool_timeout_seconds=tool_timeout_seconds)), name="extract_node"))
     graph.add_node("converse", RunnableLambda(timed(partial(converse_node, llm=llm)), afunc=timed(partial(converse_node_async, llm=llm, timeout_seconds=llm_timeout_seconds if llm_timeout_seconds is not None else 3)), name="converse_node"))
     graph.add_node("clarify", RunnableLambda(timed(partial(ask_clarification_node, llm=llm)), afunc=timed(partial(ask_clarification_node_async, llm=llm, timeout_seconds=llm_timeout_seconds if llm_timeout_seconds is not None else 3)), name="ask_clarification_node"))
+    graph.add_node("filter", RunnableLambda(timed(partial(filter_node, llm=llm)), afunc=timed(partial(filter_node_async, llm=llm, timeout_seconds=llm_timeout_seconds if llm_timeout_seconds is not None else 2)), name="filter_node"))
     graph.add_node("narrate", RunnableLambda(timed(partial(narrate_node, llm=llm)), afunc=timed(partial(narrate_node_async, llm=llm, timeout_seconds=llm_timeout_seconds if llm_timeout_seconds is not None else 3)), name="narrate_node"))
     graph.add_node("tool", timed(partial(tool_node, tools=tools, timeout_seconds=tool_timeout_seconds,
                                    llm=llm, require_recommendations=require_recommendations,
@@ -121,9 +124,11 @@ def build_graph(checkpointer: Any | None = None, *, tools: ToolExecutorPort | No
                                 {name: name for name in ("tool", "clarify", "dead_letter")})
     graph.add_edge("tool", "evaluate")
     graph.add_conditional_edges("evaluate", route_after_evaluate,
-                                {name: name for name in ("retry", "dead_letter", "compose", "clarify")})
+                                {name: name for name in ("retry", "dead_letter", "filter", "clarify")})
     graph.add_conditional_edges("retry", route_after_retry,
-                                {name: name for name in ("tool", "dead_letter", "compose")})
+                                {name: name for name in ("tool", "dead_letter", "filter")})
+    # Bỏ điểm tham quan trùng (luật rồi LLM chỉ ra cặp) trước khi xếp lịch (AC-AGT-04, chốt 2026-10-08).
+    graph.add_edge("filter", "compose")
     graph.add_edge("converse", "finalize")
     graph.add_edge("compose", "narrate")
     graph.add_edge("apply_option", "finalize")

@@ -585,6 +585,10 @@ ngày), ngày khởi hành gần nhất còn bán; hoặc `count = 0` khi tìm r
   "**Chưa có khách sạn**" do backend chèn trước mục chi phí; LLM được báo `no_stay_explained` để không tự nói lý do.
 - Cảnh báo `PRODUCT_DROPPED_DATE` của từng sản phẩm ghi cửa sổ mở bán thật ("Chỉ mở bán từ 15/10/2026 đến
   16/10/2026, không khớp ngày khởi hành."); lý do loại khác giữ câu chung.
+- Cảnh báo `PRODUCT_DROPPED_DUPLICATE` (node `filter`, AC-AGT-04, chốt 2026-10-08): một mục cho mỗi điểm tham quan bị bỏ
+  vì trùng nơi với điểm khác, `productId` là mã bị bỏ, `message` "Bỏ "X" vì trùng với "Y"." (Y là tên mã được giữ). Trùng
+  nhận ra bằng luật (cùng tên) hoặc LLM (chỉ thấy mã + tên, chỉ trả cặp mã có trong danh sách); giữ mã nào do luật
+  (Search trước Recommendation, rẻ hơn, mã nhỏ hơn). Contract không đổi: `ItineraryWarning.code` là chuỗi tự do.
 
 ### 4.5. Response suy giảm
 

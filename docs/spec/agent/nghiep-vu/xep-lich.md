@@ -29,6 +29,19 @@ flowchart LR
 - [Gói nhiều ngày](glossary.md#goi-nhieu-ngay) (từ 2 ngày: theo `durationMinutes` hoặc tên như "03 ngày", "4D3N", "3N2Đ")
   không vào slot. Tối đa 2 gói mỗi loại được trả kèm để người dùng cân nhắc riêng; không tính vào tổng.
 
+<a id="loc-trung"></a>
+**Không lặp một nơi** (node `filter`, chạy ngay trước `compose`; AC-AGT-04, chốt 2026-10-08)
+- Hai điểm tham quan cùng một nơi hoặc cùng một trải nghiệm chỉ giữ một. Ví dụ trace 08/10/2026 ở Phú Quốc: "hòn Thơm",
+  "Sun World Hòn Thơm", "Cáp Treo Hòn Thơm"; hai vé "[Grand World Phú Quốc] - Vé đi thuyền Venice (Water Taxi)" khác mã.
+- Bước 1, luật: cùng tên (không phân biệt dấu, chữ hoa, dấu câu). Bước 2, LLM: nhận mã + tên các điểm tham quan còn lại,
+  trả mọi cặp mã trùng (mỗi cặp có lý do rồi kết luận `duplicate`; chỉ cặp `duplicate=true` được áp). Cặp có mã lạ hoặc
+  không phải điểm tham quan bị bỏ qua. Không bắc cầu: gói "Water Taxi + Bảo Tàng Gấu" trùng với từng vé lẻ nhưng hai vé lẻ
+  vẫn là hai hoạt động.
+- Mỗi cặp giữ: nguồn Search trước Recommendation, rồi giá thấp (tham quan tự do 0 đ), rồi `productId`; duyệt theo thứ tự
+  này, một mã chỉ bị bỏ khi nó cặp với một mã đang được giữ. Mã bị bỏ ra khỏi
+  ứng viên nên không vào lịch lẫn phương án khác, và có cảnh báo `PRODUCT_DROPPED_DUPLICATE` ("Bỏ "X" vì trùng với "Y".").
+- Khách sạn, vé máy bay, combo, gói nhiều ngày không qua bước này. LLM lỗi hoặc quá `ITINERARY_LLM_TIMEOUT_SECONDS`: chỉ dùng luật cùng tên.
+
 **Chỗ ở** — tối đa 2 khách sạn cho `max(1, days − 1)` đêm, chọn **sau** khi đã biết số hoạt động mỗi ngày, cùng lúc với
 việc ghép ngày (xem [tối ưu quãng đường](#gom-theo-khoang-cach)). Chỉ khách sạn rõ vị trí, cùng mức nguồn tốt nhất
 (Search trước Recommendation) được đem ra so. Không hoạt động nào rõ vị trí thì một khách sạn, thứ tự chọn:
@@ -166,6 +179,9 @@ timeline
   về cùng một điểm, chúng vẫn bị coi là rõ vị trí. Cần nguồn đánh dấu độ chính xác (ví dụ `attributes.geoPrecision`).
 - ⚠️ cần xác nhận: km là đường chim bay, nên chênh km của phương án khác chỉ là ước lượng (câu chữ ghi "khoảng"). Ở
   đảo, đường thật có thể dài hơn nhiều; OSRM là việc sau.
+- ⚠️ cần xác nhận: bước LLM của `filter` không tất định, nên cùng một câu có thể ra lịch khác nhau giữa các lần chạy;
+  `compose` vẫn tất định với cùng tập ứng viên đã lọc. Giữ mã rẻ hơn có thể giữ điểm tự do ("hòn Thơm") thay cho vé cáp
+  treo.
 - ⚠️ cần xác nhận: khung buổi chỉ dùng khi có vé. Không có vé thì buổi chỉ là nhãn, không kiểm thời lượng hoạt động (vd
   hoạt động 5 giờ vẫn có thể nằm ở buổi chiều).
 
@@ -173,6 +189,8 @@ timeline
 
 - [`domain/itinerary/planning.py`](../../../../src/backend/app/domain/itinerary/planning.py) — `compose_plan`, `day_windows`, `render_proposal`, `totals`, `validate_plan`
 - [`domain/itinerary/routing.py`](../../../../src/backend/app/domain/itinerary/routing.py) — `route_cost`, `optimize` (chuỗi khách sạn, gán ngày, ngân sách, phương án khác)
+- [`domain/itinerary/dedupe.py`](../../../../src/backend/app/domain/itinerary/dedupe.py) — `same_name_pairs`, `apply_pairs` (node `filter`)
+- [`agents/steps/filtering.py`](../../../../src/backend/app/agents/steps/filtering.py) — luật trước, payload LLM, cảnh báo `PRODUCT_DROPPED_DUPLICATE`
 - [`domain/itinerary/geo.py`](../../../../src/backend/app/domain/itinerary/geo.py) — `located`, `medoid`, `band`, `haversine_km`
 - [`agents/steps/composition.py`](../../../../src/backend/app/agents/steps/composition.py) — ghép vé, tiền vé trừ vào ngân sách, cảnh báo (`PLAN_CRITERIA`, `STAY_OPTIONS`), `NO_RESULTS`/`FALLBACK`
 - [`agents/steps/explanations.py`](../../../../src/backend/app/agents/steps/explanations.py) — câu "chưa có khách sạn"

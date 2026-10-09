@@ -54,7 +54,8 @@ POST /api/v1/assistant/itineraries hoặc /stream
          |- thiếu dữ liệu -> clarify -> finalize
          |- hội thoại/refusal -> converse -> finalize
          `- đủ dữ liệu -> tool -> evaluate
-                              |- candidate hợp lệ -> compose -> finalize
+                              |- candidate hợp lệ -> filter -> compose -> narrate -> finalize
+                              |     (filter: luật cùng tên + LLM chỉ ra cặp điểm tham quan trùng)
                               |- lỗi tạm thời -> retry -> tool
                               |- cần hỏi điều kiện -> clarify -> finalize
                               `- lỗi vĩnh viễn -> dead_letter -> finalize
@@ -129,7 +130,8 @@ minh routing/grounding vào fixture, không chứng minh dữ liệu, ranking ha
   chứng của chúng khác nhau. Golden runner vẫn đi `http`, còn staging/production chạy `inprocess`.
 - Tool `get_similar_products` chỉ được mời khi `previous_selection` khác rỗng; sản phẩm gốc chỉ lấy từ danh sách đó,
   tối đa 2 lời gọi mỗi lượt, lỗi của nó là best-effort (spec Itinerary §2.5). Lượt đầu giữ nguyên bộ tool và prompt.
-- `compose` là tất định; LLM không được tự xếp hoặc thêm sản phẩm.
+- `compose` là tất định; LLM không được tự xếp hoặc thêm sản phẩm. `filter` chỉ nhận từ LLM cặp mã trùng có trong danh
+  sách; giữ mã nào do luật (`domain/itinerary/dedupe.py`).
 - Mọi nhánh response phải đi qua `finalize`.
 - Thiếu destination/days thì chưa gọi product tool.
 - Thay contract: sửa fragment OpenAPI trước, không sửa bundle sinh tự động.

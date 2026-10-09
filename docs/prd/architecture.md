@@ -191,14 +191,15 @@ stateDiagram-v2
     SearchCandidates --> NoResults: Không có sản phẩm thật phù hợp
     NoResults --> [*]: Trả NO_RESULTS, không lấp bằng sản phẩm do LLM tạo
     ValidateAvailability --> Rerank: (tuỳ chọn) xếp lại bằng Recommendation
-    Rerank --> ComposeItinerary
-    ValidateAvailability --> ComposeItinerary: Tạo cấu trúc lịch trình
+    Rerank --> FilterCandidates
+    ValidateAvailability --> FilterCandidates: Bỏ điểm tham quan trùng (luật, rồi LLM chỉ ra cặp trùng)
+    FilterCandidates --> ComposeItinerary: Tạo cấu trúc lịch trình
     ComposeItinerary --> SynthesizeResponse: Gắn thẻ sản phẩm Grounded + Tạo lời thoại
     SynthesizeResponse --> [*]: Trả lời người dùng
 ```
 
 ### Tiêu chuẩn Grounding (Chống Bịa Đặt):
-- **Không suy đoán dữ liệu sản phẩm:** LLM chỉ đóng vai trò phân tích ý định ngôn ngữ và sắp xếp lịch trình thời gian. Mọi thông tin về `productId`, `title`, `price`, `imageUrl` bắt buộc phải được lấy nguyên trạng từ kết quả trả về của công cụ truy xuất (`ToolCatalogSearch`): Search, Recommendation, hoặc Similar (`getSimilarProducts`) khi đổi một sản phẩm đã hiển thị.
+- **Không suy đoán dữ liệu sản phẩm:** LLM chỉ đóng vai trò phân tích ý định ngôn ngữ và sắp xếp lịch trình thời gian. LLM được chỉ ra cặp điểm tham quan trùng nhau trong danh sách ứng viên (chỉ thấy mã và tên, node `filter`); hệ thống chỉ nhận cặp gồm hai mã có trong danh sách và tự chọn giữ mã nào bằng luật; LLM lỗi hoặc quá giờ thì chỉ dùng phần lọc bằng luật. Mọi thông tin về `productId`, `title`, `price`, `imageUrl` bắt buộc phải được lấy nguyên trạng từ kết quả trả về của công cụ truy xuất (`ToolCatalogSearch`): Search, Recommendation, hoặc Similar (`getSimilarProducts`) khi đổi một sản phẩm đã hiển thị.
 - **Vé máy bay** chỉ lấy từ chuyến bay thật của catalog; `compose` chọn chuyến bằng luật tất định (AC-AGT-02), LLM không chọn hay tạo chuyến. Vị trí trình duyệt chỉ dùng ở Web để gợi ý nơi đi; toạ độ không vào state của agent (AC-AGT-03).
 - **Response phân biệt theo `status`:** `ItineraryResponse` là `oneOf` gồm `COMPLETED`, `NEEDS_CLARIFICATION`, `NO_RESULTS`, `FALLBACK` (`src/shared/contracts/schemas/itinerary-agent.yaml`). Trường cụ thể theo contract, không theo ví dụ trong PRD.
 - **Backend tự tính tổng tiền.** Điểm tham quan tự do — điểm tham quan hoặc golf có `ticketed = false`, hoặc không có giá — tính 0 đ vào tổng và hiển thị là "tham quan tự do", không hiển thị là có giá 0 đ. Mục khác thiếu giá (khách sạn, vé máy bay, combo...) thì tổng là `null` kèm cảnh báo, không coi thiếu giá là 0.
