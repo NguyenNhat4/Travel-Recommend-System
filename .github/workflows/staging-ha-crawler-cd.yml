@@ -35,7 +35,7 @@ env:
 jobs:
   images:
     name: Build and publish crawler image
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vota-staging-ha]
     timeout-minutes: 30
     environment: staging
     permissions:
@@ -110,7 +110,7 @@ jobs:
   deploy_crawler:
     name: Install crawler on staging-ha VM
     needs: images
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vota-staging-ha]
     timeout-minutes: 30
     environment: staging
     permissions:
@@ -145,7 +145,7 @@ jobs:
   verify:
     name: Verify staging-ha crawler VM
     needs: [images, deploy_crawler]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vota-staging-ha]
     timeout-minutes: 15
     environment: staging
     permissions:
