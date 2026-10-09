@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Check, Loader2, Star } from 'lucide-react';
 import { getAirportPoints } from '../../../services/routeGeometry';
 import { placeholderOnError } from './widgetVisuals';
@@ -46,11 +46,11 @@ interface WidgetStayOptionsProps {
  */
 export function WidgetStayOptions({ cards, interactive, selectingKey, previewKey, onPreview, onSelect }: WidgetStayOptionsProps) {
   const rowRef = useRef<HTMLDivElement>(null);
-  const orderRef = useRef<string[]>([]);
-  for (const card of cards) {
-    if (!orderRef.current.includes(stayCardKey(card))) orderRef.current.push(stayCardKey(card));
-  }
-  const ordered = [...cards].sort((a, b) => orderRef.current.indexOf(stayCardKey(a)) - orderRef.current.indexOf(stayCardKey(b)));
+  const [seenOrder, setSeenOrder] = useState<string[]>([]);
+  const unseen = cards.map(stayCardKey).filter((key) => !seenOrder.includes(key));
+  const order = unseen.length ? [...seenOrder, ...unseen] : seenOrder;
+  if (unseen.length) setSeenOrder(order);
+  const ordered = [...cards].sort((a, b) => order.indexOf(stayCardKey(a)) - order.indexOf(stayCardKey(b)));
   const activeKey = selectingKey ?? stayCardKey(cards.find((card) => card.index === null) ?? cards[0]);
   const scroll = (direction: 1 | -1) => rowRef.current?.scrollBy({ left: direction * 260, behavior: 'smooth' });
   const locked = !interactive || selectingKey !== null;
