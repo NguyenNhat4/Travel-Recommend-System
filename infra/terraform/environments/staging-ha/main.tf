@@ -120,14 +120,14 @@ resource "google_compute_region_instance_group_manager" "app" {
     type               = "PROACTIVE"
     minimal_action     = "REPLACE"
     replacement_method = "SUBSTITUTE"
-    # Regional MIG 3 zone: maxSurge fixed chỉ nhận 0 hoặc >= 3; percent cần size >= 10 (API 400, 2026-10-09).
-    # Quota là CPUS_ALL_REGIONS (toàn project, mọi region; 18 ở 2026-10-09). Surge 3 thêm 3 VM app (6 vCPU với
-    # e2-standard-2) trước khi xoá VM cũ. scripts/deploy-staging-ha-app.sh kiểm quota trước khi apply (APP_SURGE, APP_VM_VCPUS).
-    max_surge_fixed       = 3
-    max_unavailable_fixed = 0
-    # Health check của MIG chỉ là liveness (tiến trình trả lời), nên không có min_ready_sec thì MIG coi VM mới là
-    # "đã cập nhật" ngay khi tiến trình lên, trước khi nạp xong RecSys, rồi xoá VM cũ. Đặt lớn hơn boot-to-ready.
-    min_ready_sec = var.boot_to_ready_seconds
+    # Chấp nhận downtime khi thay VM (chốt 2026-10-09, docs/prd/update-archive/2026-10-09-rut-ngan-cd-chap-nhan-downtime.md):
+    # thay toàn bộ VM app một lượt, không surge nên không cần quota VM thêm. Regional MIG 3 zone: fixed chỉ nhận 0 hoặc >= 3,
+    # nên unavailable = 3 (>= số VM tối đa). scripts/deploy-staging-ha-app.sh giữ APP_SURGE = 0 đồng bộ với đây.
+    max_surge_fixed       = 0
+    max_unavailable_fixed = 3
+    # min_ready_sec = 0: không chờ thêm sau khi VM qua liveness. Cổng sẵn sàng là bước Verify của workflow CD
+    # (LB báo đủ HEALTHY, /health/ready qua public endpoint).
+    min_ready_sec = 0
   }
 
   lifecycle {
