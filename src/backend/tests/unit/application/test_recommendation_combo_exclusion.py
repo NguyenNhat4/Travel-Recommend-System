@@ -61,7 +61,8 @@ def world(tmp_path_factory):
     cdp = JsonlCdpReader(str(d / "events.jsonl"))
     now = datetime(2026, 9, 21, tzinfo=timezone.utc)
     return {"index": index, "vectors": vectors, "cdp": cdp, "now": now,
-            "recommend": RecommendForUser(index, vectors, cdp, BuildPopularity(index, cdp)(now=now))}
+            # catalog giả rất nhỏ: tắt cap 2 món / điểm đến (FR-REC-04, 09/10) để test chỉ kiểm luật loại combo
+            "recommend": RecommendForUser(index, vectors, cdp, BuildPopularity(index, cdp)(now=now), max_per_destination=None)}
 
 
 def test_unit_index_resolves_combo_relations_to_search_units(world):

@@ -274,6 +274,8 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
         "recommend": RecommendForUser(
             index, vector_search, cdp_reader, popularity, candidate_k=settings.recommend_candidate_k,
             explore_fill=settings.recommend_explore_fill,
+            next_trip_scoring=settings.recommend_next_trip_scoring,
+            max_per_destination=settings.recommend_max_per_destination or None,
         ),
     }
 

@@ -5,7 +5,7 @@
 - Phục vụ: FR-REC-01, FR-REC-02, FR-REC-04, AC-REC-01/02 (`docs/prd/requirements.md` §1.3, §3), NFR-PERF-01
 - Tiếp theo: `docs/plan/2026-10-08-ban-giao-recsys-bam-so-thich.md` (WP0–WP4 đã xong) và
   `docs/spec/bench/recsys-bam-so-thich-quyet-dinh.md` §7 (điều tra G2)
-- Trạng thái: đang làm. 09/10: G5a chốt ([A], [C] → PRD, PR-A đang làm), G2 chốt lại = (a). Gate còn mở: G6-tham-số, G5b (đề xuất [B])
+- Trạng thái: đang làm. 09/10: G5a chốt ([A], [C] → PRD, PR-A đang làm), G2 chốt lại = (a), **G5b chốt** ([B] → PRD, PR-B code xong trên `feat/recSys_update-2`). Gate còn mở: G6-tham-số; deploy PR-A / PR-B
 
 ## 1. Những gì đã chốt (08/10)
 
@@ -104,4 +104,4 @@ test tag == `f"{embed_model}:{TEXT_BUILDER_VERSION}"`; engine thật phải tái
       · [x] PR-A code (`history/2026-10-09-recsys-pr-a-p2-loai-combo-o-kham-pha.md`: combo plumbing + loại combo + P2 + ô B,
       ENGINE_RULES_VERSION `2026-10-09-p2-combo-explore`, 1.934 test) · [x] gate `baseline_v3` (4 kind, chênh ≤ 0,004) · [x] latency SAU
       (Δp95 ≤ +6,5 ms, `eval-2026-10-09-recsys-pr-a-gate-v3-latency-sau.md`) · [ ] PR → `release-mvp-v2` · [ ] deploy PR-A
-- [x] **G2 chốt lại** = **(a)** (09/10, `quyet-dinh.md` §7.7: C3 với D1 trên hit@4) · [ ] G5b ([B] đã viết lại, chờ chốt) · [ ] PR-B · [ ] deploy PR-B
+- [x] **G2 chốt lại** = **(a)** (09/10, `quyet-dinh.md` §7.7: C3 với D1 trên hit@4) · [x] G5b (09/10, tqanh123) · [x] PR-B code (F14c + destCap2, parity = harness C3 nDiscordant 0, `baseline_v6`, latency — `src/evaluation/reports/eval-2026-10-09-recsys-pr-b-f14c-destcap.md`) · [ ] deploy PR-B

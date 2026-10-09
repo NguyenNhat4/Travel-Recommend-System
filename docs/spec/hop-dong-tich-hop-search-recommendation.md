@@ -707,7 +707,23 @@ W_SHORT / W_POP / W_LONG = 0.7 / 0.15 / 0.15
 chuyến bay (FR-REC-04, chốt 2026-10-09):** `origin` = `originCity` của route bay mà khách xem / thêm giỏ / mua gần nhất
 (`profile.infer_origin`); route bay có `originCity` khác rỗng và khác `origin` bị trừ `W_ORIGIN = 0.15` khi có chuyến mở, bị loại
 (điểm −∞, MMR không chọn) khi không có chuyến mở; chưa có event chuyến bay → không áp dụng. `use_cases` truyền
-`ScoreContext(taxonomy, originCity, origin)` cho `score_candidates`. Hằng nằm ở
+`ScoreContext(taxonomy, originCity, origin)` cho `score_candidates`.
+
+**Không có chuyến mở (FR-REC-04 / FR-REC-02, chốt 2026-10-09, đề xuất
+`update-archive/2026-10-08-recsys-chuan-hoa-so-thich-giua-hai-chuyen.md`, PR-B):**
+
+```
+s     = clip((cos(u_long, v_c) − SEMANTIC_Q_LOW) / (SEMANTIC_Q_HIGH − SEMANTIC_Q_LOW), 0, 1)     # 0.8529 / 0.9387
+final = W_NEXT_SHORT · s + W_NEXT_POP · pop_D(c) + W_NEXT_LONG · s                               # 0.50 / 0.35 / 0.15
+```
+
+Ngưỡng calibrate trên 120 request khách giả lập `between` (seed 99) theo phân vị p10 / p99 của cos trên không gian ứng viên của
+engine; gắn với `SEMANTIC_CALIBRATION_MODEL_VERSION = "intfloat/multilingual-e5-small:catalog-text-v2"`. `index.model_version`
+khác tag → dùng công thức 0.7 / 0.15 / 0.15 và ghi WARNING `recsys.next_trip_scoring.model_mismatch` (một lần mỗi model). Đổi
+model / text builder thì calibrate lại bằng `python -m src.evaluation.recsys_bench.theme_study.calibrate`. MMR khi đó giới hạn
+`MAX_PER_DESTINATION = 2` món mỗi điểm đến (`mmr_select(..., destination, max_per_destination)`, điểm đến lấy tại thời điểm MMR);
+**không** áp khi request khoá `destination`. Luật điểm xuất phát chuyến bay ở trên vẫn áp sau F14c. Rollback không redeploy:
+`RECOMMEND_NEXT_TRIP_SCORING=false`, `RECOMMEND_MAX_PER_DESTINATION=0`. `ENGINE_RULES_VERSION = "2026-10-09-next-trip-f14c"`. Hằng nằm ở
 `src/backend/app/domain/recommendation/profile.py` (`W_SHORT, W_POP, W_LONG`). Trọng số chốt 2026-10-07, thay 0.6 / 0.25 / 0.15
 (`docs/prd/update-archive/2026-10-06-recsys-trong-so-ngan-han-pho-bien.md`; số đo: `src/evaluation/reports/eval-2026-10-06-recsys-search-tong-hop.md`
 phần A §4, `eval-2026-10-07-recsys-grid-llbo-coldstart.md`).

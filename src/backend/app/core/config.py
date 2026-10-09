@@ -125,6 +125,10 @@ class Settings(BaseSettings):
     recommend_candidate_k: int = 200
     # Ô khám phá khi có chuyến mở (FR-REC-02, chốt 09/10/2026). False = rollback về list trước PR-A, không cần redeploy.
     recommend_explore_fill: bool = True
+    # Khi không có chuyến mở (FR-REC-04 / FR-REC-02, chốt 09/10/2026): cos chuẩn hoá F14c + tối đa N món / điểm đến. Rollback không
+    # cần redeploy: RECOMMEND_NEXT_TRIP_SCORING=false (công thức 0,7 / 0,15 / 0,15), RECOMMEND_MAX_PER_DESTINATION=0 (tắt cap).
+    recommend_next_trip_scoring: bool = True
+    recommend_max_per_destination: int = Field(default=2, ge=0)
     # Hybrid /search (HYBRID_CANDIDATE_SCORE, spec §2.4): BM25 trên nameAscii/searchTextAscii + RRF ở app.
     search_hybrid: bool = True  # False → dense-only ANN_CANDIDATE_SCORE như trước 25/09
     search_normalize: bool = True  # bước chuẩn hoá truy vấn (viết tắt, chính tả tên riêng, điểm đến, kiểu đi); False → nguyên câu

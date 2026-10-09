@@ -41,11 +41,13 @@ def install(build_profile, cap: int = 1):
         state["open"] = p.active_trip is not None
         return p
 
-    def mmr(score, E, candidates, taxonomy, k, max_per_vertical=None):
+    def mmr(score, E, candidates, taxonomy, k, max_per_vertical=None, destination=None, max_per_destination=None):
+        # `destination` / `max_per_destination`: cap điểm đến của engine (PR-B, 09/10) — chuyển xuống khi bản này không tự áp
         space = state.get("space")
         dest = space.destination if space is not None else None
         if state.get("open") or dest is None or cap is None:
-            return prod_mmr(score, E, candidates, taxonomy, k, max_per_vertical=max_per_vertical)
+            return prod_mmr(score, E, candidates, taxonomy, k, max_per_vertical=max_per_vertical, destination=destination,
+                            max_per_destination=max_per_destination)
         chosen: list[int] = []
         per_vertical: Counter = Counter()
         per_dest: Counter = Counter()
