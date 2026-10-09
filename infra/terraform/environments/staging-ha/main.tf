@@ -167,6 +167,12 @@ resource "google_compute_region_autoscaler" "app" {
       }
     }
   }
+
+  lifecycle {
+    # Lịch ban đêm (scheduler.tf) tạm tắt autoscaler bằng mode OFF. Terraform không đưa mode về ON khi plan.
+    ignore_changes = [autoscaling_policy[0].mode]
+  }
+
 }
 
 # Google front ends and health checkers reach port 3000 (traffic + probe) only.

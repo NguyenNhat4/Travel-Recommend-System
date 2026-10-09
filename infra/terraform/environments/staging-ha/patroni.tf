@@ -73,6 +73,8 @@ resource "google_compute_instance" "patroni" {
   zone         = each.value.zone
   tags         = [local.patroni_tag]
   labels       = { component = "database", role = each.value.role == "db" ? "patroni" : "etcd-witness" }
+  # Chỉ replica (pg-b) có lịch tắt ban đêm; primary và witness giữ 24/7. Xem alert_mute.tf.
+  resource_policies = each.key == "b" ? [google_compute_resource_policy.patroni_replica_schedule[0].self_link] : []
 
   # Đổi startup script (ví dụ đổi image Patroni) chỉ chạy lại khi VM khởi động lại; làm có chủ đích theo runbook,
   # từng node một, replica trước. Terraform không tự dừng VM để cập nhật.
