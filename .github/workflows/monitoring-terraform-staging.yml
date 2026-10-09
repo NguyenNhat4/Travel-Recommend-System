@@ -53,6 +53,7 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: '~1.6'
+          terraform_wrapper: false
 
       - name: Check staging-only layout
         run: bash infra/monitoring/tests/test_staging_layout.sh
@@ -99,6 +100,7 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: '~1.6'
+          terraform_wrapper: false
 
       - name: Validate required staging configuration
         run: |

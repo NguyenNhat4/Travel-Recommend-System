@@ -74,6 +74,7 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: '~1.9'
+          terraform_wrapper: false
 
       - name: Check replica scripts and layout
         run: bash ops/tests/test_infra_layout.sh
@@ -117,6 +118,7 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: '~1.9'
+          terraform_wrapper: false
 
       - name: Validate required staging configuration
         run: |
