@@ -50,7 +50,7 @@ jobs:
   quality:
     name: Frontend quality checks
     if: ${{ github.event_name == 'push' || github.event.action == 'opened' || github.event.action == 'synchronize' || github.event.action == 'reopened' || (github.event.action == 'closed' && github.event.pull_request.merged == true) || (github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3')) }}
-    runs-on: [self-hosted, linux, x64]
+    runs-on: [self-hosted, vota-staging-ha]
     timeout-minutes: 20
     steps:
       - name: Checkout
@@ -66,12 +66,6 @@ jobs:
       - name: Install frontend dependencies
         working-directory: src/frontend
         run: npm ci
-
-      # Runner self-hosted: Python hệ thống (Ubuntu 23.04+) chặn pip install (PEP 668) → dùng Python riêng của job.
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
 
       - name: Install contract validator dependency
         run: python3 -m pip install --disable-pip-version-check pyyaml
@@ -118,7 +112,7 @@ jobs:
   e2e:
     name: Frontend E2E smoke tests
     needs: quality
-    runs-on: [self-hosted, linux, x64]
+    runs-on: [self-hosted, vota-staging-ha]
     timeout-minutes: 25
     steps:
       - name: Checkout
@@ -149,7 +143,7 @@ jobs:
     name: Build Frontend VM image
     if: ${{ (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true) || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') }}
     needs: e2e
-    runs-on: [self-hosted, linux, x64]
+    runs-on: [self-hosted, vota-staging-ha]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -171,7 +165,7 @@ jobs:
     name: Publish Frontend SHA and latest images
     if: ${{ (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true) || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') }}
     needs: build_vm
-    runs-on: [self-hosted, linux, x64]
+    runs-on: [self-hosted, vota-staging-ha]
     environment: staging
     permissions:
       contents: read
@@ -240,7 +234,7 @@ jobs:
     # staging-ha-backend-cd.yml, staging-ha-frontend-cd.yml, staging-ha-crawler-cd.yml.
     if: ${{ false }}
     needs: publish_vm
-    runs-on: [self-hosted, linux, x64]
+    runs-on: [self-hosted, vota-staging-ha]
     timeout-minutes: 20
     concurrency:
       group: vota-application-vm-deploy

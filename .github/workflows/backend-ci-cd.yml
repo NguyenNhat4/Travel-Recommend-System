@@ -47,19 +47,21 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  PIP_BREAK_SYSTEM_PACKAGES: '1'
   PYTHON_VERSION: '3.11'
 
 jobs:
   quality:
     name: CI checks
     if: ${{ github.event_name == 'push' || github.event.action == 'opened' || github.event.action == 'synchronize' || github.event.action == 'reopened' || (github.event.action == 'closed' && github.event.pull_request.merged == true) || (github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3')) }}
-    runs-on: [self-hosted, linux, x64]
+    runs-on: [self-hosted, vota-staging-ha]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
+        if: ${{ runner.environment == 'github-hosted' }}
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -67,7 +69,7 @@ jobs:
 
       - name: Install backend test dependencies
         # torch bản CPU trước (bản mặc định của PyPI kéo CUDA vài GB); e5-small chạy CPU như trong image.
-        run: python -m pip install --upgrade pip && python -m pip install --index-url https://download.pytorch.org/whl/cpu "torch>=2.3" && python -m pip install -r src/backend/requirements.txt
+        run: python3 -m pip install --upgrade pip && python3 -m pip install --index-url https://download.pytorch.org/whl/cpu "torch>=2.3" && python3 -m pip install -r src/backend/requirements.txt
 
       - name: Validate contract
         run: PYTHONDONTWRITEBYTECODE=1 python3 src/shared/contracts/tests/validate_contract.py
@@ -90,7 +92,7 @@ jobs:
   build:
     name: Build images
     needs: quality
-    runs-on: [self-hosted, linux, x64]
+    runs-on: [self-hosted, vota-staging-ha]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -112,7 +114,7 @@ jobs:
     name: Publish SHA and latest images
     if: ${{ (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true) || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') }}
     needs: build
-    runs-on: [self-hosted, linux, x64]
+    runs-on: [self-hosted, vota-staging-ha]
     environment: staging
     permissions:
       contents: read
@@ -181,7 +183,7 @@ jobs:
     # Tắt: VM staging cũ không nhận deploy nữa. Triển khai lên staging-ha qua các workflow staging-ha-*-cd.yml.
     if: ${{ false }}
     needs: publish
-    runs-on: [self-hosted, linux, x64]
+    runs-on: [self-hosted, vota-staging-ha]
     # Two 15-minute health windows (deploy and rollback) plus image pull and SSH.
     timeout-minutes: 45
     concurrency:

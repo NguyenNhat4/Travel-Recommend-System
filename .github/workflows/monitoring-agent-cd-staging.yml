@@ -41,7 +41,7 @@ jobs:
   validate:
     name: Validate monitoring agent artifacts
     if: ${{ github.event_name == 'push' || github.event.action == 'opened' || github.event.action == 'synchronize' || github.event.action == 'reopened' || (github.event.action == 'closed' && github.event.pull_request.merged == true) || github.event_name == 'workflow_dispatch' }}
-    runs-on: [self-hosted, linux, x64]
+    runs-on: [self-hosted, vota-staging-ha]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -56,7 +56,7 @@ jobs:
     name: Install watcher and restart Ops Agent on staging VM
     if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true)) && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') }}
     needs: validate
-    runs-on: [self-hosted, linux, x64]
+    runs-on: [self-hosted, vota-staging-ha]
     environment: staging
     timeout-minutes: 15
     permissions:
