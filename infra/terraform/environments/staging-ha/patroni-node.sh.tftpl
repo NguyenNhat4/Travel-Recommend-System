@@ -44,8 +44,46 @@ if [ "$ROLE" = db ]; then
   docker pull '${patroni_image}'
   docker rm -f vota-patroni >/dev/null 2>&1 || true
   mkdir -p /mnt/disks/pgdata/postgresql
+  # Docker bind-mounts the host directory over /var/lib/postgresql. The image
+  # runs Patroni as postgres, so make the full existing tree writable by that
+  # exact image user instead of relying on a host-side postgres account. The
+  # recursive ownership is needed when a previous failed bootstrap left
+  # /var/lib/postgresql/18 owned by root; Patroni must rename that directory
+  # after a failed clone.
+  POSTGRES_UID=$(docker run --rm --entrypoint /usr/bin/id '${patroni_image}' -u postgres)
+  POSTGRES_GID=$(docker run --rm --entrypoint /usr/bin/id '${patroni_image}' -g postgres)
+  chown -R "$POSTGRES_UID:$POSTGRES_GID" /mnt/disks/pgdata/postgresql
+  chmod 700 /mnt/disks/pgdata/postgresql
+  # The image keeps PostgreSQL data below a versioned directory (for example
+  # /var/lib/postgresql/18), so PG_VERSION is not at the bind-mount root.
+  # Detect the marker anywhere in the expected data tree before deciding that
+  # a persistent disk is empty.
+  PG_VERSION_FILE=$(find /mnt/disks/pgdata/postgresql -mindepth 1 -maxdepth 3 -type f -name PG_VERSION -print -quit)
+  # Lần dựng đầu chỉ node a được clone từ primary cũ. Node b phải chờ node a
+  # có leader để không tự bootstrap một cụm Patroni thứ hai khi hai VM boot cùng lúc.
+  # Khi đĩa đã có PG_VERSION, đây là restart/rejoin bình thường và không chờ node a;
+  # điều này giữ failover/restart hoạt động ngay cả khi b đang là leader.
+  if [ '${wait_for_bootstrap_leader}' = 'true' ] && [ -z "$PG_VERSION_FILE" ]; then
+    LEADER_READY=0
+    for _ in $(seq 1 120); do
+      if curl -fsS --max-time 2 "http://${bootstrap_leader_ip}:8008/primary" >/dev/null; then
+        LEADER_READY=1
+        break
+      fi
+      sleep 5
+    done
+    if [ "$LEADER_READY" -ne 1 ]; then
+      echo "bootstrap leader ${bootstrap_leader_ip} did not become ready within 600 seconds" >&2
+      exit 1
+    fi
+  fi
   CLONE_ARG=""
-  if [ -n '${clone_from_host}' ]; then CLONE_ARG="-e PATRONI_CLONE_FROM_HOST=${clone_from_host}"; fi
+  # The source host is a one-time bootstrap input. Once PG_VERSION exists,
+  # restart/rejoin must use the local persistent data instead of attempting
+  # another clone from the old primary.
+  if [ -n '${clone_from_host}' ] && [ -z "$PG_VERSION_FILE" ]; then
+    CLONE_ARG="-e PATRONI_CLONE_FROM_HOST=${clone_from_host}"
+  fi
   docker run -d --name vota-patroni --restart unless-stopped --network host --stop-timeout 60 \
     -v /mnt/disks/pgdata/postgresql:/var/lib/postgresql --env-file /etc/vota/patroni.env \
     -e PATRONI_NAME='${node_name}' -e PATRONI_NODE_IP='${node_ip}' -e PATRONI_ETCD3_HOSTS='${etcd_hosts}' \
