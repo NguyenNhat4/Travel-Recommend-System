@@ -9,6 +9,9 @@ on:
   push:
     branches:
       - main
+      - release-mvp-v1
+      - release-mvp-v2
+      - release-mvp-v3
     paths:
       - '.github/workflows/staging-ha-backend-cd.yml'
       - 'Dockerfile.backend'
