@@ -65,7 +65,7 @@ env:
 jobs:
   validate:
     name: Validate infra Terraform
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vota-staging-ha]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -91,7 +91,7 @@ jobs:
     name: Plan and apply staging infra
     if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') }}
     needs: validate
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vota-staging-ha]
     environment: staging
     timeout-minutes: 20
     permissions:
@@ -200,7 +200,7 @@ jobs:
   replication_staging:
     name: Connect DB primary and replica
     needs: plan_apply_staging
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vota-staging-ha]
     environment: staging
     timeout-minutes: 30
     permissions:

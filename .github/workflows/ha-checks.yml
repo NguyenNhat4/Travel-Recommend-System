@@ -31,7 +31,7 @@ concurrency:
 jobs:
   terraform-staging-ha:
     name: Terraform staging-ha
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vota-staging-ha]
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
@@ -53,7 +53,7 @@ jobs:
 
   db-scripts-and-patroni:
     name: Patroni, promote script, probe (Docker)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vota-staging-ha]
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
@@ -70,7 +70,7 @@ jobs:
 
   crawler-lock:
     name: Crawler DB run lock (real Postgres)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vota-staging-ha]
     services:
       postgres:
         image: postgres:16

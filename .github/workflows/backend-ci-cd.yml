@@ -53,7 +53,7 @@ jobs:
   quality:
     name: CI checks
     if: ${{ github.event_name == 'push' || github.event.action == 'opened' || github.event.action == 'synchronize' || github.event.action == 'reopened' || (github.event.action == 'closed' && github.event.pull_request.merged == true) || (github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3')) }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vota-staging-ha]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -90,7 +90,7 @@ jobs:
   build:
     name: Build images
     needs: quality
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vota-staging-ha]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -112,7 +112,7 @@ jobs:
     name: Publish SHA and latest images
     if: ${{ (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true) || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') }}
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vota-staging-ha]
     environment: staging
     permissions:
       contents: read
@@ -181,7 +181,7 @@ jobs:
     # Tắt: VM staging cũ không nhận deploy nữa. Triển khai lên staging-ha qua các workflow staging-ha-*-cd.yml.
     if: ${{ false }}
     needs: publish
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vota-staging-ha]
     # Two 15-minute health windows (deploy and rollback) plus image pull and SSH.
     timeout-minutes: 45
     concurrency:

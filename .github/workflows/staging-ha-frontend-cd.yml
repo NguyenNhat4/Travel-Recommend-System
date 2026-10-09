@@ -39,7 +39,7 @@ env:
 jobs:
   images:
     name: Build and publish frontend image
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vota-staging-ha]
     timeout-minutes: 30
     environment: staging
     permissions:
@@ -122,7 +122,7 @@ jobs:
   deploy_app:
     name: Apply frontend image to staging-ha MIG
     needs: images
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vota-staging-ha]
     timeout-minutes: 60
     environment: staging
     permissions:
@@ -181,7 +181,7 @@ jobs:
   verify:
     name: Verify staging-ha after frontend deploy
     needs: [images, deploy_app]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vota-staging-ha]
     timeout-minutes: 45
     environment: staging
     permissions:
@@ -264,7 +264,7 @@ jobs:
     needs: [deploy_app, verify]
     # Chỉ rollback khi apply lỗi hoặc MIG/readiness không đạt.
     if: ${{ always() && (needs.deploy_app.result == 'failure' || needs.verify.result == 'failure') }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vota-staging-ha]
     timeout-minutes: 60
     environment: staging
     permissions:
