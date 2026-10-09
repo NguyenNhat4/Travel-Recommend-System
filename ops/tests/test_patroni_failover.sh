@@ -56,6 +56,8 @@ docker kill "$n1" >/dev/null
 
 echo '3. replica tự lên leader'
 wait_for 120 'node 2 thành leader sau khi mất node 1' is_leader "$n2"
+# /primary 200 báo node đã giữ leader lock, nhưng Postgres có thể còn đang promote: đợi đến khi nhận ghi.
+wait_for 60 'node 2 nhận ghi sau promote' bash -c "docker exec -u postgres $n2 psql -X -h /var/run/postgresql -U postgres -d postgres -Atqc 'SELECT pg_is_in_recovery()' | grep -qx f"
 rto=$(( $(date +%s) - t0 ))
 [[ "$(psqln "$n2" 'SELECT ref FROM booking_demo WHERE id=1')" == VP-12M-PHUQUOC ]] || { echo 'mất dữ liệu sau failover'; exit 1; }
 psqln "$n2" "INSERT INTO booking_demo VALUES (2,'SAU-FAILOVER')"
