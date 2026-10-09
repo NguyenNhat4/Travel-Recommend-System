@@ -8,7 +8,7 @@ from pathlib import Path
 import psycopg
 from psycopg.types.json import Jsonb
 
-from . import simulated_business
+from . import demo_data, simulated_business
 
 PRODUCT = ["product_id", "name", "taxonomy", "destination", "description", "attributes", "unit_price", "currency", "available",
            "available_from", "available_to", "image_url", "source_ref"]
@@ -93,6 +93,7 @@ def load_vota(url: str, data_dir: Path, reset: bool) -> dict[str, int]:
         conn.execute("UPDATE app.bookings SET confirmed_at = created_at WHERE status = 'confirmed' AND confirmed_at IS NULL")
         conn.execute("SELECT setval(pg_get_serial_sequence('cdp.events', 'event_id'), COALESCE((SELECT max(event_id) FROM cdp.events), 1))")
         counts.update(simulated_business.sync(conn, True))  # seed demo local luôn bật (data-model.md §3)
+        counts.update(demo_data.sync(conn))  # phòng, tuyến chiều ngược, vé phủ ngày, thành phần combo (data-model.md §3.1)
         conn.execute("ANALYZE")
     return counts
 
@@ -344,6 +345,7 @@ def upsert_catalog(url: str, data_dir: Path, retire_missing: bool = False) -> di
         """).rowcount
         added = copy_rows(conn, "catalog.combo_items", COMBO, combos)
         simulated = simulated_business.sync(conn)  # mặc định bật; SIMULATED_BUSINESS_FARES=0 thì khoá vé mô phỏng đã có
+        simulated.update(demo_data.sync(conn))  # sau bước tắt dòng vắng mặt (retire_missing) để dòng demo:* được dựng lại
     inserted = sum(1 for (flag,) in written if flag)
     return {
         "cdp.products before": before,

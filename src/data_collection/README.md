@@ -693,6 +693,18 @@ python -m data_collection.seed --as-of 2026-09-23 --seed 42 --reset
 
 Pipeline parse combo, chuẩn hoá cửa sổ đặt chỗ, sinh lịch sử CDP/app/Insider rồi nạp hai database bằng transaction. Vector không nằm trong PostgreSQL; sau khi seed, chạy `make index-vectors` ở repository root để chỉ embed text mới/đã đổi và đồng bộ collection `Product` của Weaviate. `purchase` thiếu `event_group_id` khoảng 3% là edge case cố ý và vẫn được giữ lại.
 
+Dữ liệu mô phỏng cho demo (`docs/prd/data-model.md` §3.1, chốt 09/10/2026): hạng phòng cho khách sạn chưa có phòng (`demo:room:*`),
+tuyến chiều ngược (`demo:reverse:*`) + vé phủ ngày (`demo:fill:*`), sản phẩm cho mọi thành phần combo + `price_share` (`demo:combo:*`).
+Mọi đường nạp catalog (seed, `--catalog-only`, job fresh) tự chạy `seed/demo_data.py` sau vé Thương gia mô phỏng; chạy tay khi cần
+(cả bốn bước trong một transaction, `--dry-run` chạy rồi ROLLBACK). Mỗi bước chỉ ghi dòng của mình, chạy lại không đổi gì; tắt bằng
+`SIMULATED_ROOMS=0` / `SIMULATED_FILL_FLIGHTS=0` / `SIMULATED_COMBO_ITEMS=0` thì khoá các dòng đó, không xoá. Từng bước có CLI riêng
+(`--dry-run` chỉ đọc), `combo_components --report` ghi quyết định từng thành phần ra JSON:
+
+```bash
+python -m data_collection.seed.demo_data --database-url-env SEED_DATABASE_URL [--as-of YYYY-MM-DD] [--dry-run]
+python -m data_collection.seed.combo_components --database-url-env SEED_DATABASE_URL --dry-run --report combo_report.json
+```
+
 Chạy kiểm tra từ repository root:
 
 ```bash

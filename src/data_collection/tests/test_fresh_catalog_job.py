@@ -365,14 +365,22 @@ class MaintainCatalogTests(unittest.TestCase):
         conn = _Conn([stale, seeded, current])
         sync = Mock(return_value={'simulatedBusiness': 0})
         combos = Mock(return_value={'combos': 2, 'combosChanged': 0})
+        demo = Mock(return_value={'simulatedRooms': 3})
+        order = Mock()
+        order.attach_mock(combos, 'combos')
+        order.attach_mock(demo, 'demo')
         with patch('psycopg.connect', return_value=conn), \
                 patch('data_collection.seed.simulated_business.sync', sync), \
+                patch('data_collection.seed.demo_data.sync', demo), \
                 patch('fresh_catalog_db.sync_combo_items', combos):
             counts = maintain_catalog('postgresql://unused', today=AS_OF,
                                       now=datetime(2026, 9, 24, tzinfo=timezone.utc))
         updates = {params[-1]: params for params in conn.updates}
-        self.assertEqual(counts, {'staleTrip': 1, 'windowRows': 1, 'simulatedBusiness': 0, 'combos': 2, 'combosChanged': 0})
+        self.assertEqual(counts, {'staleTrip': 1, 'windowRows': 1, 'simulatedBusiness': 0, 'combos': 2, 'combosChanged': 0,
+                                  'simulatedRooms': 3})
         sync.assert_called_once_with(conn)  # simulated business fares follow the rolled window (data-model.md §3)
+        demo.assert_called_once_with(conn, AS_OF)  # dữ liệu mô phỏng theo cửa sổ mới (data-model.md §3.1)
+        self.assertEqual([c[0] for c in order.mock_calls], ['combos', 'demo'])  # sau parse combo
         # combo được parse lại trên trạng thái catalog sau các cập nhật của chính transaction này
         state = {r['product_id']: r for r in combos.call_args.kwargs['rows']}
         self.assertEqual(combos.call_args.args, (conn,))

@@ -129,5 +129,27 @@ class ComboRoutesTests(unittest.TestCase):
         self.assertIn((hanoi, hcm), routes)
 
 
+
+class ComboDatesTests(unittest.TestCase):
+    """departDate / returnDate là ngày ISO (contract ProductAttributes.returnDate kiểu `date`), không phải "15/10" của trang."""
+
+    def test_dates_come_from_url_then_page_text_with_year(self):
+        import normalise as n
+        url = "https://vn.trip.com/packages/x?dDate=2026-10-14&rDate=2026-10-15&adult=2"
+        self.assertEqual(n._trip_combo_day("14/10", url, "dDate", "2026-10-01T00:00:00Z"), "2026-10-14")
+        self.assertEqual(n._trip_combo_day("15/10", url, "rDate", "2026-10-01T00:00:00Z"), "2026-10-15")
+        self.assertEqual(n._trip_combo_day("15/10", None, "rDate", "2026-10-01T00:00:00Z"), "2026-10-15")
+        self.assertEqual(n._trip_combo_day("05/01", None, "rDate", "2026-12-20T00:00:00Z"), "2027-01-05")  # qua năm
+        self.assertIsNone(n._trip_combo_day(None, None, "rDate", "2026-10-01T00:00:00Z"))
+        self.assertIsNone(n._trip_combo_day("31/02", None, "rDate", "2026-10-01T00:00:00Z"))
+
+    def test_trip_combo_product_writes_iso_dates(self):
+        import normalise as n
+        p = n.trip_combo_product({"hotelName": "Khách sạn A", "price": 1_415_500, "destination": "Đà Nẵng",
+                                  "fromCity": "Hà Nội", "toCity": "Đà Nẵng", "departDate": "14/10", "returnDate": "15/10",
+                                  "crawledAt": "2026-10-01T00:00:00Z", "url": "https://vn.trip.com/packages/x?dDate=2026-10-14&rDate=2026-10-15"})
+        self.assertEqual((p["attributes"]["departDate"], p["attributes"]["returnDate"]), ("2026-10-14", "2026-10-15"))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -9,6 +9,17 @@ SELECT 'events 6000-8000: '           || CASE WHEN count(*) BETWEEN 6000 AND 800
 SELECT 'combo_items >= 93: '          || CASE WHEN count(*) >= 93 THEN 'PASS' ELSE 'FAIL ('||count(*)||')' END FROM catalog.combo_items;
 SELECT 'every combo has items: '      || CASE WHEN count(*) = 0 THEN 'PASS' ELSE 'FAIL ('||count(*)||' combo trống)' END
   FROM cdp.products p WHERE taxonomy='combo' AND NOT EXISTS (SELECT 1 FROM catalog.combo_items c WHERE c.combo_product_id = p.product_id);
+-- Thành phần combo (docs/prd/data-model.md §3.1, chốt 09/10/2026): combo đã chia giá thì tổng price_share của các thành phần có sản phẩm
+-- đúng bằng giá combo (dịch vụ đi kèm có price_share NULL); sản phẩm comboOnly không là search unit, không được gợi ý.
+SELECT 'combo price_share sums to price: ' || CASE WHEN count(*) = 0 THEN 'PASS' ELSE 'FAIL ('||count(*)||' combo)' END
+  FROM (SELECT combo_product_id, sum(price_share) AS s, count(price_share) AS n,
+               count(*) FILTER (WHERE price_share IS NOT NULL AND item_product_id IS NULL) AS share_without_product
+          FROM catalog.combo_items GROUP BY combo_product_id) c
+  JOIN cdp.products p ON p.product_id = c.combo_product_id
+ WHERE c.n > 0 AND (c.s <> p.unit_price OR c.share_without_product > 0);
+SELECT 'comboOnly not searchable: ' || CASE WHEN count(*) = 0 THEN 'PASS' ELSE 'FAIL ('||count(*)||')' END
+  FROM catalog.product_meta m JOIN cdp.products p USING (product_id)
+ WHERE COALESCE((p.attributes->>'comboOnly')::boolean, false) AND (m.is_search_unit OR m.is_recommendable);
 SELECT 'purchase without group <= 4%: ' || CASE WHEN 100.0*count(*) FILTER (WHERE event_group_id IS NULL)/NULLIF(count(*),0) <= 4 THEN 'PASS' ELSE 'FAIL' END
   FROM cdp.events WHERE event_name='purchase';
 SELECT 'one destination per trip (<=1% bad): ' || CASE WHEN 100.0*count(*) FILTER (WHERE n > 1)/NULLIF(count(*),0) <= 1 THEN 'PASS' ELSE 'FAIL' END

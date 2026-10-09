@@ -1106,6 +1106,28 @@ def trip_hotel(r: dict, rates: dict[str, float]) -> tuple[dict | None, list[dict
     return prop, rooms
 
 
+def _trip_combo_day(value, url: str | None, key: str, crawled_at: str | None) -> str | None:
+    """Ngày đi / về của combo Trip dạng YYYY-MM-DD (contract `ProductAttributes.returnDate` là `date`). Trang chỉ ghi "dd/mm"
+    nên ưu tiên tham số URL (`dDate`, `rDate`); không có thì ghép năm suy từ lúc cào (ngày sớm hơn lúc cào quá 31 ngày → năm sau)."""
+    from urllib.parse import parse_qs, urlparse
+    found = iso_date((parse_qs(urlparse(url or "").query).get(key) or [None])[0])
+    if found:
+        return found
+    if iso_date(value):
+        return iso_date(value)
+    m = re.fullmatch(r"\s*(\d{1,2})/(\d{1,2})\s*", str(value or ""))
+    if not m:
+        return None
+    base = date.fromisoformat(iso_date(crawled_at) or date.today().isoformat())
+    try:
+        day = date(base.year, int(m.group(2)), int(m.group(1)))
+        if day < base - timedelta(days=31):
+            day = date(base.year + 1, day.month, day.day)
+    except ValueError:
+        return None
+    return day.isoformat()
+
+
 def trip_combo_product(r: dict) -> dict | None:
     """Combo bay+ở THẬT từ trip.com/packages (nguồn mới 23/09/2026, xem collectors/trip_combos.py) — khác với
     combo Vinpearl hiện có (vé trọn gói đơn lẻ, phân loại qua từ khoá trong tên, xem vinpearl_taxonomy()).
@@ -1136,8 +1158,8 @@ def trip_combo_product(r: dict) -> dict | None:
             "priceBasis": "per_person",
             "fromCode": r.get("fromCode"),
             "toCode": r.get("toCode"),
-            "departDate": r.get("departDate"),
-            "returnDate": r.get("returnDate"),
+            "departDate": _trip_combo_day(r.get("departDate"), r.get("url"), "dDate", r.get("crawledAt")),
+            "returnDate": _trip_combo_day(r.get("returnDate"), r.get("url"), "rDate", r.get("crawledAt")),
             "outboundFlight": out_seg or None,
             "inboundFlight": in_seg or None,
             "latitude": center[0] if center else None,
@@ -1343,13 +1365,27 @@ def trip_roundtrip_products(record: dict, route: dict) -> list[dict]:
     return out
 
 
+def _route_city(city: str, airports: list | None, code: str | None) -> str:
+    """Điểm đến chuẩn của một đầu tuyến bay: alias của tên thành phố, rồi điểm đến của sân bay (kế hoạch), rồi tên gốc."""
+    found = destination_in_text(city)
+    if found:
+        return found
+    from collectors.plan import DESTINATIONS
+    by_airport = {a: d.name for d in DESTINATIONS for a in d.airports}
+    for airport in [*(airports or []), code]:
+        if airport and str(airport).upper() in by_airport:
+            return by_airport[str(airport).upper()]
+    return city
+
+
 def trip_route_products(r: dict, flights_per_route: int) -> list[dict]:
     from_city, to_city = r.get("fromCity"), r.get("toCity")
     if not from_city or not to_city:
         return []
-    # tên hiển thị theo điểm đến chuẩn ("Đảo Phú Quốc" → "Phú Quốc"); giữ tên gốc nếu không khớp
-    from_city = normalise_destination(from_city) or from_city
-    to_city = normalise_destination(to_city) or to_city
+    # tên hiển thị theo điểm đến chuẩn ("Đảo Phú Quốc" → "Phú Quốc"); tên không khớp alias nào ("Điện Biên Phủ" — alias bỏ
+    # qua vì trùng tên đường) thì lấy điểm đến của sân bay trong kế hoạch, để originCity khớp /destinations; không có thì giữ tên gốc
+    from_city = _route_city(from_city, r.get("fromAirports"), r.get("fromCode"))
+    to_city = _route_city(to_city, r.get("toAirports"), r.get("toCode"))
     flights = [f for f in r.get("flights") or [] if f.get("flightNumber")]
     prices = [f["price"] for f in flights if f.get("price")]
     one_way = r.get("oneWay") or {}
