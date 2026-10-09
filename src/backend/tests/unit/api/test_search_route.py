@@ -59,7 +59,7 @@ def test_empty_query_reports_configured_cutoff_not_hardcoded():
     r = client.get("/api/v1/search", params={"q": ""})
     assert r.status_code == 200 and r.json()["cutoff"] == 0.52 and r.json()["results"] == []
     no_engine, _ = _client(None)
-    assert no_engine.get("/api/v1/search", params={"q": "resort"}).json()["cutoff"] == 0.62
+    assert no_engine.get("/api/v1/search", params={"q": "resort"}).json()["cutoff"] == 0.84
 
 
 # --- contract 1.16.0: travelContext.guests (POST) và log tìm kiếm (SEARCH_LOG_QUERIES) ----------------------------------
@@ -80,6 +80,34 @@ def test_post_travel_context_guests_reach_the_engine_only_when_present():
                  {"query": "resort", "travelContext": {"checkIn": "2026-10-10"}}, {"query": "resort", "travelContext": {"guests": {}}}):
         client.post("/api/v1/search", json=body)
         assert "adults" not in spy.calls[-1][1] and "children" not in spy.calls[-1][1], body
+
+
+def test_post_travel_context_dates_reach_the_engine_only_with_a_check_in():
+    from datetime import date
+    client, spy = _client(SpySearch())
+    r = client.post("/api/v1/search", json={"query": "resort", "travelContext": {"checkIn": "2026-10-10", "checkOut": "2026-10-12"}})
+    assert r.status_code == 200
+    kw = spy.calls[-1][1]
+    assert kw["check_in"] == date(2026, 10, 10) and kw["check_out"] == date(2026, 10, 12)
+    client.post("/api/v1/search", json={"query": "resort", "travelContext": {"checkIn": "2026-10-10"}})
+    assert spy.calls[-1][1]["check_in"] == date(2026, 10, 10) and spy.calls[-1][1]["check_out"] is None
+    for body in ({"query": "resort"}, {"query": "resort", "travelContext": {"checkOut": "2026-10-12"}},
+                 {"query": "resort", "travelContext": {"checkIn": None, "checkOut": None}},
+                 {"query": "resort", "travelContext": {"guests": {"adults": 2}}}):
+        client.post("/api/v1/search", json=body)
+        assert "check_in" not in spy.calls[-1][1] and "check_out" not in spy.calls[-1][1], body
+    both = client.post("/api/v1/search", json={"query": "resort", "travelContext": {
+        "checkIn": "2026-10-10", "checkOut": "2026-10-12", "guests": {"adults": 2}}})
+    assert both.status_code == 200 and spy.calls[-1][1]["adults"] == 2 and spy.calls[-1][1]["check_in"] == date(2026, 10, 10)
+
+
+def test_post_check_out_not_after_check_in_is_a_validation_error_before_the_engine():
+    client, spy = _client(SpySearch())
+    for check_out in ("2026-10-10", "2026-10-09"):
+        r = client.post("/api/v1/search", json={"query": "resort", "travelContext": {"checkIn": "2026-10-10", "checkOut": check_out}})
+        assert r.status_code == 400 and r.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert client.post("/api/v1/search", json={"query": "resort", "travelContext": {"checkIn": "10/10/2026"}}).status_code != 200
+    assert spy.calls == []
 
 
 def test_post_guests_out_of_contract_range_is_rejected_before_the_engine():

@@ -864,3 +864,89 @@ def parse_party(text: str, protected: Iterable[Span] = ()) -> PartyParse:
             spans.append((toks[s].start, toks[e - 1].end))
         prev_end = e
     return PartyParse(adults, children, total, tuple(spans))
+
+
+# ====================================================================================== F7: thời lượng chuyến đi
+#: "N ngày M đêm" · "3N2Đ" · "N ngày" · "M đêm" · "N days M nights" (spec tích hợp §2.2, contract 1.18.0 `queryPlan.duration`).
+#: Như số khách: chỉ chữ số 1–30 đứng NGAY TRƯỚC đơn vị (fold) — "ngày 15/10" (đơn vị đứng trước số), "45 ngày", "0 đêm",
+#: "3 tiếng", "qua đêm" / "ban đêm" / "chợ đêm" / "ngay trung tâm" (không có số trước) đều không nhận. Giá theo đêm ("2 triệu/đêm",
+#: "1.5 triệu một đêm") đã nằm trọn trong span của `parse_numeric` (`_absorb_unit_tail`) → tầng gọi truyền `protected`.
+_DAY_UNITS = frozenset({"ngay", "day", "days"})
+_NIGHT_UNITS = frozenset({"dem", "night", "nights"})
+#: Dạng viết tắt là MỘT token của `_TOKEN` ("3N2Đ" → `\d+\w*`), fold ra "3n2d".
+_COMPACT_DURATION = re.compile(r"^(\d{1,2})n(\d{1,2})d$")
+_DURATION_MIN, _DURATION_MAX = 1, 30
+#: Từ nối giữa hai cụm ("3 ngày và 2 đêm") — gộp thành một span như `_PARTY_LINKS`; dấu `,` `-` `/` gộp qua khoảng trống.
+_DURATION_LINKS = frozenset({"va"})
+_DURATION_GAP_CHARS = frozenset(" \t,-/")
+_DAYS, _NIGHTS = "days", "nights"
+
+
+@dataclass(frozen=True)
+class DurationParse:
+    days: int | None = None                 # "N ngày" / "N days" / nửa đầu "3N2Đ"
+    nights: int | None = None               # "M đêm" / "M nights" / nửa sau "3N2Đ"; không suy nửa thiếu
+    spans: tuple[Span, ...] = ()            # số + đơn vị (gộp cụm kề qua từ nối / dấu) — phần cắt khỏi BM25
+
+
+def _duration_at(toks: list[_Tok], i: int, prot: tuple[Span, ...]) -> tuple[dict[str, int], int] | None:
+    """Cụm thời lượng bắt đầu tại token i → ({days?, nights?}, token cuối+1); None nếu không phải."""
+    t = toks[i]
+    if _overlaps((t.start, t.end), prot):
+        return None
+    m = _COMPACT_DURATION.match(t.folded)
+    if m:
+        d, n = int(m.group(1)), int(m.group(2))
+        if _DURATION_MIN <= d <= _DURATION_MAX and _DURATION_MIN <= n <= _DURATION_MAX:
+            return {_DAYS: d, _NIGHTS: n}, i + 1
+        return None
+    if not _INT.match(t.raw) or not _DURATION_MIN <= int(t.raw) <= _DURATION_MAX or i + 1 >= len(toks):
+        return None
+    unit = toks[i + 1]
+    if _overlaps((unit.start, unit.end), prot):
+        return None
+    if unit.folded in _DAY_UNITS:
+        return {_DAYS: int(t.raw)}, i + 2
+    if unit.folded in _NIGHT_UNITS:
+        return {_NIGHTS: int(t.raw)}, i + 2
+    return None
+
+
+def _plain_gap(text: str, toks: list[_Tok], i: int) -> bool:
+    """Khoảng trước token i chỉ gồm khoảng trắng / `,` `-` `/` — hai cụm thời lượng kề nhau được gộp qua nó."""
+    return set(_gap(text, toks, i)) <= _DURATION_GAP_CHARS
+
+
+def parse_duration(text: str, protected: Iterable[Span] = ()) -> DurationParse:
+    """F7: số ngày / số đêm trong câu. `protected` = đoạn `parse_numeric` + `parse_party` đã tiêu — số trong đó (giá theo đêm,
+    số khách) không bao giờ là thời lượng. Nêu nhiều lần thì lấy lần đầu mỗi loại nhưng mọi cụm khớp đều bị tiêu."""
+    prot = tuple(protected)
+    toks = _toks(text)
+    found: list[tuple[dict[str, int], int, int]] = []        # (giá trị, token đầu, token cuối+1)
+    i = 0
+    while i < len(toks):
+        hit = _duration_at(toks, i, prot)
+        if hit is None:
+            i += 1
+            continue
+        found.append((hit[0], i, hit[1]))
+        i = hit[1]
+    if not found:
+        return DurationParse()
+    first: dict[str, int] = {}
+    for values, _, _ in found:
+        for k, v in values.items():
+            first.setdefault(k, v)
+    spans: list[Span] = []
+    prev_end = None
+    for _, s, e in found:
+        joined = prev_end is not None and (
+            (s == prev_end and _plain_gap(text, toks, s))
+            or (s == prev_end + 1 and toks[prev_end].folded in _DURATION_LINKS
+                and _plain_gap(text, toks, prev_end) and _plain_gap(text, toks, s)))
+        if joined:
+            spans[-1] = (spans[-1][0], toks[e - 1].end)
+        else:
+            spans.append((toks[s].start, toks[e - 1].end))
+        prev_end = e
+    return DurationParse(first.get(_DAYS), first.get(_NIGHTS), tuple(spans))

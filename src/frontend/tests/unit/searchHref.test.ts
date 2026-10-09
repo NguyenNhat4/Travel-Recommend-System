@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildSearchHref, filterDestinations, fold, matchDestination, pickParam } from '../../src/features/catalog/landing/searchHref';
+import { buildSearchHref, filterDestinations, fold, isDefaultQuery, matchDestination, pickParam } from '../../src/features/catalog/landing/searchHref';
 
 const DESTS = [{ destination: 'Đà Nẵng' }, { destination: 'Nha Trang' }, { destination: 'Phú Quốc' }];
 
@@ -30,12 +30,12 @@ describe('filterDestinations', () => {
 describe('buildSearchHref', () => {
   const trip = { checkIn: '2026-10-15', checkOut: '2026-10-17', adults: 2, children: 1, rooms: 1 };
 
-  it('uses the category default query when nothing is typed and adds trip context', () => {
+  it('stays on the category page, uses the default query when nothing is typed and adds trip context', () => {
     const href = buildSearchHref({ taxonomy: 'hotel', origin: '', location: '', destination: null, trip });
     const url = new URL(href, 'http://x');
-    expect(url.pathname).toBe('/search');
+    expect(url.pathname).toBe('/hotels');
     expect(url.searchParams.get('q')).toBe('khách sạn');
-    expect(url.searchParams.get('type')).toBe('hotel');
+    expect(url.searchParams.get('type')).toBeNull();
     expect(url.searchParams.get('destination')).toBeNull();
     expect(url.searchParams.get('checkIn')).toBe('2026-10-15');
     expect(url.searchParams.get('checkOut')).toBe('2026-10-17');
@@ -54,6 +54,26 @@ describe('buildSearchHref', () => {
     expect(free.searchParams.get('destination')).toBeNull();
   });
 
+  it('routes each category to its own page and writes type only for a non-first tab', () => {
+    const base = { origin: '', location: '', destination: 'Nha Trang', trip: {} };
+    const attraction = new URL(buildSearchHref({ ...base, taxonomy: 'attraction' }), 'http://x');
+    expect(attraction.pathname).toBe('/experiences');
+    expect(attraction.searchParams.get('type')).toBeNull();
+    expect(attraction.searchParams.get('destination')).toBe('Nha Trang');
+    const golf = new URL(buildSearchHref({ ...base, taxonomy: 'golf' }), 'http://x');
+    expect(golf.pathname).toBe('/experiences');
+    expect(golf.searchParams.get('type')).toBe('golf');
+    const combo = new URL(buildSearchHref({ ...base, taxonomy: 'combo' }), 'http://x');
+    expect(combo.pathname).toBe('/combos');
+    expect(combo.searchParams.get('type')).toBeNull();
+  });
+
+  it('flights keep the /search fallback (the page itself searches in place)', () => {
+    const url = new URL(buildSearchHref({ taxonomy: 'flight', origin: '', location: '', destination: null, trip: {} }), 'http://x');
+    expect(url.pathname).toBe('/search');
+    expect(url.searchParams.get('type')).toBe('flight');
+  });
+
   it('puts the flight origin in the query and searches "vé máy bay" without one', () => {
     const from = new URL(buildSearchHref({ taxonomy: 'flight', origin: ' Hà Nội ', location: 'Đà Nẵng', destination: 'Đà Nẵng', trip: {} }), 'http://x');
     expect(from.searchParams.get('q')).toBe('Hà Nội');
@@ -63,7 +83,15 @@ describe('buildSearchHref', () => {
   });
 
   it('ends without a dangling & when there is no trip context', () => {
-    expect(buildSearchHref({ taxonomy: 'golf', origin: '', location: '', destination: null, trip: {} })).toBe('/search?q=s%C3%A2n+golf&type=golf');
+    expect(buildSearchHref({ taxonomy: 'golf', origin: '', location: '', destination: null, trip: {} })).toBe('/experiences?q=s%C3%A2n+golf&type=golf');
+  });
+});
+
+describe('isDefaultQuery', () => {
+  it('recognises the per-category default queries only', () => {
+    expect(isDefaultQuery('khách sạn')).toBe(true);
+    expect(isDefaultQuery(' Sân Golf ')).toBe(true);
+    expect(isDefaultQuery('resort yên tĩnh')).toBe(false);
   });
 });
 

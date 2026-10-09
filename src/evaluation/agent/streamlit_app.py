@@ -124,6 +124,11 @@ def render_response(body: dict[str, Any]) -> None:
         total = plan.get("estimatedTotal")
         if total is not None:
             st.metric("Tổng sản phẩm ước tính", f"{total:,} {plan.get('currency', 'VND')}")
+        duplicates = [w for w in body.get("warnings") or [] if w.get("code") == "PRODUCT_DROPPED_DUPLICATE"]
+        if duplicates:  # node `filter` (AC-AGT-04, chốt 2026-10-08)
+            with st.expander(f"Đã loại vì trùng ({len(duplicates)})", expanded=False):
+                for warning in duplicates:
+                    st.caption(f"• {warning['message']} (`{warning.get('productId')}`)")
         if body.get("warnings"):
             with st.expander("Lưu ý về giá và khả dụng", expanded=False):
                 for warning in body["warnings"]:

@@ -174,6 +174,21 @@ describe('AssistantResultPanel', () => {
       ]);
     });
 
+    it('books each hotel of a hotel change from the day of its first night (AC-AGT-04, contract 1.19.0)', () => {
+      const south = { ...hotel, productId: 'hotel-2', name: 'Khách sạn Nam đảo' };
+      const day = (n: number) => ({ day: n, date: `2026-10-0${n}`, slots: [] });
+      const itinerary = {
+        ...(completed.status === 'COMPLETED' ? completed.itinerary : (undefined as never)),
+        stay: { product: hotel, nights: 2, fromNight: 1 },
+        stays: [{ product: hotel, nights: 2, fromNight: 1 }, { product: south, nights: 2, fromNight: 3 }],
+        days: [1, 2, 3, 4, 5].map(day),
+      };
+      expect(itineraryCartItems(itinerary)).toEqual([
+        { product: hotel, usingDate: '2026-10-01', checkOutDate: '2026-10-03' },
+        { product: south, usingDate: '2026-10-03', checkOutDate: '2026-10-05' },
+      ]);
+    });
+
     it('attaches the itinerary party to every cart item so the cart gets adults and children', () => {
       const party = { adults: 2, children: 1 };
       expect(itineraryCartItems(completed.status === 'COMPLETED' ? completed.itinerary : (undefined as never), party)).toEqual([
@@ -182,16 +197,12 @@ describe('AssistantResultPanel', () => {
       ]);
     });
 
-    it('pays the whole itinerary in one go and books single items, with the intent party', () => {
+    it('books single items only (no pay-all button), with the intent party', () => {
       const onAddToCart = vi.fn();
       const onBookNow = vi.fn();
       render(<AssistantResultPanel response={completed} onAddToCart={onAddToCart} onBookNow={onBookNow} />);
       const party = { adults: 2, children: 1 };                                 // intent.party của fixture
-      fireEvent.click(screen.getByRole('button', { name: /Thanh toán tất cả \(2\)/ }));
-      expect(onBookNow).toHaveBeenLastCalledWith([
-        { product: hotel, usingDate: '2026-10-01', checkOutDate: '2026-10-02', party },
-        { product: ticket, usingDate: '2026-10-01', party },
-      ]);
+      expect(screen.queryByRole('button', { name: /Thanh toán tất cả/ })).toBeNull();
       // Khách sạn chỉ đặt trực tiếp: Thêm vào giỏ chỉ có ở vé ngày 1 và ngày 2; vé hết chỗ không có nút nào.
       expect(screen.getAllByRole('button', { name: 'Thêm vào giỏ' })).toHaveLength(2);
       fireEvent.click(screen.getAllByRole('button', { name: 'Thêm vào giỏ' })[1]);

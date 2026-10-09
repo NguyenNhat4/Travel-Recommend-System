@@ -35,6 +35,9 @@ test('Home loads one catalog request up front and the rest only when scrolled to
 test('header groups open by keyboard and lead to the category pages', async ({ page }) => {
   await mockApi(page);
   await page.goto('/');
+  // Thanh nhóm nằm trong Suspense (useSearchParams): client thay nút render sẵn bằng nút mới sau hydrate.
+  // Focus trước lúc đó thì focus rơi về body và Enter không mở menu.
+  await page.waitForLoadState('networkidle');
   const stay = page.getByRole('button', { name: 'Lưu trú' });
   await stay.focus();
   await page.keyboard.press('Enter');
@@ -100,23 +103,41 @@ test('header controls share one 40px height and the header has no assistant entr
   await expect(header.getByText('Trợ lý AI')).toHaveCount(0);
 });
 
-test('the hotels search sheet goes to /search with the chosen destination, and /search shows no trip-context chip', async ({ page }) => {
-  await mockApi(page);
+test('the hotels search sheet shows results on /hotels itself, not on /search', async ({ page }) => {
+  const requests = await mockApi(page);
   await page.goto('/hotels');
   await page.getByRole('combobox').click();
   await page.getByRole('option', { name: 'Nha Trang' }).click();
   await page.getByRole('button', { name: 'Tìm kiếm' }).click();
 
-  await expect(page).toHaveURL(/\/search\?/);
+  // Đề xuất PRD update-archive/2026-10-07-tim-kiem-tai-trang-danh-muc.md: ở lại trang danh mục, kết quả hiện ngay dưới tấm tìm kiếm.
+  await expect(page).toHaveURL(/\/hotels\?/);
   const url = new URL(page.url());
-  expect(url.searchParams.get('type')).toBe('hotel');
+  expect(url.pathname).toBe('/hotels');
+  expect(url.searchParams.get('q')).toBe('khách sạn');
   expect(url.searchParams.get('destination')).toBe('Nha Trang');
   expect(url.searchParams.get('adults')).toBe('2');
   expect(url.searchParams.get('checkIn')).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-  // Spec frontend §4.1a/§4.2: /search chỉ nối ngữ cảnh chuyến đi vào liên kết sản phẩm, không hiện chip ngày/số khách; điểm đến là chip có ✕.
-  await expect(page.getByRole('tab', { name: /^Lưu trú/ })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('heading', { level: 2, name: 'Khách sạn tại Nha Trang' })).toBeVisible();
+  await expect(page.getByText('Sản phẩm 1').first()).toBeVisible();
+  await expect(page.getByText('Bộ lọc tìm kiếm')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Bỏ lọc Nha Trang' })).toBeVisible();
-  await expect(page.getByText(/Chuyến đi:/)).toHaveCount(0);
+  await expect(page.getByRole('tab', { name: /^Lưu trú/ })).toHaveCount(0);
+  expect(requests).toContain('/api/v1/search');
+
+  // Bỏ chip điểm đến thì vẫn ở /hotels, giữ nguyên lần tìm.
+  await page.getByRole('button', { name: 'Bỏ lọc Nha Trang' }).click();
+  await expect(page).not.toHaveURL(/destination=/);
+  expect(new URL(page.url()).pathname).toBe('/hotels');
+  expect(new URL(page.url()).searchParams.get('q')).toBe('khách sạn');
+});
+
+test('opening /hotels?q=… directly shows results and prefills the sheet', async ({ page }) => {
+  await mockApi(page);
+  await page.goto('/hotels?q=khách+sạn&destination=Nha+Trang&checkIn=2099-10-20&checkOut=2099-10-22&adults=3&rooms=2');
+  await expect(page.getByText('Sản phẩm 1').first()).toBeVisible();
+  await expect(page.getByRole('combobox')).toHaveValue('Nha Trang');
+  await expect(page.getByRole('button', { name: /Số lượng 2 phòng, 3 người lớn/ })).toBeVisible();
 });
 
 for (const path of ['/', '/hotels', '/flights', '/experiences', '/combos']) {

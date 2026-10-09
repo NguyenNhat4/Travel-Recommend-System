@@ -24,12 +24,13 @@ import {
   travelerLabel, displayName, fixLead, type Allocation, type CartState, type FlightDraft, type RoomDraft, type TravelerDraft,
 } from './allocation';
 import {
-  MAX_PARTY, checkContact, checkItems, checkParty, fareTypeOn, formatDmy, isInfantOn, maskDmy, messageFor, normalizeName,
+  MAX_ROOMS, checkContact, checkItems, checkParty, fareTypeOn, formatDmy, isInfantOn, maskDmy, messageFor, normalizeName, orderPartyCap,
   parseDmy, splitFullName, type Violation,
 } from './checkoutRules';
 import { useCheckoutSource } from './checkoutSource';
 import { createPatchQueue } from './patchQueue';
 import { mapValidationFields, type Step, type SummaryEntry } from './serverErrors';
+import { stepHistoryState, useLeaveGuard } from './useLeaveGuard';
 
 export const STEPS: Array<{ key: Step; label: string }> = [
   { key: 'travelers', label: 'Hành khách' },
@@ -124,6 +125,13 @@ export function useCheckout() {
   const [method, setMethod] = useState<'stripe'>('stripe');
   const [submitting, setSubmitting] = useState(false);
 
+  // Hỏi lại trước khi khách rời trang (FR-BKG-01): chỉ khi ba bước đang hiển thị và chưa gửi đơn. Màn hình hết hạn, không tìm
+  // thấy, đang tải và lúc đang sang Stripe thì không hỏi.
+  const { prompt: leavePrompt, stay: stayOnCheckout, leave: confirmLeave, allowLeave } = useLeaveGuard({
+    active: source.status === 'ready' && items.length > 0 && drafts.length > 0 && !submitting,
+    fallback: source.kind === 'cart' ? '/cart' : '/',
+  });
+
   // --- tham chiếu mới nhất cho mã bất đồng bộ (PATCH nối tiếp, submit) --------------------------------------------
   // Cập nhật sau mỗi lần vẽ (khai báo đầu tiên nên chạy trước các effect bên dưới); các hàm xử lý sự kiện tự ghi thẳng vào đây khi
   // cần thấy ngay giá trị mới (hai thao tác liên tiếp trước khi React kịp vẽ lại).
@@ -170,7 +178,7 @@ export function useCheckout() {
     // Mở thẳng một bước sau khi chưa có dữ liệu (tải lại trang): về bước đầu và nói rõ vì sao.
     if (readStep() !== 'travelers') {
       setNotice(RELOAD_NOTE);
-      window.history.replaceState(null, '', stepUrl('travelers', source.draftId));
+      window.history.replaceState(stepHistoryState('replace'), '', stepUrl('travelers', source.draftId));
       setStepState('travelers');
     }
   }, [cart, currentPersona, authReady, source.draftId]);
@@ -205,8 +213,11 @@ export function useCheckout() {
 
   // Giỏ rỗng thì về /cart (§6.2), trừ khi đang gửi đơn. Đơn nháp không còn mục nào (đã bỏ mục cuối) thì về trang chủ.
   useEffect(() => {
-    if (cart && cart.items.length === 0 && !submitting) navigate(source.kind === 'cart' ? '/cart' : '/');
-  }, [cart, submitting, navigate, source.kind]);
+    if (cart && cart.items.length === 0 && !submitting) {
+      allowLeave();
+      navigate(source.kind === 'cart' ? '/cart' : '/');
+    }
+  }, [cart, submitting, navigate, source.kind, allowLeave]);
 
   // Nút Back / Forward của trình duyệt đổi `?step=` mà không mất dữ liệu (§6.2).
   useEffect(() => {
@@ -219,6 +230,8 @@ export function useCheckout() {
   const travelers = useMemo(() => drafts.map(draftToTraveler), [drafts]);
   const earliest = useMemo(() => items.reduce<string | null>((min, i) => (min === null || i.usingDate < min ? i.usingDate : min), null), [items]);
   const facts = useMemo(() => items.map(cartFactsOf), [items]);
+  // Trần của đoàn: theo mục lớn nhất trong đơn (khách sạn 9 khách mỗi phòng, loại khác 9 khách; FR-BKG-08).
+  const partyCap = useMemo(() => orderPartyCap(facts), [facts]);
   const adult1 = drafts.find((d) => d.type === 'ADULT');
   const contactFullName = syncContact && adult1 ? normalizeName(`${adult1.surname} ${adult1.givenNames}`) : contactName;
   const labels = useMemo(() => Object.fromEntries(drafts.map((d) => [d.ref, travelerLabel(d, drafts)])), [drafts]);
@@ -234,14 +247,14 @@ export function useCheckout() {
   }, [flightDates]);
 
   const partyViolations = useCallback((): Violation[] => {
-    const party = checkParty(toTravelerInputs(latest.current.drafts, hasFlight), { earliest, today: todayVn(), flightDates });
+    const party = checkParty(toTravelerInputs(latest.current.drafts, hasFlight), { earliest, today: todayVn(), flightDates, maxParty: partyCap });
     // Thứ tự hiển thị trên màn hình (thẻ hành khách rồi tới người liên hệ) quyết định lỗi nào được đưa con trỏ tới trước.
     const contact = checkContact(contactInputOf(contactFullName, phone, email));
     // Khách chưa đăng nhập chưa có email: email nhận thông tin lấy theo tài khoản, và tạo đơn luôn cần đăng nhập (R-CHK-06),
     // nên chỉ kiểm email khi đã có tài khoản. Nhờ vậy khách điền được cả ba bước trước khi đăng nhập.
     const signedIn = Boolean(currentPersona);
     return [...party.violations, ...contact.filter((v) => signedIn || v.field !== 'contact.email')];
-  }, [earliest, flightDates, hasFlight, contactFullName, phone, email, currentPersona]);
+  }, [earliest, flightDates, hasFlight, partyCap, contactFullName, phone, email, currentPersona]);
 
   /**
    * Lỗi từng thẻ dịch vụ, tính trực tiếp từ phân bổ hiện tại (bước ②). Trong lúc PATCH của một mục còn chờ hoặc đang chạy thì
@@ -259,7 +272,8 @@ export function useCheckout() {
 
   const goto = useCallback((next: Step, opts: { replace?: boolean; refresh?: boolean } = {}) => {
     const url = stepUrl(next, source.draftId);
-    if (opts.replace) window.history.replaceState(null, '', url); else window.history.pushState(null, '', url);
+    // Giữ dấu của mục lịch sử để nút Back ở bước đầu vẫn rơi vào mục chặn rời trang (useLeaveGuard).
+    if (opts.replace) window.history.replaceState(stepHistoryState('replace'), '', url); else window.history.pushState(stepHistoryState('push'), '', url);
     setStepState(next);
     setSummary([]);
     focusHeading();
@@ -295,7 +309,7 @@ export function useCheckout() {
 
   const addTraveler = (type: 'ADULT' | 'CHILD') => {
     const counts = partyCounts(drafts);
-    if (counts.adults + counts.children >= MAX_PARTY) return;
+    if (counts.adults + counts.children >= orderPartyCap(latest.current.items.map(cartFactsOf))) return;
     const ref = `t${seq + 1}`;
     setSeq(seq + 1);
     const draft: TravelerDraft = { ref, type, surname: '', givenNames: '', birthText: '', flight: blankFlight() };
@@ -448,7 +462,7 @@ export function useCheckout() {
   }));
 
   const addRoom = (cartItemId: string) => editAlloc(cartItemId, (alloc, item) => {
-    if (alloc.rooms.length >= MAX_PARTY) return alloc;
+    if (alloc.rooms.length >= MAX_ROOMS) return alloc;
     // Phòng mới nhận người lớn chưa đứng tên phòng nào (nút chỉ hiện khi còn người lớn như vậy).
     const leads = new Set(alloc.rooms.map((r) => r.lead));
     const spare = latest.current.drafts.find((d) => fareTypeOn(draftToTraveler(d), item.usingDate) === 'ADULT'
@@ -586,6 +600,7 @@ export function useCheckout() {
     const details = error.details ?? {};
     switch (error.code) {
       case 'CART_EMPTY':
+        allowLeave();
         navigate('/cart');
         return;
       case 'BOOKING_PENDING_PAYMENT':
@@ -666,6 +681,8 @@ export function useCheckout() {
     try {
       const booking: BookingResponse = await bookingApi.createBooking(request);
       rememberBooking(booking);
+      // Khách đang hoàn tất đơn: lần rời trang này không hỏi lại.
+      allowLeave();
       // Giữ nút ở trạng thái đang xử lý trong lúc trình duyệt rời sang trang Stripe.
       if (booking.payment?.checkoutUrl) bookingApi.redirectToCheckout(booking.payment.checkoutUrl);
       else navigate(`/booking/${booking.referenceCode}`);
@@ -695,6 +712,8 @@ export function useCheckout() {
 
   const continuePending = async () => {
     if (!pendingHold) return;
+    // Tiếp tục đơn đang giữ chỗ là hoàn tất đơn, không phải bỏ dở: không hỏi lại.
+    allowLeave();
     try {
       const held = await bookingApi.getBooking(pendingHold.referenceCode);
       rememberBooking(held);
@@ -723,9 +742,9 @@ export function useCheckout() {
 
   return {
     // dữ liệu
-    cart, items, email, currentPersona, authReady, earliest, facts,
+    cart, items, email, currentPersona, authReady, earliest, facts, partyCap,
     sourceKind: source.kind, sourceStatus: source.status, draftId: source.draftId, draftExpiresAt: source.expiresAt,
-    expiredItems: source.expiredItems, leave,
+    expiredItems: source.expiredItems, leave, leavePrompt, stayOnCheckout, confirmLeave,
     drafts, travelers, hasFlight, flightDates, isInfant, contactFullName, phone, syncContact, allocs, special, confirmRemove,
     step, done, errors, summary, serverItemErrors, serverRoomErrors, itemViolations, patchErrors, busy, pending, anyPending,
     notice, cartChanged, banner, pendingHold, termsAgreed, method, submitting, hasUnavailable, labels,

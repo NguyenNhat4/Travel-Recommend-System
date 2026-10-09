@@ -27,7 +27,7 @@ export const AccountShell: React.FC<{ children: React.ReactNode }> = ({ children
       <aside className="grid content-start gap-3 md:sticky md:top-4">
         {currentPersona && (
           <div className="hidden items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3.5 md:flex">
-            <span aria-hidden="true" className="grid h-11 w-11 flex-none place-items-center rounded-full bg-blue-600 text-[17px] font-bold text-white">
+            <span aria-hidden="true" className="grid h-11 w-11 flex-none place-items-center rounded-full bg-brand-600 text-[17px] font-bold text-white">
               {initialsOf(currentPersona.name)}
             </span>
             <div className="min-w-0">
@@ -43,7 +43,7 @@ export const AccountShell: React.FC<{ children: React.ReactNode }> = ({ children
               <Link
                 key={href} href={href} aria-current={current ? 'page' : undefined}
                 className={`flex min-h-11 items-center justify-center gap-2.5 rounded-xl px-3 text-sm transition-colors md:justify-start ${
-                  current ? 'bg-blue-50 font-semibold text-blue-700' : 'font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                  current ? 'bg-brand-50 font-semibold text-brand-700' : 'font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                 }`}
               >
                 <Icon className="h-[18px] w-[18px] flex-none" aria-hidden={true} />

@@ -278,7 +278,7 @@ const StatusCard: React.FC<{
 
   if (booking.status === 'PENDING_PAYMENT' && payment?.status === 'SUCCEEDED') {
     return (
-      <CenteredCard icon={<Loader2 className="w-10 h-10 text-blue-600 animate-spin" />} title="Đã nhận thanh toán, đang xác nhận đơn">
+      <CenteredCard icon={<Loader2 className="w-10 h-10 text-brand-600 animate-spin" />} title="Đã nhận thanh toán, đang xác nhận đơn">
         <p className="text-xs text-slate-500">Bạn có thể đóng trang, đơn sẽ tự cập nhật.</p>
       </CenteredCard>
     );
@@ -298,7 +298,7 @@ const StatusCard: React.FC<{
     const confirming = paymentReturn === 'return' && !pollsExhausted;
     return (
       <CenteredCard
-        icon={confirming ? <Loader2 className="w-10 h-10 text-blue-600 animate-spin" /> : <Clock className="w-10 h-10 text-amber-500" />}
+        icon={confirming ? <Loader2 className="w-10 h-10 text-brand-600 animate-spin" /> : <Clock className="w-10 h-10 text-amber-500" />}
         title={confirming ? 'Đang kiểm tra thanh toán...' : 'Đơn đang được giữ chỗ'}
       >
         {booking.holdExpiresAt && (
@@ -337,7 +337,7 @@ const StatusCard: React.FC<{
           <PrimaryButton onClick={onHome}><Home className="w-4 h-4" /> Xem gợi ý mới trên trang chủ</PrimaryButton>
           <button
             onClick={onAssistant}
-            className="w-full sm:w-auto px-6 py-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-xs sm:text-sm rounded-xl flex items-center justify-center gap-2"
+            className="w-full sm:w-auto px-6 py-3 bg-brand-50 hover:bg-brand-100 text-brand-700 border border-brand-200 font-bold text-xs sm:text-sm rounded-xl flex items-center justify-center gap-2"
           >
             <Sparkles className="w-4 h-4" /> Lên lịch trình cho chuyến {booking.groups[0]?.destination}
           </button>
@@ -391,7 +391,7 @@ function TravelerName({ traveler }: { traveler: BookingTraveler }) {
     <span className="whitespace-nowrap">
       {traveler.fullName}
       {traveler.type === 'CHILD' && <span className="text-slate-400"> (trẻ em)</span>}
-      {traveler.isLead && <span className="ml-1 rounded bg-blue-50 px-1 py-0.5 text-[10px] font-semibold text-blue-700">Đại diện nhận phòng</span>}
+      {traveler.isLead && <span className="ml-1 rounded bg-brand-50 px-1 py-0.5 text-[10px] font-semibold text-brand-700">Đại diện nhận phòng</span>}
     </span>
   );
 }
@@ -492,7 +492,7 @@ const NextForTrip: React.FC<{
           <h2 className="text-lg font-black text-slate-900">TIẾP THEO CHO CHUYẾN {destination.toUpperCase()}</h2>
           <p className="text-xs text-slate-600">Vì bạn vừa đặt dịch vụ tại {destination} — đây là các đề xuất bổ trợ cho hành trình.</p>
         </div>
-        <button onClick={() => setShowWhy(true)} className="text-xs font-semibold text-blue-700 hover:text-blue-800 flex items-center gap-1">
+        <button onClick={() => setShowWhy(true)} className="text-xs font-semibold text-brand-700 hover:text-brand-800 flex items-center gap-1">
           <HelpCircle className="w-3.5 h-3.5" /> Vì sao?
         </button>
       </div>
@@ -535,7 +535,7 @@ const REBOOK_HINT = 'Bạn có thể đặt lại các dịch vụ của đơn n
 const RebookButton: React.FC<{ onClick: () => void; busy: boolean }> = ({ onClick, busy }) => (
   <button
     onClick={onClick} disabled={busy}
-    className="w-full sm:w-auto px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-bold text-xs sm:text-sm rounded-xl shadow-xs transition-colors inline-flex items-center justify-center gap-2"
+    className="w-full sm:w-auto px-6 py-3 bg-brand-600 hover:bg-brand-700 disabled:bg-slate-300 text-white font-bold text-xs sm:text-sm rounded-xl shadow-xs transition-colors inline-flex items-center justify-center gap-2"
   >
     {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Đặt lại
   </button>
@@ -544,7 +544,7 @@ const RebookButton: React.FC<{ onClick: () => void; busy: boolean }> = ({ onClic
 const PrimaryButton: React.FC<{ onClick: () => void; children: React.ReactNode }> = ({ onClick, children }) => (
   <button
     onClick={onClick}
-    className="w-full sm:w-auto px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow-xs transition-colors inline-flex items-center justify-center gap-2"
+    className="w-full sm:w-auto px-6 py-3 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow-xs transition-colors inline-flex items-center justify-center gap-2"
   >
     {children}
   </button>
@@ -554,7 +554,7 @@ const ReferenceCode: React.FC<{ code: string; copied: boolean; onCopy: () => voi
   <div className="inline-flex items-center gap-3 px-5 py-3 rounded-2xl bg-slate-50 border border-slate-200">
     <div className="text-left">
       <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Mã đặt chỗ</span>
-      <span className="font-mono text-lg font-black text-blue-900 tracking-wider">{code}</span>
+      <span className="font-mono text-lg font-black text-brand-900 tracking-wider">{code}</span>
     </div>
     <button onClick={onCopy} className="p-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 text-slate-600" title="Sao chép mã">
       {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}

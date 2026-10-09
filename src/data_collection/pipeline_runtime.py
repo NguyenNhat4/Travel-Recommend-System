@@ -13,7 +13,11 @@ import catalog_run_lock
 import log
 
 from fresh_run_log import (HISTORY_FILE, LIVE_FILE, RUNNING_FILE, STOP_FILE, descendants,
-                           read_json, write_json, _terminate)
+                           read_json, terminate_tree, write_json, _terminate)
+
+# Bước cào chạy trong tiến trình con riêng (crawl.py, pid ghi ở detail.pid): quá hạn thì supervisor chỉ dừng cây tiến trình
+# của nguồn đó, lượt chạy tiếp nguồn sau. Chỉ khi nguồn vẫn "running" quá mức này sau đó mới dừng cả lượt.
+SOURCE_KILL_GRACE = 180.0
 
 
 def kill_worker(proc: subprocess.Popen, grace: float = 2, before_release=None) -> None:
@@ -76,18 +80,23 @@ def finish_interrupted(state: Path, runs: Path, pid: int, reason: str, *, stoppe
 
 
 def supervise(command: list[str], state: Path, runs: Path, *, max_seconds: float,
-              step_seconds: dict[str, float], stop_grace: float = 20, poll: float = 0.5) -> int:
+              step_seconds: dict[str, float], stop_grace: float = 20, poll: float = 0.5, on_killed=None) -> int:
     """Bound even cancellation-resistant coroutines, native calls and thread joins.
 
     State belongs to the worker PID: a rejected concurrent launch never modifies another run.
     Resume can reuse all committed DB rows, raw files and checkpoints after a forced stop.
+    `on_killed(run_id, stopped)`: gọi sau khi lượt bị dừng cưỡng bức hoặc tiến trình chết bất thường (vd. hết RAM), khoá đã
+    thả — fresh_catalog.main dùng để chạy tiếp lượt từ bước chuẩn hoá.
     """
     started = time.monotonic()
     proc = subprocess.Popen(command, start_new_session=True)
     stop_seen = None
+    source_killed: dict[tuple, float] = {}  # (bước, startedAt) → lúc đã dừng riêng tiến trình nguồn
+    run_id = None
     try:
         while proc.poll() is None:
             _, data = active_run(state, runs, proc.pid)
+            run_id = data.get('id') or run_id
             elapsed = time.monotonic() - started
             reason = 'Vượt hạn giờ toàn lượt (run.maxHours)' if elapsed >= max_seconds else None
             now = datetime.now(timezone.utc)
@@ -99,9 +108,20 @@ def supervise(command: list[str], state: Path, runs: Path, *, max_seconds: float
                     age = (now - datetime.fromisoformat(entry['startedAt'])).total_seconds()
                 except (ValueError, KeyError):
                     continue
-                if age > limit:
-                    reason = f"Bước {entry['name']} vượt hạn {limit:g}s; dừng tiến trình để giải phóng khóa an toàn"
-                    break
+                if age <= limit:
+                    continue
+                pid = (entry.get('detail') or {}).get('pid')
+                key = (entry['name'], entry.get('startedAt'))
+                if isinstance(pid, int) and key not in source_killed:
+                    source_killed[key] = time.monotonic()
+                    log.emit('catalog.supervisor.source', f"catalog.supervisor: bước {entry['name']} vượt hạn {limit:g}s; "
+                             f"chỉ dừng tiến trình nguồn (pid {pid}), lượt chạy tiếp", 'ERROR', step=entry['name'])
+                    terminate_tree(pid)
+                    continue
+                if key in source_killed and time.monotonic() - source_killed[key] < SOURCE_KILL_GRACE:
+                    continue
+                reason = f"Bước {entry['name']} vượt hạn {limit:g}s; dừng tiến trình để giải phóng khóa an toàn"
+                break
             request = read_json(state / STOP_FILE, {}) or {}
             requested = bool(data) and request.get('runId') in (None, '', data.get('id')) and bool(request)
             if requested:
@@ -112,10 +132,15 @@ def supervise(command: list[str], state: Path, runs: Path, *, max_seconds: float
                 kill_worker(proc, before_release=lambda: finish_interrupted(
                     state, runs, proc.pid, reason, stopped=requested, lock_held=True))
                 log.emit('catalog.supervisor', f'catalog.supervisor: {reason}', 'ERROR', reason=reason)
+                if on_killed is not None and run_id:
+                    on_killed(run_id, requested)
                 return 5 if requested else 3
             time.sleep(poll)
         if proc.returncode:
+            run_id = run_id or active_run(state, runs, proc.pid)[1].get('id')  # chết trước lần đọc đầu của vòng lặp
             finish_interrupted(state, runs, proc.pid, f'Tiến trình kết thúc bất thường: {proc.returncode}')
+            if proc.returncode < 0 and on_killed is not None and run_id:  # bị tín hiệu giết (OOM killer: -9)
+                on_killed(run_id, False)
         return proc.returncode
     except BaseException:
         kill_worker(proc, before_release=lambda: finish_interrupted(

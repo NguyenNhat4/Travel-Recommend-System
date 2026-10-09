@@ -76,7 +76,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ initialMode = 'login' }) =
     <div className="max-w-xl mx-auto px-4 py-12 space-y-8">
       <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-xl space-y-6">
         <div className="text-center space-y-1">
-          <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center mx-auto mb-2 shadow-xs">
+          <div className="w-12 h-12 rounded-2xl bg-brand-600 text-white flex items-center justify-center mx-auto mb-2 shadow-xs">
             <Lock className="w-6 h-6" />
           </div>
           <h1 className="text-xl sm:text-2xl font-black text-slate-900">
@@ -107,7 +107,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ initialMode = 'login' }) =
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 placeholder="Nguyễn Văn A"
-                className="w-full px-3.5 py-2.5 text-xs sm:text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-hidden"
+                className="w-full px-3.5 py-2.5 text-xs sm:text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-hidden"
               />
             </div>
           )}
@@ -122,7 +122,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ initialMode = 'login' }) =
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="ten@vidu.com"
-              className="w-full px-3.5 py-2.5 text-xs sm:text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-hidden"
+              className="w-full px-3.5 py-2.5 text-xs sm:text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-hidden"
             />
           </div>
 
@@ -137,7 +137,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ initialMode = 'login' }) =
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full px-3.5 py-2.5 text-xs sm:text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-hidden pr-10"
+                className="w-full px-3.5 py-2.5 text-xs sm:text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-hidden pr-10"
               />
               <button
                 type="button"
@@ -173,7 +173,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ initialMode = 'login' }) =
           <button
             type="submit"
             disabled={submitting}
-            className="w-full py-3 disabled:opacity-60 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-xl shadow-xs transition-colors"
+            className="w-full py-3 disabled:opacity-60 bg-brand-600 hover:bg-brand-700 text-white font-bold text-sm rounded-xl shadow-xs transition-colors"
           >
             {isRegisterMode ? 'Tạo tài khoản' : 'Đăng nhập'}
           </button>
@@ -186,7 +186,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ initialMode = 'login' }) =
               setIsRegisterMode(!isRegisterMode);
               setError('');
             }}
-            className="text-xs text-blue-600 hover:underline font-semibold"
+            className="text-xs text-brand-600 hover:underline font-semibold"
           >
             {isRegisterMode 
               ? 'Đã có tài khoản? Đăng nhập ngay' 

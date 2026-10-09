@@ -80,7 +80,7 @@ src/data_collection/
 
 Kết nối: `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/vota`, `INSIDER_DATABASE_URL=…/insider` (env, `.env.example`). Thư viện: `psycopg[binary]`, `numpy` cho phân bố; không ORM. Mọi bước ghi bằng `COPY` hoặc batch insert 1.000 dòng; toàn bộ một bước trong một transaction.
 
-**Seed PostgreSQL không nạp vector.** Vector thuộc collection `Product` của Weaviate và được đồng bộ riêng bằng `python -m src.backend.jobs.embed_products`/`make index-vectors`; job chỉ gọi Cohere lại khi `textHash` hoặc `modelVersion` đổi. **Không nạp `carts`, `conversations`, `recommendation_logs`, `search_logs`** — sinh khi chạy app.
+**Seed PostgreSQL không nạp vector.** Vector thuộc collection `ProductE5` của Weaviate (model local `intfloat/multilingual-e5-small`, 384 chiều; collection `Product` của Cohere chỉ còn cho đường lui) và được đồng bộ riêng bằng `python -m src.backend.jobs.embed_products`/`make index-vectors`; job chỉ embed lại khi `textHash` hoặc `modelVersion` đổi. **Không nạp `carts`, `conversations`, `recommendation_logs`, `search_logs`** — sinh khi chạy app.
 
 ## 1b. Bước 0 — `gen_products.py` (chỉ chạy khi chưa có crawl)
 
@@ -132,7 +132,7 @@ Với mọi combo:
 - Mảnh chỉ nêu địa điểm (tên venue, "Phá đảo 04 khu", "trọn vẹn 03 khu") thành vé vào cửa của venue, nếu combo chưa có attraction nào.
 - "N người/khách" không phải thành phần.
 
-Job nạp DB (`fresh_catalog_db.load_into_db`) chép `combo_items_manual.jsonl` của snapshot mặc định vào thư mục lượt cào trước khi parse, để không mất các dòng đã duyệt tay.
+Job cào (`fresh_catalog_db`) không lấy `catalog.combo_items` từ lô vừa cào mà parse lại **mọi combo trong `cdp.products`** (tên + mô tả đang lưu trong DB, map sang sản phẩm của toàn catalog), ở bước bảo trì đầu lượt (`maintain_catalog`, chạy cả khi mọi nguồn lỗi) và sau mỗi lần nạp (`load_into_db`). Combo không cào được vì nguồn chặn hay lượt lỗi vẫn nhận bản parse hiện hành; chỉ combo có thành phần đổi mới bị xoá + ghi lại, nên job index chỉ embed lại các combo đó. Dòng duyệt tay lấy từ `combo_items_manual.jsonl` của snapshot mặc định (ID theo `sourceRef`/`sameAs`/`mergedInto` được quy về dòng đang hiện); dòng trỏ tới sản phẩm không có hoặc sai loại thì bỏ, giữ dòng parse. Xem trước, chỉ đọc: `python src/data_collection/fresh_catalog_db.py combo-items --database-url <dsn>`.
 
 Báo cáo: số combo, số hạng mục, tỷ lệ map được theo `item_kind`, số dòng `confidence < 0.8` (hàng đợi soát tay).
 

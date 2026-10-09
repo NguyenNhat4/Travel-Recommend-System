@@ -143,6 +143,15 @@ class ApplyWindowTests(unittest.TestCase):
         self.assertEqual((rolled['available_from'], rolled['available_to']),
                          (AS_OF + timedelta(days=1), HI + timedelta(days=1)))
 
+    def test_trip_combo_dates_in_old_db_rows_become_iso_once(self):
+        url = 'https://vn.trip.com/packages/list?dDate=2026-10-14&rDate=2026-10-15'
+        old = row('combo', taxonomy='combo', start=AS_OF.isoformat(), end=HI.isoformat(), attributes={
+            'comboKind': 'trip_real_flight_hotel', 'url': url, 'departDate': '14/10', 'returnDate': '15/10'})
+        fixed = apply_window([old], AS_OF)['combo']
+        self.assertEqual((fixed['attributes']['departDate'], fixed['attributes']['returnDate']),
+                         ('2026-10-14', '2026-10-15'))
+        self.assertEqual(apply_window([fixed], AS_OF), {})
+
     def test_flight_takes_a_seen_date_or_moves_into_the_window_and_route_spans_its_flights(self):
         seen = {'level': 'flight', 'parentProductId': 'route', 'datesSeen': ['2026-09-20', '2026-10-02'],
                 'departureAt': '2026-09-20T08:30:00+07:00', 'arrivalAt': '2026-09-20T09:45:00+07:00'}
@@ -259,6 +268,40 @@ class PrepareRowsTests(unittest.TestCase):
                                 now=datetime(2026, 9, 25, tzinfo=timezone.utc))
         self.assertEqual((again['refConflicts'], again['mergedAway']), (0, 0))
 
+    def test_dangling_merged_row_is_refreshed_and_unhidden_instead_of_failing(self):
+        """Lượt local 07/10 (bản sao lưu VM 06/10): dòng agoda mergedInto một dòng không còn trong DB → 'ID conflict'."""
+        record = {'hotelId': '999', 'name': 'Khách sạn thử nghiệm', 'city': 'Nha Trang',
+                  'priceDatesQueried': ['2026-10-08'], 'crawledAt': '2026-09-24T00:00:00Z',
+                  'rooms': [{'roomId': '8', 'name': 'Suite', 'currency': 'VND',
+                             'pricesByDate': {'2026-10-08': 900000}}]}
+        prop, rooms = normalise.trip_hotel(record, {})
+        fresh = [{key: item[key] for key in normalise.PRODUCT_FIELDS} for item in [prop, *rooms]]
+        dangling = {'product_id': fresh[0]['productId'], 'source_ref': fresh[0]['sourceRef'], 'unit_price': 1,
+                    'available': False, 'attributes': {'level': 'property', 'mergedInto': 'gone'}}
+        prepared, counts = prepare_rows(fresh, [dangling], {'999'}, '2026-09-24')
+        by_id = {r['product_id']: r for r in prepared}
+        self.assertEqual((counts['refreshed'], counts['refConflicts']), (1, 0))
+        self.assertNotIn('mergedInto', by_id[dangling['product_id']]['attributes'])
+        # Dòng giữ còn nhưng không nhận ref: dòng gộp vẫn được làm mới (vẫn ẩn), không báo trùng ID.
+        keeper = {'product_id': 'keeper', 'source_ref': 'booking:hotel:1', 'unit_price': 1, 'available': True,
+                  'attributes': {'level': 'property'}}
+        merged = dict(dangling, attributes={'level': 'property', 'mergedInto': 'keeper'})
+        prepared, counts = prepare_rows(fresh, [merged, keeper], {'999'}, '2026-09-24')
+        by_id = {r['product_id']: r for r in prepared}
+        self.assertEqual(by_id[merged['product_id']]['attributes']['mergedInto'], 'keeper')
+        self.assertNotIn('keeper', by_id)
+
+    def test_live_row_wins_ref_conflict_against_a_merged_row(self):
+        live = {'product_id': 'z-live', 'source_ref': 'booking:hotel:1', 'unit_price': 1, 'available': True,
+                'attributes': {'level': 'property', 'sameAs': ['agoda:hotel:x']}}
+        merged = {'product_id': 'a-merged', 'source_ref': 'agoda:hotel:x', 'unit_price': 1, 'available': False,
+                  'attributes': {'level': 'property', 'mergedInto': 'gone'}}
+        rows, counts = prepare_rows([], [merged, live], set(), '2026-09-24',
+                                    now=datetime(2026, 9, 24, tzinfo=timezone.utc))
+        by_id = {r['product_id']: r for r in rows}
+        self.assertNotIn('z-live', by_id)  # dòng đang hiện không bị gộp
+        self.assertEqual(by_id['a-merged']['attributes']['mergedInto'], 'z-live')
+
     def test_ref_conflict_maps_fresh_rows_of_the_hidden_row_to_the_keeper(self):
         record = {'hotelId': '999', 'name': 'Khách sạn thử nghiệm', 'city': 'Nha Trang',
                   'priceDatesQueried': ['2026-10-08'], 'crawledAt': '2026-09-24T00:00:00Z',
@@ -330,13 +373,20 @@ class MaintainCatalogTests(unittest.TestCase):
         current = row('current', taxonomy='combo', attributes={}, start=AS_OF, end=HI)
         conn = _Conn([stale, seeded, current])
         sync = Mock(return_value={'simulatedBusiness': 0})
+        combos = Mock(return_value={'combos': 2, 'combosChanged': 0})
         with patch('psycopg.connect', return_value=conn), \
-                patch('data_collection.seed.simulated_business.sync', sync):
+                patch('data_collection.seed.simulated_business.sync', sync), \
+                patch('fresh_catalog_db.sync_combo_items', combos):
             counts = maintain_catalog('postgresql://unused', today=AS_OF,
                                       now=datetime(2026, 9, 24, tzinfo=timezone.utc))
         updates = {params[-1]: params for params in conn.updates}
-        self.assertEqual(counts, {'staleTrip': 1, 'windowRows': 1, 'simulatedBusiness': 0})
+        self.assertEqual(counts, {'staleTrip': 1, 'windowRows': 1, 'simulatedBusiness': 0, 'combos': 2, 'combosChanged': 0})
         sync.assert_called_once_with(conn)  # simulated business fares follow the rolled window (data-model.md §3)
+        # combo được parse lại trên trạng thái catalog sau các cập nhật của chính transaction này
+        state = {r['product_id']: r for r in combos.call_args.kwargs['rows']}
+        self.assertEqual(combos.call_args.args, (conn,))
+        self.assertEqual(set(state), {'stale', 'seeded', 'current'})
+        self.assertEqual((state['stale']['available'], state['seeded']['available_from']), (False, AS_OF))
         self.assertEqual(set(updates), {'stale', 'seeded'})
         self.assertEqual(updates['stale'][1:3], (None, False))  # unit_price, available
         self.assertEqual(updates['seeded'][3:5], (AS_OF, HI))  # available_from, available_to
@@ -602,7 +652,7 @@ class CrawlSitesTests(unittest.TestCase):
 
     def run_sites(self, groups, parallel, codes=None):
         codes = codes or {}
-        def fake_source(run_dir, source, destinations, group, deadline=None):
+        def fake_source(run_dir, source, destinations, group, deadline=None, on_start=None):
             return self.step(source, codes.get(source, 0))()
         with patch.object(fresh_catalog, 'run_source', fake_source), \
                 contextlib.redirect_stdout(io.StringIO()) as out:
@@ -710,6 +760,107 @@ class ManualComboMappingTests(unittest.TestCase):
     def test_default_snapshot_ships_the_reviewed_mapping(self):
         from data_collection.seed.config import DEFAULT_SNAPSHOT_DIR
         self.assertTrue((DEFAULT_SNAPSHOT_DIR / 'combo_items_manual.jsonl').is_file())
+
+class ComboItemsFromDbTests(unittest.TestCase):
+    """Thành phần combo parse lại từ cdp.products (tên + mô tả trong DB), không phụ thuộc combo có trong lượt cào hay không."""
+
+    @staticmethod
+    def db(view):
+        from fresh_catalog_db import COLUMNS
+        return {snake: view[camel] for snake, camel in zip(COLUMNS, normalise.PRODUCT_FIELDS)}
+
+    def setUp(self):
+        from tests.test_seed_parse_combos import catalog, product
+        self.product = product
+        self.ticket = product('t-ch', '[VinWonders Cửa Hội] - Vé vào cửa tiêu chuẩn', destination='Nghệ An',
+                              venue='VinWonders Cửa Hội', price=300000)
+        self.combo = product('c-ch', '[VinWonders Cửa Hội] - Combo Phá Đảo 04 Khu', taxonomy='combo', destination='Nghệ An',
+                             venue='VinWonders Cửa Hội')
+        self.views = catalog() + [self.ticket, self.combo]
+
+    def wanted(self, views, manual=None):
+        from fresh_catalog_db import combo_items_from_db
+        return combo_items_from_db([self.db(v) for v in views], manual or {})
+
+    def test_combo_absent_from_the_crawl_gets_the_venue_ticket_mapped_on_the_whole_catalog(self):
+        wanted, skipped = self.wanted(self.views)
+        items = wanted['c-ch']
+        self.assertEqual(skipped, 0)
+        self.assertEqual((items[0]['label'], items[0]['item_kind'], items[0]['item_product_id']),
+                         ('Vé vào cửa VinWonders Cửa Hội', 'attraction', 't-ch'))
+        self.assertEqual(set(wanted), {'c-ch'})  # chỉ combo, mỗi combo một khoá
+
+    def test_same_result_as_the_file_based_parser_on_the_same_catalog(self):
+        from data_collection.seed import parse_combos as pc
+        combo2 = self.product('c-nt', '[VinWonders Nha Trang] - Combo Vé VinWonders + Buffet', taxonomy='combo',
+                              venue='VinWonders Nha Trang', description='Bao gồm:\n- Vé VinWonders Nha Trang\n- Buffet trưa\n')
+        views = self.views + [combo2]
+        wanted, _ = self.wanted(views)
+        cat = pc.Catalog(views)
+        expected = {c['productId']: pc.parse_combo(c, cat) for c in views if c['taxonomy'] == 'combo'}
+        self.assertEqual(wanted, expected)
+
+    def test_db_text_types_are_tolerated(self):
+        from decimal import Decimal
+        rows = [self.db(v) for v in self.views]
+        for r in rows:
+            r['unit_price'] = None if r['unit_price'] is None else Decimal(str(r['unit_price']))
+        rows[-1]['description'] = None
+        from fresh_catalog_db import combo_items_from_db
+        wanted, _ = combo_items_from_db(rows, {})
+        self.assertEqual(wanted['c-ch'][0]['item_product_id'], 't-ch')
+
+    def test_merged_and_simulated_rows_are_never_component_targets(self):
+        merged = {**self.ticket, 'attributes': {**self.ticket['attributes'], 'mergedInto': 't-other'}}
+        views = [v for v in self.views if v is not self.ticket] + [merged]
+        wanted, _ = self.wanted(views)
+        self.assertIsNone(wanted['c-ch'][0]['item_product_id'])
+        merged_combo = {**self.combo, 'attributes': {**self.combo['attributes'], 'mergedInto': 'c-x'}}
+        wanted, _ = self.wanted([v for v in self.views if v is not self.combo] + [merged_combo])
+        self.assertEqual(wanted, {})  # combo đã gộp: không parse, không đụng combo_items của nó
+        simulated = {**self.ticket, 'sourceRef': 'demo:business:' + self.ticket['sourceRef']}
+        wanted, _ = self.wanted([v for v in self.views if v is not self.ticket] + [simulated])
+        self.assertIsNone(wanted['c-ch'][0]['item_product_id'])
+
+    def test_reviewed_rows_follow_aliases_and_bad_targets_fall_back_to_the_parse(self):
+        alias_ref = 'trip:combo:alias'
+        combo = {**self.combo, 'attributes': {**self.combo['attributes'], 'sameAs': [alias_ref]}}
+        views = [v for v in self.views if v is not self.combo] + [combo]
+        manual = {
+            # snapshot ghi combo theo ID của ref khác, thành phần trỏ tới vé bằng ID thật
+            (normalise.product_id(alias_ref), 1): {'combo_product_id': normalise.product_id(alias_ref), 'position': 1,
+                                                   'label': 'Vé duyệt tay', 'item_kind': 'attraction',
+                                                   'item_product_id': 't-ch', 'quantity': 2, 'unit': 'vé',
+                                                   'is_optional': False, 'source': 'manual', 'confidence': 1,
+                                                   'evidence': 'tay'},
+            # sai loại (FK combo_items_kind_fk): bỏ, giữ dòng parse
+            ('c-ch', 2): {'combo_product_id': 'c-ch', 'position': 2, 'label': 'Sai', 'item_kind': 'golf',
+                          'item_product_id': 't-ch', 'quantity': 1, 'unit': 'lượt', 'is_optional': False,
+                          'source': 'manual', 'confidence': 1, 'evidence': 'tay'},
+            ('c-unknown', 1): {'combo_product_id': 'c-unknown', 'position': 1, 'label': 'Combo không còn', 'item_kind': 'other',
+                               'item_product_id': None, 'quantity': 1, 'unit': 'suất', 'is_optional': False,
+                               'source': 'manual', 'confidence': None, 'evidence': ''},
+        }
+        wanted, skipped = self.wanted(views, manual)
+        self.assertEqual(skipped, 1)
+        first = wanted['c-ch'][0]
+        self.assertEqual((first['combo_product_id'], first['label'], first['source'], first['quantity']),
+                         ('c-ch', 'Vé duyệt tay', 'manual', 2))
+        self.assertTrue(all(it['source'] != 'manual' or it['item_kind'] != 'golf' for it in wanted['c-ch']))
+        self.assertEqual(set(wanted), {'c-ch'})
+
+    def test_comparable_matches_db_types(self):
+        import uuid
+        from decimal import Decimal
+        from fresh_catalog_db import _comparable
+        pid = str(uuid.uuid4())
+        parsed = {'combo_product_id': 'c', 'position': 1, 'label': 'Vé', 'item_kind': 'attraction', 'item_product_id': pid,
+                  'quantity': 1.0, 'unit': 'vé', 'is_optional': False, 'source': 'description_parse', 'confidence': 0.6,
+                  'evidence': 'e'}
+        stored = {**parsed, 'item_product_id': uuid.UUID(pid), 'quantity': Decimal('1.00'), 'confidence': Decimal('0.60')}
+        self.assertEqual(_comparable(parsed), _comparable(stored))
+        self.assertNotEqual(_comparable(parsed), _comparable({**stored, 'label': 'Vé khác'}))
+
 
 if __name__ == '__main__':
     unittest.main()

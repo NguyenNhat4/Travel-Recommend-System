@@ -8,6 +8,8 @@ import re
 from typing import Any
 
 from .flights import flight_cost, flight_times
+from .geo import Point, band, haversine_km, located, medoid
+from .routing import NO_AIRPORTS, Airports, DayShape, STAY_CHANGE_MIN_DAYS, STAY_MIN_NIGHTS, optimize
 from .normalization import strip_accents
 from .types import Candidates, Constraints, Party, Plan, Product, Proposal, Sources, TripIntent
 
@@ -20,6 +22,7 @@ NOTES = {
     "TRANSFER": "Di chuyển giữa các điểm trong lịch trình.",
     "ARRIVAL": "Di chuyển từ sân bay, nhận phòng.",
     "DEPARTURE": "Ra sân bay.",
+    "CHANGE_STAY": "Trả phòng, chuyển sang khách sạn mới.",
 }
 SUMMARY_FIELDS = (
     "productId", "name", "taxonomy", "destination", "unitPrice", "currency",
@@ -34,7 +37,9 @@ SUMMARY_ATTRIBUTE_KEYS = frozenset({"oceanView", "privateBeach", "pool", "ticket
                                     # Thẻ chặng bay (AC-AGT-02, user-flow §4.2): hãng, số hiệu, giờ đi/đến, bay thẳng.
                                     "airline", "flightNumber", "departureAt", "arrivalAt", "departureTimeLocal",
                                     "arrivalTimeLocal", "nonstop", "tripType", "returnDate", "returnFlight",
-                                    "originCity", "destinationCity", "originAirport", "destinationAirport"})
+                                    "originCity", "destinationCity", "originAirport", "destinationAirport",
+                                    # Toạ độ sân bay đi của chặng về: bản đồ vẽ chặng ra sân bay (chốt 2026-10-09).
+                                    "originLatitude", "originLongitude"})
 # Flights and combos have no confirmed slot mapping, so they can be retrieved but never scheduled.
 STAY_TAXONOMY = "hotel"
 SLOT_TAXONOMIES = frozenset({"attraction", "golf"})
@@ -152,21 +157,43 @@ def _known_cost(product: Product, *, nights: int, party: Party | None) -> int | 
     return int(price) if unit == "PER_PACKAGE" else None
 
 
+def cost_breakdown(plan: Plan, intent: TripIntent) -> dict[str, int] | None:
+    """Tổng tiền chia theo nhóm (user-flow §4.2 "Ngân sách dự tính", chốt 2026-10-09): vé máy bay, lưu trú, vui chơi
+    (tham quan tự do 0 đ). Ba nhóm cộng lại bằng tổng; một khoản chưa biết giá thì None như tổng. Chỉ gồm sản phẩm trong
+    lịch, không có khoản ước tính nào khác (ăn uống, đi lại)."""
+    party = intent.get("party")
+    groups = {
+        "flights": [flight_cost(leg) for leg in plan.get("flights", [])],
+        "stays": [_known_cost(stay["product"], nights=stay["nights"], party=party)
+                  for stay in plan.get("stays") or ([plan["stay"]] if plan.get("stay") else [])],
+        "activities": [_known_cost(slot["product"], nights=1, party=party) for day in plan.get("days", [])
+                       for slot in day.get("slots", []) if slot.get("product") is not None],
+    }
+    if any(amount is None for amounts in groups.values() for amount in amounts):
+        return None
+    return {name: sum(amounts) for name, amounts in groups.items()}
+
+
 def totals(plan: Plan, intent: TripIntent) -> tuple[int | None, str]:
-    products: list[tuple[Product, int]] = []
-    if plan.get("stay"):
-        products.append((plan["stay"]["product"], plan["stay"]["nights"]))
-    products.extend((slot["product"], 1) for day in plan.get("days", [])
-                    for slot in day.get("slots", []) if slot.get("product") is not None)
-    amounts = [_known_cost(product, nights=nights, party=intent.get("party")) for product, nights in products]
-    amounts.extend(flight_cost(leg) for leg in plan.get("flights", []))
-    if any(amount is None for amount in amounts):
+    breakdown = cost_breakdown(plan, intent)
+    if breakdown is None:
         return None, "UNKNOWN"
-    total = sum(amounts)
+    total = sum(breakdown.values())
     budget = intent.get("budget")
     if budget is None:
         return total, "NO_BUDGET"
     return total, "WITHIN_BUDGET" if total <= budget else "OVER_BUDGET"
+
+
+def price_plan(plan: Plan, intent: TripIntent) -> Plan:
+    """Gắn tổng tiền, trạng thái ngân sách và phần chia theo nhóm (`costBreakdown`, vắng khi tổng chưa biết)."""
+    plan["estimatedTotal"], plan["budgetStatus"] = totals(plan, intent)
+    breakdown = cost_breakdown(plan, intent)
+    if breakdown is None:
+        plan.pop("costBreakdown", None)
+    else:
+        plan["costBreakdown"] = breakdown
+    return plan
 
 
 def _parent_key(product: Product) -> str:
@@ -174,7 +201,10 @@ def _parent_key(product: Product) -> str:
 
 
 def _price_key(product: Product) -> tuple[int, float]:
-    """Cheapest first; an unknown price cannot be compared, so it goes last."""
+    """Cheapest first; an unknown price cannot be compared, so it goes last. Tham quan tự do (`free_to_visit`) tính 0 đ
+    như ở tổng tiền, không phải giá chưa biết."""
+    if free_to_visit(product):
+        return (0, 0.0)
     price = product.get("unitPrice")
     return (1, 0.0) if price is None else (0, float(price))
 
@@ -185,16 +215,25 @@ def _source_rank(sources: Sources, product: Product) -> int:
     return 0 if sources.get(product["productId"]) != "recommendation" else 1
 
 
-def _stay_order(sources: Sources, product: Product) -> tuple[Any, ...]:
+def _stay_order(sources: Sources, product: Product, distance: float = 0.0) -> tuple[Any, ...]:
+    """`distance`: mức khoảng cách tới các hoạt động đã xếp (`geo.band`); 0 cho mọi khách sạn khi không xét vị trí."""
     star = product.get("attributes", {}).get("starRating")
-    return (_source_rank(sources, product), *_price_key(product),
+    return (_source_rank(sources, product), distance, *_price_key(product),
             -(star if isinstance(star, (int, float)) else -1), product["productId"])
 
 
-def _activity_order(sources: Sources, product: Product) -> tuple[Any, ...]:
+def _activity_order(sources: Sources, product: Product, distance: float = 0.0) -> tuple[Any, ...]:
+    """`distance`: mức khoảng cách tới mốc của chuyến (`geo.band`); 0 cho mọi hoạt động khi không xét vị trí."""
     # A full-day item needs a day to itself, so it is placed before anything that can share one.
     return (_source_rank(sources, product), 0 if allowed_times(product) == ["MORNING"] else 1,
-            *_price_key(product), product["productId"])
+            distance, *_price_key(product), product["productId"])
+
+
+def keep_rank(sources: Sources, product: Product) -> tuple[Any, ...]:
+    """Thứ tự giữ lại một trong các điểm trùng nhau (AC-AGT-04, node `filter`): vé có phí trước tham quan tự do (chốt
+    2026-10-09: giữ "Cáp Treo Hòn Thơm", bỏ "hòn Thơm" — tự do tính 0 đ nên không được thắng vì rẻ hơn), rồi Search trước
+    Recommendation, rẻ hơn, mã nhỏ hơn. Không xét vị trí: lúc lọc chưa có mốc của chuyến."""
+    return (free_to_visit(product), _source_rank(sources, product), *_price_key(product), product["productId"])
 
 
 def _period_at(moment: datetime) -> str:
@@ -239,13 +278,19 @@ def day_windows(intent: TripIntent, legs: list) -> dict[int, dict[str, Any]]:
 
 
 def _slot_order(slot: dict[str, Any]) -> tuple[int, int]:
-    """Theo buổi; trong cùng buổi: đến nơi trước, hoạt động giữa, ra sân bay sau."""
-    kind = 0 if slot["note_kind"] == "ARRIVAL" else 2 if slot["note_kind"] == "DEPARTURE" else 1
+    """Theo buổi; trong cùng buổi: đến nơi hoặc chuyển khách sạn trước, hoạt động giữa, ra sân bay sau."""
+    kind = {"ARRIVAL": 0, "CHANGE_STAY": 0, "DEPARTURE": 2}.get(slot["note_kind"], 1)
     return list(PERIODS).index(slot["time"]), kind
 
 
+def _km(positions: dict[str, Point], product_id: str, point: Point | None) -> float | None:
+    own = positions.get(product_id)
+    return haversine_km(own, point) if own is not None and point is not None else None
+
+
 def compose_plan(candidates: Candidates, sources: Sources, intent: TripIntent,
-                 windows: dict[int, dict[str, Any]] | None = None) -> Proposal:
+                 windows: dict[int, dict[str, Any]] | None = None, fixed_cost: int | None = 0,
+                 airports: Airports = NO_AIRPORTS) -> Proposal:
     """Choose products and lay them out on days with fixed rules. No model is involved.
 
     Ordering is total and depends only on product data and source, so the same candidates always
@@ -256,19 +301,36 @@ def compose_plan(candidates: Candidates, sources: Sources, intent: TripIntent,
 
     `windows` (từ `day_windows`) giới hạn buổi của ngày đến và ngày về theo giờ bay, và thêm dòng di chuyển ở hai ngày
     đó. Ngày không có trong `windows` dùng đủ `ACTIVITY_TIMES`.
+
+    Ít di chuyển (AC-AGT-04): khi có hoạt động rõ vị trí (`geo.located`), hoạt động gần mốc của chuyến (`geo.medoid`)
+    được chọn trước; luật rải ngày quyết số điểm mỗi ngày; rồi `routing.optimize` chọn khách sạn từng đêm (có thể đổi
+    một lần với chuyến từ 5 ngày), điểm nào đi ngày nào và thứ tự buổi để tổng quãng đường nhỏ nhất. Proposal khi đó có
+    `criteria = "DISTANCE"` và `stays` theo đêm; không điểm nào rõ vị trí thì xếp như trước, một khách sạn.
+
+    Ngân sách (chốt 2026-10-08): `fixed_cost` là tiền vé máy bay đã chọn (None khi chưa rõ giá). Có ngân sách và biết
+    tiền vé thì chỉ xét các lịch có tổng tiền không vượt ngân sách; không lịch nào vừa thì lấy lịch rẻ nhất. Proposal
+    khi đó có thêm `distance_km` và `options` (phương án khác, `routing.Option`) để câu trả lời nêu "thêm X ₫ → bớt Y km".
+
+    `airports` (`flights.airports`, chốt 2026-10-09): sân bay đến và sân bay đi của chặng bay đã chọn; quãng đường tính cả
+    chặng sân bay → khách sạn ngày 1 và điểm cuối → sân bay ngày cuối, nên khách sạn gần sân bay được lợi.
     """
     windows = windows or {}
     days_count = intent.get("days")
     if not isinstance(days_count, int) or days_count < 1:  # upper bound is enforced by TripIntent
         raise ValueError("invalid trip duration")
     usable = [product for product in candidates.values() if product.get("available")]
-    stays = sorted((p for p in usable if p.get("taxonomy") == STAY_TAXONOMY),
-                   key=lambda product: _stay_order(sources, product))
-    stay = stays[0] if stays else None
-    taken = {_parent_key(stay), stay["productId"]} if stay else set()
+    positions = located(usable)
+    pool = [p for p in usable if p.get("taxonomy") in SLOT_TAXONOMIES and not multi_day_span(p)]
+    pool_points = {p["productId"]: positions[p["productId"]] for p in pool if p["productId"] in positions}
+    searched_points = {pid: point for pid, point in pool_points.items() if sources.get(pid) != "recommendation"}
+    anchor = medoid(searched_points or pool_points)
+
+    def to_anchor(product: Product) -> float:
+        return 0.0 if anchor is None else band(_km(positions, product["productId"], anchor))
+
+    taken: set[str] = set()
     activities: list[Product] = []
-    for product in sorted((p for p in usable if p.get("taxonomy") in SLOT_TAXONOMIES and not multi_day_span(p)),
-                          key=lambda product: _activity_order(sources, product)):
+    for product in sorted(pool, key=lambda product: _activity_order(sources, product, to_anchor(product))):
         key = _parent_key(product)
         if key in taken or product["productId"] in taken:
             continue
@@ -292,15 +354,97 @@ def compose_plan(candidates: Candidates, sources: Sources, intent: TripIntent,
         if full_day:
             full_days.add(index)
         per_day[index].append(product)
+    # Khách sạn chọn sau hoạt động, theo khoảng cách trung bình tới các hoạt động đã xếp (AC-AGT-04).
+    scheduled = [positions[p["productId"]] for products in per_day for p in products if p["productId"] in positions]
+
+    def to_activities(product: Product) -> float:
+        if not scheduled:
+            return 0.0
+        point = positions.get(product["productId"])
+        return band(None if point is None else sum(haversine_km(point, other) for other in scheduled) / len(scheduled))
+
+    stays = sorted((p for p in usable if p.get("taxonomy") == STAY_TAXONOMY
+                    and _parent_key(p) not in taken and p["productId"] not in taken),
+                   key=lambda product: _stay_order(sources, product, to_activities(product)))
+    nights = max(1, days_count - 1)
+    chosen_stays = [{"stay_id": stays[0]["productId"], "from_night": 1, "nights": nights}] if stays else []
+    if anchor is not None:
+        best_rank = min((_source_rank(sources, p) for p in stays), default=0)
+        hotels = [p for p in stays if p["productId"] in positions and _source_rank(sources, p) == best_rank]
+        placed = {p["productId"] for products in per_day for p in products}
+        party = intent.get("party")
+
+        def money(route_stays, scheduled_products) -> tuple[int, int]:
+            amounts = [_known_cost(stay.product, nights=stay.nights, party=party) for stay in route_stays]
+            amounts += [_known_cost(product, nights=1, party=party) for product in scheduled_products]
+            known = [amount for amount in amounts if amount is not None]
+            return len(amounts) - len(known), sum(known)
+
+        budget = intent.get("budget")
+        budget_left = None if budget is None or fixed_cost is None else budget - fixed_cost
+        planned = optimize(per_day, [DayShape(len(products), index in full_days)
+                                     for index, products in enumerate(per_day)],
+                           [p for p in activities if p["productId"] not in placed], hotels, positions, days_count, money,
+                           lambda product: _stay_order(sources, product) if product.get("taxonomy") == STAY_TAXONOMY
+                           else _activity_order(sources, product), budget_left, airports)
+        route = planned.route
+        per_day = route.days
+        options = []
+        for option in planned.options:
+            option_stays = _proposed_stays(option.route.stays)
+            options.append({"stays": option_stays, "km_delta": round(option.km_delta, 1),
+                            "money_delta": option.money_delta, "over_budget": option.over_budget,
+                            "proposal": {"stay_id": option_stays[0]["stay_id"], "stays": option_stays,
+                                         "slots": _layout(option.route.days, option_stays, windows, times_of)}})
+        if route.stays:
+            chosen_stays = _proposed_stays(route.stays)
+    proposal: Proposal = {"stay_id": chosen_stays[0]["stay_id"] if chosen_stays else None,
+                          "slots": _layout(per_day, chosen_stays, windows, times_of), "stays": chosen_stays}
+    if anchor is not None:
+        proposal["criteria"] = "DISTANCE"
+        if route.stays:
+            proposal["distance_km"] = round(route.cost_km, 1)
+            proposal["options"] = options
+    return proposal
+
+
+def _proposed_stays(stays) -> list[dict[str, Any]]:
+    return [{"stay_id": stay.product["productId"], "from_night": stay.from_night, "nights": stay.nights}
+            for stay in stays]
+
+
+def _layout(per_day: list[list[Product]], stays: list[dict[str, Any]], windows: dict[int, dict[str, Any]],
+            times_of: list[list[str]]) -> list[dict[str, Any]]:
+    """Slot của từng ngày: điểm theo buổi, dòng di chuyển theo giờ bay, dòng trả phòng ở ngày đổi khách sạn."""
     slots = []
+    changes = {stay["from_night"] for stay in stays[1:]}
     for index, products in enumerate(per_day):
         day_slots = [{"day": index + 1, "note_kind": "VISIT", "activity_type": None, "product_id": product["productId"],
                       "time": "MORNING" if allowed_times(product) == ["MORNING"] else times_of[index][position]}
                      for position, product in enumerate(products)]
         day_slots += [{"day": index + 1, "note_kind": kind, "activity_type": "TRANSFER", "product_id": None, "time": time}
                       for time, kind in windows.get(index + 1, {}).get("transfers", [])]
+        if index + 1 in changes:
+            # Đêm trước ở khách sạn cũ, đêm nay ở khách sạn mới: trả phòng đầu ngày (AC-AGT-04).
+            day_slots.append({"day": index + 1, "note_kind": "CHANGE_STAY", "activity_type": "TRANSFER",
+                              "product_id": None, "time": "MORNING"})
         slots.extend(sorted(day_slots, key=_slot_order))
-    return {"stay_id": stay["productId"] if stay else None, "slots": slots}
+    return slots
+
+
+def _stay_issue(stays: list[dict[str, Any]], days_count: int) -> bool:
+    """Các khách sạn theo đêm có sai luật không (AC-AGT-04): liền nhau từ đêm 1, đủ `max(1, days − 1)` đêm, tối đa 2
+    khách sạn; có đổi thì chuyến từ `STAY_CHANGE_MIN_DAYS` ngày và mỗi khách sạn ít nhất `STAY_MIN_NIGHTS` đêm."""
+    night = 1
+    for stay in stays:
+        if stay.get("fromNight") != night or not isinstance(stay.get("nights"), int) or stay["nights"] < 1:
+            return True
+        night += stay["nights"]
+    if stays and night - 1 != max(1, days_count - 1):
+        return True
+    if len(stays) > 2:
+        return True
+    return len(stays) == 2 and (days_count < STAY_CHANGE_MIN_DAYS or any(s["nights"] < STAY_MIN_NIGHTS for s in stays))
 
 
 def render_proposal(proposal: Proposal, candidates: Candidates,
@@ -314,17 +458,26 @@ def render_proposal(proposal: Proposal, candidates: Candidates,
              "slots": []} for number in range(1, days_count + 1)]
     used: set[str] = set()
     parent_keys: set[str] = set()
-    stay = None
-    stay_id = proposal.get("stay_id")
-    if stay_id:
+    stays = []
+    proposed_stays = proposal.get("stays")
+    if proposed_stays is None and proposal.get("stay_id"):
+        proposed_stays = [{"stay_id": proposal["stay_id"], "from_night": 1, "nights": max(1, days_count - 1)}]
+    for proposed in proposed_stays or []:
+        stay_id = proposed.get("stay_id")
         product = candidates.get(stay_id)
-        if product is None or product.get("taxonomy") != STAY_TAXONOMY:
+        if product is None or product.get("taxonomy") != STAY_TAXONOMY or stay_id in used:
             raise ValueError("invalid stay")
+        parent = product.get("attributes", {}).get("parentProductId") or stay_id
+        if parent in parent_keys:
+            raise ValueError("duplicate parent selection")
         used.add(stay_id)
-        parent_keys.add(product.get("attributes", {}).get("parentProductId") or stay_id)
-        stay = {"product": summary(product), "nights": max(1, days_count - 1),
-                "note": NOTES["RELAX"], "source": _source(sources.get(stay_id)),
-                "because": _because(product, sources.get(stay_id))}
+        parent_keys.add(parent)
+        stays.append({"product": summary(product), "nights": proposed["nights"], "fromNight": proposed["from_night"],
+                      "note": NOTES["RELAX"], "source": _source(sources.get(stay_id)),
+                      "because": _because(product, sources.get(stay_id))})
+    if _stay_issue(stays, days_count):
+        raise ValueError("invalid stays")
+    stay = deepcopy(stays[0]) if stays else None
     occupied_full_days: set[int] = set()
     for proposed in proposal.get("slots", []):
         day_number = proposed.get("day")
@@ -357,11 +510,10 @@ def render_proposal(proposal: Proposal, candidates: Candidates,
         days[day_number - 1]["slots"].append({"time": proposed["time"], "activityType": None,
             "product": summary(product), "note": NOTES[note_kind], "source": _source(source),
             "because": _because(product, source)})
-    plan: Plan = {**({"stay": stay} if stay else {}), "days": days,
+    plan: Plan = {**({"stay": stay, "stays": stays} if stay else {}), "days": days,
         "bookableCount": len(used), "estimatedTotal": None, "currency": "VND",
         "budgetStatus": "UNKNOWN", "priceAsOf": None}
-    plan["estimatedTotal"], plan["budgetStatus"] = totals(plan, intent)
-    return plan
+    return price_plan(plan, intent)
 
 
 def validate_plan(plan: Plan, candidates: Candidates,
@@ -373,8 +525,12 @@ def validate_plan(plan: Plan, candidates: Candidates,
     days = plan.get("days")
     if not isinstance(days, list) or [day.get("day") for day in days] != list(range(1, (intent.get("days") or 0) + 1)):
         return ["days"]
-    selected = ([plan["stay"]["product"]] if plan.get("stay") else []) + [
+    stays = plan.get("stays") or ([plan["stay"]] if plan.get("stay") else [])
+    selected = [stay["product"] for stay in stays] + [
         slot["product"] for day in days for slot in day.get("slots", []) if slot.get("product")]
+    # Khách sạn theo đêm (AC-AGT-04): `stay` là khách sạn đầu tiên để client cũ vẫn chạy.
+    if plan.get("stays") and (plan.get("stay") != plan["stays"][0] or _stay_issue(plan["stays"], len(days))):
+        issues.append("stays")
     seen: set[str] = set()
     for product in selected:
         product_id = product.get("productId")
@@ -421,7 +577,8 @@ def validate_plan(plan: Plan, candidates: Candidates,
     if constraints.get("require_hotel") and not plan.get("stay"):
         issues.append("required_hotel")
     expected_total, expected_status = totals(plan, intent)
-    if plan.get("estimatedTotal") != expected_total or plan.get("budgetStatus") != expected_status:
+    if (plan.get("estimatedTotal") != expected_total or plan.get("budgetStatus") != expected_status
+            or plan.get("costBreakdown") != cost_breakdown(plan, intent)):
         issues.append("total")
     return sorted(set(issues))
 

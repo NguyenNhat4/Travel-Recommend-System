@@ -17,7 +17,7 @@ export function VerticalChips({ activeGroup, tone = 'overlay' }: VerticalChipsPr
     if (tone === 'overlay') {
       return `${base} focus-visible:outline-white ${active ? 'border-white bg-white text-slate-900' : 'border-white/40 bg-white/15 text-white backdrop-blur'}`;
     }
-    return `${base} focus-visible:outline-blue-600 ${active ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700'}`;
+    return `${base} focus-visible:outline-brand-600 ${active ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700'}`;
   };
 
   return (

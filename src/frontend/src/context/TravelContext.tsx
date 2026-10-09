@@ -80,6 +80,11 @@ interface TravelContextType {
   closeLoginModal: () => void;
   currentRoute: string;
   navigate: (route: string) => void;
+  /**
+   * Trang đang mở đăng ký một guard cho `navigate` (trang thanh toán hỏi lại trước khi khách rời, FR-BKG-01). Guard trả `true`
+   * là đã chặn lần chuyển trang đó và tự lo phần còn lại; `null` để gỡ.
+   */
+  setNavigationGuard: (guard: ((route: string) => boolean) | null) => void;
   pendingPostLoginAction: (() => void) | null;
 }
 
@@ -198,7 +203,12 @@ export const TravelProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   // Keep the existing navigation API while delegating URL state to Next.
   const currentRoute = pathname || '/';
+  const navigationGuard = useRef<((route: string) => boolean) | null>(null);
+  const setNavigationGuard = useCallback((guard: ((route: string) => boolean) | null) => {
+    navigationGuard.current = guard;
+  }, []);
   const navigate = useCallback((route: string) => {
+    if (navigationGuard.current?.(route)) return;
     router.push(route);
   }, [router]);
 
@@ -515,6 +525,7 @@ export const TravelProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         closeLoginModal,
         currentRoute,
         navigate,
+        setNavigationGuard,
         pendingPostLoginAction
       }}
     >

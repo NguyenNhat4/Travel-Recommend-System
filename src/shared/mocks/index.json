@@ -431,6 +431,14 @@
       "method": "post",
       "path": "/assistant/itineraries",
       "status": 200,
+      "case": "completed-two-stays",
+      "file": "assistant/createItinerary.200-completed-two-stays.json"
+    },
+    {
+      "operationId": "createItinerary",
+      "method": "post",
+      "path": "/assistant/itineraries",
+      "status": 200,
       "case": "completed-invalid-slots",
       "file": "assistant/createItinerary.200-completed-invalid-slots.json"
     },

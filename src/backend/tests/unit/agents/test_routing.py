@@ -16,13 +16,13 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(route_after_extract({'decision': 'simple'}), 'dead_letter')
 
     def test_evaluation_error_and_retry(self):
-        self.assertEqual(route_after_evaluate({'decision': 'compose'}), 'compose')
+        self.assertEqual(route_after_evaluate({'decision': 'compose'}), 'filter')
         self.assertEqual(route_after_evaluate({'decision': 'failed'}), 'dead_letter')
         self.assertEqual(route_after_evaluate({'decision': 'needs_retry'}), 'retry')
         self.assertEqual(route_after_evaluate({'decision': 'constraint_clarification'}), 'clarify')
-        self.assertEqual(route_after_evaluate({'decision': 'no_results'}), 'compose')
+        self.assertEqual(route_after_evaluate({'decision': 'no_results'}), 'filter')
 
     def test_retry_limit_and_grounded_fallback(self):
         self.assertEqual(route_after_retry({'attempt': 1, 'max_attempts': 100}), 'tool')
         self.assertEqual(route_after_retry({'attempt': 2, 'max_attempts': 100}), 'dead_letter')
-        self.assertEqual(route_after_retry({'attempt': 2, 'decision': 'fallback', 'candidates': {'real': {}}}), 'compose')
+        self.assertEqual(route_after_retry({'attempt': 2, 'decision': 'fallback', 'candidates': {'real': {}}}), 'filter')

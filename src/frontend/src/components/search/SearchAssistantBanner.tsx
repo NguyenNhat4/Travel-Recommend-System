@@ -8,9 +8,9 @@ import { useAssistant } from '../../context/AssistantProvider';
 export const SearchAssistantBanner: React.FC<{ query: string }> = ({ query }) => {
   const { openFloatingWidget } = useAssistant();
   return (
-    <div className="p-4 rounded-xl bg-gradient-to-r from-blue-900 to-indigo-900 text-white flex flex-col sm:flex-row items-center justify-between gap-3 shadow-sm my-2">
+    <div className="p-4 rounded-xl bg-gradient-to-r from-ai-900 to-ai-900 text-white flex flex-col sm:flex-row items-center justify-between gap-3 shadow-sm my-2">
       <div className="flex items-center gap-2.5">
-        <div className="p-2 rounded-lg bg-blue-500/30 text-indigo-300">
+        <div className="p-2 rounded-lg bg-ai-500/30 text-ai-300">
           <Sparkles className="w-5 h-5" />
         </div>
         <div>
@@ -24,7 +24,7 @@ export const SearchAssistantBanner: React.FC<{ query: string }> = ({ query }) =>
       </div>
       <button
         onClick={() => openFloatingWidget(query || undefined)}
-        className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-lg shadow-xs transition-colors shrink-0 whitespace-nowrap"
+        className="px-4 py-2 bg-ai-600 hover:bg-ai-500 text-white font-bold text-xs rounded-lg shadow-xs transition-colors shrink-0 whitespace-nowrap"
       >
         Hỏi trợ lý với truy vấn này →
       </button>

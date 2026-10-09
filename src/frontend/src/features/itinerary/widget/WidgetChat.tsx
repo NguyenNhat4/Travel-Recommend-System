@@ -9,12 +9,15 @@ import { WidgetOpening } from './WidgetOpening';
 import { WidgetNarration } from './WidgetNarration';
 import { WidgetComposer } from './WidgetComposer';
 import { WidgetProgress } from './WidgetProgress';
+import { WidgetStayOptions } from './WidgetStayOptions';
+import { WidgetBudget } from './WidgetBudget';
+import { stayCardKey } from './widgetPlan';
 import type { FloatingWidgetController } from './useFloatingWidget';
 
 function AssistantHeader() {
   return (
     <div className="flex items-center gap-2.5">
-      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50">
+      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-ai-50">
         <Image src="/mascot_welcome.webp" alt="" width={28} height={28} className="h-7 w-7 object-contain" />
       </span>
       <span className="text-xs font-semibold tracking-wide text-slate-500">Trợ lý du lịch V-OTA</span>
@@ -24,7 +27,8 @@ function AssistantHeader() {
 
 export function WidgetChat({ widget }: { widget: FloatingWidgetController }) {
   const { messages, assistantState, isRunning, isExpanded, setIsExpanded, chatScrollRef,
-    inputVal, setInputVal, handleSendMessage, handleConfirmTripDetails, retry, abort, openProductDetail, addPlanItemToCart } = widget;
+    inputVal, setInputVal, handleSendMessage, handleConfirmTripDetails, retry, abort, openProductDetail, addPlanItemToCart,
+    selectingStay, chooseStayOption, previewedStay, previewStayOption, bookPlanItem } = widget;
   const isInitial = messages.length === 0 && !isRunning;
   const lastMessageId = messages.length > 0 ? messages[messages.length - 1].id : null;
 
@@ -34,20 +38,39 @@ export function WidgetChat({ widget }: { widget: FloatingWidgetController }) {
         {isInitial && <WidgetOpening value={inputVal} onChange={setInputVal} onSend={handleSendMessage} busy={isRunning} />}
         <div className="space-y-7" role="log" aria-label="Hội thoại với trợ lý du lịch" aria-live="polite">
           {messages.map((message) => (
-            <div key={message.id} className={`flex min-w-0 ${message.sender === 'user' ? 'justify-end' : 'flex-col gap-3'}`}>
+            <div key={message.id} data-message-id={message.id} className={`flex min-w-0 ${message.sender === 'user' ? 'justify-end' : 'flex-col gap-3'}`}>
               {message.sender === 'assistant' && <AssistantHeader />}
-              <div className={`min-w-0 whitespace-pre-wrap break-words text-sm leading-7 sm:text-base ${message.sender === 'user' ? 'message-send-in max-w-[88%] rounded-2xl rounded-tr-md bg-blue-600 px-4 py-3 text-white' : 'w-full text-slate-700'}`}>
+              <div className={`min-w-0 whitespace-pre-wrap break-words text-sm leading-7 sm:text-base ${message.sender === 'user' ? 'message-send-in max-w-[88%] rounded-2xl rounded-tr-md bg-ai-600 px-4 py-3 text-white' : 'w-full text-slate-700'}`}>
                 {message.sender === 'assistant'
                   ? (message.products
                     ? <WidgetNarration text={message.text} products={message.products}
                         onOpen={(productId) => openProductDetail(productId, message)}
                         quickAddIds={message.plan ? new Set(message.plan.cartItems.filter((item) => isCartEligible(item.product.taxonomy)).map((item) => item.product.productId)) : undefined}
                         cartAddStates={widget.cartAddStates}
-                        onQuickAdd={message.plan ? (productId) => addPlanItemToCart(message.plan!, productId) : undefined} />
+                        onQuickAdd={message.plan ? (productId) => addPlanItemToCart(message.plan!, productId) : undefined}
+                        flights={message.plan?.flights}
+                        bookableIds={message.plan ? new Set(message.plan.cartItems.map((item) => item.product.productId)) : undefined}
+                        onBookNow={message.plan ? (productId) => bookPlanItem(message.plan!, productId) : undefined}
+                        stays={message.stayOptions ? {
+                          // Hàng thẻ "Phương án khác" là nội dung mục "Nơi nghỉ": thay dòng chữ và thẻ của mọi khách sạn
+                          // trong hàng (kể cả khách sạn cũ mà lời diễn giải còn nhắc sau khi đã đổi).
+                          ids: new Set(message.stayOptions.flatMap((card) => card.hotels.map((hotel) => hotel.id))),
+                          node: (
+                            <WidgetStayOptions cards={message.stayOptions}
+                              interactive={message.id === lastMessageId && !isRunning}
+                              selectingKey={message.id === lastMessageId ? selectingStay : null}
+                              previewKey={previewedStay?.message.id === message.id ? stayCardKey(previewedStay.card) : null}
+                              onPreview={(card) => previewStayOption(message, card)}
+                              onSelect={(card) => { void chooseStayOption(message, card); }} />
+                          ),
+                        } : undefined} />
                     : <AssistantText text={message.text} />)
                   : message.text}
+                {message.plan?.budgetSummary && (
+                  <WidgetBudget summary={message.plan.budgetSummary} days={message.plan.intent.days} />
+                )}
                 {message.plan && !isExpanded && (
-                  <button onClick={() => setIsExpanded(true)} className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-blue-600 hover:bg-blue-50">
+                  <button onClick={() => setIsExpanded(true)} className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-ai-600 hover:bg-ai-50">
                     <Sparkles className="h-4 w-4" aria-hidden="true" />Xem lộ trình & Bản đồ song song<Maximize2 className="h-4 w-4" aria-hidden="true" />
                   </button>
                 )}
@@ -81,7 +104,7 @@ export function WidgetChat({ widget }: { widget: FloatingWidgetController }) {
           <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-500">
             <span>Đã dừng. Trợ lý chưa trả lời tin nhắn này.</span>
             {assistantState.lastRequest && (
-              <button type="button" onClick={retry} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-2 font-semibold text-blue-600 hover:bg-blue-50">
+              <button type="button" onClick={retry} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-2 font-semibold text-ai-600 hover:bg-ai-50">
                 <RotateCcw className="h-4 w-4" aria-hidden="true" />Gửi lại
               </button>
             )}

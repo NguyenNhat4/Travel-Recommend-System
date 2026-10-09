@@ -43,7 +43,7 @@ và PRD `docs/prd/user-flow.md` §4.2. Khi lệch nhau thì các nguồn đó th
 | | `WidgetProgress.tsx` | Danh sách 3 bước ✓ |
 | | `WidgetHistory.tsx` | Sidebar "Đoạn chat mới" và lịch sử |
 | | `WidgetLauncher.tsx` | Mascot góc phải dưới + bong bóng mời |
-| Cột phải | `WidgetPlanPanel.tsx` | Header lịch trình, tab ngày, tổng tiền, "Thanh toán tất cả", bản đồ |
+| Cột phải | `WidgetPlanPanel.tsx` | Header lịch trình, tab ngày, tổng tiền (không có "Thanh toán tất cả"), bản đồ |
 | | `WidgetDays.tsx` | Thẻ theo ngày/buổi, nút "Đặt ngay"/"Thêm vào giỏ" |
 | | `WidgetProductDetail.tsx`, `WidgetProductGallery.tsx` | Panel chi tiết sản phẩm, tải `GET /products/{id}` |
 | | `WidgetPlanEmpty.tsx` | Cột phải khi chưa có lịch trình |
@@ -54,7 +54,7 @@ và PRD `docs/prd/user-flow.md` §4.2. Khi lệch nhau thì các nguồn đó th
 | | `components/assistant/SuggestionChips.tsx` | Chip `suggestions` |
 | | `components/assistant/ItineraryMap.tsx` | Bản đồ Leaflet + OSM, tuyến đường OSRM |
 | | `components/assistant/AssistantResultPanel.tsx` | Chỉ còn dùng `itineraryCartItems`, `isBookable` và kiểu `AssistantCartItem` (xem §9) |
-| | `hooks/useAssistantCart.ts` | `useAssistantCart` (thêm vào giỏ), `useBookItinerary` (Đặt ngay / Thanh toán tất cả) |
+| | `hooks/useAssistantCart.ts` | `useAssistantCart` (thêm vào giỏ), `useBookItinerary` (Đặt ngay một mục) |
 
 ## 3. Một lượt chat đi qua đâu
 
@@ -178,8 +178,8 @@ Mở widget từ trang khác: gọi `useAssistant().openFloatingWidget(câu)`. C
   `day.date`; lưu trú có check-in = ngày đầu, check-out = check-in + `nights`; số khách theo `intent.party`.
 - Hai khái niệm khác nhau: `isBookable` (đặt được) và `isCartEligible(taxonomy)` (vào giỏ được). Khách sạn và vé máy
   bay chỉ có "Đặt ngay"; tour, golf, combo có thêm "Thêm vào giỏ".
-- "Đặt ngay" một mục và "Thanh toán tất cả" đều qua `useBookItinerary` → `startBooking` (đơn nháp
-  `POST /booking-drafts`, nhiều mục thì `allowPartial`). "Thêm vào giỏ" qua `useAssistantCart`, gọi tuần tự từng mục,
+- "Đặt ngay" một mục qua `useBookItinerary` → `startBooking` (đơn nháp
+  `POST /booking-drafts`, một mục mỗi đơn; lịch trình không có thanh toán gộp). "Thêm vào giỏ" qua `useAssistantCart`, gọi tuần tự từng mục,
   gom lỗi vào một toast.
 
 ## 9. Chỗ dễ nhầm và code thừa
@@ -211,7 +211,7 @@ Kiểm bằng `grep` ngày 2026-10-05; chưa sửa gì.
 | Nhãn hoặc cách đánh dấu 3 bước tiến độ | `widgetProgress.ts` (`STEPS`, `AFTER_NODE`) |
 | Cách hiện lời diễn giải, vị trí thẻ | `WidgetNarration.tsx` (`narrationBlocks`), `inlineBold.tsx` |
 | Thẻ theo ngày, nút trên thẻ | `WidgetDays.tsx`, `useFloatingWidget.itemActions` |
-| Tổng tiền, "Thanh toán tất cả" | `WidgetPlanPanel.tsx`, `useFloatingWidget.handleCheckoutPlan` |
+| Tổng tiền | `WidgetPlanPanel.tsx` |
 | Mục nào được đặt / vào giỏ | `AssistantResultPanel.tsx` (`isBookable`, `itineraryCartItems`), `services/booking.ts` (`isCartEligible`) |
 | Ghim, tuyến đường, màu theo ngày | `components/assistant/ItineraryMap.tsx`, `services/routeGeometry.ts` |
 | Panel chi tiết sản phẩm | `WidgetProductDetail.tsx` |

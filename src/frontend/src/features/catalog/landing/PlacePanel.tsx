@@ -38,7 +38,7 @@ export function PlacePanel({ listId, listLabel, title, text, recent, popular, lo
       aria-selected={index === activeOption}
       onClick={() => onPick(name)}
       className={`${CHIP} ${
-        index === activeOption ? 'border-blue-400 bg-blue-50 text-blue-700' : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-blue-300 hover:text-blue-700'
+        index === activeOption ? 'border-brand-400 bg-brand-50 text-brand-700' : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-brand-300 hover:text-brand-700'
       }`}
     >
       {icon}
@@ -57,7 +57,7 @@ export function PlacePanel({ listId, listLabel, title, text, recent, popular, lo
             <button
               type="button"
               onClick={onClearRecent}
-              className="cursor-pointer rounded-md px-1.5 py-0.5 text-xs font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-blue-700"
+              className="cursor-pointer rounded-md px-1.5 py-0.5 text-xs font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-brand-700"
             >
               Xóa
             </button>

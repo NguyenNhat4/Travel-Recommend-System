@@ -590,6 +590,10 @@ class BrowserOptions:
     challenge_timeout: float = 45.0
     manual_wait: float = 300.0
     pages_before_recycle: int = 150
+    # Mở lại hẳn Chromium sau ngần này trang (0 = không): RAM của trình duyệt tăng dần theo số trang dù đã thay tab (lượt VM
+    # 08/10/2026: Booking từ ~1 lên ~2 GB sau 24 trang; đo local cây tiến trình Booking 125 trang: đỉnh PSS 2.485 MB, thường
+    # 1,9–2,3 GB); làm mới ~1.800 khách sạn trên VM 4 GB (job giới hạn FRESH_MEMORY 2500m) cần chặn mức này.
+    pages_before_restart: int = 100
     channel: str | None = None
 
 
@@ -656,8 +660,9 @@ class BrowserSession:
         )
         if self.opts.channel:
             launch["channel"] = self.opts.channel
+        self._launch = launch
         try:
-            self.context = await self._pw.chromium.launch_persistent_context(**launch)
+            await self._open_context()
         except Exception as e:
             await self._pw.stop()
             if "Executable doesn't exist" in str(e):
@@ -665,9 +670,21 @@ class BrowserSession:
             if "headed browser without having a XServer" in str(e) or "Missing X server" in str(e):
                 raise SystemExit("Không có màn hình để mở trình duyệt. Chạy lại với --headless") from e
             raise
+        return self
+
+    async def _open_context(self) -> None:
+        self.context = await self._pw.chromium.launch_persistent_context(**self._launch)
         if self.opts.block_resources:
             await self.context.route("**/*", _block_fast if self.opts.fast else _block_heavy)
-        return self
+
+    async def restart(self) -> None:
+        """Đóng rồi mở lại Chromium (cùng profile, cùng chế độ chặn tài nguyên) khi trình duyệt không mở được tab mới
+        nữa (vd. "Target.createTarget: Failed to open a new tab"); tab cũ của context trước đều không dùng được nữa."""
+        try:
+            await self.context.close()
+        except Exception as e:
+            log.debug("Đóng trình duyệt trước khi mở lại: %s", e)
+        await self._open_context()
 
     async def set_fast(self, fast: bool) -> None:
         """Đổi chế độ chặn tài nguyên giữa chừng. Trang tìm kiếm Booking chỉ tải thêm kết quả khi có CSS (cuộn không

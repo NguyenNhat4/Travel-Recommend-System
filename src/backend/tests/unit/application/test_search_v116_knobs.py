@@ -191,7 +191,8 @@ def test_price_and_party_must_hold_on_the_same_child(party):
     assert "H4" not in ids and {"H2", "H3", "A1"} <= set(ids)              # H4 bị mask (2 người); A1 không con → giữ
     assert _by_id(both)["H2"]["matchedChildren"] == ["R2a"] and _by_id(both)["H3"]["matchedChildren"] == ["R3a"]
     d = both["diagnostics"]
-    assert d["queryPlan"]["revalidatedDrops"] == 1 and d["relevantCount"] == both["total"] == len(ids)
+    # từ 1.19.0 mask kiểm giá + sức chứa trên CÙNG một phòng nên H1 bị loại ngay ở mask, không còn là drop ở bước kiểm lại
+    assert "revalidatedDrops" not in d["queryPlan"] and d["relevantCount"] == both["total"] == len(ids)
     assert sum(both["facets"]["taxonomy"].values()) == both["total"]       # [C4] facets đếm lại sau khi loại
     assert both["appliedFilters"]["hard"] == {"priceMax": 4000000, "priceSource": "param", "minOccupancy": 4,
                                               "partySource": "param"}

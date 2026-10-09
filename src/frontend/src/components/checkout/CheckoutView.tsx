@@ -9,10 +9,12 @@
  *
  * Hai nguồn (docs/spec/booking/dat-truc-tiep-theo-don-nhap.md §13): `/checkout` thanh toán giỏ, `/checkout?draft=<mã>` thanh toán
  * đúng một đơn nháp của Đặt ngay (có đồng hồ 30 phút; hết hạn thì khách sạn, vé máy bay phải đặt lại, tour và tiện ích còn
- * trong giỏ). Khách chưa đăng nhập đi hết ba bước được; đăng nhập khi bấm Thanh toán.
+ * trong giỏ). Khách chưa đăng nhập đi hết ba bước được; đăng nhập khi bấm Thanh toán. Khách chủ động rời trang khi chưa thanh
+ * toán thì được hỏi lại (`useLeaveGuard`, `LeaveCheckoutDialog`).
  */
 import React, { useEffect, useState } from 'react';
 import { Clock, Loader2 } from 'lucide-react';
+import { LeaveCheckoutDialog } from './LeaveCheckoutDialog';
 import { MobileBar, SummaryPanel } from './OrderSummary';
 import { ReviewStep } from './ReviewStep';
 import { ServicesStep } from './ServicesStep';
@@ -20,7 +22,7 @@ import { Stepper } from './CheckoutParts';
 import { TravelersStep } from './TravelersStep';
 import { useCheckout } from './useCheckout';
 
-const PRIMARY = 'px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl';
+const PRIMARY = 'px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-xl';
 const SECONDARY = 'px-5 py-2.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 font-bold text-xs rounded-xl';
 
 /** Thời gian còn lại của đơn nháp, `mm:ss`; null khi không có hạn. Về 0 thì gọi `onExpire` một lần. */
@@ -115,6 +117,9 @@ export const CheckoutView: React.FC = () => {
         </div>
       </div>
       <MobileBar ctl={ctl} />
+      {ctl.leavePrompt && (
+        <LeaveCheckoutDialog items={ctl.items} sourceKind={ctl.sourceKind} timeLeft={timeLeft} onStay={ctl.stayOnCheckout} onLeave={ctl.confirmLeave} />
+      )}
     </div>
   );
 };

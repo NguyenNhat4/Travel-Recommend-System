@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import date, datetime, timedelta, timezone
+import re
 
 from src.backend.app.application.itinerary.contracts import bounds, valid
 from src.backend.app.domain.itinerary.dates import explicit_dates, stated_days, this_year
@@ -21,6 +22,8 @@ TRIP_FIELDS = ("destination", "days", "startDate", "party", "budget", "origin")
 #: Trường phải đủ trước khi gọi tool (AC-AGT-01); ngân sách vẫn được hỏi nhưng không bắt buộc.
 REQUIRED_FIELDS = ("destination", "days", "startDate", "party")
 SWAP_CONSTRAINTS = ("exclude_products", "specific_hotel", "specific_activity", "require_hotel")
+#: "lấy phương án 2", "phuong an so 2", "take option 2" (so trên chuỗi đã `fold`).
+_OPTION_PICK = re.compile(r"\b(?:phuong an|option)\s*(?:so\s*)?(\d)\b")
 
 
 def vietnam_today(now: datetime | None = None) -> date:
@@ -114,11 +117,25 @@ def _copied_from_selection(state: dict, changes: dict) -> None:
             changes.pop(key)
 
 
+def picked_option(state: dict) -> dict | None:
+    """Phương án khác người dùng chọn ở lượt này ("lấy phương án N"), chỉ trong các phương án đã hiện ở lượt trước
+    (`previous_options`, AC-AGT-04 chốt 2026-10-08); số không có trong đó thì None."""
+    match = _OPTION_PICK.search(fold(state.get("query", "")))
+    if match is None:
+        return None
+    return next((option for option in state.get("previous_options", [])
+                 if option.get("index") == int(match.group(1)) and option.get("stays")), None)
+
+
 def _merged_constraints(state: dict, result: Extraction, patch: dict, intent: dict) -> dict:
     """Ràng buộc mới; các luật dưới đây giữ cho `require_hotel` và `exclude_*` không tự mâu thuẫn."""
     constraints = deepcopy(state.get("constraints", {}))
     changes = result.constraints.model_dump(exclude_none=True)
     _copied_from_selection(state, changes)
+    option = picked_option(state)
+    if option is not None:
+        # Tên lấy từ phương án đã hiện (grounding), không từ LLM; phương án hai khách sạn giữ khách sạn đêm 1.
+        changes["specific_hotel"] = option["stays"][0]["name"]
     for key in changes.pop("clear_fields", []):
         constraints.pop(key, None)
     if "hotel_attributes" in changes:

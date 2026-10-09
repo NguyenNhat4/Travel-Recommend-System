@@ -46,6 +46,26 @@ class LocalE5Embedder:
     def _load(self):
         with self._lock:
             if self._model is None:
+                import sys
+                import types
+                import importlib.machinery
+
+                # Windows WDAC compatibility stubs (avoids _heap.pyd and _uarray.pyd DLL blocks)
+                if "sklearn" not in sys.modules:
+                    _m_sk = types.ModuleType("sklearn")
+                    _m_sk.__spec__ = importlib.machinery.ModuleSpec("sklearn", None)
+                    sys.modules["sklearn"] = _m_sk
+                if "sklearn.metrics" not in sys.modules:
+                    _m_met = types.ModuleType("sklearn.metrics")
+                    _m_met.__spec__ = importlib.machinery.ModuleSpec("sklearn.metrics", None)
+                    _m_met.roc_curve = lambda *args, **kwargs: (None, None, None)
+                    sys.modules["sklearn.metrics"] = _m_met
+                if "scipy.optimize" not in sys.modules:
+                    _m_opt = types.ModuleType("scipy.optimize")
+                    _m_opt.__spec__ = importlib.machinery.ModuleSpec("scipy.optimize", None)
+                    _m_opt.linear_sum_assignment = lambda *args, **kwargs: ([], [])
+                    sys.modules["scipy.optimize"] = _m_opt
+
                 from transformers import AutoModel, AutoTokenizer
 
                 tokenizer = AutoTokenizer.from_pretrained(self.name, revision=self.revision)

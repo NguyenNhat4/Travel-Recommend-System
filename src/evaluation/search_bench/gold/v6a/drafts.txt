@@ -1,0 +1,21 @@
+vinwonder 3 ngay 2 dem	duration_false_positive
+VinWonders 3 ngày 2 đêm	duration_false_positive
+combo VinWonders 3N2Đ	duration_false_positive
+khách sạn Đà Lạt 2 đêm	duration_false_positive	{"and":[{"eq":["destination","Đà Lạt"]},{"eq":["variant","hotel_property"]}]}
+ks da lat 2 dem 3 ngay	duration_false_positive	{"and":[{"eq":["destination","Đà Lạt"]},{"eq":["variant","hotel_property"]}]}
+Dalat hotel 3 days 2 nights	duration_false_positive	{"and":[{"eq":["destination","Đà Lạt"]},{"eq":["variant","hotel_property"]}]}
+khách sạn gần chợ đêm Đà Lạt	duration_false_positive	{"and":[{"eq":["destination","Đà Lạt"]},{"eq":["variant","hotel_property"]}]}
+tour VinWonders Phú Quốc 3 tiếng	duration_false_positive
+phòng dưới 2 triệu/đêm Nha Trang	duration_false_positive	{"and":[{"eq":["destination","Nha Trang"]},{"eq":["variant","hotel_property"]},{"lte":["unit_price_min",2000000]}]}
+khách sạn gần Hồ Hoàn Kiếm	poi_resolution	{"and":[{"eq":["destination","Hà Nội"]},{"eq":["variant","hotel_property"]}]}
+ks gan ho guom	poi_resolution	{"and":[{"eq":["destination","Hà Nội"]},{"eq":["variant","hotel_property"]}]}
+hotel near Hoan Kiem lake	poi_resolution	{"and":[{"eq":["destination","Hà Nội"]},{"eq":["variant","hotel_property"]}]}
+khách sạn gần Cầu Rồng	poi_resolution	{"and":[{"eq":["destination","Đà Nẵng"]},{"eq":["variant","hotel_property"]}]}
+ks gan cau rong da nang	poi_resolution	{"and":[{"eq":["destination","Đà Nẵng"]},{"eq":["variant","hotel_property"]}]}
+resort gần biển Mỹ Khê	poi_resolution	{"and":[{"eq":["destination","Đà Nẵng"]},{"eq":["variant","hotel_property"]}]}
+vé Bà Nà Hills	poi_resolution	{"eq":["destination","Đà Nẵng"]}
+homestay phố cổ Hội An	poi_resolution	{"and":[{"eq":["destination","Hội An"]},{"eq":["variant","hotel_property"]}]}
+khach san gan san bay Noi Bai	poi_resolution	{"and":[{"eq":["destination","Hà Nội"]},{"eq":["variant","hotel_property"]}]}
+khách sạn gần VinWonders Nam Hội An	poi_resolution	{"and":[{"eq":["destination","Hội An"]},{"eq":["variant","hotel_property"]}]}
+khách sạn gần Hồ Gươm hoặc Hồ Tây	poi_resolution	{"and":[{"eq":["destination","Hà Nội"]},{"eq":["variant","hotel_property"]}]}
+khách sạn gần Hồ Gươm hoặc Cầu Rồng	poi_resolution

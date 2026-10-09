@@ -5,6 +5,8 @@ export type AssistantRequest = {
   message: string | null;
   conversationId: string | null;
   intentOverride: components['schemas']['TripIntentPatch'] | null;
+  /** Chọn một phương án của hàng thẻ "Phương án khác" (contract 1.20.0, AC-AGT-04); cần conversationId. */
+  selectStayOption?: { index: number } | null;
   context?: { language?: 'vi' | 'en' | null };
 };
 export type AssistantResponse = components['schemas']['ItineraryResponse'];

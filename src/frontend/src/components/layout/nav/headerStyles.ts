@@ -29,18 +29,18 @@ export function controlClass(tone: NavTone, { active = false, iconOnly = false, 
   if (tone === 'overlay') {
     return `${BASE} ${size} text-white focus-visible:outline-white ${active ? 'bg-white/25' : 'hover:bg-white/15'}`;
   }
-  return `${BASE} ${size} focus-visible:outline-blue-600 ${active ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`;
+  return `${BASE} ${size} focus-visible:outline-brand-600 ${active ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`;
 }
 
 /** Chip nền nhạt có avatar bên trái (đệm trái 4 px để avatar 32 px cách mép đều 4 px). */
 export function chipClass(tone: NavTone): string {
   if (tone === 'overlay') return `${BASE} pl-1 pr-3 bg-white/15 text-white hover:bg-white/25 focus-visible:outline-white`;
-  return `${BASE} pl-1 pr-3 bg-slate-100 text-slate-900 hover:bg-slate-200 focus-visible:outline-blue-600`;
+  return `${BASE} pl-1 pr-3 bg-slate-100 text-slate-900 hover:bg-slate-200 focus-visible:outline-brand-600`;
 }
 
 /** Hành động chính duy nhất trên header khi chưa đăng nhập. */
 export function primaryClass(): string {
-  return `${BASE} px-5 bg-blue-600 text-white hover:bg-blue-700 focus-visible:outline-blue-600`;
+  return `${BASE} px-5 bg-brand-600 text-white hover:bg-brand-700 focus-visible:outline-brand-600`;
 }
 
 /** Vỏ chung của mọi panel thả xuống từ header: bo 24 px, đệm 8 px, hàng con bo 16 px. */
@@ -49,12 +49,12 @@ export const PANEL_CLASS =
 
 const ROW_BASE =
   'flex min-h-11 w-full cursor-pointer rounded-2xl px-3 py-2 text-left text-sm transition-colors duration-200 ' +
-  'focus-visible:outline-2 focus-visible:outline-blue-600';
+  'focus-visible:outline-2 focus-visible:outline-brand-600';
 
 const ROW_VARIANT = {
   default: 'text-slate-700 hover:bg-slate-100',
-  selected: 'bg-blue-50 text-blue-800',
-  accent: 'font-semibold text-blue-600 hover:bg-blue-50',
+  selected: 'bg-brand-50 text-brand-800',
+  accent: 'font-semibold text-brand-600 hover:bg-brand-50',
   danger: 'font-semibold text-rose-600 hover:bg-rose-50',
 } as const;
 

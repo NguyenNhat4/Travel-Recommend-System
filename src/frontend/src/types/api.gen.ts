@@ -247,7 +247,7 @@ export interface paths {
         put?: never;
         /**
          * Semantic search trên catalog theo hợp đồng v1
-         * @description Bề mặt v1 được giữ để không phá client hiện có. Agent không gắn danh tính khi tìm kiếm: chế độ `inprocess` gọi engine trong tiến trình; chế độ `http` gọi GET compatibility endpoint không kèm JWT. Web có thể tiếp tục dùng POST với SearchRequest. Từ 1.16.0 travelContext.guests (adults, children) thành filter sức chứa (appliedFilters.hard.minOccupancy, partySource = param); GET không có tham số tương ứng.
+         * @description Bề mặt v1 được giữ để không phá client hiện có. Agent không gắn danh tính khi tìm kiếm: chế độ `inprocess` gọi engine trong tiến trình; chế độ `http` gọi GET compatibility endpoint không kèm JWT. Web có thể tiếp tục dùng POST với SearchRequest. Từ 1.16.0 travelContext.guests (adults, children) thành filter sức chứa (appliedFilters.hard.minOccupancy, partySource = param); GET không có tham số tương ứng. Từ 1.19.0 travelContext.checkIn / checkOut thành filter ngày (appliedFilters.hard.checkIn, checkOut, dateSource = param; diagnostics.queryPlan.date).
          */
         post: operations["searchProducts"];
         delete?: never;
@@ -347,7 +347,7 @@ export interface paths {
         put?: never;
         /**
          * Thêm mục vào giỏ (cộng dồn quantity và guests nếu trùng productId và usingDate)
-         * @description Thêm thành công thì Backend ghi event add_to_cart sang CDP clone ở nền, với taxonomy và unitPrice lấy từ catalog. Thêm thất bại không ghi event. CDP lỗi không ảnh hưởng response. guests là số người lớn và trẻ em của mục (tối đa 9 khách, mỗi phòng một người lớn, không vượt maxOccupancy của hạng phòng); vi phạm trả 400 VALIDATION_ERROR kèm details.fields[]. Response trả thêm guests và fares (dòng giá theo loại khách) cho từng mục. Sản phẩm taxonomy hotel hoặc flight bị từ chối với 422 DIRECT_BOOKING_ONLY (details productId, taxonomy): giỏ không đổi, không ghi add_to_cart. Khách chưa đăng nhập thêm được vào giỏ (tối đa 20 mục, vượt thì 400 VALIDATION_ERROR reason CART_FULL) nhưng không sinh event CDP.
+         * @description Thêm thành công thì Backend ghi event add_to_cart sang CDP clone ở nền, với taxonomy và unitPrice lấy từ catalog. Thêm thất bại không ghi event. CDP lỗi không ảnh hưởng response. guests là số người lớn và trẻ em của mục (tối đa 9 khách; khách sạn tối đa 9 khách mỗi phòng và 9 phòng, mỗi phòng một người lớn, không vượt maxOccupancy của hạng phòng); vi phạm trả 400 VALIDATION_ERROR kèm details.fields[]. Response trả thêm guests và fares (dòng giá theo loại khách) cho từng mục. Sản phẩm taxonomy hotel hoặc flight bị từ chối với 422 DIRECT_BOOKING_ONLY (details productId, taxonomy): giỏ không đổi, không ghi add_to_cart. Khách chưa đăng nhập thêm được vào giỏ (tối đa 20 mục, vượt thì 400 VALIDATION_ERROR reason CART_FULL) nhưng không sinh event CDP.
          */
         post: operations["addCartItem"];
         delete?: never;
@@ -710,7 +710,7 @@ export interface components {
                 };
             };
         };
-        /** @description Một vi phạm trong details.fields[] của VALIDATION_ERROR. Backend trả mọi vi phạm trong một lần; message là tiếng Việt hiển thị được trực tiếp. reason là mã luật dùng chung giữa Web và Backend (docs/spec/booking/checkout-nhieu-buoc-hanh-khach.md §5.6): REQUIRED, NAME_INVALID, PHONE_INVALID, EMAIL_INVALID, BIRTH_DATE_INVALID, CHILD_AGE_INVALID, ADULT_REQUIRED, PARTY_TOO_LARGE, TRAVELER_UNKNOWN, TRAVELER_DUPLICATED, ITEM_DETAIL_MISSING, ITEM_DETAIL_UNKNOWN, ITEM_DETAIL_DUPLICATED, ITEM_WITHOUT_TRAVELER, GUEST_COUNT_MISMATCH, INFANTS_EXCEED_ADULTS, ROOM_COUNT_MISMATCH, OCCUPANCY_EXCEEDED, LEAD_GUEST_INVALID, TRAVELERS_REQUIRED; với đơn nháp và giỏ của khách: DUPLICATE_ITEM, CART_FULL, NOT_REBOOKABLE. Client gặp reason lạ thì hiển thị message. */
+        /** @description Một vi phạm trong details.fields[] của VALIDATION_ERROR. Backend trả mọi vi phạm trong một lần; message là tiếng Việt hiển thị được trực tiếp. reason là mã luật dùng chung giữa Web và Backend (docs/spec/booking/checkout-nhieu-buoc-hanh-khach.md §5.6): REQUIRED, NAME_INVALID, PHONE_INVALID, EMAIL_INVALID, BIRTH_DATE_INVALID, CHILD_AGE_INVALID, ADULT_REQUIRED, PARTY_TOO_LARGE, TRAVELER_UNKNOWN, TRAVELER_DUPLICATED, ITEM_DETAIL_MISSING, ITEM_DETAIL_UNKNOWN, ITEM_DETAIL_DUPLICATED, ITEM_WITHOUT_TRAVELER, GUEST_COUNT_MISMATCH, INFANTS_EXCEED_ADULTS, ROOM_COUNT_MISMATCH, OCCUPANCY_EXCEEDED, LEAD_GUEST_INVALID, TRAVELERS_REQUIRED, ROOMS_TOO_MANY; với đơn nháp và giỏ của khách: DUPLICATE_ITEM, CART_FULL, NOT_REBOOKABLE. Client gặp reason lạ thì hiển thị message. */
         ValidationFieldError: {
             /** @description Đường dẫn trong request, ví dụ travelers[2].birthDate hoặc itemDetails[0].rooms[1]. */
             field: string;
@@ -973,7 +973,7 @@ export interface components {
         ScoredProduct: components["schemas"]["ProductSummary"] & {
             /** @description Cosine đã clamp về [0,1]. Chỉ hiển thị cho khách ở chế độ debug — 0.81 KHÔNG phải "81% phù hợp". */
             score: number;
-            /** @description (1.16.0, chỉ /search) productId các hạng phòng / chuyến bay con của kết quả thoả ĐỒNG THỜI các điều kiện giá (priceMin/priceMax) và số khách (minOccupancy) đang áp, giá tăng dần (giá null cuối), tối đa 5 — để UI hiển thị đúng phòng hợp giá/số khách thay vì giá thấp nhất của property. Chỉ có khi lọc giá hoặc số khách đang áp và kết quả có ít nhất một con thoả; con không biết sức chứa được tính là thoả điều kiện số khách. */
+            /** @description (1.16.0, chỉ /search) productId các hạng phòng / chuyến bay con ĐANG BÁN của kết quả thoả ĐỒNG THỜI các điều kiện giá (priceMin/priceMax), số khách (minOccupancy) và (từ 1.19.0, chỉ khách sạn) ngày (checkIn/checkOut) đang áp, giá tăng dần (giá null cuối), tối đa 5 — để UI hiển thị đúng phòng hợp truy vấn thay vì giá thấp nhất của property. Chỉ có khi lọc giá, số khách hoặc ngày đang áp và kết quả có ít nhất một con thoả; con không biết sức chứa hoặc không có lịch được tính là thoả. */
             matchedChildren?: string[];
         };
         ProductListResponse: {
@@ -1174,11 +1174,14 @@ export interface components {
             requestId?: string;
         };
         TravelContext: {
-            /** Format: date */
+            /**
+             * Format: date
+             * @description (1.19.0) Ở POST /search: ngày nhận phòng / ngày dùng, thành hard filter ngày. Khách sạn: nhận phòng từ hôm nay đến hôm nay + 3 tháng, 1–30 đêm (cùng luật đặt phòng), và phải còn ít nhất một hạng phòng đang bán (`available` + có giá) không có đêm kín (`attributes.availability` = 0) trong [checkIn, checkOut) — cùng MỘT phòng phải thoả đồng thời ngày, số khách (guests) và giá (priceMin/priceMax) đang áp; phòng không có lịch hoặc đêm ngoài khoảng lịch không bị loại. Vé tham quan, sân golf: checkIn trong [availableFrom, availableTo] và ngày đó không kín lịch. Combo: checkIn trong [availableFrom, availableTo]. Vé máy bay: không lọc theo ngày. Không biết (không có lịch, đêm ngoài khoảng lịch) thì giữ ([C2]). Lọc theo snapshot catalog nên áp ở cả CATALOG_ONLY. Chỉ có checkOut mà không có checkIn thì bỏ qua. Khai ở appliedFilters.hard.checkIn / checkOut / dateSource và diagnostics.queryPlan.date. Lịch không chặn ĐẶT chỗ (FR-CAT-03): khách sạn bị loại ở đây vẫn đặt được khi mở thẳng.
+             */
             checkIn?: string | null;
             /**
              * Format: date
-             * @description Không bao gồm. Kiểm tra mọi đêm trong [checkIn, checkOut).
+             * @description Không bao gồm. Kiểm tra mọi đêm trong [checkIn, checkOut). Phải sau checkIn (400 VALIDATION_ERROR nếu không).
              */
             checkOut?: string | null;
             /** @description (1.16.0) Ở POST /search: số khách thành hard filter sức chứa — minOccupancy = adults + children (chỉ có children thì không lọc). Loại unit có sức chứa ĐÃ BIẾT (attributes.maxOccupancy của unit hoặc hạng phòng con) nhỏ hơn; không biết sức chứa thì giữ. Thắng số khách suy ra từ câu; khai ở appliedFilters.hard.minOccupancy và diagnostics.queryPlan.party. */
@@ -1194,7 +1197,7 @@ export interface components {
          */
         AvailabilityMode: "CATALOG_ONLY" | "CHECK_DATE_RANGE";
         AppliedFilters: {
-            /** @description Đã loại thẳng. taxonomy, destination, priceMin/Max, availableOnly. Ở /search từ 1.14.0 có thêm destinationSource (param = tham số request, query = địa danh suy ra từ câu, FR-SRC-03); sau fallback (diagnostics.destinationFilter.fallback) khối hard không còn destination. Từ 1.15.0 (query plan, kiến trúc Phase A): taxonomySource (param | query), origin + originSource + destinationCity (tuyến bay, chỉ câu vé máy bay), mustNotAmenities (khoá tiện ích bị phủ định — loại unit CÓ GHI NHẬN tiện ích; unit không có dữ liệu vẫn qua, [C2]), mustNotBrands ("không phải Vinpearl" — loại unit có ghi brand đó), priceMin/priceMax + priceSource (param | query; giá null bị loại khi có lọc giá), availableOnly. Từ 1.16.0: mustNotTaxonomies (loại sản phẩm bị phủ định — "không lấy combo", "vé lẻ"; loại unit có taxonomy đó), mustNotFlags (includesFlight | includesHotel — combo CÓ GHI NHẬN thành phần đó bị loại; combo không có dữ liệu thành phần vẫn qua, [C2]), minOccupancy + partySource (param = travelContext.guests của request | query = số khách suy từ câu; loại unit có sức chứa ĐÃ BIẾT nhỏ hơn minOccupancy, không biết thì giữ). */
+            /** @description Đã loại thẳng. taxonomy, destination, priceMin/Max, availableOnly. Ở /search từ 1.14.0 có thêm destinationSource (param = tham số request, query = địa danh suy ra từ câu, FR-SRC-03); sau fallback (diagnostics.destinationFilter.fallback) khối hard không còn destination. Từ 1.15.0 (query plan, kiến trúc Phase A): taxonomySource (param | query), origin + originSource + destinationCity (tuyến bay, chỉ câu vé máy bay), mustNotAmenities (khoá tiện ích bị phủ định — loại unit CÓ GHI NHẬN tiện ích; unit không có dữ liệu vẫn qua, [C2]), mustNotBrands ("không phải Vinpearl" — loại unit có ghi brand đó), priceMin/priceMax + priceSource (param | query; giá null bị loại khi có lọc giá), availableOnly. Từ 1.16.0: mustNotTaxonomies (loại sản phẩm bị phủ định — "không lấy combo", "vé lẻ"; loại unit có taxonomy đó), mustNotFlags (includesFlight | includesHotel — combo CÓ GHI NHẬN thành phần đó bị loại; combo không có dữ liệu thành phần vẫn qua, [C2]), minOccupancy + partySource (param = travelContext.guests của request | query = số khách suy từ câu; loại unit có sức chứa ĐÃ BIẾT nhỏ hơn minOccupancy, không biết thì giữ). Từ 1.18.0: entity (danh sách khoá điểm vui chơi của gazetteer trong repo, vd. ["vinwonders"] — chỉ giữ unit attraction / combo có TÊN chứa entity, cờ SEARCH_ENTITY_FILTER; không nới; request taxonomy ngoài {attraction, combo} gặp câu entity → total 0 + queryPlan.emptyReason = entity); destinationSource = poi (điểm đến suy từ địa danh / khu vực / sân bay / venue trong gazetteer — "Hồ Hoàn Kiếm" → Hà Nội — cờ SEARCH_POI_RESOLVE; luật fallback như query). Từ 1.19.0: checkIn (+ checkOut khi có) + dateSource (luôn param) — travelContext.checkIn / checkOut của request, loại unit không dùng được vào khoảng ngày đó (xem TravelContext.checkIn). */
             hard: {
                 [key: string]: unknown;
             };
@@ -1249,11 +1252,13 @@ export interface components {
                 fuse?: number;
                 /** @description (1.16.0) Kênh fuzzy: tra chỉ mục trigram tên và lấy vector của unit chỉ có ở kênh này. Chỉ có khi kênh fuzzy bật. */
                 fuzzy?: number;
+                /** @description (1.17.0) Thời gian chờ giả thuyết LLM của query plan SAU bước embed (lượt gọi model chạy song song với embed; phần dựng query plan tính vào embed). Chỉ có khi diagnostics.queryPlan.llm có mặt. */
+                llm?: number;
                 /** @description Dựng các ProductSummary của trang trả về. */
                 hydrate?: number;
             };
             /**
-             * @description hit = vector của câu (sau chuẩn hoá) lấy từ cache, không chạy model; miss = chạy model embedding rồi ghi cache. Không đổi kết quả hay thứ tự — chỉ stageMs.embed khác nhau. Khoá cache là chuỗi đã chuẩn hoá và gộp khoảng trắng, nên "KS ở NT" và "khách sạn ở Nha Trang" dùng chung một vector.
+             * @description hit = vector của câu (sau chuẩn hoá) lấy từ cache, không gọi Cohere; miss = gọi Cohere rồi ghi cache. Không đổi kết quả hay thứ tự — chỉ stageMs.embed khác nhau. Khoá cache là chuỗi đã chuẩn hoá và gộp khoảng trắng, nên "KS ở NT" và "khách sạn ở Nha Trang" dùng chung một vector.
              * @enum {string}
              */
             embedCache?: "hit" | "miss";
@@ -1274,9 +1279,9 @@ export interface components {
              * @enum {string}
              */
             party?: "SOLO" | "COUPLE" | "FAMILY" | "FRIENDS" | "BUSINESS";
-            /** @description Địa danh (giá trị catalog) bước chuẩn hoá nhận ra trong câu, theo thứ tự xuất hiện. Có mặt kể cả khi SEARCH_DEST_FILTER tắt (để đo tần suất filter sẽ kích hoạt); vắng khi câu không nêu địa danh hay tắt chuẩn hoá. */
+            /** @description Địa danh (giá trị catalog) bước chuẩn hoá nhận ra trong câu, theo thứ tự xuất hiện. Có mặt kể cả khi SEARCH_DEST_FILTER tắt (để đo tần suất filter sẽ kích hoạt); vắng khi câu không nêu địa danh hay tắt chuẩn hoá. Từ 1.18.0: gồm cả điểm đến suy từ địa danh gazetteer (queryPlan.location) khi SEARCH_POI_RESOLVE bật. */
             derivedDestinations?: string[];
-            /** @description Chỉ có khi SEARCH_DEST_FILTER bật. source = param: dùng destination của request; query: dùng địa danh duy nhất trong câu; none: không lọc theo điểm đến (câu không nêu, hoặc skipped). skipped = multi: câu nêu từ hai nơi (nơi đi + nơi đến, "A hoặc B", thương hiệu chứa địa danh); flight: câu hỏi vé máy bay (destination của tuyến là nơi đến). fallback = dropped_empty: F sau khi lọc theo địa danh suy ra rỗng nên đã chạy lại không lọc (FR-SRC-04); total, facets, results khi đó là của lượt không lọc. */
+            /** @description Chỉ có khi SEARCH_DEST_FILTER bật. source = param: dùng destination của request; query: dùng địa danh duy nhất trong câu; none: không lọc theo điểm đến (câu không nêu, hoặc skipped). skipped = multi: câu nêu từ hai nơi (nơi đi + nơi đến, "A hoặc B", thương hiệu chứa địa danh); flight: câu hỏi vé máy bay (destination của tuyến là nơi đến). fallback = dropped_empty: F sau khi lọc theo địa danh suy ra rỗng nên đã chạy lại không lọc (FR-SRC-04); total, facets, results khi đó là của lượt không lọc. Từ 1.18.0: điểm đến suy từ địa danh gazetteer (queryPlan.location, SEARCH_POI_RESOLVE) vẫn là source = query (cùng luật lọc / multi / fallback); appliedFilters.hard.destinationSource = poi cho biết nguồn. */
             destinationFilter?: {
                 /** @enum {string} */
                 source: "param" | "query" | "none";
@@ -1351,23 +1356,82 @@ export interface components {
                     /** @enum {string} */
                     source?: "param" | "query";
                 };
-                /** @description Câu đưa vào nhánh BM25 và độ phủ vớt sau khi bỏ các cụm đã thành filter (phủ định, giá/sao, cue loại, địa danh tuyến). Vector dense vẫn dùng câu chuẩn hoá đầy đủ (khoá cache embed không đổi). */
+                /** @description (1.18.0) Thời lượng chuyến nêu trong câu: "N ngày M đêm", "M đêm N ngày", "3N2Đ", "N ngày", "M đêm", "N days M nights" — chữ số 1–30, không nhận số viết bằng chữ; "/đêm" của giá, "3 tiếng", "chợ đêm", "qua đêm" không tính. P0 chỉ khai và bỏ cụm khỏi lexicalText (cờ SEARCH_DURATION_FILTER); KHÔNG lọc, không xếp hạng vì catalog chưa có trường thời lượng (P1). Chỉ khai khi cờ bật. */
+                duration?: {
+                    days?: number | null;
+                    nights?: number | null;
+                    /** @enum {string} */
+                    source?: "query";
+                };
+                /** @description (1.18.0) Điểm vui chơi trong gazetteer repo (domain/search/gazetteer.py: vinwonders, safari, grand_world, …) nhận ra trong câu (bỏ cụm trong scope phủ định), chỉ khi SEARCH_ENTITY_FILTER bật. role = gate: câu chỉ nêu entity hoặc kèm cue attraction / combo → chỉ giữ unit attraction / combo có TÊN chứa entity (HARD, không nới; "entity" vào applied); location: câu có cue loại khác (khách sạn / vé máy bay / golf, kể cả cue yếu) hoặc nêu từ hai loại → entity chỉ định vị, không lọc. Tham số taxonomy của request không đổi role, chỉ giao với mask (tab Web có thể 0 → emptyReason entity). Thương hiệu khách sạn (Vinpearl, Meliá) không phải entity. */
+                entity?: {
+                    keys: string[];
+                    /** @enum {string} */
+                    role: "gate" | "location";
+                };
+                /** @description (1.18.0) Địa danh / khu vực / quận / sân bay / venue ĐẦU TIÊN trong câu khớp gazetteer repo (không phải tên điểm đến catalog) và điểm đến catalog của nó — "Hồ Hoàn Kiếm" → Hà Nội, "Cầu Rồng" → Đà Nẵng. Điểm đến này vào derivedDestinations và theo luật F1 như địa danh câu nêu (duy nhất → lọc với source = query, ≥ 2 nơi → multi, F rỗng → FR-SRC-04 fallback). Chỉ khai khi SEARCH_POI_RESOLVE bật. Bán kính / khoảng cách là P1. */
+                location?: {
+                    key: string;
+                    name: string;
+                    /** @enum {string} */
+                    kind: "landmark" | "area" | "district" | "airport" | "venue";
+                    destination: string;
+                };
+                /** @description (1.19.0) Bộ lọc ngày của request (travelContext.checkIn / checkOut), luôn áp khi có checkIn. Chỉ khai khi request có checkIn. */
+                date?: {
+                    /** Format: date */
+                    checkIn?: string;
+                    /** Format: date */
+                    checkOut?: string | null;
+                    /** @enum {string} */
+                    source?: "param";
+                };
+                /** @description Câu đưa vào nhánh BM25 và độ phủ vớt sau khi bỏ các cụm đã thành filter (phủ định, giá/sao, cue loại, địa danh tuyến; từ 1.18.0 thêm thời lượng). Vector dense vẫn dùng câu chuẩn hoá đầy đủ (khoá cache embed không đổi). */
                 lexicalText?: string;
-                /** @description Họ filter suy từ câu THẬT SỰ đã áp vào F (cờ bật và câu có giá trị); rỗng khi mọi cờ tắt. */
-                applied?: ("taxonomy" | "route" | "mustNot" | "price" | "star" | "party")[];
-                /** @description Số kết quả bị loại ở bước kiểm lại hard filter sau fusion (kỳ vọng 0; > 0 là lỗi dữ liệu/mask). Từ 1.16.0 gồm cả unit có phòng/chuyến con mà KHÔNG con nào thoả đồng thời giá và số khách khi hai điều kiện cùng áp (mask kiểm hai điều kiện độc lập trên unit + con). */
+                /** @description Họ filter suy từ câu THẬT SỰ đã áp (cờ bật và câu có giá trị); rỗng khi mọi cờ tắt. Từ 1.18.0: duration (chỉ tác động lên câu BM25 — lexicalText — không vào F) và entity (gate vào F). */
+                applied?: ("taxonomy" | "route" | "mustNot" | "price" | "star" | "party" | "date" | "duration" | "entity")[];
+                /** @description Số kết quả bị loại ở bước kiểm lại hard filter sau fusion (kỳ vọng 0; > 0 là lỗi dữ liệu/mask). Ở 1.16.0 – 1.18.0 gồm cả unit có phòng/chuyến con mà KHÔNG con nào thoả đồng thời giá và số khách; từ 1.19.0 mask kiểm các điều kiện cấp phòng (giá, số khách, ngày) trên cùng một con nên không còn trường hợp đó. */
                 revalidatedDrops?: number;
                 /**
-                 * @description F rỗng do họ filter nào (họ đầu tiên làm F rỗng theo thứ tự áp). Filter suy từ câu KHÔNG được nới ngầm (kiến trúc Phase A §6); chỉ điểm đến suy ra có fallback (diagnostics.destinationFilter.fallback, FR-SRC-04). Từ 1.16.0 khai thêm star (mọi unit còn lại đều KHAI sao thấp hơn starRatingMin — giá trị engine 1.15.0 đã có thể trả) và party (mọi unit còn lại có sức chứa đã biết nhỏ hơn số khách).
+                 * @description F rỗng do họ filter nào (họ đầu tiên làm F rỗng theo thứ tự áp). Filter suy từ câu KHÔNG được nới ngầm (kiến trúc Phase A §6); chỉ điểm đến suy ra có fallback (diagnostics.destinationFilter.fallback, FR-SRC-04). Từ 1.16.0 khai thêm star (mọi unit còn lại đều KHAI sao thấp hơn starRatingMin — giá trị engine 1.15.0 đã có thể trả) và party (mọi unit còn lại có sức chứa đã biết nhỏ hơn số khách). Từ 1.18.0: entity (mọi unit còn lại không có tên chứa entity trong tập attraction / combo — kể cả khi request taxonomy ∉ {attraction, combo}); duration khai cho đủ họ, 1.18.0 không bao giờ phát (duration không vào F). (mọi unit còn lại có sức chứa đã biết nhỏ hơn số khách). Từ 1.19.0 khai thêm date (mọi unit còn lại không dùng được vào khoảng ngày checkIn / checkOut).
                  * @enum {string}
                  */
-                emptyReason?: "taxonomy" | "route" | "mustNot" | "price" | "star" | "party" | "destination" | "param";
+                emptyReason?: "taxonomy" | "route" | "mustNot" | "price" | "star" | "party" | "date" | "destination" | "param" | "entity" | "duration";
                 /** @description Tham số request bị bỏ qua vì sai ngữ cảnh (ví dụ origin cho câu không phải vé máy bay). */
                 ignored?: string[];
-                /** @description (1.16.0) Router confidence của plan rule-based (kiến trúc §5): 1 trừ 0.25 cho mỗi lý do ở fallbackReasons, tất định, chỉ để khai báo — /search không gọi LLM. Có mặt khi khối queryPlan có mặt. */
+                /** @description (1.16.0) Router confidence của plan rule-based (kiến trúc §5): 1 trừ 0.25 cho mỗi lý do ở fallbackReasons, tất định. Có mặt khi khối queryPlan có mặt. Từ 1.17.0: dưới ngưỡng SEARCH_LLM_FALLBACK_MIN_CONFIDENCE và SEARCH_LLM_FALLBACK ≠ off thì kích hoạt LLM fallback (khối llm); giá trị này luôn là của plan rule. */
                 confidence?: number;
                 /** @description (1.16.0) Tín hiệu hạ confidence, theo thứ tự khai báo: unresolved_constraint (cụm sau cue phủ định / số tiền không map được, hoặc must-not tự mâu thuẫn), ambiguous_route (câu bay hai địa danh không rõ vai), multi_vertical (câu nêu từ hai loại sản phẩm), weak_taxonomy_cue (loại chỉ suy từ cue yếu), param_conflict (tham số destination / taxonomy khác thứ câu nêu), long_multi_constraint (câu dài và nêu từ hai họ ràng buộc). Vắng khi không có lý do. */
                 fallbackReasons?: string[];
+                /** @description (1.17.0) LLM fallback của query plan (kiến trúc §5; SEARCH_LLM_FALLBACK). Chỉ có khi chế độ ≠ off VÀ confidence < ngưỡng (SEARCH_LLM_FALLBACK_MIN_CONFIDENCE) cho câu này. Model chỉ trả giả thuyết JSON (loại sản phẩm, điểm đến, tuyến bay, phủ định, giá/sao, số khách) — không productId, không xếp hạng. Server kiểm mọi giá trị với catalog (enum Taxonomy, bảng điểm đến / thành phố bay của catalog và phải có mặt trong câu, từ vựng tiện ích, khoảng số hợp lý); giá trị hỏng nằm ở rejected, không bao giờ thành filter. Chỉ điền ô plan rule để trống: tham số request và giá trị rule luôn thắng. Giá trị đã nhận khai ở các khoá queryPlan khác với source = query và chỉ lọc khi cờ họ đó bật (SEARCH_*_FILTER) — y như giá trị rule; riêng điểm đến cần SEARCH_DEST_FILTER (tắt → rejected flag_off). shadow: không bao giờ đổi plan hay kết quả, accepted là những gì on SẼ nhận. */
+                llm?: {
+                    /** @enum {string} */
+                    mode: "shadow" | "on";
+                    /** @description true khi mode = on và ít nhất một trường được trộn vào plan. */
+                    used: boolean;
+                    /** @description Giả thuyết lấy từ cache (theo câu đã chuẩn hoá), không gọi model. */
+                    cached: boolean;
+                    /**
+                     * @description ok: có giả thuyết; empty: model không cho giả thuyết; pending: shadow, model đang chạy nền (so sánh chỉ ghi log); timeout: quá SEARCH_LLM_FALLBACK_TIMEOUT_MS → plan rule; failed: model / mạng lỗi → plan rule; unavailable: chế độ bật nhưng không có adapter (thiếu API key / SDK); cache_miss: chỉ đọc cache (bench) và câu chưa có; busy: đã đủ số lượt gọi đang bay.
+                     * @enum {string}
+                     */
+                    status: "ok" | "empty" | "pending" | "timeout" | "failed" | "unavailable" | "cache_miss" | "busy";
+                    /** @description Thời gian từ lúc khởi lượt fallback tới khi có kết quả (gồm phần chạy song song với embed). */
+                    latencyMs: number;
+                    /** @description Trường đã trộn vào plan (mode = on) hoặc sẽ trộn (shadow). */
+                    accepted: ("taxonomy" | "destination" | "origin" | "destinationCity" | "mustNotAmenities" | "mustNotTaxonomies" | "price" | "star" | "party")[];
+                    rejected: {
+                        /** @enum {string} */
+                        field: "hypothesis" | "taxonomy" | "destination" | "origin" | "destinationCity" | "mustNotAmenities" | "mustNotTaxonomies" | "price" | "star" | "party";
+                        /**
+                         * @description invalid_value: sai kiểu / ngoài enum; not_in_catalog: địa danh không có trong catalog; not_in_query: địa danh không có mặt trong câu; no_cue: câu không có dấu hiệu tương ứng (cue phủ định, chữ số, "sao"); out_of_range: số ngoài khoảng hợp lý; param_set / rule_set: tham số request / plan rule đã có giá trị khác; flag_off: cờ của họ đó tắt (chỉ điểm đến); conflict: tự mâu thuẫn với loại câu đang hỏi; multi_vertical: câu nêu nhiều loại, không thu hẹp; not_flight: trường tuyến bay ở câu không phải vé máy bay (hoặc điểm đến ở câu vé máy bay); low_confidence: model tự chấm giả thuyết dưới 0.5.
+                         * @enum {string}
+                         */
+                        reason: "invalid_value" | "not_in_catalog" | "not_in_query" | "no_cue" | "out_of_range" | "param_set" | "rule_set" | "flag_off" | "conflict" | "multi_vertical" | "not_flight" | "low_confidence";
+                    }[];
+                    /** @description Tên lớp lỗi khi status = failed. */
+                    error?: string;
+                };
             };
         };
         BecauseItem: {
@@ -1458,7 +1522,7 @@ export interface components {
          * @enum {string}
          */
         FareType: "ADULT" | "CHILD" | "ROOM" | "PACKAGE";
-        /** @description Số người lớn và số trẻ em của một mục giỏ, tính theo loại giá tại ngày sử dụng của mục (trẻ em đã tròn 12 tuổi tính là người lớn). Không chứa tên. Tối đa 9 khách mỗi mục. */
+        /** @description Số người lớn và số trẻ em của một mục giỏ, tính theo loại giá tại ngày sử dụng của mục (trẻ em đã tròn 12 tuổi tính là người lớn). Không chứa tên. Tối đa 9 khách mỗi mục; khách sạn tối đa 9 khách mỗi phòng và 9 phòng mỗi mục (tổng cao nhất 81 khách), nên maximum của adults và children là trần chung, luật theo loại dịch vụ do Backend kiểm. */
         GuestCounts: {
             adults: number;
             children: number;
@@ -1545,7 +1609,7 @@ export interface components {
             isLead: boolean;
             documents?: components["schemas"]["BookingTravelerDocuments"];
         };
-        /** @description Thêm trùng productId và usingDate thì cộng dồn quantity và guests; kết quả sau khi cộng vẫn phải đạt luật (tối đa 9 khách, mỗi phòng một người lớn, không vượt maxOccupancy). Không gửi guests (client cũ): khách sạn và dịch vụ tính theo người mặc định mỗi phòng/vé một người lớn; combo mặc định 1 người lớn. */
+        /** @description Thêm trùng productId và usingDate thì cộng dồn quantity và guests; kết quả sau khi cộng vẫn phải đạt luật (tối đa 9 khách, khách sạn tối đa 9 khách mỗi phòng và 9 phòng, mỗi phòng một người lớn, không vượt maxOccupancy). Không gửi guests (client cũ): khách sạn và dịch vụ tính theo người mặc định mỗi phòng/vé một người lớn; combo mặc định 1 người lớn. */
         AddCartItemRequest: {
             productId: string;
             /** Format: date */
@@ -1820,11 +1884,15 @@ export interface components {
             /** @description (1.18.0) Thành phố đi; chỉ gửi tên thành phố, không gửi toạ độ. */
             origin?: string;
         };
-        /** @description Baseline tích hợp 1.1.0. Cần message hoặc intentOverride; intentOverride yêu cầu conversationId khác null. */
+        /** @description Baseline tích hợp 1.1.0. Cần message, intentOverride hoặc selectStayOption (1.20.0); intentOverride và selectStayOption yêu cầu conversationId khác null. */
         ItineraryRequest: {
             conversationId?: string | null;
             message?: string | null;
             intentOverride?: components["schemas"]["TripIntentPatch"] | null;
+            /** @description (1.20.0, AC-AGT-04) Chọn một phương án trong `stayOptions` của câu trả lời gần nhất của hội thoại (người dùng bấm "Đổi sang khách sạn này"; lượt này không có message trả về). Lịch đổi đúng như phương án đã báo, không tìm lại sản phẩm. Cần conversationId; không cần message. index không còn trong phương án đã lưu thì backend xử lý như một lượt nhắn thường. */
+            selectStayOption?: {
+                index: number;
+            } | null;
             context?: {
                 /**
                  * @description Ngôn ngữ phản hồi. Khi context hoặc language vắng mặt, backend dùng vi; giá trị được lưu theo conversation.
@@ -1838,6 +1906,9 @@ export interface components {
         } | {
             conversationId: string;
             intentOverride: components["schemas"]["TripIntentPatch"];
+        } | {
+            conversationId: string;
+            selectStayOption: Record<string, never>;
         };
         ItinerarySlot: {
             slotId?: string;
@@ -1856,9 +1927,38 @@ export interface components {
         ItineraryStay: {
             product: components["schemas"]["ProductSummary"];
             nights: number;
+            /** @description (1.19.0, AC-AGT-04) Đêm đầu tiên ở khách sạn này, đếm từ 1 (đêm của ngày 1). Khách sạn ở các đêm fromNight .. fromNight + nights − 1. Backend luôn gửi từ 1.19.0; client coi vắng mặt là 1. */
+            fromNight?: number;
             note?: string | null;
             source?: components["schemas"]["ItemSource"];
             because?: components["schemas"]["BecauseItem"][];
+        };
+        /** @description (1.20.0, AC-AGT-04) Một phương án khác của lịch trình: lịch đầy đủ khi đổi khách sạn (để client xem trước không gọi server) và đánh đổi so với lịch đang chọn. Mọi số do backend tính. */
+        ItineraryStayOption: {
+            /** @description Số thứ tự để chọn (`selectStayOption.index`, "lấy phương án N"). */
+            index: number;
+            /** @description Chênh quãng đường cả chuyến so với lịch đang chọn, km đường chim bay; âm là đi ít hơn. */
+            kmDelta: number;
+            /** @description Chênh tổng tiền so với lịch đang chọn (VND); âm là rẻ hơn. */
+            moneyDelta: number;
+            /** @description Số tiền vượt ngân sách; null khi không vượt hoặc không có ngân sách. */
+            overBudget?: number | null;
+            itinerary: components["schemas"]["ItineraryPlan"];
+        };
+        /** @description (1.20.0, AC-AGT-04) Mục "Phương án khác" dạng hàng thẻ: tổng km của lịch đang chọn và tối đa 3 phương án. Vắng mặt khi không có phương án nào. */
+        ItineraryStayOptions: {
+            /** @description Quãng đường cả chuyến của lịch đang chọn (`itinerary`), km đường chim bay. */
+            distanceKm: number;
+            options: components["schemas"]["ItineraryStayOption"][];
+        };
+        /** @description (1.21.0, user-flow §4.2 "Ngân sách dự tính") estimatedTotal chia theo nhóm sản phẩm; flights + stays + activities = estimatedTotal. Có khi estimatedTotal khác null, vắng mặt khi tổng chưa biết. Chỉ gồm sản phẩm trong lịch: không có khoản ăn uống hay đi lại ước tính. */
+        ItineraryCostBreakdown: {
+            /** @description Vé máy bay, unitPrice × passengers của từng vé. */
+            flights: number;
+            /** @description Khách sạn, giá × số đêm của từng khách sạn. */
+            stays: number;
+            /** @description Tour, điểm tham quan, golf trong các ngày; điểm tham quan tự do tính 0. */
+            activities: number;
         };
         /**
          * @description (1.18.0) Chặng của vé trong lịch trình; ROUND_TRIP là một vé khứ hồi phủ cả hai chặng.
@@ -1893,6 +1993,8 @@ export interface components {
         ItineraryPlan: {
             title?: string;
             stay?: components["schemas"]["ItineraryStay"] | null;
+            /** @description (1.19.0, AC-AGT-04) Khách sạn theo đêm, sắp theo fromNight; hai mục khi lịch trình đổi khách sạn giữa chuyến (chuyến từ 5 ngày, mỗi khách sạn ít nhất 2 đêm). Tổng nights = max(1, days − 1). `stay` luôn bằng stays[0] để client cũ vẫn chạy; vắng mặt khi không có khách sạn. estimatedTotal cộng giá × nights của từng khách sạn. */
+            stays?: components["schemas"]["ItineraryStay"][];
             /** @description (1.18.0, AC-AGT-02) Vé máy bay của chuyến: một vé ROUND_TRIP, hoặc OUTBOUND và/hoặc RETURN. Vắng mặt hoặc rỗng khi không đủ điều kiện có chặng bay; lý do nằm trong warnings (mã FLIGHT_*). */
             flights?: components["schemas"]["ItineraryFlight"][];
             days: components["schemas"]["ItineraryDay"][];
@@ -1900,6 +2002,7 @@ export interface components {
             bookableCount?: number;
             /** @description Backend tính tổng khi đủ đơn vị/số lượng; thiếu thì null, budgetStatus UNKNOWN và warning. Không bỏ qua khoản chưa biết. Điểm tham quan tự do (attraction/golf có ticketed=false hoặc unitPrice null) tính 0 vào tổng, kèm warning FREE_ENTRY_ASSUMED. */
             estimatedTotal: number | null;
+            costBreakdown?: components["schemas"]["ItineraryCostBreakdown"];
             currency: components["schemas"]["Currency"];
             budgetStatus: components["schemas"]["BudgetStatus"];
             /**
@@ -1940,6 +2043,7 @@ export interface components {
             message?: string;
             /** @description Gói hoặc tour nhiều ngày (vé dùng 2 ngày trở lên, tour 3N2Đ...) tìm được nhưng không xếp vào một buổi của lịch trình, để người dùng cân nhắc riêng; `message` có mục hỏi người dùng có muốn thêm không. Không tính vào `estimatedTotal`. */
             searchResults?: components["schemas"]["SearchResultsByTaxonomy"];
+            stayOptions?: components["schemas"]["ItineraryStayOptions"];
             warnings: components["schemas"]["ItineraryWarning"][];
             metadata?: components["schemas"]["ItineraryMetadata"];
         };

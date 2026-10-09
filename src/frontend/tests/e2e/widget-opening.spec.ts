@@ -116,7 +116,7 @@ test('completed results still open the timeline and map after the widget split',
   await expect(plan.getByRole('heading', { name: completed.itinerary.title, exact: true })).toBeVisible();
   await expect(plan.getByRole('button', { name: 'Tất cả', exact: true })).toBeVisible();
   await plan.getByRole('button', { name: 'Ngày 1', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Thanh toán tất cả', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Thanh toán tất cả', exact: true })).toHaveCount(0);
   await expect(page.getByRole('dialog', { name: 'Trợ lý du lịch AI' }).getByRole('textbox')).toHaveCount(1);
   expect(errors).toEqual([]);
 });

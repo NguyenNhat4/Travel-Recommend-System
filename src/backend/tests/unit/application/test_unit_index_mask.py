@@ -159,8 +159,10 @@ def test_new_kwargs_defaults_identical(ix, ix2):
     for index in (ix, ix2):
         for kw in ({}, {"only_available": False}, {"taxonomy": "hotel"}, {"price_max": 3_000_000}, {"star_min": 4},
                    {"exclude_amenities": ["pool"]}, {"destination": "Nha Trang", "origin_city": "Hà Nội"}):
-            assert (index.mask(**kw) == index.mask(**kw, exclude_taxonomies=(), exclude_flags=(), min_occupancy=None)).all()
-            assert (index.mask(**kw) == index.mask(**kw, exclude_taxonomies=[""], exclude_flags=[""])).all()   # rỗng = không lọc
+            assert (index.mask(**kw) == index.mask(**kw, exclude_taxonomies=(), exclude_flags=(), min_occupancy=None,
+                                                   require_entities=())).all()
+            assert (index.mask(**kw) == index.mask(**kw, exclude_taxonomies=[""], exclude_flags=[""],
+                                                   require_entities=[""])).all()   # rỗng = không lọc
 
 
 def test_exclude_taxonomies(ix2):
@@ -183,12 +185,28 @@ def test_min_occupancy_keeps_unknown_drops_known_small(ix2):
     assert ids(ix2, ix2.mask(taxonomy="hotel", min_occupancy=13)) == ["H3"]
 
 
+# --- contract 1.18.0: entity gate CỨNG (`require_entities` — khác quy ước "không biết → giữ": không có khoá là bị loại)
+def test_require_entities(ix, ix2):
+    assert ix2.attrs.entities[5] == {"vinwonders"} and ix2.attrs.entities[4] == frozenset()   # A1 "Vé VinWonders"; C2 không
+    assert ids(ix2, ix2.mask(require_entities=["vinwonders"])) == ["A1"]
+    assert ids(ix2, ix2.mask(require_entities={"vinwonders", "safari"})) == ["A1"]             # OR trong tập khoá
+    assert ids(ix2, ix2.mask(require_entities=["vinwonders"], taxonomy="hotel")) == []          # tab Lưu trú → rỗng (AND)
+    assert ids(ix2, ix2.mask(require_entities=["vinwonders"], taxonomy="attraction")) == ["A1"]
+    assert ids(ix2, ix2.mask(require_entities=["vinwonders"], exclude_taxonomies=["attraction"])) == []
+    assert ids(ix2, ix2.mask(require_entities=["vinwonders"], exclude_taxonomies=["combo"])) == ["A1"]
+    assert ids(ix2, ix2.mask(require_entities=["aquafield"])) == []                             # khoá không có unit nào
+    assert ids(ix2, ix2.mask(require_entities=["vinwonders"], destination="Phú Quốc")) == []
+    # fixture 1: A1 "VinWonders" (attraction) hết chỗ → gate chỉ thấy nó khi bỏ điều kiện còn chỗ
+    assert ids(ix, ix.mask(require_entities=["vinwonders"])) == []
+    assert ids(ix, ix.mask(require_entities=["vinwonders"], only_available=False)) == ["A1"]
+
+
 def test_matched_children(ix2):
     h2, h3 = ix2.idx["H2"], ix2.idx["H3"]
     assert ix2.matched_children(h2) == []                                           # không điều kiện → []
     assert ix2.matched_children(h2, price_max=3_000_000) == ["R2B", "R2D"]          # giá null (R2C) bị loại khi có biên
     assert ix2.matched_children(h2, price_min=2_600_000) == ["R2D", "R2A"]          # thứ tự đã lưu = giá tăng dần
-    assert ix2.matched_children(h2, min_occupancy=6) == ["R2D", "R2A", "R2C"]       # R2D không biết sức chứa → giữ; R2B 4 < 6
+    assert ix2.matched_children(h2, min_occupancy=6) == ["R2D", "R2A"]              # R2D không biết sức chứa → giữ; R2B 4 < 6; R2C không giá → chưa bán được
     assert ix2.matched_children(h2, price_max=3_000_000, min_occupancy=6) == ["R2D"]
     assert ix2.matched_children(h2, min_occupancy=1, limit=2) == ["R2B", "R2D"]
     assert ix2.matched_children(h2, min_occupancy=1, limit=0) == []

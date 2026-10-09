@@ -28,6 +28,9 @@ concurrency:
   group: ha-checks-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  PIP_BREAK_SYSTEM_PACKAGES: '1'
+
 jobs:
   terraform-staging-ha:
     name: Terraform staging-ha
@@ -38,6 +41,7 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: '~1.9'
+          terraform_wrapper: false
       - name: Format
         run: terraform -chdir=infra/terraform/environments/staging-ha fmt -check -recursive
       - name: Validate
@@ -86,14 +90,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       # Runner tự host chạy Debian 12 (Python 3.11 hệ thống); setup-python không hỗ trợ Debian nên không dùng.
+      - uses: actions/setup-python@v5
+        if: ${{ runner.environment == 'github-hosted' }}
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: src/data_collection/requirements.txt
       - name: Install
         # Như Dockerfile.fresh-catalog: bước index import cấu hình backend nên cần pydantic, pydantic-settings, numpy.
         run: |
           grep -E '^(pydantic|pydantic-settings|numpy|argon2-cffi)[<>=]' src/backend/requirements.txt | sed 's/[[:space:]]*#.*//' > /tmp/job-extra.txt
-          python -m pip install -r src/data_collection/requirements.txt -r /tmp/job-extra.txt pytest
+          python3 -m pip install -r src/data_collection/requirements.txt -r /tmp/job-extra.txt pytest
       - name: Lock and job tests
         working-directory: src/data_collection
         env:
           PYTHONPATH: ..:.
           CATALOG_TEST_DATABASE_URL: postgresql://postgres:pw@127.0.0.1:5432/postgres
-        run: python -m pytest -q tests/test_catalog_run_lock.py tests/test_fresh_catalog_job.py tests/test_pipeline_graph.py tests/test_alerts.py
+        run: python3 -m pytest -q tests/test_catalog_run_lock.py tests/test_fresh_catalog_job.py tests/test_pipeline_graph.py tests/test_alerts.py

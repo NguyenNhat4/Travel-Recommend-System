@@ -663,7 +663,7 @@ Cùng hình dạng này là một phần tử của `items[]` khi tạo đơn nh
 | `productId` | Có | Phải tồn tại và `available: true` |
 | `usingDate` | Có | Ngày sử dụng, phải nằm trong `availableFrom`–`availableTo` |
 | `quantity` | Có, trừ khi gửi `guests` cho dịch vụ tính theo người | Số phòng, số gói hoặc số khách, ≥ 1. Vé máy bay, vé tham quan, golf: gửi `guests` thì được bỏ `quantity` (Backend tính `adults + children`); gửi cả hai mà lệch thì `GUEST_COUNT_MISMATCH` |
-| `guests` | Không | `{adults, children}`: `adults` ≥ 1, tổng ≤ 9. Không gửi (client cũ): khách sạn và dịch vụ tính theo người mặc định `adults = quantity`, `children = 0`; combo mặc định `adults = 1` |
+| `guests` | Không | `{adults, children}`: `adults` ≥ 1, tổng ≤ 9; khách sạn tổng ≤ 9 × số phòng (mỗi phòng tối đa 9 khách) và số phòng ≤ 9 (vượt thì `ROOMS_TOO_MANY`, FR-BKG-08). Không gửi (client cũ): khách sạn và dịch vụ tính theo người mặc định `adults = quantity`, `children = 0`; combo mặc định `adults = 1` |
 | `nights` | Chỉ với `hotel` | Số đêm, ≥ 1. Các `taxonomy` khác gửi `nights` thì bị bỏ qua |
 
 Khách sạn: mỗi phòng cần ít nhất 1 người lớn (`adults ≥ quantity`) và `adults + children ≤ maxOccupancy × quantity` khi hạng phòng có `maxOccupancy`. Vi phạm thì `400 VALIDATION_ERROR` với `details.fields[].reason` (`ADULT_REQUIRED`, `PARTY_TOO_LARGE`, `OCCUPANCY_EXCEEDED`, `GUEST_COUNT_MISMATCH`). Bộ luật R-CRT-01…05: `docs/spec/booking/checkout-nhieu-buoc-hanh-khach.md` §5.5. `PATCH` nhận cùng các trường (ít nhất một trường).
@@ -705,11 +705,11 @@ Cam kết:
 3. `lineTotal` do backend tính, bằng tổng `fares[].amount` (§2.6). `guests` là số người lớn và trẻ em theo loại giá tại `usingDate` của mục; `product.attributes.maxOccupancy` có với hạng phòng để client kiểm sức chứa mà không gọi thêm.
 4. `subtotal` bằng `total` trong MVP — không có thuế, phí hay mã giảm giá.
 5. Không gom nhóm theo điểm đến ở tầng API. Client tự gom theo `product.destination` để hiện "Chuyến {destination}"; backend chỉ chốt nhóm ở bước checkout (§7.2).
-6. Thêm một `productId` đã có trong giỏ với cùng `usingDate` thì **cộng dồn** `quantity` và `guests`, không tạo mục mới; kết quả sau khi cộng vẫn phải đạt luật (tối đa 9 khách, sức chứa). Riêng combo: `quantity` cộng dồn, `guests` lấy giá trị lớn hơn theo từng loại.
+6. Thêm một `productId` đã có trong giỏ với cùng `usingDate` thì **cộng dồn** `quantity` và `guests`, không tạo mục mới; kết quả sau khi cộng vẫn phải đạt luật (tối đa 9 khách, khách sạn 9 khách mỗi phòng, sức chứa). Riêng combo: `quantity` cộng dồn, `guests` lấy giá trị lớn hơn theo từng loại.
 
 ### 7.1a. Đơn nháp của Đặt ngay
 
-"Đặt ngay" ở mọi sản phẩm (và "Thanh toán tất cả" của lịch trình trợ lý) tạo một **đơn nháp**: đúng các mục của lần đặt đó, sống 30 phút (`BOOKING_DRAFT_TTL_MINUTES`), không liên quan tới các mục đang có trong giỏ.
+"Đặt ngay" ở mọi sản phẩm (kể cả từng mục của lịch trình trợ lý; trợ lý không có thanh toán gộp) tạo một **đơn nháp**: đúng các mục của lần đặt đó, sống 30 phút (`BOOKING_DRAFT_TTL_MINUTES`), không liên quan tới các mục đang có trong giỏ.
 
 ```http
 POST   /api/v1/booking-drafts                              # 201 BookingDraft
@@ -1001,7 +1001,7 @@ Mã lỗi riêng của auth (`UNAUTHENTICATED`, `SESSION_EXPIRED`, `CSRF_FAILED`
 | 409 | `EMAIL_ALREADY_EXISTS` | Email đã được đăng ký | — |
 | 409 | `PRODUCT_UNAVAILABLE` | Sản phẩm hết chỗ tại thời điểm thêm giỏ hoặc checkout | `{ productId }` |
 | 409 | `PRICE_CHANGED` | Giá đã đổi kể từ lúc thêm vào giỏ | `{ productId, oldPrice, newPrice, fareType? }`; `fareType = CHILD` khi giá vé trẻ em đổi |
-| 422 | `DATE_OUT_OF_RANGE` | `usingDate` ngoài `availableFrom`–`availableTo`; riêng khách sạn: ngoài khoảng hôm nay (giờ Việt Nam) đến hôm nay + 3 tháng, khi đó `availableFrom`/`availableTo` là hai mốc này, không phải cửa sổ mở bán (FR-CAT-03). Khách sạn tối đa 30 đêm (`nights` ≤ 30, vượt thì 400 `VALIDATION_ERROR`); lịch `attributes.availability` không dùng để chặn | `{ productId, availableFrom, availableTo }` |
+| 422 | `DATE_OUT_OF_RANGE` | `usingDate` ngoài `availableFrom`–`availableTo`; riêng khách sạn: ngoài khoảng hôm nay (giờ Việt Nam) đến hôm nay + 3 tháng, khi đó `availableFrom`/`availableTo` là hai mốc này, không phải cửa sổ mở bán (FR-CAT-03). Khách sạn tối đa 30 đêm (`nights` ≤ 30, vượt thì 400 `VALIDATION_ERROR`); lịch `attributes.availability` không dùng để chặn (chỉ bộ lọc ngày của `POST /search` dùng lịch, `search-recommendation` §2.5) | `{ productId, availableFrom, availableTo }` |
 | 409 | `BOOKING_PENDING_PAYMENT` | Đã có đơn giữ chỗ còn hạn | `{ referenceCode, holdExpiresAt }` |
 | 409 | `BOOKING_ALREADY_PAID` | Huỷ đơn chưa trả nhưng Stripe vừa thu tiền | `{ referenceCode }` |
 | 409 | `BOOKING_NOT_CANCELLABLE` | Quá hạn huỷ hoặc đơn đã đóng | `{ referenceCode, reason: TOO_LATE \| NOT_ACTIVE, cancellableUntil? }` |

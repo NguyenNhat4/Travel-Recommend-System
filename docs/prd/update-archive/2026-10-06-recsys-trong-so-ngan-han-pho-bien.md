@@ -2,8 +2,8 @@
 
 - Ngày: 2026-10-06
 - Người đề xuất: Pham Nguyen Dang Khoi / Claude Code soạn
-- Trạng thái: chờ chốt
-- Chốt bởi / ngày:
+- Trạng thái: đã áp dụng
+- Chốt bởi / ngày: Pham Nguyen Dang Khoi, 2026-10-07
 - PRD bị ảnh hưởng: không đổi câu chữ. `docs/prd/requirements.md` §1.3 FR-REC-04 chỉ yêu cầu "trọng số kết hợp giữa độ liên quan ngữ nghĩa,
   mức độ ưa chuộng của cộng đồng và tính khả dụng", không ghi giá trị. Đề xuất này đổi **giá trị** trọng số, tức đổi thứ tự gợi ý người dùng
   thấy, nên đưa ra để nhóm chốt trước khi sửa engine.

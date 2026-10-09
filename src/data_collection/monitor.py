@@ -19,6 +19,7 @@ của collection đích). Không bao giờ trả giá trị secret: biến kết
 from __future__ import annotations
 
 import argparse
+import ast
 import csv
 import fcntl
 import gzip
@@ -55,6 +56,11 @@ MAX_TEXT = 2_000_000          # ký tự tối đa trả về cho một file raw
 MAX_READ = 30_000_000         # byte tối đa giải nén một file
 HEARTBEAT_STALE = 90          # giây không có nhịp sống thì coi lượt đã chết
 PROGRESS_RE = re.compile(r"(\d+)/(\d+) xong · (\d+) lỗi · (\d+) bỏ qua · ([\d.]+) trang/phút · còn ~(\S+)")
+AGODA_PROGRESS_RE = re.compile(r"Agoda giá: (\d+)/(\d+) \(.*?ok (\d+), lỗi (\d+)\)")  # collectors/agoda_api.py, mỗi 50 lượt
+AGODA_PLAN_RE = re.compile(r"Agoda: \d+ khách sạn có hotel_id, (\d+) lượt hỏi giá cần làm")
+AGODA_FINAL_RE = re.compile(r"Agoda API: \{.*'priceOk': (\d+), 'priceNone': (\d+), 'failed': (\d+).*'tasks': (\d+)")
+STATE_RE = re.compile(r"\] Trạng thái: (\{.*\})\s*$")  # dòng cuối của crawl.py: {'done': 120, 'gone': 7, ...}
+VINPEARL_PROGRESS_RE = re.compile(r"Vinpearl (tour: )?(\d+)/(\d+)\b")  # khách sạn rồi vé/tour (collectors/vinpearl.py)
 LOG_LINE_RE = re.compile(r"^(?P<at>\d{2}:\d{2}:\d{2}) (?:\[(?P<group>[a-z]+)\] )?(?P<rest>.*)$")
 LEVEL_RE = re.compile(r"^\d{2}:\d{2}:\d{2} (WARNING|ERROR|CRITICAL)\b")
 INNER_RE = re.compile(r"\[([a-z][a-z_]+)\]")
@@ -364,7 +370,7 @@ class FileCache:
 
 def _new_stat() -> dict:
     return {"lines": 0, "warnings": 0, "errors": 0, "blocks": 0, "http": Counter(), "lastAt": None, "lastLine": None,
-            "progress": None, "live": None, "tripPrices": Counter(), "tripMeta": Counter()}
+            "progress": None, "result": None, "live": None, "tripPrices": Counter(), "tripMeta": Counter()}
 
 
 def _age_of_clock(clock: str | None) -> float | None:
@@ -465,7 +471,34 @@ class LogScan:
         if progress:
             done, total, failed, skipped, rate, eta = progress.groups()
             stat["progress"] = {"done": int(done), "total": int(total), "failed": int(failed), "skipped": int(skipped),
-                                "perMinute": float(rate), "eta": eta}
+                                "perMinute": float(rate), "eta": eta,
+                                "processed": int(done) + int(failed) + int(skipped)}
+        plan = AGODA_PLAN_RE.search(rest)
+        if plan:  # tổng lượt hỏi giá biết trước; dòng tiến độ chỉ ghi mỗi 50 lượt
+            stat["progress"] = {"done": 0, "total": int(plan.group(1)), "failed": 0, "skipped": 0, "processed": 0}
+        agoda = AGODA_PROGRESS_RE.search(rest)
+        if agoda:
+            processed, total, ok, failed = map(int, agoda.groups())
+            stat["progress"] = {"done": ok, "total": total, "failed": failed, "skipped": max(processed - ok - failed, 0),
+                                "processed": processed}
+        state = STATE_RE.search(rest)
+        if state:  # tổng theo URL duy nhất (dòng tiến độ cộng cả lượt thử lại vào tổng)
+            try:
+                counts = {k: v for k, v in ast.literal_eval(state.group(1)).items() if isinstance(v, int)}
+            except (ValueError, SyntaxError):
+                counts = {}
+            if sum(counts.values()):
+                stat["result"] = {"ok": counts.get("done", 0), "total": sum(counts.values()),
+                                  "failed": counts.get("failed", 0) + counts.get("blocked", 0)}
+        final = AGODA_FINAL_RE.search(rest)
+        if final:  # hết hàng (priceNone) là kết quả hợp lệ, không phải lỗi
+            ok, none, failed, tasks = map(int, final.groups())
+            stat["result"] = {"ok": ok + none, "total": tasks, "failed": failed}
+        vinpearl = VINPEARL_PROGRESS_RE.search(rest) if owner == "vinpearl" else None
+        if vinpearl:
+            done, total = int(vinpearl.group(2)), int(vinpearl.group(3))
+            stat["progress"] = {"done": done, "total": total, "failed": 0, "skipped": 0, "processed": done,
+                                "phase": "vé/tour" if vinpearl.group(1) else "khách sạn"}
         if "live.control" in rest:
             stat["live"] = rest[rest.index("live.control"):][:200]
         price = TRIP_PRICE_RE.search(rest)
@@ -561,6 +594,42 @@ def graph_strip_detail(nodes: list[dict]) -> dict[str, list[list[str]]]:
         if node["col"] != "other" and node["status"] not in ("notInMode", "disabled"):
             out.setdefault(node["col"], []).append([node["label"], node["status"]])
     return out
+
+
+# Số bước con của các bước lớn khi đang chạy (để tô tiến độ = số bước con đã xong / tổng): fresh_catalog_db.maintain_catalog,
+# load_into_db, fresh_catalog.validate_step; chuẩn hoá / gộp theo normalise.StepClock (SUBSTEP_INFO, phần bước Gộp). Vé
+# thương gia mô phỏng là dữ liệu demo, không phải bước xử lý nên không có bước con.
+EXPECTED_SUBSTEPS = {"maintain": 6, "validate": 6, "db": 7, "normalise": 11}
+GOOD_STATUSES = ("ok", "partial", "skipped")
+
+
+def percent(ok, total) -> float | None:
+    return round(100 * ok / total, 1) if isinstance(ok, (int, float)) and isinstance(total, (int, float)) and total > 0 \
+        else None
+
+
+def substep_view(entry: dict) -> dict:
+    """Một bước con cho sơ đồ: vào → ra, đạt/tổng và % tô màu. Bước có đạt/tổng (vd. dòng ghép được với DB) tô theo tỉ lệ đó;
+    bước biến đổi (lọc, gộp trùng: ra ít hơn vào là bình thường) xong thì tô đủ; đang chạy thì chưa có %."""
+    status = entry.get("status") or "unknown"
+    pct = percent(entry.get("ok"), entry.get("total"))
+    if pct is None and status in GOOD_STATUSES:
+        pct = 100.0
+    # normalise.StepClock ghi rowsIn/rowsOut/peakRssMb; stage_log.Stages ghi in/out
+    return {"name": entry.get("name"), "status": status, "seconds": entry.get("seconds"),
+            "in": entry.get("in", entry.get("rowsIn")), "out": entry.get("out", entry.get("rowsOut")),
+            "changed": entry.get("changed"),
+            "ok": entry.get("ok"), "total": entry.get("total"), "note": entry.get("note"), "error": entry.get("error"),
+            "ramMb": entry.get("peakRssMb"), "percent": pct, "description": SUBSTEP_INFO.get(entry.get("name"))}
+
+
+def node_progress(node: dict, *, done=None, total=None, running: bool = False) -> None:
+    """`node.progress`: đang chạy → đã làm / tổng (kind progress); xong → phần thành công / tổng (kind result). Không có số
+    thì ô xong tô đủ, ô lỗi không tô; ô đang chạy không biết tổng thì để trống (giao diện hiện sọc chạy)."""
+    pct = percent(done, total)
+    if pct is None and not running:
+        pct = 100.0 if node["status"] in GOOD_STATUSES else (0.0 if node["status"] in ("error", "dead", "failed") else None)
+    node["progress"] = {"done": done, "total": total, "percent": pct, "kind": "progress" if running else "result"}
 
 
 def running_substep(steps_file: Path) -> str | None:
@@ -1000,11 +1069,90 @@ class FreshMonitor:
                 # nạp theo phần kiểm từng dòng trước mỗi lô; kiểm cả catalog vẫn chạy ở cuối lượt
                 by_id["validate"].update(status="running", note="kiểm từng dòng theo lô nạp DB; kiểm cả catalog ở cuối lượt")
 
+        if counts:
+            self._progress(nodes, steps, data, path)
         known = set(GRAPH_SINGLE) | set(STEP_OWNER) | set(STREAM_STEPS)
         for name, st in steps.items():
             if name not in known and not name.startswith(NORMALISE_SOURCE):
                 add(name, "other", None, st.get("label") or name, st, pending)
         return nodes, edges
+
+    def _progress(self, nodes: list[dict], steps: dict[str, dict], data: dict, path: Path) -> None:
+        """% hoàn thành của từng ô (tô màu trên sơ đồ) và bước con của các ô lớn (bấm để bung)."""
+        scan = self._scan(path / LOG_FILE)
+        refresh = ((data.get("counts") or {}).get("refresh")) or {}
+        settings = data.get("settings") or {}
+        for node in nodes:
+            st = steps.get(node["id"]) or {}
+            info = st.get("detail") or {}
+            running = node["status"] == "running"
+            if node["col"] == "crawl":
+                stat = scan.stats.get(node["lane"]) or {}
+                if node["id"] == "trip-hotels.prices":
+                    if running:
+                        targets = (read_json(path / "trip_targets.run.json") or {}).get("hotels") or []
+                        dates = len(settings.get("tripHotels.priceOffsets") or (14, 30, 60))
+                        node_progress(node, done=sum((stat.get("tripPrices") or {}).values()),
+                                      total=len(targets) * dates or None, running=True)
+                    else:
+                        node_progress(node, done=info.get("completed"), total=info.get("requested"))
+                elif node["id"] == "trip-hotels.discover":
+                    node_progress(node, running=running)
+                else:
+                    progress, result = stat.get("progress") or {}, stat.get("result") or {}
+                    if running:
+                        node_progress(node, done=progress.get("processed"), total=progress.get("total"), running=True)
+                        if progress.get("phase"):
+                            node["substep"] = progress["phase"]
+                    elif result:
+                        node_progress(node, done=result["ok"], total=result["total"])
+                    elif progress and progress.get("phase") is None:
+                        node_progress(node, done=progress.get("done"), total=progress.get("total"))
+                    else:
+                        node_progress(node)
+                item = refresh.get(node["id"])
+                if isinstance(item, dict) and item.get("requested"):
+                    node["refresh"] = {k: item.get(k) for k in ("requested", "refreshed", "percent")}
+            elif node["id"].startswith(NORMALISE_SOURCE):
+                records, errors = node.get("in"), node.get("errors") or 0
+                node_progress(node, done=(records - errors) if records else None, total=records, running=running)
+                stem = node["id"][len(NORMALISE_SOURCE):]
+                sub = (read_json(path / "normalised" / "steps" / stem / "steps.json") or {}).get("steps") or []
+                if sub:
+                    node["substeps"] = [substep_view(e) for e in sub]
+            elif node["id"] == "normalise":
+                sub = (read_json(path / "normalise_stages" / "steps.json") or {}).get("steps") or []
+                if not sub and node["status"] in ("running", "draft"):
+                    folder = "preview.next" if (path / "preview.next").is_dir() else "preview"
+                    sub = (read_json(path / folder / "normalise_stages" / "steps.json") or {}).get("steps") or []
+                self._big(node, sub, running)
+            elif node["id"] in ("maintain", "validate", "db", "index"):
+                self._big(node, info.get("substeps") or [], running)
+            else:
+                node_progress(node, running=running)
+
+    @staticmethod
+    def _big(node: dict, sub: list[dict], running: bool) -> None:
+        """Ô lớn có bước con: đang chạy tô theo số bước con đã xong; xong thì tô theo luật/tỉ lệ của bước con chính."""
+        views = [substep_view(e) for e in sub]
+        if views:
+            node["substeps"] = views
+        finished = [v for v in views if v["status"] != "running"]
+        if running:
+            expected = max(EXPECTED_SUBSTEPS.get(node["id"], len(views) or 1), len(views))
+            node_progress(node, done=len(finished), total=expected if views else None, running=True)
+            return
+        if node["id"] == "validate" and views:
+            checked = [v for v in views if v["status"] != "skipped"]
+            node_progress(node, done=sum(v["status"] == "ok" for v in checked), total=len(checked))
+        elif node["id"] == "db":
+            main = next((v for v in views if v["name"] == "ghép với DB"), None)
+            node_progress(node, done=(main or {}).get("ok"), total=(main or {}).get("total"))
+        elif node["id"] == "index":
+            main = next((v for v in views if (v["name"] or "").startswith("embed")), None)
+            node_progress(node, done=(main or {}).get("ok"), total=(main or {}).get("total") or None)
+        else:
+            node_progress(node)
 
     def sources(self, path: Path) -> list[dict]:
         names = set()
@@ -1074,10 +1222,13 @@ class FreshMonitor:
             raise ValueError("Số lượt giữ lại phải là số nguyên 1–100")
         root = self._storage_root()
         before = shutil.disk_usage(root if root.exists() else Path("/")).free
-        removed = prune_runs(self.run_root, keep_runs, protect=self._running_dir())
+        attempted = prune_runs(self.run_root, keep_runs, protect=self._running_dir())
+        # prune_runs bỏ qua lỗi filesystem (thiếu quyền, file đang mở): chỉ báo "đã xoá" khi thư mục thật sự đã mất.
+        removed = [name for name in attempted if not (self.run_root / name).exists()]
+        failed = [name for name in attempted if (self.run_root / name).exists()]
         self._disk = (0.0, None)
         after = shutil.disk_usage(root if root.exists() else Path("/")).free
-        return {"removed": removed, "freedBytes": max(0, after - before), "kept": keep_runs}
+        return {"removed": removed, "failed": failed, "freedBytes": max(0, after - before), "kept": keep_runs}
 
     # -- log
     def runner_logs(self) -> list[dict]:

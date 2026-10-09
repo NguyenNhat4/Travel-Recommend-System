@@ -92,6 +92,39 @@ class PostgresConversationArchive:
                          conversation_uuid, role, request_id),
                     )
 
+    async def update_last_turn(
+        self, conversation_id: str, cdp_user_id: str, state: dict[str, Any]
+    ) -> None:
+        conversation_uuid = _uuid(conversation_id)
+        if conversation_uuid is None:
+            raise ValueError("conversation_id must be a UUID")
+        async with await self._connect() as conn:
+            async with conn.transaction():
+                owned = await (
+                    await conn.execute(
+                        "UPDATE app.conversations SET intent = %s, last_message_at = now(), "
+                        "expires_at = now() + interval '24 hours' "
+                        "WHERE conversation_id = %s::uuid AND cdp_user_id = %s RETURNING conversation_id",
+                        (Jsonb(state["intent"]), conversation_uuid, cdp_user_id),
+                    )
+                ).fetchone()
+                if owned is None:
+                    raise PermissionError("conversation not found for this user")
+                # `||` gộp theo khoá: `message` (lời diễn giải đang hiển thị) giữ nguyên, lịch và phương án thay mới.
+                await conn.execute(
+                    """
+                    UPDATE app.conversation_messages
+                    SET payload = jsonb_set(
+                        jsonb_set(payload, '{response}', coalesce(payload->'response', '{}'::jsonb) || %s::jsonb),
+                        '{workingState}', %s::jsonb)
+                    WHERE message_id = (
+                        SELECT max(message_id) FROM app.conversation_messages
+                        WHERE conversation_id = %s::uuid AND role = 'assistant'
+                    )
+                    """,
+                    (Jsonb(state["response"]), Jsonb(state["working_state"]), conversation_uuid),
+                )
+
     async def restore(self, conversation_id: str, cdp_user_id: str) -> dict[str, Any] | None:
         conversation_uuid = _uuid(conversation_id)
         if conversation_uuid is None:
@@ -100,7 +133,7 @@ class PostgresConversationArchive:
             row = await (
                 await conn.execute(
                     """
-                    SELECT m.payload->'workingState' AS working_state
+                    SELECT m.payload->'workingState' AS working_state, m.payload->'response' AS response
                     FROM app.conversations c
                     JOIN app.conversation_messages m USING (conversation_id)
                     WHERE c.conversation_id = %s::uuid AND c.cdp_user_id = %s
@@ -110,7 +143,11 @@ class PostgresConversationArchive:
                     (conversation_uuid, cdp_user_id),
                 )
             ).fetchone()
-        return row["working_state"] if row and isinstance(row["working_state"], dict) else None
+        if not row or not isinstance(row["working_state"], dict):
+            return None
+        # Response cùng dòng đi kèm, để agent dựng lại các lịch không lưu lặp trong working state.
+        return {**row["working_state"], "lastResponse": row["response"]} if isinstance(row["response"], dict) \
+            else row["working_state"]
 
     async def list_for_user(
         self, cdp_user_id: str, *, page: int, page_size: int

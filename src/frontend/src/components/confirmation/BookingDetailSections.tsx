@@ -21,7 +21,7 @@ export const Box: React.FC<{ title: string; hint?: string; children: React.React
 
 export const BookingBreadcrumb: React.FC = () => (
   <nav aria-label="Đường dẫn" className="mb-4 flex flex-wrap items-center gap-2 text-[13px] text-slate-500">
-    <Link href="/profile/booking_history" className="hover:text-blue-700 hover:underline">Đơn hàng của tôi</Link>
+    <Link href="/profile/booking_history" className="hover:text-brand-700 hover:underline">Đơn hàng của tôi</Link>
     <span aria-hidden="true">/</span>
     <span aria-current="page" className="font-medium text-slate-800">Chi tiết đơn hàng</span>
   </nav>
@@ -62,14 +62,14 @@ const Timeline: React.FC<{ left: [string, string, string?]; right?: [string, str
   <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 px-4 py-3.5" data-testid="item-timeline">
     <div className="min-w-0">
       <div className="text-[11px] text-slate-500">{left[0]}</div>
-      <div className="break-words text-[15px] font-semibold text-blue-600">{left[1]}</div>
+      <div className="break-words text-[15px] font-semibold text-brand-600">{left[1]}</div>
       {left[2] && <div className="text-xs text-slate-500">{left[2]}</div>}
     </div>
     <div className="max-w-[9rem] border-y border-dashed border-slate-300 px-2 py-1 text-center text-xs text-slate-500">{middle}</div>
     {right ? (
       <div className="min-w-0 text-right">
         <div className="text-[11px] text-slate-500">{right[0]}</div>
-        <div className="break-words text-[15px] font-semibold text-blue-600">{right[1]}</div>
+        <div className="break-words text-[15px] font-semibold text-brand-600">{right[1]}</div>
         {right[2] && <div className="text-xs text-slate-500">{right[2]}</div>}
       </div>
     ) : <div />}
@@ -118,7 +118,7 @@ export const ServiceFacts: React.FC<{ item: ApiBookingItem; info?: PropertyInfo 
           </div>
           {info.address && (
             <a href={mapHref(info.name, info.address)} target="_blank" rel="noopener noreferrer"
-              className="flex min-h-11 min-w-16 flex-none flex-col items-center justify-center gap-0.5 rounded-xl bg-slate-100 px-2 text-xs font-medium text-slate-800 hover:bg-blue-50">
+              className="flex min-h-11 min-w-16 flex-none flex-col items-center justify-center gap-0.5 rounded-xl bg-slate-100 px-2 text-xs font-medium text-slate-800 hover:bg-brand-50">
               <MapPin className="h-[18px] w-[18px] text-rose-500" aria-hidden="true" />
               Bản đồ
             </a>
@@ -128,9 +128,9 @@ export const ServiceFacts: React.FC<{ item: ApiBookingItem; info?: PropertyInfo 
       {taxonomy === 'hotel' && info && info.amenities.length > 0 && (
         <ul className="flex flex-wrap gap-x-4 gap-y-1 px-4 pb-3 text-[13px] text-slate-700" aria-label="Tiện ích">
           {info.amenities.slice(0, 5).map((label) => (
-            <li key={label} className="inline-flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-blue-600" aria-hidden="true" />{label}</li>
+            <li key={label} className="inline-flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-brand-600" aria-hidden="true" />{label}</li>
           ))}
-          {info.amenities.length > 5 && <li className="rounded-full bg-blue-50 px-2.5 text-blue-700">+{info.amenities.length - 5} tiện ích khác</li>}
+          {info.amenities.length > 5 && <li className="rounded-full bg-brand-50 px-2.5 text-brand-700">+{info.amenities.length - 5} tiện ích khác</li>}
         </ul>
       )}
       {taxonomy === 'flight' && cabin && <p className="px-4 pb-3 text-[13px] text-slate-700">Hạng vé: {CABIN[cabin] ?? cabin}</p>}
@@ -200,7 +200,7 @@ export const ServiceInfoBlock: React.FC<{ items: ApiBookingItem[]; info: Record<
       <dl className="grid gap-3.5 px-4 py-4">
         {place?.address && (
           <Row icon={<MapPin className="h-5 w-5" aria-hidden="true" />} label="Địa chỉ" value={
-            <>{place.address}<br /><a className="text-[13px] font-medium text-blue-600 underline underline-offset-2" target="_blank" rel="noopener noreferrer" href={mapHref(place.name, place.address)}>Xem địa chỉ</a></>} />
+            <>{place.address}<br /><a className="text-[13px] font-medium text-brand-600 underline underline-offset-2" target="_blank" rel="noopener noreferrer" href={mapHref(place.name, place.address)}>Xem địa chỉ</a></>} />
         )}
         <Row icon={<Phone className="h-5 w-5" aria-hidden="true" />} label="Liên hệ hỗ trợ" value={SUPPORT_HOTLINE} />
         <Row icon={<ClipboardList className="h-5 w-5" aria-hidden="true" />} label="Chính sách" value="Huỷ miễn phí theo hạn ghi ở mục Chính sách hoàn huỷ bên dưới" />
@@ -225,7 +225,7 @@ export const CancellationPolicyBlock: React.FC<{ booking: BookingResponse; nowMs
       : 'Đơn này không còn hiệu lực. Chính sách hiện ở đây để bạn tham khảo.';
   const step = (index: number, title: string, text: string) => (
     <li key={title} className={`relative grid grid-cols-[1.375rem_minmax(0,1fr)] gap-3 pb-3.5 last:pb-0 ${stage >= 0 && stage !== index ? 'opacity-50' : ''}`}>
-      <span className={`mt-0.5 grid h-[1.375rem] w-[1.375rem] place-items-center rounded-full border-2 ${stage === index ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200 bg-slate-100'}`}>
+      <span className={`mt-0.5 grid h-[1.375rem] w-[1.375rem] place-items-center rounded-full border-2 ${stage === index ? 'border-brand-600 bg-brand-600 text-white' : 'border-slate-200 bg-slate-100'}`}>
         {stage === index && <Check className="h-3 w-3" aria-hidden="true" />}
       </span>
       <div><strong className="block text-sm font-semibold text-slate-900">{title}</strong><span className="text-xs text-slate-500">{text}</span></div>
@@ -268,7 +268,7 @@ export const PaymentPanel: React.FC<{ booking: BookingResponse; cancel?: React.R
             <span className="break-all font-mono text-[13px] font-semibold text-slate-900" data-testid="panel-reference">{booking.referenceCode}</span>
           </div>
           <button type="button" onClick={copy}
-            className="inline-flex min-h-9 flex-none items-center gap-1.5 rounded-full border border-slate-200 px-3 text-xs font-medium text-slate-700 hover:border-blue-600 hover:text-blue-700">
+            className="inline-flex min-h-9 flex-none items-center gap-1.5 rounded-full border border-slate-200 px-3 text-xs font-medium text-slate-700 hover:border-brand-600 hover:text-brand-700">
             {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" /> : <Copy className="h-3.5 w-3.5" aria-hidden="true" />}
             {copied ? 'Đã sao chép' : 'Sao chép'}
           </button>

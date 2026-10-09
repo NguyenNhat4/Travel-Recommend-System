@@ -1,12 +1,14 @@
 from .amenities import AMENITIES, KEYS as AMENITY_KEYS, QUERY_CUES, Amenity, amenity_keys, keys_of_string
 from .constraints import (
     VERTICAL_CUE_STRENGTH,
+    DurationParse,
     FlightRoles,
     MustNot,
     NegationParse,
     NumericParse,
     PartyParse,
     VerticalParse,
+    parse_duration,
     parse_flight_roles,
     parse_negation,
     parse_numeric,
@@ -22,10 +24,27 @@ from .destination import (
     decide_destination,
     is_flight_query,
 )
+from .gazetteer import (
+    AIRPORT,
+    AREA,
+    DISTRICT,
+    ENTITY_TAXONOMIES,
+    LANDMARK,
+    MAX_ALIAS_TOKENS,
+    PLACES,
+    VENUE,
+    Place,
+    entities_of_name,
+    entity_table,
+    place_table,
+)
 from .hybrid import HybridConfig, HybridOutcome, hybrid_filter_score, rrf
 from .lexical import STOPWORDS, coverage, fold, is_unaccented, query_tokens, strip_accents, tokens
 from .normalize import ALIASES, DESTINATION_ALIASES, PARTY_PHRASES, NormalizedQuery, QueryNormalizer
 from .query_plan import (
+    APPLIED_DATE,
+    APPLIED_DURATION,
+    APPLIED_ENTITY,
     APPLIED_MUST_NOT,
     APPLIED_PARTY,
     APPLIED_PRICE,
@@ -38,6 +57,8 @@ from .query_plan import (
     PlanGazetteers,
     PlanParams,
     QueryPlan,
+    ROLE_GATE,
+    ROLE_LOCATION,
     build_query_plan,
 )
 from .scoring import SearchOutcome, candidate_filter_score, exact_filter_score, revalidate, soft_star_order
@@ -45,7 +66,7 @@ from .suggest import MIN_QUERY_CHARS, SUGGEST_GROUPS, SuggestEntry, is_suggestab
 from .tone import detect_style, normalize_tone
 
 __all__ = [
-    "ALIASES", "AMENITIES", "Amenity", "AMENITY_KEYS", "amenity_keys", "APPLIED_MUST_NOT", "APPLIED_PARTY",
+    "ALIASES", "AMENITIES", "Amenity", "AMENITY_KEYS", "amenity_keys", "APPLIED_DATE", "APPLIED_MUST_NOT", "APPLIED_PARTY",
     "APPLIED_PRICE", "APPLIED_ROUTE", "APPLIED_STAR", "APPLIED_TAXONOMY", "build_query_plan", "candidate_filter_score",
     "coverage", "decide_destination", "DESTINATION_ALIASES", "DestinationDecision", "detect_style", "EMPTY_DESTINATION",
     "EMPTY_PARAM", "exact_filter_score", "FLIGHT_CUES", "FlightRoles", "fold", "hybrid_filter_score", "HybridConfig",
@@ -56,4 +77,8 @@ __all__ = [
     "QueryPlan", "remove_spans", "revalidate", "rrf", "SearchOutcome", "soft_star_order", "SOURCE_PARAM",
     "SOURCE_QUERY", "STOPWORDS", "strip_accents", "suggest", "SUGGEST_GROUPS", "SuggestEntry", "tokens",
     "VERTICAL_CUE_STRENGTH", "VerticalParse",
+    # gazetteer (contract 1.18.0)
+    "AIRPORT", "AREA", "DISTRICT", "ENTITY_TAXONOMIES", "entities_of_name", "entity_table", "LANDMARK",
+    "MAX_ALIAS_TOKENS", "Place", "place_table", "PLACES", "VENUE",
+    "APPLIED_DURATION", "APPLIED_ENTITY", "DurationParse", "parse_duration", "ROLE_GATE", "ROLE_LOCATION",
 ]

@@ -1,3 +1,4 @@
+import json
 import unittest
 
 from collectors.trip_hotels import (
@@ -26,6 +27,18 @@ class ExtractAnchoredJsonTests(unittest.TestCase):
     def test_malformed_json_returns_none_instead_of_raising(self):
         html = '"hotelDetailResponse":{"a": ,}'
         self.assertIsNone(extract_anchored_json(html, '"hotelDetailResponse":'))
+
+    def test_next_flight_chunks_preserve_unicode_and_escaped_strings(self):
+        expected = {"hotelBaseInfo": {"name": 'Khách sạn "Biển"', "id": 123}}
+        flight = 'a:["$",null,{"hotelDetailResponse":' + json.dumps(expected, ensure_ascii=False) + '}]'
+        split = flight.index('hotelDetailResponse') + 8
+        html = ''.join('<script>self.__next_f.push(' + json.dumps([1, part]) + ')</script>'
+                       for part in (flight[:split], flight[split:]))
+        self.assertEqual(extract_anchored_json(html, '"hotelDetailResponse":'), expected)
+
+    def test_null_does_not_capture_unrelated_object(self):
+        self.assertIsNone(extract_anchored_json(
+            '"hotelDetailResponse":null,"unrelated":{"id":9}', '"hotelDetailResponse":'))
 
 
 class ScrollDoneTests(unittest.TestCase):

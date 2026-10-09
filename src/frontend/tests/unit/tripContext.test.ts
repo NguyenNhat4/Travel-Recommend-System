@@ -34,6 +34,16 @@ describe('parseTripContext', () => {
     expect(parse('adults=2&children=x')).toEqual({ adults: 2 });
   });
 
+  it('allows 9 guests per room and up to 9 rooms for hotels (FR-BKG-08)', () => {
+    expect(parse('adults=10&children=8&rooms=2')).toEqual({ adults: 10, children: 8, rooms: 2 });
+    expect(parse('adults=10&children=9&rooms=2')).toEqual({ adults: 10, rooms: 2 });
+    expect(parse('adults=18&rooms=2')).toEqual({ adults: 18, rooms: 2 });
+    expect(parse('adults=19&rooms=2')).toEqual({ rooms: 2 });
+    expect(parse('adults=81&rooms=9')).toEqual({ adults: 81, rooms: 9 });
+    expect(parse('adults=82&rooms=9')).toEqual({ rooms: 9 });
+    expect(parse('adults=9&rooms=10')).toEqual({ adults: 9 });
+  });
+
   it('rejects more rooms than adults', () => {
     expect(parse('adults=2&rooms=3')).toEqual({ adults: 2 });
     expect(parse('adults=2&rooms=2')).toEqual({ adults: 2, rooms: 2 });

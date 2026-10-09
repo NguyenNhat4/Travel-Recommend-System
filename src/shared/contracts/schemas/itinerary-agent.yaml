@@ -147,8 +147,8 @@ TripIntentPatch:
       description: (1.18.0) Thành phố đi; chỉ gửi tên thành phố, không gửi toạ độ.
 ItineraryRequest:
   type: object
-  description: Baseline tích hợp 1.1.0. Cần message hoặc intentOverride; intentOverride yêu cầu conversationId
-    khác null.
+  description: Baseline tích hợp 1.1.0. Cần message, intentOverride hoặc selectStayOption (1.20.0); intentOverride và
+    selectStayOption yêu cầu conversationId khác null.
   properties:
     conversationId:
       type:
@@ -163,6 +163,23 @@ ItineraryRequest:
     intentOverride:
       oneOf:
       - $ref: ../openapi.yaml#/components/schemas/TripIntentPatch
+      - type: 'null'
+    selectStayOption:
+      description: >-
+        (1.20.0, AC-AGT-04) Chọn một phương án trong `stayOptions` của câu trả lời gần nhất của hội thoại (người dùng bấm
+        "Đổi sang khách sạn này"; lượt này không có message trả về). Lịch đổi đúng như phương án đã báo, không tìm lại
+        sản phẩm. Cần conversationId; không cần message. index không còn trong phương án đã lưu thì backend xử lý như một
+        lượt nhắn thường.
+      oneOf:
+      - type: object
+        additionalProperties: false
+        required:
+        - index
+        properties:
+          index:
+            type: integer
+            minimum: 1
+            maximum: 3
       - type: 'null'
     context:
       type: object
@@ -188,6 +205,14 @@ ItineraryRequest:
         type: string
       intentOverride:
         $ref: ../openapi.yaml#/components/schemas/TripIntentPatch
+  - required:
+    - conversationId
+    - selectStayOption
+    properties:
+      conversationId:
+        type: string
+      selectStayOption:
+        type: object
 ItinerarySlot:
   type: object
   required:
@@ -267,6 +292,12 @@ ItineraryStay:
     nights:
       type: integer
       minimum: 1
+    fromNight:
+      type: integer
+      minimum: 1
+      description: >-
+        (1.19.0, AC-AGT-04) Đêm đầu tiên ở khách sạn này, đếm từ 1 (đêm của ngày 1). Khách sạn ở các đêm
+        fromNight .. fromNight + nights − 1. Backend luôn gửi từ 1.19.0; client coi vắng mặt là 1.
     note:
       type:
       - string
@@ -351,6 +382,16 @@ ItineraryPlan:
       oneOf:
       - $ref: ../openapi.yaml#/components/schemas/ItineraryStay
       - type: 'null'
+    stays:
+      type: array
+      minItems: 1
+      maxItems: 2
+      description: >-
+        (1.19.0, AC-AGT-04) Khách sạn theo đêm, sắp theo fromNight; hai mục khi lịch trình đổi khách sạn giữa chuyến
+        (chuyến từ 5 ngày, mỗi khách sạn ít nhất 2 đêm). Tổng nights = max(1, days − 1). `stay` luôn bằng stays[0] để
+        client cũ vẫn chạy; vắng mặt khi không có khách sạn. estimatedTotal cộng giá × nights của từng khách sạn.
+      items:
+        $ref: ../openapi.yaml#/components/schemas/ItineraryStay
     flights:
       type: array
       maxItems: 2
@@ -377,6 +418,8 @@ ItineraryPlan:
       description: Backend tính tổng khi đủ đơn vị/số lượng; thiếu thì null, budgetStatus UNKNOWN và warning.
         Không bỏ qua khoản chưa biết. Điểm tham quan tự do (attraction/golf có ticketed=false hoặc unitPrice null)
         tính 0 vào tổng, kèm warning FREE_ENTRY_ASSUMED.
+    costBreakdown:
+      $ref: ../openapi.yaml#/components/schemas/ItineraryCostBreakdown
     currency:
       $ref: ../openapi.yaml#/components/schemas/Currency
     budgetStatus:
@@ -442,6 +485,78 @@ ItineraryMetadata:
       format: date-time
     requestId:
       type: string
+ItineraryStayOption:
+  type: object
+  required:
+  - index
+  - kmDelta
+  - moneyDelta
+  - itinerary
+  description: >-
+    (1.20.0, AC-AGT-04) Một phương án khác của lịch trình: lịch đầy đủ khi đổi khách sạn (để client xem trước không gọi
+    server) và đánh đổi so với lịch đang chọn. Mọi số do backend tính.
+  properties:
+    index:
+      type: integer
+      minimum: 1
+      maximum: 3
+      description: Số thứ tự để chọn (`selectStayOption.index`, "lấy phương án N").
+    kmDelta:
+      type: number
+      description: Chênh quãng đường cả chuyến so với lịch đang chọn, km đường chim bay; âm là đi ít hơn.
+    moneyDelta:
+      type: integer
+      description: Chênh tổng tiền so với lịch đang chọn (VND); âm là rẻ hơn.
+    overBudget:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+      description: Số tiền vượt ngân sách; null khi không vượt hoặc không có ngân sách.
+    itinerary:
+      $ref: ../openapi.yaml#/components/schemas/ItineraryPlan
+ItineraryStayOptions:
+  type: object
+  required:
+  - distanceKm
+  - options
+  description: >-
+    (1.20.0, AC-AGT-04) Mục "Phương án khác" dạng hàng thẻ: tổng km của lịch đang chọn và tối đa 3 phương án. Vắng mặt
+    khi không có phương án nào.
+  properties:
+    distanceKm:
+      type: number
+      minimum: 0
+      description: Quãng đường cả chuyến của lịch đang chọn (`itinerary`), km đường chim bay.
+    options:
+      type: array
+      minItems: 1
+      maxItems: 3
+      items:
+        $ref: ../openapi.yaml#/components/schemas/ItineraryStayOption
+ItineraryCostBreakdown:
+  type: object
+  required:
+  - flights
+  - stays
+  - activities
+  description: >-
+    (1.21.0, user-flow §4.2 "Ngân sách dự tính") estimatedTotal chia theo nhóm sản phẩm; flights + stays + activities =
+    estimatedTotal. Có khi estimatedTotal khác null, vắng mặt khi tổng chưa biết. Chỉ gồm sản phẩm trong lịch: không có
+    khoản ăn uống hay đi lại ước tính.
+  properties:
+    flights:
+      type: integer
+      minimum: 0
+      description: Vé máy bay, unitPrice × passengers của từng vé.
+    stays:
+      type: integer
+      minimum: 0
+      description: Khách sạn, giá × số đêm của từng khách sạn.
+    activities:
+      type: integer
+      minimum: 0
+      description: Tour, điểm tham quan, golf trong các ngày; điểm tham quan tự do tính 0.
 ItineraryCompleted:
   type: object
   required:
@@ -483,6 +598,8 @@ ItineraryCompleted:
         `estimatedTotal`.
       allOf:
       - $ref: ../openapi.yaml#/components/schemas/SearchResultsByTaxonomy
+    stayOptions:
+      $ref: ../openapi.yaml#/components/schemas/ItineraryStayOptions
     warnings:
       type: array
       items:
