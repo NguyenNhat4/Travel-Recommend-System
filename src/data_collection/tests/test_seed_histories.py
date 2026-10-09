@@ -243,7 +243,7 @@ class SeedTests(unittest.TestCase):
         p3 = [e for e in self.events if e["cdp_user_id"] == "VP0000003" and e["event_name"] == "purchase"]
         self.assertEqual(len({e["event_group_id"] for e in p3}), 2)
         self.assertTrue(all(self.by_id[e["product_id"]]["destination"] == "Phú Quốc" for e in p3))
-        self.assertEqual((self.profiles["VP0000003"]["lifecycle_stage"], self.profiles["VP0000003"]["days_since_last_booking"]), ("dormant", 190))
+        self.assertEqual((self.profiles["VP0000003"]["lifecycle_stage"], self.profiles["VP0000003"]["days_since_last_booking"]), ("churned", 400))   # > 365: dormant của engine (09/10)
         self.assertEqual([e for e in self.events if e["cdp_user_id"] == "VP0000004"], [])
         self.assertEqual(self.profiles["VP0000004"]["lifecycle_stage"], "new")
         users = self.res["users"]

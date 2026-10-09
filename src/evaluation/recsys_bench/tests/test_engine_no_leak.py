@@ -40,16 +40,17 @@ def test_engine_never_reads_cdp_history_offline(world):
     assert response["recommendations"] and response["diagnostics"]["eventsUsed"] == 2
 
 
-def test_later_view_without_group_takes_over_the_open_trip(world):
-    # Seed không gắn event_group_id cho view/cart → engine gom thành trip `_solo_<productId>`. Một view SAU purchase
-    # thành trip đang mở (trẻ nhất) nên cross_vertical và category exclusion mất. Ghi lại hành vi engine
-    # (Issue Day 1 trong docs/spec/bench/recsys-offline-eval.md), không sửa ở harness.
+def test_later_view_without_group_no_longer_takes_over_the_booked_trip(world):
+    # Seed không gắn event_group_id cho view/cart → engine gom thành trip `_solo_<productId>`. Trước 09/10 một view SAU
+    # purchase thành trip đang mở (trẻ nhất) nên cross_vertical và category exclusion mất (Issue I-3 trong
+    # docs/spec/bench/recsys-offline-eval.md). Từ 09/10 chuyến đã đặt còn mở được ưu tiên (FR-REC-02, đề xuất
+    # `update-archive/2026-10-09-recsys-uu-tien-chuyen-da-dat.md`).
     only_purchase = engine_for(world).recommend("u1", AS_OF, 5, HISTORY[:1])
     with_later_view = engine_for(world).recommend("u1", AS_OF, 5, HISTORY)
     assert only_purchase["strategy"] == "cross_vertical"
     assert only_purchase["diagnostics"]["excludedVerticals"] == ["hotel"]
-    assert with_later_view["strategy"] == "cold_start_content"
-    assert with_later_view["diagnostics"]["excludedVerticals"] == []
+    assert with_later_view["strategy"] == "cross_vertical"
+    assert with_later_view["diagnostics"]["excludedVerticals"] == ["hotel"]
 
 
 def test_popularity_only_counts_purchases_before_as_of(world):

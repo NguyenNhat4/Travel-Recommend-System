@@ -143,7 +143,7 @@ Sửa schema = sửa file .sql, **thêm migration idempotent tương ứng** và
 ### 6.4. Còn chờ chốt
 
 - Tên cột opt-in trong `cdp.profiles` (chờ reviewer CDP) · mọi route có ≥ 1 chuyến? (Data kiểm tra trên `products.jsonl`).
-- **Bộ persona lệch giữa PRD và bản đã triển khai — không tự đồng bộ.** DDL và `docs/spec/DATABASE_SCHEMA.md` dùng cột `app.users.persona` với 4 giá trị trạng thái cold-start: `P1_frequent`, `P2_first_time`, `P3_dormant`, `P4_no_history` (mỗi persona kích hoạt một nhánh khác nhau của recommendation — bảng persona ở `DATABASE_SCHEMA.md` §8 Kế hoạch mock data). PRD lại mô tả 4 persona phong cách du lịch `P1_family`, `P2_biz`, `P3_explorer`, `P4_deal` trên cột `persona_tag` / trường `personaTag` (`docs/prd/project-brief.md` §5, `data-model.md` §2.2, `api-contract.md` §2.1), trong khi contract không có trường persona nào (`personaLabel` đã gỡ cùng `/auth/demo-accounts` ngày 2026-09-24). Khi code: theo DDL + contract. Việc hợp nhất hai bộ persona cần người dùng quyết định.
+- Persona đã hợp nhất (chốt 2026-10-09, `docs/prd/update-archive/2026-10-09-persona-trang-thai-cold-start-va-phong-cach-du-lich.md`): persona = 4 trạng thái cold-start `P1_frequent`, `P2_first_time`, `P3_dormant` (chuyến gần nhất > 365 ngày), `P4_no_history` theo DDL; phong cách du lịch (biển, núi, thành phố…) là đặc trưng của khách, không phải persona. `diagnostics.dormant` của contract vẫn là 90 ngày.
 
 ### 6.5. Nhiệm vụ tuần 1 — tạo bảng và mock data (spec đầy đủ: `docs/spec/MOCK_DATA_SPEC.md`)
 

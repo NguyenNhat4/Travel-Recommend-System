@@ -73,7 +73,8 @@ def trip_destination(index: UnitIndex, events: list[dict], as_of: datetime) -> s
     ages = {tid: min(d for d, _ in evs) for tid, evs in raw.items()}
     today = local_today(as_of)
     open_trips = [tid for tid, age in ages.items() if trip_is_open(age, trip_ends_on(e for _, e in raw[tid]), today)]
-    chosen = min(open_trips or ages, key=lambda tid: ages[tid])
+    booked = [tid for tid in open_trips if any(e.get("eventName") == "purchase" for _, e in raw[tid])]
+    chosen = min(booked or open_trips or ages, key=lambda tid: ages[tid])   # chuyến đã đặt còn mở đứng trước (09/10)
     return Counter(str(index.destination[u]) for _, u in trips[chosen]).most_common(1)[0][0]
 
 

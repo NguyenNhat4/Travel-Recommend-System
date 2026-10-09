@@ -108,8 +108,9 @@ def engine_view(train: list[dict], index: UnitIndex, as_of: datetime, has_vector
     bought = index.purchase_closure(bought)      # combo ↔ thành phần cùng lần mua (FR-REC-02, 09/10) — như `use_cases.bought_units`
     today = local_today(as_of)
     active = [t for t, v in trips.items() if trip_is_open(v.age_days, v.ends_on, today)]
+    booked = [t for t in active if trips[t].purchased_taxonomies]         # chuyến đã đặt còn mở đứng trước (FR-REC-02, 09/10)
     return EngineView(sum(v.n_events for v in trips.values()), trips,
-                      min(active, key=lambda t: trips[t].age_days) if active else None, bought)
+                      min(booked or active, key=lambda t: trips[t].age_days) if active else None, bought)
 
 
 def unreachable(target: str, view: EngineView, index: UnitIndex, *, engine_meta: dict | None = None,

@@ -58,3 +58,6 @@ bench_out/
 
 # File tạm của gold_schema.atomic_write_text khi app/CLI chết giữa chừng
 src/evaluation/search_bench/gold/**/.*.tmp
+
+# Kết quả per-user của bench theme_study (hàng chục MB / lượt) — chỉ commit JSON tổng hợp + SHA256SUMS
+src/evaluation/recsys_bench/theme_study/results/**/*.jsonl

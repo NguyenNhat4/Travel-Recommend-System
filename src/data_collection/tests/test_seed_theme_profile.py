@@ -11,9 +11,12 @@ from data_collection.tests.test_seed_histories import AS_OF, DESTS, ORIGINS, dum
 
 N = 600
 GOLDEN = {   # sha256(dump(...)) với make_catalog(), seed 7, n_profiles 600 — tính trước khi vá g6
-    "demo": "8055fc455c7a970f22d4d0dcbc41e9c321fc2edd584cf7716b488e244215a073",
-    "eval-v2": "924e647581eeb5a3818e8c7c5b66f6c716c220906f51b9db5735bef88f24a8c6",
-    "append-v1": "857fab8be1a325226e43c25807ce0660066bedef5be2e916043cc5912591a1ad",
+    # demo / eval-v2 đổi 09/10 vì persona P3 chuyển chuyến cuối 190 → 400 ngày (đề xuất persona + dormant 365): khác biệt chỉ là
+    # lịch sử VP0000003 và số thứ tự trong ngày của các mã nhóm `OFF<ngày><stt>` (vd VP0000272, VP0000522) — nội dung event của
+    # khách khác giữ nguyên. append-v1 đổi cùng lý do.
+    "demo": "3d3ca4ff523ed3cf12af01b3e567aafad755769b3ac69c939eb06c825148f316",
+    "eval-v2": "2f6cf34891d8c0daab7700cf7db729755b5318812ab116cf95218fda6bd78078",
+    "append-v1": "85425db3f99a1278d6a0282025ceec9ec6fbf2dbb3c79c929a21525dc853fed7",
 }
 # make_catalog() chỉ có 1 điểm đến núi (Đà Lạt) và 1 thành phố (Hà Nội): thêm mỗi chủ đề một điểm đến nữa cùng cấu trúc, và một
 # điểm đến KHÔNG có nhãn (Quảng Ngãi) để kiểm đường bốc toàn cục. Không đụng make_catalog của các test khác.

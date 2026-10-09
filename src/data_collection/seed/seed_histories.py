@@ -450,7 +450,7 @@ def seed_personas(w: World, b: Builder, rng: random.Random, as_of: date) -> dict
     for days_ago, prop in zip(C.P2["view_days_ago"], distinct_picks(props, rng, n_views)):
         b.events.append(b.event(p2, "product_view", at(as_of - timedelta(days=days_ago), rng), prop))
 
-    for days_ago in C.P3["trip_days_ago"]:                              # P3: 2 chuyến Phú Quốc, chuyến cuối as_of − 190
+    for days_ago in C.P3["trip_days_ago"]:                              # P3: 2 chuyến Phú Quốc, chuyến cuối as_of − 400
         persona_trip(p3, C.P3, C.P3["verticals"], days_ago)
     return info
 

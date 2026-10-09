@@ -12,6 +12,10 @@ Chạy:
     python -m src.evaluation.recsys_bench.theme_study.rank_latency --vec npy:<prefix> --as-of <ISO> \
       --arms "prod:P0_prod:F0_prod:0,f14c:P2_confidence:F14c_betweenQuantilePop35:0,f14cdc2:P2_confidence:F14c_betweenQuantilePop35:2" \
       --n-users 400 --repeat 3 --out latency.json
+
+09/10 (plan `docs/plan/2026-10-09-recsys-cong-thuc-oph.md` §7.7): `--configs` nhận tên cấu hình `registry` (B0, B1p, F_O…) thay
+cho `--arms`, gồm cả ô B; `--popularity-cache` ≥ số khách để bảng phổ biến nạp trước không bị đẩy ra (mặc định 8 của
+`OfflineEngine` làm số cũ 29,62 / 38,63 ms có thể gồm cả bước dựng lại popularity).
 """
 from __future__ import annotations
 
@@ -60,7 +64,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--vec", required=True)
     ap.add_argument("--as-of", required=True)
-    ap.add_argument("--arms", required=True, help="nhãn:profile:scorer:destCap, phân cách bằng dấu phẩy")
+    ap.add_argument("--arms", default="", help="nhãn:profile:scorer:destCap, phân cách bằng dấu phẩy")
+    ap.add_argument("--configs", default="", help="tên cấu hình registry (B0, B1p, …), phân cách bằng dấu phẩy")
+    ap.add_argument("--popularity-cache", type=int, default=8, help="cỡ cache popularity của OfflineEngine")
     ap.add_argument("--split", default="llbo", choices=["llbo", "temporal", "nexttrip"])
     ap.add_argument("--k", type=int, default=4, help="k của production (trang chủ 4 món)")
     ap.add_argument("--n-users", type=int, default=400)
@@ -72,7 +78,7 @@ def main():
     idx, vec = TE.load_index(a.vec)
     events = TE.load_events()
     purchases = [e for e in events if e["eventName"] == "purchase"]
-    eng = TE.OfflineEngine(idx, vec, purchases, mode="prod")
+    eng = TE.OfflineEngine(idx, vec, purchases, mode="prod", popularity_cache=a.popularity_cache)
     world = TE.World(idx, vec, [e for e in purchases if TE.parse_ts(e["timestamp"]) < TE.AS_OF])
     split = {"llbo": SP.leave_last_booking_out, "temporal": SP.temporal_split,
              "nexttrip": SP.next_trip_split}[a.split](events, idx)
@@ -81,8 +87,26 @@ def main():
     for u in users:
         eng.popularity_at(split.as_of_by_user[u])
 
-    out = {"split": a.split, "k": a.k, "nUsers": len(users), "repeat": a.repeat, "arms": {}}
-    for spec in a.arms.split(","):
+    out = {"split": a.split, "k": a.k, "nUsers": len(users), "repeat": a.repeat, "popularityCache": a.popularity_cache,
+           "arms": {}}
+    from src.evaluation.recsys_bench.theme_study.registry import Installed, parse
+    for name in [c for c in a.configs.split(",") if c]:
+        inst = Installed(parse(name), idx, [eng])
+        try:
+            best = np.full(len(users), np.inf)
+            for _ in range(a.repeat):
+                for i, u in enumerate(users):
+                    t0 = time.perf_counter()
+                    inst.recommend(eng, u, split.as_of_by_user[u], a.k, split.train_by_user[u])
+                    best[i] = min(best[i], (time.perf_counter() - t0) * 1000.0)
+        finally:
+            inst.restore()
+        out["arms"][name] = {"p50_ms": round(float(np.percentile(best, 50)), 2),
+                             "p95_ms": round(float(np.percentile(best, 95)), 2),
+                             "p99_ms": round(float(np.percentile(best, 99)), 2),
+                             "mean_ms": round(float(best.mean()), 2), "max_ms": round(float(best.max()), 2)}
+        print(name, out["arms"][name], flush=True)
+    for spec in [x for x in a.arms.split(",") if x]:
         label, profile, scorer, cap = spec.split(":")
         restore()
         setup_arm(profile, scorer, int(cap), eng, world, TE.AS_OF, vec)

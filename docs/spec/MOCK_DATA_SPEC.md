@@ -277,7 +277,7 @@ không còn đủ app.users persona); report ghi rõ là FAIL dự kiến, khôn
 |---|---|---|
 | P1 Minh Anh `P1_frequent` | 3 chuyến Nha Trang trong 18 tháng (hotel + attraction); **chuyến sắp tới**: purchase `hotel_room` Vinpearl Nha Trang tại `as_of − 3`, `using_date = as_of + 12`, có `app.bookings` + `booking_items` tương ứng, chưa có flight/attraction; active, Gold | "Hoàn thiện chuyến Nha Trang" → flight / attraction |
 | P2 Quốc Bảo `P2_first_time` | 2 `product_view` Phú Quốc tại `as_of − 2`, `as_of − 1`; không purchase; new | cold start có `because` |
-| P3 Thu Hà `P3_dormant` | 2 chuyến Phú Quốc, chuyến cuối `as_of − 190`; dormant | "Chào mừng quay lại" |
+| P3 Thu Hà `P3_dormant` | 2 chuyến Phú Quốc, chuyến cuối `as_of − 400` (> 365, ngưỡng dormant chốt 09/10); `lifecycle_stage` CDP = churned | "Chào mừng quay lại" |
 | P4 Khách mới `P4_no_history` | 0 event; new | chỉ "Được đặt nhiều" |
 
 `app.bookings` cho P1: `reference_code = "VOTA-" + yyyymmdd(as_of+12) + "-" + 4 ký tự`, `event_group_id` trùng với event purchase, `total_amount` = Σ line_total. Không tạo bookings cho khách seed khác.

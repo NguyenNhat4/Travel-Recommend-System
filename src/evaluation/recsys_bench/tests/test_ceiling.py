@@ -39,7 +39,8 @@ def test_unreachable_reasons_on_fixture(world, events):
     assert got["u5"] == ["already_bought", "taxonomy_excluded"]
     assert got["VP0000001"] == ["already_bought"] and views["VP0000001"].active_is_solo
     assert got["u1"] == [] and got["u2"] == []
-    assert views["u1"].active_trip == "_solo_A1" and views["u1"].destination == "Nha Trang" and views["u2"].active_trip is None
+    # u1: chuyến đã đặt T1 còn mở đứng trước view lẻ A1 đến sau (FR-REC-02, 09/10 — trước đó `_solo_A1`, lỗi I-3)
+    assert views["u1"].active_trip == "T1" and views["u1"].destination == "Nha Trang" and views["u2"].active_trip is None
     # bản chính xác theo diagnostics engine: strategy popular → cold_start; điểm đến khác → destination_mismatch
     assert unreachable("F1", views["u1"], index, engine_meta={"strategy": "popular"}) == ["cold_start"]
     assert unreachable("F1", views["u1"], index, engine_meta={"strategy": "cross_vertical", "destination": "Phú Quốc",
