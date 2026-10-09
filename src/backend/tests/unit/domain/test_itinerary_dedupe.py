@@ -5,7 +5,7 @@ cùng tên đều vào lịch.
 """
 import unittest
 
-from src.backend.app.domain.itinerary.dedupe import apply_pairs, filterable, same_name_pairs
+from src.backend.app.domain.itinerary.dedupe import apply_pairs, filterable, multi_day, same_name_pairs
 
 WATER_TAXI = '[Grand World Phú Quốc] - Vé đi thuyền Venice (Water Taxi)'
 
@@ -96,6 +96,29 @@ class ApplyPairsTests(unittest.TestCase):
         candidates = catalog(product('pass', '[03 ngày không giới hạn] - VinWonders', 2000000), *self.candidates.values())
         self.assertNotIn('pass', {item['productId'] for item in filterable(candidates)})
         self.assertNotIn('hotel', {item['productId'] for item in filterable(candidates)})
+
+
+class MultiDayPassTests(unittest.TestCase):
+    """Trace 09/10/2026 "ddi ddau ma no hoang da 1 xiu" (`01a11f41-9b75-76a3-b2f9-e8ba675d9d0c`): Vinpearl bán một gói hai
+    lần, chỉ đảo "VinWonders + Vinpearl Safari", nên mục "Gói nhiều ngày" hiện hai gói như nhau."""
+
+    SAFARI_FIRST = '[02 ngày không giới hạn] - Vinpearl Safari + VinWonders Phú Quốc + Bảo Tàng Gấu Teddy'
+    WONDERS_FIRST = '[02 ngày không giới hạn] - VinWonders + Vinpearl Safari Phú Quốc + Bảo Tàng Gấu Teddy'
+
+    def test_passes_with_the_same_words_in_another_order_pair_up(self):
+        items = [product('baa6', self.SAFARI_FIRST, 2040000), product('0759', self.WONDERS_FIRST, 2040000),
+                 product('3day', self.SAFARI_FIRST.replace('02 ngày', '03 ngày'), 2300000)]
+        self.assertEqual(same_name_pairs(items), [])
+        self.assertEqual(same_name_pairs(items, any_order=True), [('0759', 'baa6')])
+
+    def test_one_of_two_like_passes_is_dropped_and_attractions_are_left_alone(self):
+        candidates = catalog(product('baa6', self.SAFARI_FIRST, 2040000), product('0759', self.WONDERS_FIRST, 2040000),
+                             product('bear', 'Bảo Tàng Gấu Teddy', 200000))
+        self.assertEqual([item['productId'] for item in multi_day(candidates)], ['baa6', '0759'])
+        kept, dropped = apply_pairs(candidates, {'0759': 'recommendation'}, [('0759', 'baa6'), ('bear', 'baa6')],
+                                    'rule', pool=multi_day)
+        self.assertEqual(sorted(kept), ['baa6', 'bear'])  # Search trước Recommendation; vé lẻ không bị đụng
+        self.assertEqual([(item['productId'], item['duplicateOf']) for item in dropped], [('0759', 'baa6')])
 
 
 if __name__ == '__main__':

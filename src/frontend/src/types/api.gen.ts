@@ -1929,6 +1929,8 @@ export interface components {
             nights: number;
             /** @description (1.19.0, AC-AGT-04) Đêm đầu tiên ở khách sạn này, đếm từ 1 (đêm của ngày 1). Khách sạn ở các đêm fromNight .. fromNight + nights − 1. Backend luôn gửi từ 1.19.0; client coi vắng mặt là 1. */
             fromNight?: number;
+            /** @description (1.23.0, AC-AGT-04) Số phòng cho cả đoàn ở khách sạn này = ceil(số người lớn / attributes.priceAdults của khách sạn); trẻ em ở cùng phòng người lớn. Khách sạn thiếu priceAdults tính 1 phòng, kèm cảnh báo STAY_ROOMS_UNKNOWN. Tiền khách sạn = giá × nights × rooms. Backend luôn gửi từ 1.23.0; client coi vắng mặt là 1. */
+            rooms?: number;
             note?: string | null;
             source?: components["schemas"]["ItemSource"];
             because?: components["schemas"]["BecauseItem"][];
@@ -1955,7 +1957,7 @@ export interface components {
         ItineraryCostBreakdown: {
             /** @description Vé máy bay, unitPrice × passengers của từng vé. */
             flights: number;
-            /** @description Khách sạn, giá × số đêm của từng khách sạn. */
+            /** @description Khách sạn, giá × số đêm × số phòng (`rooms`, 1.23.0) của từng khách sạn. */
             stays: number;
             /** @description Tour, điểm tham quan, golf trong các ngày; điểm tham quan tự do tính 0. */
             activities: number;
@@ -1993,7 +1995,7 @@ export interface components {
         ItineraryPlan: {
             title?: string;
             stay?: components["schemas"]["ItineraryStay"] | null;
-            /** @description (1.19.0, AC-AGT-04) Khách sạn theo đêm, sắp theo fromNight; hai mục khi lịch trình đổi khách sạn giữa chuyến (chuyến từ 5 ngày, mỗi khách sạn ít nhất 2 đêm). Tổng nights = max(1, days − 1). `stay` luôn bằng stays[0] để client cũ vẫn chạy; vắng mặt khi không có khách sạn. estimatedTotal cộng giá × nights của từng khách sạn. */
+            /** @description (1.19.0, AC-AGT-04) Khách sạn theo đêm, sắp theo fromNight; hai mục khi lịch trình đổi khách sạn giữa chuyến (chuyến từ 5 ngày, mỗi khách sạn ít nhất 2 đêm). Tổng nights = max(1, days − 1). `stay` luôn bằng stays[0] để client cũ vẫn chạy; vắng mặt khi không có khách sạn. estimatedTotal cộng giá × nights × rooms của từng khách sạn (rooms từ 1.23.0). */
             stays?: components["schemas"]["ItineraryStay"][];
             /** @description (1.18.0, AC-AGT-02) Vé máy bay của chuyến: một vé ROUND_TRIP, hoặc OUTBOUND và/hoặc RETURN. Vắng mặt hoặc rỗng khi không đủ điều kiện có chặng bay; lý do nằm trong warnings (mã FLIGHT_*). */
             flights?: components["schemas"]["ItineraryFlight"][];

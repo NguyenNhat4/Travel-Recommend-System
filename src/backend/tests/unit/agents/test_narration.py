@@ -169,6 +169,31 @@ class RenderTests(unittest.TestCase):
         self.assertEqual(narration._price(current, HOTEL), '600.000 ₫/đêm')
 
 
+class StayRoomsTests(unittest.TestCase):
+    """Đoàn ở nhiều phòng (AC-AGT-04, chốt 2026-10-09): giá khách sạn do code ghi kèm số phòng, LLM không viết số."""
+
+    def rooms(self, count):
+        current = state(stay=HOTEL)
+        current['response']['itinerary']['stay']['rooms'] = count
+        return current
+
+    def test_the_price_placeholder_of_a_hotel_carries_the_rooms(self):
+        update, reason = narrated(self.rooms(5), '**Nơi nghỉ**\n• [ks](product:h1) — [[price:h1]]\n[x](product:t1)')
+        self.assertEqual(reason, 'llm')
+        self.assertIn('[Old Quarter Hotel](product:h1) — 600.000 ₫/đêm × 5 phòng', update['response']['message'])
+
+    def test_the_rule_based_reply_carries_the_rooms(self):
+        current = self.rooms(5)
+        self.assertIn('[Old Quarter Hotel](product:h1) — 1 đêm · 600.000 ₫/đêm × 5 phòng',
+                      narration.fallback_message(current, current['response']))
+
+    def test_one_room_is_not_mentioned(self):
+        current = self.rooms(1)
+        text = narration.fallback_message(current, current['response'])
+        self.assertIn('600.000 ₫/đêm', text)
+        self.assertNotIn('phòng', text.split('**Nơi nghỉ**')[1].split('**Ngày')[0])
+
+
 class FallbackTests(unittest.TestCase):
     def test_the_rule_based_reply_has_every_section(self):
         current = state(stay=HOTEL)
