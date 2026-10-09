@@ -104,7 +104,11 @@ EXTRA = {"queryPlan": {"taxonomy": {"value": "hotel", "source": "query"},
                        "mustNot": {"amenities": ["spa", "pool"], "brands": ["Vinpearl"], "taxonomies": ["golf"]},
                        "price": {"min": None, "max": 2000000, "source": "query"},
                        "star": {"min": 4, "source": "query"},
-                       "party": {"total": 4}},
+                       "party": {"total": 4},
+                       # 07/10 (1.18.0): ba khối chỉ phát khi cờ bật
+                       "duration": {"days": 3, "nights": 2, "source": "query"},
+                       "entity": {"keys": ["vinwonders", "safari"], "role": "gate"},
+                       "location": {"key": "ho_hoan_kiem", "name": "Hồ Hoàn Kiếm", "kind": "landmark", "destination": "Hà Nội"}},
          "derivedDestinations": ["Buôn Ma Thuột", "Hà Nội"],
          "appliedFilters": {"hard": {"destination": "Côn Đảo", "destinationSource": "query"}, "soft": {}}}
 
@@ -113,7 +117,9 @@ def test_parse_ok_fields(ctx):
     # destination = route.destinationCity khi parse ra tuyến bay (appliedFilters / destinationFilter không còn được đọc)
     expected = {"taxonomy": "Hotel", "destination": "Ha Noi", "origin": "buon ma thuot", "destination_city": "Hà Nội",
                 "must_not": ["pool", "spa"], "must_not_brands": ["vinpearl"], "must_not_taxonomies": ["Golf"],
-                "price_max": 2000000.0, "price_min": None, "star_min": 4.0, "party_total": 4}
+                "price_max": 2000000.0, "price_min": None, "star_min": 4.0, "party_total": 4,
+                "duration_days": 3, "duration_nights": 2.0, "entity": ["Safari", "VinWonders"], "entity_role": "Gate",
+                "location_entity": "HO_HOAN_KIEM"}
     assert set(expected) == set(M.PARSE_FIELDS)
     row = M.evaluate_query(gq(expected_parse=expected), ["h_pool"], ctx, extra=EXTRA)
     assert json.loads(row["parse_ok"]) == {f: True for f in M.PARSE_FIELDS}
@@ -133,6 +139,8 @@ def test_plan_fields_destination_and_taxonomy_rules():
     got = M.plan_fields(one)
     assert got["destination"] == "Hạ Long" and got["taxonomy"] is None and got["must_not"] == [] and got["price_max"] is None
     assert got["must_not_brands"] == [] and got["must_not_taxonomies"] == [] and got["party_total"] is None
+    # 07/10 (1.18.0): cờ tắt → backend không phát duration / entity / location → None / []
+    assert (got["duration_days"], got["duration_nights"], got["entity"], got["entity_role"], got["location_entity"]) ==         (None, None, [], None, None)
     # 0 hoặc ≥ 2 địa danh → None
     assert M.plan_fields({"queryPlan": {}, "derivedDestinations": ["Hạ Long", "Hà Nội"]})["destination"] is None
     assert M.plan_fields({"queryPlan": {}, "appliedFilters": {"hard": {"destination": "Hạ Long"}}})["destination"] is None
@@ -147,6 +155,27 @@ def test_plan_fields_destination_and_taxonomy_rules():
     for src, want in (("query", "golf"), ("param", "golf"), ("none", None), (None, None)):
         assert M.plan_fields({"queryPlan": {"taxonomy": {"value": "golf", "source": src}}})["taxonomy"] == want
     assert M.plan_fields(None) is None and M.plan_fields({"appliedFilters": {}}) is None
+
+
+def test_plan_fields_v118_blocks():
+    """07/10 (1.18.0): duration.days/nights, entity.keys (sắp xếp) + role, location.key; vai trò location vẫn đọc entity."""
+    got = M.plan_fields({"queryPlan": {"duration": {"days": None, "nights": 2, "source": "query"},
+                                       "entity": {"keys": ["vinwonders"], "role": "location"},
+                                       "location": {"key": "cau_rong", "name": "Cầu Rồng", "kind": "landmark", "destination": "Đà Nẵng"}},
+                         "derivedDestinations": ["Đà Nẵng"]})
+    assert (got["duration_days"], got["duration_nights"]) == (None, 2)
+    assert (got["entity"], got["entity_role"], got["location_entity"], got["destination"]) == (["vinwonders"], "location", "cau_rong", "Đà Nẵng")
+    assert M.plan_fields({"queryPlan": {"entity": {"keys": ["safari", "grand_world"], "role": "gate"}}})["entity"] == ["grand_world", "safari"]
+    # expected_parse: entity là danh sách (fold khi so), entity_role / location_entity là chuỗi, duration là số
+    ep = M._check_expected_parse({"duration_days": 3, "duration_nights": None, "entity": ["vinwonders"], "entity_role": "gate",
+                                  "location_entity": None}, "t", "expected_parse")
+    assert ep["entity"] == ["vinwonders"]
+    with pytest.raises(M.MetricsError, match="sai kiểu"):
+        M._check_expected_parse({"entity": "vinwonders"}, "t", "expected_parse")
+    with pytest.raises(M.MetricsError, match="sai kiểu"):
+        M._check_expected_parse({"duration_days": "3"}, "t", "expected_parse")
+    with pytest.raises(M.MetricsError, match="khoá lạ"):
+        M._check_expected_parse({"location": "cau_rong"}, "t", "expected_parse")
 
 
 @pytest.mark.parametrize("field, a, b, same", [

@@ -132,6 +132,9 @@ Collection Weaviate: 14–16 collection chính (8–9 text variant, 0–3 độ 
 | **APP.e5s.hybrid_norm_nocut_f1f6** | APP | APP.e5s.hybrid_norm_nocut | ỨNG VIÊN PRODUCTION (chọn sau ma trận 06/10): F1 + F2 relax + F3 + F4 (mọi cue) + F5 + F6, không cutoff, không party / tone / fuzzy | không | cấu hình đề xuất bật — WIN +10,7 nDCG trên `gold_v5`, mọi guard Phase A PASS (`eval-2026-10-06-search-query-plan-gold-v4.md`) | ✔ (06/10) |
 | **APP.e5s.hybrid_norm_nocut_f1f6_wrrf** | APP | APP.e5s.hybrid_norm_nocut | `_f1f6` + `lexical_weight 0.5` | không | trọng số RRF khi đã có F1–F6 (+1,2, TIE) | ✔ (06/10) |
 | **APP.e5s.hybrid_norm_nocut_f1f6_rr** | APP | APP.e5s.hybrid_norm_nocut_f1f6 | `_f1f6` + rerank offline bge-reranker-v2-m3 top-30 | không | trần offline của Phase D trên ứng viên production | ✔ (06/10) |
+| **APP.e5s.prod_f12356** | APP | APP.e5s.hybrid_norm | CẤU HÌNH PRODUCTION 06/10 (người dùng chốt): e5-small, cutoff 0,84, F1 + F2 relax (0,80) + F3 + F5 + F6, **F4 tắt** — đúng mặc định `core/config.py`; mốc regression `baseline_v1` | không | WIN +8,7 nDCG trên `gold_v5`; Forbidden@10 0,065 (do F4 tắt) | ✔ (06/10) |
+| **APP.e5s.prod_f12356_nocut** | APP | APP.e5s.prod_f12356 | như trên, cutoff −1 | không | hiệu ứng cutoff 0,84 (TIE) | ✔ (06/10) |
+| **APP.e5s.prod_f12356_llm** | APP | APP.e5s.prod_f12356 | + `app.llm {mode: on, min_confidence: 0.75, cache_path}` — LLM fallback phát lại cache JSONL (`cache_only`, không gọi API) | không | lợi ích LLM fallback trên câu độ tin cậy thấp (`_llm100`: ngưỡng 1,0) | ✔ (06/10) — TIE tuyệt đối, 0 trường nhận |
 
 `@<cổng>` = arm được promote ở cổng đó (ví dụ `@E1a` = text base thắng E1a; `@S4` = cách xử lý amenity thắng S4). `arms/*.yaml` ghi đúng tham chiếu này; giá trị thật giải lúc chạy từ `state/promotions.yaml` (spec Part 12) — `sb list-arms --resolved` in ra. Cột **Cổng** là cổng mà arm thuộc về; thứ tự cổng ở §3.
 
@@ -334,12 +337,29 @@ Lịch 10 ngày M2 cần số cho **dense-only / hybrid / hybrid + normalize** �
 | APP.hybrid_norm / APP.hybrid_norm_nocut | `hybrid: true`, `normalize: true` | Cấu hình production hiện nay; Δ so với APP.hybrid trên `abbrev_typo`, `audience_style` = số cho contract S10. **Caveat:** 15 câu gold `abbrev_typo` đã được dùng để viết và test `QueryNormalizer` (`history/2026-09-25-search-chuan-hoa-truy-van.md`) → số slice này là số đo trong mẫu |
 | APP.e5s.* (05/10) | `model: e5-small`; `cutoff: -1` (arm `*_nocut`) hoặc `0.84` **tạm** (chưa qua dev/test; `no_diacritics.cutoff` 0,80 ở arm `*_nc80`); khối `app` thêm `dest_filter`, `dest_filter_fallback`, `no_diacritics_mode` (`off` \| `relax`, **quote** trong yaml vì YAML 1.1 đọc `off` thành false), `no_diacritics: {lexical_k, lexical_cutoff, min_coverage, cutoff, min_tokens}`; 05/10 thêm bốn cờ query plan `negation_filter` (F3), `taxonomy_filter` (F4), `route_filter` (F5), `numeric_filter` (F6) — bool, mặc định false = production; arm `*_neg` / `*_tax` / `*_route` / `*_num` bật từng cờ, `*_qp` bật cả bốn — bắt buộc ở **mọi** arm APP (`app_params`) | Cổng APP trên model local: `app_adapter.app_collection` chọn collection `ProductBench__<model>`, `modelVersion = <hf_model>:catalog-text-v2`, số chiều theo `config/sbench.yaml`; `sb app-load --model e5-small`; `sb run` mở một `AppContext` mỗi model. Nhóm chốt 05/10 chuyển sang e5-small và không gọi Cohere nữa, nên trên máy không có vector Cohere chỉ chạy được nhóm arm này. `dest_filter` / `no_diacritics_mode` là hai cờ backend mới (contract 1.14.0); mặc định tắt = production hôm nay. Bốn cờ query plan (05/10) đi vào kwargs cùng tên của `SearchProducts`; `diagnostics.queryPlan` ghi vào `extra.queryPlan`; `appliedFilters.hard` (destination / taxonomy / origin / mustNotAmenities / priceMin / priceMax) → `applied_filter` cho `filter_recall_loss` qua `app_adapter.applied_filter_of` (trường items `destination`, `taxonomy`, `origin_city`, `features`, `unit_price_min`) |
 
+**Khối tuỳ chọn `app.llm` (06/10, contract 1.17.0):** `{mode: on | shadow, min_confidence, cache_path, timeout_ms?}` — vắng = off; bench chỉ phát lại cache giả thuyết LLM (nạp bằng `src/backend/jobs/prewarm_llm_hypotheses.py`).
+
 **Knob 06/10 (contract 1.16.0, bắt buộc ở mọi arm APP):** `tone_normalize`, `taxonomy_strong_only`, `party_filter` (bool → kwargs
 cùng tên của `SearchProducts`); `fuzzy_k` (0 = tắt), `fuzzy_candidate_k`, `fuzzy_min_sim`, `dense_weight`, `lexical_weight`,
 `fuzzy_weight` (→ `HybridConfig`, cả cấu hình chính lẫn cấu hình câu không dấu — như `main.py`); `retrieval_mode` ∈ {hybrid, dense,
 lexical} (`hybrid: false` ⇔ `dense`). Khối `rerank: {model, top_n, parent_engine: app, query, batch_size, max_length}` cho arm
 rerank offline (`rerank.py`). `extra` giữ nguyên `queryPlan` (cả khoá mở rộng) và mọi khoá diagnostics theo câu (`fuzzyCount`,
 `stageMs`…).
+
+**Knob 07/10 (contract 1.18.0, tuỳ chọn như `app.llm`):** `duration_filter` (F7 thời lượng — parse "3 ngày 2 đêm" / 3N2Đ, bỏ cụm
+khỏi `lexicalText`, chưa lọc), `poi_resolve` (địa danh gazetteer `domain/search/gazetteer.py` → điểm đến catalog vào F1,
+`appliedFilters.hard.destinationSource = poi`), `entity_filter` (entity gate CỨNG: câu nêu VinWonders / Safari / Grand World… →
+chỉ attraction / combo có tên chứa entity; `emptyReason = entity`). Bool → kwargs cùng tên của `SearchProducts`
+(`app_adapter.V118_FLAG_KEYS`); **vắng trong YAML ≡ false** nên 55 arm cũ, `config_hash` của chúng và `regression/baseline_v1.json`
+không đổi — khác knob 06/10 (bắt buộc ở mọi arm). Giá trị phải là bool thật (`app_params` từ chối `1` / `"on"`); bật trên backend
+thiếu field thì `supported_kwargs` lỗi như các núm trước. Backend chỉ phát `queryPlan.duration` / `entity` / `location` khi cờ bật,
+nên năm trường parse mới (`duration_days`, `duration_nights`, `entity`, `entity_role`, `location_entity` — `metrics.PARSE_FIELDS`)
+chỉ chấm được trên arm bật cờ. Plan: `docs/plan/2026-10-07-search-duration-entity-poi.md` §5.
+
+| Arm | Tham số | Trả lời |
+|---|---|---|
+| APP.e5s.prod_f12356_dur / _poi / _ent | `APP.e5s.prod_f12356` + một cờ 1.18.0 = `true` (cha: `APP.e5s.prod_f12356`) | Từng họ một trên mốc production 06/10: F7 có bỏ được hotel "Chợ Đêm" / "Ngay trung tâm" khỏi câu "3 ngày 2 đêm" không (slice `duration_false_positive`); POI có quy "Hồ Hoàn Kiếm" / "Cầu Rồng" về đúng điểm đến không (slice `poi_resolution`, `parse_accuracy.location_entity`); entity gate có giữ c0697 / c0709 / c0703 / c0700 / c0472 / c0372 và `forbidden_at_10 = 0` không |
+| APP.e5s.prod_f12356_dur_poi_ent | cả ba cờ `true` (`composite: true`) | Ứng viên production sau bench; `SEARCH_ENTITY_FILTER` chỉ lên sau Web ký (`docs/spec/product.md` §4.2.3) |
 
 Cutoff mốc 0,62 theo contract §2.4 và `.env` (`SEARCH_CUTOFF=0.62`); mặc định trong code là 0,52 (`core/config.py`, đổi ở commit `dbc22c1` không có history) — bench không sửa config production, chỉ báo. `multi_constraint` trên cổng APP báo riêng: `/search` không có filter sao / giá nên arm APP không thể thoả các câu này như pool có filter. Lệnh: `sb app-load` (dựng / kiểm ProductBench), `sb run --arm APP.dense --arm APP.hybrid --arm APP.hybrid_norm …`; `sb run` tự gọi `app-load` khi có arm APP.
 

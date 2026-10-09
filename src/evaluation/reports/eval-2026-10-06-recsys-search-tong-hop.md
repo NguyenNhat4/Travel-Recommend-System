@@ -7,7 +7,7 @@
 - Commit đo: RecSys `ac7642a`; search gold_v3 `ac7642a`, search gold_v4 `a46c424` (sau merge PR #108). **Không sửa code / config** trong
   mọi lượt đo.
 - Đề xuất rút ra (chờ chốt): `docs/prd/update/2026-10-06-recsys-trong-so-ngan-han-pho-bien.md`,
-  `docs/prd/update/2026-10-06-search-hybrid-min-coverage-rrf.md`; bằng chứng cutoff cho `docs/prd/update/2026-10-05-fr-src-02-embedding-local-e5-small.md`.
+  `docs/prd/update/2026-10-06-search-hybrid-min-coverage-rrf.md`; bằng chứng cutoff cho `docs/prd/update-archive/2026-10-05-fr-src-02-embedding-local-e5-small.md`.
 
 > Dữ liệu lịch sử RecSys là dữ liệu sinh (handbook §12); gold search là 154 câu gán nhãn. Số dùng để so tương đối trên cùng dữ liệu và
 > cùng đề thi, không nói về khách thật.
@@ -1415,7 +1415,7 @@ Nội dung nguyên văn của report `eval-2026-10-06-search-e5s-hybrid-params.m
 
 
 - Phục vụ: FR-SRC-01..04, NFR-PERF-01 (chất lượng, không đo latency); việc mở của `eval-2026-10-05-search-day5-e5s-app.md` §11 (`cross_vertical`)
-  và §13 ("`lexical_k` và `min_coverage` chưa sweep"); đề xuất đổi model `docs/prd/update/2026-10-05-fr-src-02-embedding-local-e5-small.md`
+  và §13 ("`lexical_k` và `min_coverage` chưa sweep"); đề xuất đổi model `docs/prd/update-archive/2026-10-05-fr-src-02-embedding-local-e5-small.md`
   (chờ chốt); đề xuất rút ra từ phần B: `docs/prd/update/2026-10-06-search-hybrid-min-coverage-rrf.md`.
 - Commit: `ac7642a` + working tree chưa commit; **không sửa code / config**. Đo bằng `SearchProducts` thật của backend qua cổng APP
   (`app_adapter.retrieve_app`), arm gốc `APP.e5s.hybrid_norm` (hybrid + QueryNormalizer = cấu hình production), collection
@@ -1679,7 +1679,7 @@ ONLY_CV=1 python search_extra.py       # §3 (bỏ ONLY_CV để in thêm CI min
 |---|---|---|---|
 | `docs/prd/update/2026-10-06-recsys-trong-so-ngan-han-pho-bien.md` | `W_SHORT / W_POP / W_LONG` 0,6 / 0,25 / 0,15 → 0,7 / 0,15 / 0,15 | Phần A §4, bảng override §6 | Kiểm lại AC-REC-01/02 (P1, P3), ghi lại `baseline_v1` RecSys |
 | `docs/prd/update/2026-10-06-search-hybrid-min-coverage-rrf.md` | `lexicalMinCoverage` 0,6 → 0,1, `rrf` 60 → 30, dùng cùng F1 + F2 | B1 (gold_v4), B2 (gold_v3) | Sau đề xuất e5-small; bật F1 + F2 cùng lúc; gắn tag `gold_v4` + đặt lại baseline search |
-| `docs/prd/update/2026-10-05-fr-src-02-embedding-local-e5-small.md` (đã hợp nhất 06/10) | Cohere v3 / 1024 → e5-small / 384, cutoff 0,84 | B1 (cutoff), report Day 5 §2 (so Cohere cùng thang) | Gate nghiệm thu trong đề xuất (p95 Cloud, parity) |
+| `docs/prd/update-archive/2026-10-05-fr-src-02-embedding-local-e5-small.md` (đã hợp nhất 06/10) | Cohere v3 / 1024 → e5-small / 384, cutoff 0,84 | B1 (cutoff), report Day 5 §2 (so Cohere cùng thang) | Gate nghiệm thu trong đề xuất (p95 Cloud, parity) |
 
 Việc tiếp (không thuộc đề xuất nào):
 
