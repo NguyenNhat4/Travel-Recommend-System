@@ -59,9 +59,6 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
       - name: Probe tests
         run: python3 -m pip install -q pytest && python3 -m pytest -q ops/tests/test_cluster_probe.py
       - name: Promote script on a real primary/replica pair
@@ -88,11 +85,7 @@ jobs:
           --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: pip
-          cache-dependency-path: src/data_collection/requirements.txt
+      # Runner tự host chạy Debian 12 (Python 3.11 hệ thống); setup-python không hỗ trợ Debian nên không dùng.
       - name: Install
         # Như Dockerfile.fresh-catalog: bước index import cấu hình backend nên cần pydantic, pydantic-settings, numpy.
         run: |
