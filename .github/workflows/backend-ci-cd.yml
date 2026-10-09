@@ -178,7 +178,9 @@ jobs:
 
   deploy:
     name: Deploy application VM in place
-    if: ${{ (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true) || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') }}
+    # Tắt: VM staging cũ không nhận deploy nữa. Triển khai lên staging-ha qua
+    # staging-ha-backend-cd.yml, staging-ha-frontend-cd.yml, staging-ha-crawler-cd.yml.
+    if: ${{ false }}
     needs: publish
     runs-on: ubuntu-latest
     # Two 15-minute health windows (deploy and rollback) plus image pull and SSH.
