@@ -96,6 +96,10 @@ FIELDS: tuple[Field, ...] = (
           minimum=1, maximum=500),
     Field("agoda.checkinOffsetDays", "strategy", "agoda.com – cấu hình cũ (collector API luôn hỏi giá hôm chạy)", "int", 30,
           minimum=1, maximum=365, help="Giữ để đọc settings.json cũ; fresh pipeline lấy một ngày giá thật rồi loader tạo lịch 30 ngày."),
+    Field("refresh.existing", "strategy", "Làm mới mọi khách sạn đang có trong DB ở lượt cào lớn", "bool", True,
+          help="Booking, Agoda: mở lại mọi khách sạn đang bán trong DB (dòng lâu chưa thấy làm trước), ngoài số khách sạn "
+               "mới tìm theo điểm đến. Khách sạn Trip: hỏi giá mọi ID đã biết, không chỉ ID mới. Không bị giới hạn số "
+               "khách sạn mỗi điểm đến hay phạm vi điểm đến."),
     Field("tripAttractions.perDestination", "strategy", "trip.com – số điểm tham quan mỗi điểm đến", "int", 25,
           minimum=1, maximum=200),
     Field("tripFlights.flightsPerRoute", "strategy", "trip.com – số chuyến giữ lại mỗi tuyến (0 = tất cả)", "int", 0,
@@ -185,6 +189,9 @@ FIELDS: tuple[Field, ...] = (
     Field("run.maxHours", "reliability", "Hạn giờ – toàn lượt gồm DB, chuẩn hoá và index", "float", 18.0,
           minimum=0.01, maximum=96, env="CATALOG_MAX_HOURS",
           help="Luôn hữu hạn. Tiến trình giám sát dừng cây tiến trình rồi ghi lỗi, giữ dữ liệu để chạy lại."),
+    Field("run.autoResume", "reliability", "Lượt cào lớn bị dừng cưỡng bức thì tự chạy tiếp từ bước chuẩn hoá", "bool", True,
+          help="Một bước treo quá hạn hoặc tiến trình bị hệ điều hành giết (hết RAM): chạy tiếp một lần, nạp phần đã cào "
+               "vào DB và index. Không áp cho lượt người vận hành bấm Dừng."),
     Field("timeout.processing", "reliability", "Hạn giờ – mỗi bước chuẩn hoá/index/DB (phút)", "int", 30,
           minimum=1, maximum=240, help="Áp cả bước cuối lượt; không chờ vô hạn khi thư viện hoặc luồng bị treo."),
     Field("crawl.maxHours", "reliability", "Hạn giờ – cả phần cào của một lượt (giờ)", "float", 16.0, env="CRAWL_MAX_HOURS",
@@ -195,8 +202,9 @@ FIELDS: tuple[Field, ...] = (
     Field("timeout.tripFlights", "reliability", "Hạn giờ – trip.com vé máy bay (phút)", "int", 60, minimum=0, maximum=1440),
     Field("timeout.tripAttractions", "reliability", "Hạn giờ – trip.com điểm tham quan (phút)", "int", 60, minimum=0,
           maximum=1440),
-    Field("timeout.booking", "reliability", "Hạn giờ – booking.com (phút)", "int", 60, minimum=0, maximum=1440),
-    Field("timeout.agoda", "reliability", "Hạn giờ – agoda.com (phút)", "int", 60, minimum=0, maximum=1440),
+    Field("timeout.booking", "reliability", "Hạn giờ – booking.com (phút)", "int", 600, minimum=0, maximum=1440,
+          help="Làm mới ~1.800 khách sạn đang có + tìm mới (~2.100 trang) cần 6–9 giờ trên VM 2 vCPU (4–6 trang/phút)."),
+    Field("timeout.agoda", "reliability", "Hạn giờ – agoda.com (phút)", "int", 180, minimum=0, maximum=1440),
     Field("timeout.tripHotelsDiscover", "reliability", "Hạn giờ – khách sạn Trip: tìm ID (phút)", "int", 60, minimum=0,
           maximum=1440),
     Field("timeout.tripHotelsPrices", "reliability", "Hạn giờ – khách sạn Trip: giá phòng (phút)", "int", 480, minimum=0,
@@ -204,6 +212,10 @@ FIELDS: tuple[Field, ...] = (
     Field("quality.maxDropPercent", "reliability", "Chặn nạp DB khi catalog giảm quá (%) so với lượt trước", "int", 50,
           minimum=0, maximum=100,
           help="So với lượt thành công gần nhất cùng chế độ, cùng phạm vi điểm đến và cùng bộ nguồn. 0 = tắt."),
+    Field("quality.minRefreshPercent", "reliability", "Báo nguồn chưa đủ khi làm mới dưới (%) khách sạn đang có", "int", 90,
+          minimum=0, maximum=100,
+          help="Phần đã cào vẫn được nạp; nguồn bị ghi vào nguồn chưa đủ, lượt báo partial và có cảnh báo. Tìm theo điểm "
+               "đến mà mọi điểm đến trả 0 khách sạn cũng bị báo như vậy. 0 = tắt."),
     # ---- cảnh báo và SLA (CP7, CP8 docs/plan/2026-09-28-normalize-on-dinh-theo-buoc.md); chưa gửi ra ngoài, chỉ hiện trên monitor
     Field("alert.enabled", "alerts", "Ghi cảnh báo khi lượt lỗi / bị chặn / trễ SLA", "bool", True),
     Field("alert.includeWarnings", "alerts", "Cảnh báo cả mức warning (nguồn bị chặn, bản ghi lỗi lẻ, lô nạp DB lỗi)", "bool",

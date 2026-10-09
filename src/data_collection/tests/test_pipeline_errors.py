@@ -77,7 +77,7 @@ class RunnerStrategyTests(unittest.TestCase):
 
     def fake_sources(self, script):
         """script: nguồn → danh sách (mã thoát, các dòng log) cho từng lần chạy."""
-        def run(run_dir, source, destinations, group, deadline=None):
+        def run(run_dir, source, destinations, group, deadline=None, on_start=None):
             code, tail = script[source][len([c for c in self.calls if c == source])]
             self.calls.append(source)
             fresh_catalog.SOURCE_TAIL[source] = list(tail)

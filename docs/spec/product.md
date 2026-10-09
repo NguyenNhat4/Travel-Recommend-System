@@ -470,6 +470,7 @@ Checkout gồm **ba bước** trên cùng route `/checkout` (`?step=travelers|se
 | Stripe không phản hồi (`503`) / lỗi mạng / 5xx | Banner "Cổng thanh toán tạm thời không phản hồi" (hoặc thông điệp lỗi) + [Thử lại]. Không xóa form, không tạo đơn |
 | 401 giữa chừng | Modal đăng nhập lại, giữ dữ liệu form trong bộ nhớ, sau đó gửi lại |
 | Giỏ rỗng khi vào `/checkout` | Chuyển về `/cart` |
+| Khách chủ động rời trang khi chưa thanh toán (logo, quay lại, liên kết khác, Back ở bước Hành khách) | Hộp "Rời trang thanh toán?": nêu thứ sẽ mất (khách sạn, vé máy bay của lần Đặt ngay; thông tin hành khách đã nhập) và thứ còn trong giỏ; [Ở lại thanh toán] (mặc định), [Rời trang]. Điện thoại: trượt lên từ đáy. Đóng tab, tải lại: hộp mặc định của trình duyệt (FR-BKG-01, AC-BKG-20) |
 | Thanh toán một đơn nháp (`/checkout?draft=…`) | Chỉ các mục của lần Đặt ngay; đồng hồ "Phiên thanh toán còn mm:ss" (30 phút); không có "Sửa giỏ hàng" |
 | Đơn nháp hết hạn (`410 BOOKING_DRAFT_EXPIRED`) | "Phiên thanh toán đã hết hạn": khách sạn, vé máy bay phải chọn lại ([Chọn lại phòng], [Tìm lại chuyến bay]); tour và tiện ích của lần đặt vẫn nằm trong giỏ ([Về giỏ hàng]) |
 | Khách chưa đăng nhập bấm Thanh toán | Modal đăng nhập tại chỗ; đăng nhập xong tự gửi tiếp, thông tin đã nhập còn nguyên |

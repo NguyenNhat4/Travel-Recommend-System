@@ -551,7 +551,7 @@ class PreviewTriggerTests(unittest.TestCase):
     def run_sites(self, codes, delays, groups=None, recorder=None):
         recorder = recorder or self.Recorder()
 
-        def fake_source(run_dir, source, destinations, group, deadline=None):
+        def fake_source(run_dir, source, destinations, group, deadline=None, on_start=None):
             recorder.events.append(('crawl.start', source))
             time.sleep(delays.get(source, 0))
             recorder.events.append(('crawl.end', source))

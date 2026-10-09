@@ -643,7 +643,7 @@ class CrawlSitesTests(unittest.TestCase):
 
     def run_sites(self, groups, parallel, codes=None):
         codes = codes or {}
-        def fake_source(run_dir, source, destinations, group, deadline=None):
+        def fake_source(run_dir, source, destinations, group, deadline=None, on_start=None):
             return self.step(source, codes.get(source, 0))()
         with patch.object(fresh_catalog, 'run_source', fake_source), \
                 contextlib.redirect_stdout(io.StringIO()) as out:
