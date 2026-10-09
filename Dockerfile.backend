@@ -1,38 +1,50 @@
-FROM python:3.11-slim
+# Base ghim theo digest. Tag python:3.11-slim đổi digest khi Docker Hub vá base, và mọi layer phía sau phụ thuộc digest
+# đó: build staging-ha lúc 2026-10-09 15:56 mất cache toàn bộ (~7,5 phút) dù Dockerfile và requirements không đổi
+# (digest 0dd364… → e88e97…). Dependabot (ecosystem docker) mở PR khi có digest mới; khi đổi, sửa cả hai dòng FROM cùng lúc.
+ARG EMBED_MODEL=intfloat/multilingual-e5-small
+ARG EMBED_MODEL_REVISION=614241f622f53c4eeff9890bdc4f31cfecc418b3
+
+# Stage model: tải e5-small một lần. Stage này không phụ thuộc requirements, nên đổi requirements không tải và đẩy lại
+# ~470 MB model. BuildKit chạy stage này song song với bước cài torch.
+FROM python:3.11-slim@sha256:e88e9763f943ec1834f992a4b51e0f24500486803e8bc534e5767af9ea65f6ce AS model
+ARG EMBED_MODEL
+ARG EMBED_MODEL_REVISION
+ENV HF_HOME=/opt/hf
+# Cùng dải phiên bản huggingface-hub mà transformers 5.18 kéo về.
+RUN python -m pip install --no-cache-dir "huggingface_hub>=1.31,<3" \
+    && python -c "from huggingface_hub import snapshot_download; snapshot_download('${EMBED_MODEL}', revision='${EMBED_MODEL_REVISION}', allow_patterns=['*.json', '*.safetensors', 'sentencepiece.bpe.model'])" \
+    && chmod -R a+rX /opt/hf
+
+FROM python:3.11-slim@sha256:e88e9763f943ec1834f992a4b51e0f24500486803e8bc534e5767af9ea65f6ce
+ARG EMBED_MODEL
+ARG EMBED_MODEL_REVISION
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
     HF_HOME=/opt/hf \
-    HF_HUB_DISABLE_TELEMETRY=1
+    HF_HUB_DISABLE_TELEMETRY=1 \
+    HF_HUB_OFFLINE=1 \
+    TRANSFORMERS_OFFLINE=1
 
 WORKDIR /app
 
 RUN useradd --create-home --uid 10001 app \
     && chown -R app:app /app
 
-# torch bản CPU (bản mặc định của PyPI kéo CUDA, nặng vài GB) rồi tải sẵn e5-small đúng revision ghim trong core/config.py:
-# runtime không cần mạng tới Hugging Face (HF_HUB_OFFLINE=1).
-ARG EMBED_MODEL=intfloat/multilingual-e5-small
-ARG EMBED_MODEL_REVISION=614241f622f53c4eeff9890bdc4f31cfecc418b3
-ENV HF_HOME=/opt/hf
-RUN python -m pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu "torch>=2.3"
-COPY src/backend/requirements.txt /tmp/backend-requirements.txt
-RUN python -m pip install --no-cache-dir -r /tmp/backend-requirements.txt
-RUN python -c "from huggingface_hub import snapshot_download; snapshot_download('${EMBED_MODEL}', revision='${EMBED_MODEL_REVISION}', allow_patterns=['*.json', '*.safetensors', 'sentencepiece.bpe.model'])" \
-    && chmod -R a+rX /opt/hf
-ENV HF_HUB_OFFLINE=1
-
-# Embedding local (FR-SRC-02): torch bản CPU lấy từ index CPU của PyTorch — bản PyPI trên Linux kéo CUDA (~2 GB thừa).
-# Phiên bản đọc từ requirements-embed.txt để chỉ ghim ở một chỗ.
+# torch bản CPU lấy từ index PyTorch (bản PyPI trên Linux kéo CUDA vài GB). Ghim đúng bản trong requirements-embed.txt
+# ngay lần cài đầu: cài "torch>=2.3" trước rồi mới ghim sẽ hạ cấp và tải lại ~200 MB nếu index có bản mới hơn.
+# Phải đứng trước requirements.txt để pip không kéo torch CUDA từ PyPI.
 COPY src/backend/requirements-embed.txt /tmp/backend-requirements-embed.txt
 RUN python -m pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu \
-        "$(grep -E '^torch==' /tmp/backend-requirements-embed.txt)" \
-    && python -m pip install --no-cache-dir -r /tmp/backend-requirements-embed.txt
+        "$(grep -E '^torch==' /tmp/backend-requirements-embed.txt)"
 
-# Model đã tải ở bước snapshot_download phía trên (trước khi bật HF_HUB_OFFLINE); không tải lần hai — sau
-# HF_HUB_OFFLINE=1 snapshot_download luôn lỗi OfflineModeIsEnabled. Bước warmup cuối file kiểm model nạp được offline.
-ENV TRANSFORMERS_OFFLINE=1
+# Model e5-small từ stage model. Đặt sau torch và trước requirements: đổi requirements không làm layer này build lại.
+COPY --from=model /opt/hf /opt/hf
+
+# transformers (ghim 5.18.0) nằm trong requirements.txt: một lần resolve, không cài hai lần như trước.
+COPY src/backend/requirements.txt /tmp/backend-requirements.txt
+RUN python -m pip install --no-cache-dir -r /tmp/backend-requirements.txt
 
 # The API imports the backend package, OpenAPI bundle and shared itinerary fixtures.
 COPY src/backend /app/src/backend
