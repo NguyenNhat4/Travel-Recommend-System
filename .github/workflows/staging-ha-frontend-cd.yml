@@ -1,8 +1,9 @@
 name: Staging-HA Frontend CD
 
 # CD frontend lên MIG vota-ha-app (staging-ha). Backend cùng MIG và cùng Terraform state, nên image backend
-# lấy từ last-good, không build lại ở đây. Ba workflow staging-ha-*-cd.yml dùng chung concurrency group
-# `staging-ha-cd` để không apply chồng nhau và không ghi chồng lên last-good.
+# lấy từ last-good, không build lại ở đây. Backend và frontend dùng chung concurrency group `staging-ha-app`
+# để không apply chồng nhau và không ghi chồng lên last-good. Output job chỉ truyền digest: đường dẫn image là
+# secret, GitHub che giá trị secret trong output nên job sau nhận chuỗi rỗng.
 
 on:
   push:
@@ -24,7 +25,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: staging-ha-cd
+  group: staging-ha-app
   cancel-in-progress: false
 
 env:
@@ -45,7 +46,7 @@ jobs:
       contents: read
       id-token: write
     outputs:
-      frontend_ref: ${{ steps.refs.outputs.frontend_ref }}
+      frontend_digest: ${{ steps.refs.outputs.frontend_digest }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -116,7 +117,7 @@ jobs:
             echo "FRONTEND_DIGEST không hợp lệ: $FRONTEND_DIGEST" >&2
             exit 1
           fi
-          echo "frontend_ref=$FRONTEND_IMAGE@$FRONTEND_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "frontend_digest=$FRONTEND_DIGEST" >> "$GITHUB_OUTPUT"
 
   deploy_app:
     name: Apply frontend image to staging-ha MIG
@@ -164,9 +165,14 @@ jobs:
           umask 077
           printf '%s\n' "$STAGING_HA_TFVARS" > "$RUNNER_TEMP/staging-ha.tfvars"
 
+      - name: Build immutable frontend reference
+        env:
+          BACKEND_IMAGE: ${{ secrets.GAR_BACKEND_IMAGE }}
+          FRONTEND_DIGEST: ${{ needs.images.outputs.frontend_digest }}
+        run: echo "FRONTEND_REF=${BACKEND_IMAGE%/vota-backend}/vota-frontend@$FRONTEND_DIGEST" >> "$GITHUB_ENV"
+
       - name: Apply frontend image
         env:
-          FRONTEND_REF: ${{ needs.images.outputs.frontend_ref }}
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
           TFVARS_FILE: ${{ runner.temp }}/staging-ha.tfvars
@@ -234,10 +240,15 @@ jobs:
           done
           [ "$ok" -ge 6 ] || { echo 'Readiness chưa đạt 6 lần liên tiếp.' >&2; exit 1; }
 
+      - name: Build immutable frontend reference
+        env:
+          BACKEND_IMAGE: ${{ secrets.GAR_BACKEND_IMAGE }}
+          FRONTEND_DIGEST: ${{ needs.images.outputs.frontend_digest }}
+        run: echo "FRONTEND_REF=${BACKEND_IMAGE%/vota-backend}/vota-frontend@$FRONTEND_DIGEST" >> "$GITHUB_ENV"
+
       - name: Record frontend as last good
         # Chỉ ghi khi đã đạt kiểm tra. Giữ nguyên backend_ref và crawler_ref đang có trong object.
         env:
-          FRONTEND_REF: ${{ needs.images.outputs.frontend_ref }}
           TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
         run: |
           if gcloud storage objects describe "gs://$TF_STATE_BUCKET/$STAGING_HA_LAST_GOOD_OBJECT" >/dev/null 2>&1; then
