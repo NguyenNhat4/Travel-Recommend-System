@@ -119,6 +119,7 @@ resource "google_compute_region_instance_group_manager" "app" {
   update_policy {
     type                  = "PROACTIVE"
     minimal_action        = "REPLACE"
+    replacement_method    = "SUBSTITUTE"
     max_surge_fixed       = 3
     max_unavailable_fixed = 0
     # Health check của MIG chỉ là liveness (tiến trình trả lời), nên không có min_ready_sec thì MIG coi VM mới là

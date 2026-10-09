@@ -24,7 +24,7 @@ output "db_host" {
 
 output "patroni_ilb_ip" {
   description = "IP của load balancer nội bộ tới leader Patroni. Đổi db.vota.internal sang IP này khi cutover (docs/guide/van-hanh-db-patroni.md §3)."
-  value       = var.create_patroni ? google_compute_address.patroni_ilb[0].address : null
+  value       = try(google_compute_address.patroni_ilb[0].address, null)
 }
 
 output "patroni_node_ips" {

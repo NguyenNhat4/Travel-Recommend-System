@@ -68,40 +68,46 @@ variable "uvicorn_workers" {
 }
 
 variable "min_replicas" {
-  description = "Số VM tối thiểu. 3 (một VM mỗi zone) để mất 1 VM chỉ đẩy phần còn lại lên N/(N-1) = 150% tải thay vì 200%."
+  description = "Số VM tối thiểu của nhóm app. Quy tắc chốt 2026-10-08: 1 VM tối thiểu, tối đa 2 VM. Mất VM duy nhất là mất dịch vụ app (chấp nhận có chủ đích)."
   type        = number
-  default     = 3
+  default     = 1
 
   validation {
-    condition     = var.min_replicas >= 2
-    error_message = "min_replicas must be >= 2, otherwise the group is not highly available."
+    condition     = var.min_replicas >= 1
+    error_message = "min_replicas must be >= 1."
   }
 }
 
 variable "max_replicas" {
-  type    = number
-  default = 4
+  description = "Số VM tối đa của nhóm app. 2 theo quy tắc chốt 2026-10-08 (ngân sách kết nối DB: 2 × 2 × 12 + 10 = 58 <= max_connections 100)."
+  type        = number
+  default     = 2
+
+  validation {
+    condition     = var.max_replicas >= var.min_replicas
+    error_message = "max_replicas phải >= min_replicas."
+  }
 }
 
 variable "cpu_target" {
-  description = "Autoscaler target CPU utilization (0-1). Để sống sót khi mất 1 trong N VM, mức dùng ở trạng thái ổn định phải <= (N-1)/N: N=3 -> 0.667, N=2 -> 0.5."
+  description = "Autoscaler target CPU utilization (0-1). Với min_replicas = 1 không còn đảm bảo sống sót khi mất VM; ràng buộc (N-1)/N đã gỡ theo quy tắc chốt 2026-10-08."
   type        = number
   default     = 0.55
 
   validation {
-    condition     = var.cpu_target <= (var.min_replicas - 1) / var.min_replicas
-    error_message = "cpu_target phải <= (min_replicas-1)/min_replicas, nếu không mất 1 VM làm các VM còn lại quá tải (docs/plan/2026-10-07-ha-vung-crawler-rolling.md §5.2)."
+    condition     = var.cpu_target > 0 && var.cpu_target <= 1
+    error_message = "cpu_target phải trong khoảng (0, 1]."
   }
 }
 
 variable "memory_target_percent" {
-  description = "Autoscaler target memory percent_used (needs Ops Agent on the VM). 0 disables the memory signal. Cùng công thức (N-1)/N với CPU."
+  description = "Autoscaler target memory percent_used (needs Ops Agent on the VM). 0 disables the memory signal."
   type        = number
   default     = 60
 
   validation {
-    condition     = var.memory_target_percent == 0 || var.memory_target_percent <= 100 * (var.min_replicas - 1) / var.min_replicas
-    error_message = "memory_target_percent phải <= 100*(min_replicas-1)/min_replicas (hoặc 0 để tắt)."
+    condition     = var.memory_target_percent >= 0 && var.memory_target_percent <= 100
+    error_message = "memory_target_percent phải trong khoảng [0, 100]."
   }
 }
 
