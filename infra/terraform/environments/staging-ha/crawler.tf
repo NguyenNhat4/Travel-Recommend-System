@@ -40,7 +40,7 @@ resource "google_compute_instance" "crawler" {
     initialize_params {
       image = var.boot_image
       # 15 GB: image crawler ~3 GB, dữ liệu lượt giữ 2 lượt ~1 GB; xem history/2026-10-09-crawler-disk-15gb.md
-      size  = 15
+      size = 15
     }
   }
 

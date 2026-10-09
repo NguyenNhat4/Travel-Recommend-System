@@ -100,7 +100,7 @@ jobs:
     name: Frontend Docker build test
     # Chạy song song với quality, không đợi lint/test: Dockerfile.web tự npm ci và build trong container,
     # không dùng artifact của quality. build_vm vẫn đợi job này nên image lỗi vẫn không được publish.
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vota-staging-ha]
     timeout-minutes: 20
     steps:
       - name: Checkout
