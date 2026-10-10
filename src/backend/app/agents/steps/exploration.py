@@ -30,6 +30,8 @@ MAX_CARDS = 4
 #: Hỏi về chỗ ở (so trên chuỗi đã `fold`).
 _HOTEL_FOCUS = re.compile(r"\b(?:khach san|ks|resort|homestay|hostel|cho o|cho nghi|noi o|o dau|villa|nha nghi|hotel)\b")
 _POOL = re.compile(r"\b(?:ho boi|be boi|pool)\b")
+#: Hỏi quanh một nơi ("gần Văn Miếu có gì?"): khác với hỏi về chính nơi đó.
+_AROUND = re.compile(r"\b(?:gan|quanh|canh|xung quanh|lan can|near|around)\b")
 _PLACEHOLDER = re.compile(r"\[\[(price|rating|reviews):([^\]\s]{1,200})\]\]")
 MAX_SUGGESTION_CHARS = 60
 MAX_SUGGESTIONS = 3
@@ -165,10 +167,28 @@ def _asked(state: dict, destination: str, results: list[dict]) -> dict | None:
     return rules.named_in(products, state.get("query", ""), exclude=[destination])
 
 
+def asked_only(state: dict, cards: list[dict]) -> bool:
+    """Lượt chỉ trả lời về một nơi người dùng nêu tên ("Văn Miếu buổi tối có mở không?"): một thẻ, lý do `asked`."""
+    return len(cards) == 1 and rules.ASKED in cards[0]["reasons"]
+
+
 def pick(state: dict, destination: str, results: list[dict]) -> tuple[list[dict], str | None]:
-    """Thẻ của lượt này và tiện ích đã dùng để lọc (`pool`) nếu có. Nơi câu hỏi nêu tên đứng đầu (lý do `asked`)."""
+    """Thẻ của lượt này và tiện ích đã dùng để lọc (`pool`) nếu có. Nơi câu hỏi nêu tên đứng đầu (lý do `asked`).
+
+    Câu hỏi về chính một nơi (giờ mở cửa, giá vé, có gì) chỉ trả thẻ nơi đó: kịch bản cảnh 9 và chat thử 10/10, nơi
+    thẻ chung (điểm khác, khách sạn) làm lệch câu trả lời. Hỏi quanh nơi đó ("gần Văn Miếu có gì?") thì vẫn gợi ý thêm.
+    """
     query = fold(state.get("query", ""))
     asked = _asked(state, destination, results)
+    if asked and not hotel_focus(state):
+        if not _AROUND.search(query):
+            return [{"product": asked, "reasons": [rules.ASKED]}], None
+        # Hỏi quanh một nơi: các điểm tham quan gần nó nhất, không lặp lại chính nó, không chen khách sạn.
+        general = [result for result in results if result.get("tool_call_id") != NAMED_CALL_ID]
+        others = _products(general, destination, "attraction") + _products(results, destination, "attraction")
+        near = rules.near_cards(others, asked, MAX_CARDS - 1)
+        if near:
+            return near, None
     general = [result for result in results if result.get("tool_call_id") != NAMED_CALL_ID]
     hotels = _products(general, destination, "hotel")
     filtered_by = None
@@ -391,6 +411,7 @@ def explore_input(state: dict, destination: str, cards: list[dict], filtered_by:
     payload = {"message": state.get("query", ""), **llm_context(state), "destination": destination,
                "filtered_by": filtered_by,
                "price_asked": price_asked(state),
+               "asked_only": asked_only(state, cards),
                "cards": [_card_input(card) for card in cards],
                "catalog_destinations": (supported or [])[:CATALOG_HINT],
                "previous_suggestions": state.get("last_suggestions", []),
@@ -451,6 +472,10 @@ def explored(state: dict, destination: str, cards: list[dict], filtered_by: str 
         body = f"{body.rstrip()}\n{closing}"
     templates = [message(state, "chip_sights" if hotel_only else "chip_hotels", destination=destination),
                  message(state, "chip_elsewhere")]
+    if asked_only(state, cards):
+        # Hỏi về một nơi: nút dẫn tiếp quanh nơi đó và cả điểm đến, không nhảy sang khách sạn.
+        templates = [message(state, "chip_near", place=rules.short_name(cards[0]["product"])),
+                     message(state, "chip_more_sights", destination=destination)]
     proposed = list(narration.suggestions) if narration else []
     if state.get("plan_consent"):
         # Đã đồng ý: nút đi tiếp phải đúng tên câu dẫn nhắc ("Tiếp tục lập lịch"), không để nút lập lịch của LLM thay.

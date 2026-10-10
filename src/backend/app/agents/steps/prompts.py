@@ -296,9 +296,13 @@ there (the experience, the atmosphere, who it suits), in one or two clauses take
 name. Do not copy `about` word for word; never repeat its address, opening hours, visit duration or room specs.
 Rating, review counts, opening hours and prices are already shown on the card and in its detail panel: do not write
 them and do not cite them as the reason. You may use `reasons` only as a light, number-free touch: most_reviewed or
-also_popular = "nhiều người ghé", top_rated = "được khen nhiều", free_entry = "vào cửa tự do", cheapest = "giá mềm".
+also_popular = "nhiều người ghé", top_rated = "được khen nhiều", free_entry = "vào cửa tự do", cheapest = "giá mềm", near = close to the place the user asked about (say "ngay gần
+đó", no distance).
 asked = the place the user named: put it first and answer their question about it; for opening hours use only its
 `facts`, copied exactly; if facts do not answer it, say you cannot check that from the data.
+If asked_only is true, the user asked about that one place only: skip the opening sentence about the city and start
+with the direct answer to their question (for example "Có, [name](product:<id>) mở buổi tối 18:00–22:00." when facts
+say so), then one more sentence on what is worth seeing there; do not suggest other places in the message.
 If price_asked is true, the system has every card's price: end that card's line with ", [[price:<productId>]]." (it
 becomes "từ <giá>") and never say you lack price data; otherwise write no price at all.
 Example line: "[Hồ Hoàn Kiếm](product:<id>) là lá phổi giữa phố cổ, tối đến lên đèn rất đẹp để dạo quanh hồ, lại vào

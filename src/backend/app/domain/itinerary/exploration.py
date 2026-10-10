@@ -13,6 +13,7 @@ from collections.abc import Iterable
 import re
 
 from ..search.amenities import amenity_keys
+from .geo import coords, haversine_km
 from .normalization import fold
 from .types import Product
 
@@ -23,6 +24,10 @@ FREE_ENTRY = "free_entry"
 ALSO_POPULAR = "also_popular"
 #: Nơi người dùng nêu tên trong câu hỏi ("Văn Miếu buổi tối có mở không?"): luôn là thẻ đầu tiên.
 ASKED = "asked"
+#: Gần nơi người dùng hỏi quanh ("gần Văn Miếu có gì nữa?").
+NEAR = "near"
+#: "Gần" tính theo đường chim bay; xa hơn thì không gọi là gần nữa.
+NEAR_KM = 3.0
 
 #: Thứ tự lý do theo loại: điểm tham quan ưu tiên nơi nhiều người đến, khách sạn ưu tiên giá.
 REASON_ORDER = {
@@ -148,6 +153,12 @@ def has_amenity(product: Product, key: str) -> bool:
 _NAME_CUT = re.compile(r"\s+[-–(|]|\s*\[")
 
 
+def short_name(product: Product) -> str:
+    """Phần đầu của tên, như người dùng hay gọi: "Văn Miếu – Quốc Tử Giám" → "Văn Miếu", "[VinWonders] Vé…" → "Vé…"."""
+    name = product.get("name") or ""
+    return _NAME_CUT.split(_BRACKET_PREFIX.sub("", name).strip(), maxsplit=1)[0].strip()
+
+
 def named_in(products: list[Product], text: str, exclude: Iterable[str] = ()) -> Product | None:
     """Sản phẩm mà câu hỏi nêu tên: phần đầu của tên (trước " – ", " - ", "(") nằm trọn trong câu, tối thiểu hai từ; nhiều
     sản phẩm khớp thì lấy tên dài nhất ("Văn Miếu – Quốc Tử Giám" khớp "Văn Miếu buổi tối có mở không?")."""
@@ -160,6 +171,25 @@ def named_in(products: list[Product], text: str, exclude: Iterable[str] = ()) ->
         if len(core.split()) >= 2 and core not in excluded and f" {core} " in padded:
             found.append((len(core), product))
     return max(found, key=lambda item: item[0])[1] if found else None
+
+
+def near_cards(products: list[Product], anchor: Product, limit: int) -> list[dict]:
+    """Tối đa `limit` thẻ gần `anchor` nhất (trong `NEAR_KM`), không tính chính nó và nơi trùng nó; thiếu toạ độ thì
+    rỗng (không đoán là gần)."""
+    origin = coords(anchor)
+    if origin is None:
+        return []
+    anchor_key = _group(anchor)
+    scored = []
+    for product in distinct_places(products):
+        point = coords(product)
+        if point is None or product["productId"] == anchor["productId"] or _same_place(_group(product), anchor_key):
+            continue
+        km = haversine_km(origin, point)
+        if km <= NEAR_KM:
+            scored.append((km, product))
+    scored.sort(key=lambda item: item[0])
+    return [{"product": product, "reasons": [NEAR]} for _, product in scored[:limit]]
 
 
 def with_amenity(products: list[Product], key: str) -> list[Product]:
