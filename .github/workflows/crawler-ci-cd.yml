@@ -14,9 +14,14 @@ on:
       - release-mvp-v3
     paths:
       - '.github/workflows/crawler-ci-cd.yml'
+      - '.github/actions/sync-env-from-secret-manager/**'
       - 'Dockerfile.daily'
       - 'Dockerfile.fresh-catalog'
       - 'src/data_collection/**'
+      # index của crawler dùng chung embedder backend (e5-small, 06/10): đổi model / revision / adapter → build lại image crawler
+      - 'src/backend/app/infrastructure/embeddings/**'
+      - 'src/backend/app/core/config.py'
+      - 'src/backend/requirements-embed.txt'
       - 'scripts/install-vota-cron.sh'
       - 'scripts/check-db-tunnel.sh'
   push:
@@ -27,9 +32,14 @@ on:
       - release-mvp-v3
     paths:
       - '.github/workflows/crawler-ci-cd.yml'
+      - '.github/actions/sync-env-from-secret-manager/**'
       - 'Dockerfile.daily'
       - 'Dockerfile.fresh-catalog'
       - 'src/data_collection/**'
+      # index của crawler dùng chung embedder backend (e5-small, 06/10): đổi model / revision / adapter → build lại image crawler
+      - 'src/backend/app/infrastructure/embeddings/**'
+      - 'src/backend/app/core/config.py'
+      - 'src/backend/requirements-embed.txt'
       - 'scripts/install-vota-cron.sh'
       - 'scripts/check-db-tunnel.sh'
   workflow_dispatch:
@@ -141,7 +151,9 @@ jobs:
 
   deploy:
     name: Deploy crawler on application VM
-    if: ${{ (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true) || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') }}
+    # Tắt: VM staging cũ không nhận deploy nữa. Triển khai lên staging-ha qua
+    # staging-ha-backend-cd.yml, staging-ha-frontend-cd.yml, staging-ha-crawler-cd.yml.
+    if: ${{ false }}
     needs: publish
     runs-on: ubuntu-latest
     # Two 15-minute health windows (deploy and rollback) plus image pull and SSH.
@@ -216,6 +228,17 @@ jobs:
           remote_dir="/tmp/vota-crawler-cd-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           tar -czf - -C "$GITHUB_WORKSPACE/scripts" install-vota-cron.sh check-db-tunnel.sh -C "$GITHUB_WORKSPACE/src/data_collection" run_daily_docker.sh | gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet --command "umask 077; mkdir -m 700 '$remote_dir' && tar -xzf - -C '$remote_dir' && sudo -n install -D -m 0755 '$remote_dir/run_daily_docker.sh' /opt/vota/bin/run_daily_docker.sh"
 
+      # Env của crawler (GCE_CRON_ENV_FILE, mặc định /etc/vota/fresh-catalog.env) lấy từ Secret Manager. Chưa đặt
+      # vars.GCE_CRAWLER_ENV_SECRET thì bỏ qua, giữ file đặt tay.
+      - name: Sync crawler env from Secret Manager
+        uses: ./.github/actions/sync-env-from-secret-manager
+        with:
+          secret: ${{ vars.GCE_CRAWLER_ENV_SECRET }}
+          remote-file: ${{ secrets.GCE_CRON_ENV_FILE || '/etc/vota/fresh-catalog.env' }}
+          project: ${{ secrets.GCP_PROJECT_ID }}
+          instance: ${{ secrets.GCE_INSTANCE }}
+          zone: ${{ secrets.GCE_ZONE }}
+
       - name: Install crawler cron
         env:
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
@@ -246,5 +269,5 @@ jobs:
           CRAWLER_DIGEST: ${{ needs.publish.outputs.crawler_digest }}
         run: |
           crawler_ref="$CRAWLER_IMAGE@$CRAWLER_DIGEST"
-          remote_command="set -eu; docker rm -f vota-daily-monitor vota-fresh-catalog-monitor 2>/dev/null || true; docker pull '$crawler_ref'; mkdir -p '$GCE_CRON_DATA_DIR' '$GCE_CRON_LOG_DIR'; nohup env FRESH_IMAGE='$crawler_ref' FRESH_DATA_DIR='$GCE_CRON_DATA_DIR' CATALOG_ENV_FILE='$GCE_CRON_ENV_FILE' CATALOG_LOG_DIR='$GCE_CRON_LOG_DIR' PULL=0 MONITOR_HOST=0.0.0.0 MONITOR_PUBLIC=1 '$GCE_CRON_RUNNER' fresh-monitor > '$GCE_CRON_LOG_DIR/monitor-cd.log' 2>&1 < /dev/null & for attempt in \$(seq 1 30); do status=\$(docker inspect --format '{{.State.Status}}' vota-fresh-catalog-monitor 2>/dev/null || true); if [ \"\$status\" = running ]; then exit 0; fi; sleep 1; done; tail -n 100 '$GCE_CRON_LOG_DIR/monitor-cd.log' || true; exit 1"
+          remote_command="set -eu; docker rm -f vota-daily-monitor vota-fresh-catalog-monitor 2>/dev/null || true; docker pull '$crawler_ref'; mkdir -p '$GCE_CRON_DATA_DIR' '$GCE_CRON_LOG_DIR'; nohup env FRESH_IMAGE='$crawler_ref' FRESH_DATA_DIR='$GCE_CRON_DATA_DIR' CATALOG_ENV_FILE='$GCE_CRON_ENV_FILE' CATALOG_LOG_DIR='$GCE_CRON_LOG_DIR' PULL=0 MONITOR_HOST=0.0.0.0 MONITOR_PUBLIC=1 '$GCE_CRON_RUNNER' fresh-monitor > '$GCE_CRON_LOG_DIR/monitor-cd.log' 2>&1 < /dev/null & for attempt in \$(seq 1 30); do status=\$(docker inspect --format '{{.State.Status}}' vota-fresh-catalog-monitor 2>/dev/null || true); if [ \"\$status\" = running ]; then '$GCE_CRON_RUNNER' prune-images '$crawler_ref' || true; exit 0; fi; sleep 1; done; tail -n 100 '$GCE_CRON_LOG_DIR/monitor-cd.log' || true; exit 1"
           gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet --command "$remote_command"

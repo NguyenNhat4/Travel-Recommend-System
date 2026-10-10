@@ -40,7 +40,7 @@ export const PriceTag: React.FC<PriceTagProps> = ({
     <div className={`inline-flex flex-col ${className}`}>
       <div className="inline-flex items-baseline gap-1 text-slate-900">
         {hasPrefixFrom && <span className="text-xs font-normal text-slate-500">Từ</span>}
-        <span className={`${sizeClasses[size]} tracking-tight text-blue-900`}>{formatted}</span>
+        <span className={`${sizeClasses[size]} tracking-tight text-slate-900`}>{formatted}</span>
         {suffix && <span className="text-xs font-normal text-slate-500">{suffix}</span>}
       </div>
       {showTaxesIncluded && (

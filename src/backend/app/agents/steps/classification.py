@@ -3,9 +3,11 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import date, datetime, timedelta, timezone
+import re
 
 from src.backend.app.application.itinerary.contracts import bounds, valid
-from src.backend.app.domain.itinerary.dates import explicit_dates, this_year
+from src.backend.app.domain.itinerary import preferences
+from src.backend.app.domain.itinerary.dates import explicit_dates, stated_days, this_year
 from src.backend.app.domain.itinerary.normalization import fold
 from src.backend.app.domain.itinerary.planning import merge_intent
 
@@ -17,8 +19,117 @@ from .prompts import CLASSIFY_PROMPT, EXTRACT_PROMPT
 
 # Việt Nam không có giờ mùa hè, nên lệch cố định UTC+7 là đủ và không cần gói dữ liệu múi giờ (tzdata).
 VIETNAM = timezone(timedelta(hours=7))
-TRIP_FIELDS = ("destination", "days", "startDate", "party", "budget")
+TRIP_FIELDS = ("destination", "days", "startDate", "party", "budget", "origin")
+#: Trường phải đủ trước khi gọi tool (AC-AGT-01); ngân sách vẫn được hỏi nhưng không bắt buộc.
+REQUIRED_FIELDS = ("destination", "days", "startDate", "party")
 SWAP_CONSTRAINTS = ("exclude_products", "specific_hotel", "specific_activity", "require_hotel")
+#: "lấy phương án 2", "phuong an so 2", "take option 2" (so trên chuỗi đã `fold`).
+_OPTION_PICK = re.compile(r"\b(?:phuong an|option)\s*(?:so\s*)?(\d)\b")
+#: Câu đồng ý ngắn khi trợ lý vừa mời lập lịch (FR-AGT-06), so trên chuỗi đã `fold`: nhận bằng luật, không đợi LLM.
+_YES = re.compile(r"^(?:ok(?:e|ay|ie)?|oki|duoc|duoc roi|co|co chu|u|uh|uhm|um|vang|da|dong y|yes|yep|chot|nhat tri|"
+                  r"lam di|lap di|len di|tien hanh)(?:\s+(?:ban|nhe|nha|luon|lun|di|a|nhe ban|lap di|lap lich di))*$")
+#: Câu xin lập lịch: "lập lịch", "lên kế hoạch giúp mình", "xếp lịch trình", "plan a trip" (đã `fold`).
+_PLAN = re.compile(r"\b(?:lap|len|xep|tao|soan)\b(?:\s+\w+){0,3}?\s+(?:lich|ke hoach)\b|\blich trinh\b|"
+                   r"\bitinerary\b|\bplan\b")
+#: Người dùng giao cho trợ lý chọn nơi ("cứ chọn đại", "tuỳ bạn", "đâu cũng được"), đã `fold`: bậc 2 của "không biết".
+_DELEGATE = re.compile(r"\b(?:chon dai|chon giup|chon ho|chon bat ky|ban chon|tuy ban|"
+                       r"(?:dau|cho nao|noi nao|sao) cung (?:duoc|dc|ok)|goi y dai|pick (?:a place )?for me|anywhere)\b")
+#: Chê một nơi: "chán, Đà Nẵng đi rồi", "không thích Nha Trang", "chỗ khác đi" (đã `fold`). Tên nơi phải có trong câu,
+#: trừ "chỗ khác", "nơi khác" (chê nơi trợ lý vừa mời).
+_REJECT = re.compile(r"\b(?:chan|di roi|toi roi|khong thich|khong muon|khong hop|ghet|cho khac|noi khac|dia diem khac)\b")
+_ELSEWHERE = re.compile(r"\b(?:cho khac|noi khac|dia diem khac)\b")
+#: Câu có chữ số có thể mang số ngày, ngày đi, số người, ngân sách: luôn qua `extract`, không đi thẳng `explore`.
+_DIGIT = re.compile(r"\d")
+#: Thông tin chuyến ngoài điểm đến: nói một trong số này là người dùng đang lập lịch ("Hà Nội 3 ngày", "đi 3 ngày").
+_PLANNING_DETAILS = ("days", "startDate", "party", "budget")
+
+
+def asks_for_plan(text: str | None) -> bool:
+    """Câu xin lập lịch hoặc tiếp tục lập lịch, nhận bằng luật (nút "Lên lịch Hà Nội cho mình" cũng khớp)."""
+    return bool(_PLAN.search(fold(text)))
+
+
+def says_yes(text: str | None) -> bool:
+    return bool(_YES.match(fold(text)))
+
+
+def planning_implied(intent: dict) -> bool:
+    """Đã nói số ngày, ngày đi, số người hoặc ngân sách: coi như muốn lập lịch, không hỏi lại "có muốn không".
+
+    Chỉ nêu điểm đến ("Hà Nội", "Hà Nội có gì?") thì chưa: trợ lý khám phá rồi mời lập lịch.
+    """
+    return any(intent.get(key) is not None for key in _PLANNING_DETAILS)
+
+
+def plan_consented(state: dict, label: str | None = None, llm_plan_request: bool = False) -> bool:
+    """Người dùng đã đồng ý lập lịch chưa (FR-AGT-06). Chưa đồng ý thì không hỏi thông tin chuyến, không hiện form.
+
+    Đồng ý khi: đã đồng ý ở lượt trước; sửa form/chip (`intent_override`); câu xin lập lịch; hoặc trợ lý vừa mời mà người
+    dùng trả lời "ok". Trả lời lời mời bằng thông tin chuyến ("3 ngày thôi") được `extract_result` nhận qua
+    `planning_implied`, không nhận ở đây: "Thôi, Hà Nội thì sao?" cũng là câu du lịch nhưng là đổi nơi, không phải đồng
+    ý (LLM thật, 10/10/2026). LLM báo `plan_request` không được tin ở câu hỏi về một nơi (`explore`).
+    """
+    if state.get("plan_consent") or state.get("intent_override"):
+        return True
+    query = state.get("query", "")
+    if asks_for_plan(query):
+        return True
+    if state.get("pending_offer") and says_yes(query):
+        return True
+    return llm_plan_request and label not in ("explore", "out_of_scope")
+
+
+def _known_places(state: dict) -> list[str]:
+    """Nơi trợ lý đã gợi ý hoặc chuyến đang nói tới: chỉ những nơi này mới chê được bằng tên."""
+    offer = (state.get("pending_offer") or {}).get("destination")
+    names = [*(state.get("offered_destinations") or []), offer, (state.get("intent") or {}).get("destination"),
+             *(state.get("rejected_destinations") or [])]
+    return list(dict.fromkeys(name for name in names if name))
+
+
+def rejected_places(state: dict) -> list[str]:
+    """Nơi người dùng vừa chê trong câu này. "Chỗ khác đi" không nêu tên thì là nơi trợ lý vừa mời."""
+    text = fold(state.get("query", ""))
+    if not _REJECT.search(text):
+        return []
+    named = [name for name in _known_places(state) if f" {fold(name)} " in f" {text} "]
+    offer = (state.get("pending_offer") or {}).get("destination")
+    if not named and offer and _ELSEWHERE.search(text):
+        named = [offer]
+    return named
+
+
+def _rejection_update(state: dict, consent: bool) -> dict:
+    """Ghi nơi bị chê; câu nhắc lại đúng tên một nơi đã chê mà không chê nữa ("Đà Nẵng có gì?") là đổi ý, bỏ khỏi danh sách.
+
+    Chưa đồng ý lập lịch mà vừa chê: bỏ lời mời và điểm đến bị chê khỏi chuyến, trợ lý khám phá nơi khác (`explore_pick`);
+    người dùng nêu luôn nơi khác ("chán Đà Nẵng rồi, Hà Nội thì sao") thì `explore` lấy nơi đó.
+    """
+    previous = list(state.get("rejected_destinations") or [])
+    fresh = rejected_places(state)
+    text = f" {fold(state.get('query', ''))} "
+    if not fresh:
+        kept = [name for name in previous if f" {fold(name)} " not in text]
+        return {"rejected_destinations": kept} if kept != previous else {}
+    rejected = list(dict.fromkeys([*previous, *fresh]))
+    update = {"rejected_destinations": rejected}
+    if consent:
+        return update
+    intent = dict(state.get("intent") or {})
+    if fold(intent.get("destination")) in {fold(name) for name in rejected}:
+        intent["destination"] = None
+        update["intent"] = intent
+    return {**update, "pending_offer": None, "explore_pick": True}
+
+
+def _consent_update(state: dict) -> dict:
+    """Đồng ý lập lịch: xoá lời mời; điểm đến trợ lý tự chọn mà chuyến chưa có thì ghi vào chuyến."""
+    update = {"plan_consent": True, "pending_offer": None, "dont_know_count": 0}
+    offer = state.get("pending_offer") or {}
+    intent = state.get("intent") or {}
+    if offer.get("destination") and not intent.get("destination"):
+        update["intent"] = {**intent, "destination": offer["destination"]}
+    return update
 
 
 def vietnam_today(now: datetime | None = None) -> date:
@@ -32,20 +143,101 @@ def vietnam_today(now: datetime | None = None) -> date:
 
 def route_input(state: dict) -> list:
     """Message hiện tại cộng ngữ cảnh hội thoại chung; `classify` chỉ trả một nhãn."""
-    payload = {"message": state.get("query", ""), **llm_context(state)}
+    payload = {"message": state.get("query", ""), **llm_context(state),
+               "assistant_offered_plan": bool(state.get("pending_offer"))}
     return [("system", CLASSIFY_PROMPT), ("human", prompt_yaml(payload))]
 
 
+def _vague_form(state: dict) -> dict | None:
+    """Câu trả lời không thêm được thông tin (`vague`) khi còn thiếu trường bắt buộc: đi thẳng `clarify` kèm form.
+
+    `None` (xử lý như `travel`) khi chuyến đi đã đủ trường bắt buộc hoặc chưa có lượt nào để câu này trả lời.
+    """
+    intent = state.get("intent") or {}
+    if not state.get("conversation_history") or all(intent.get(key) is not None for key in REQUIRED_FIELDS):
+        return None
+    missing = [key for key in TRIP_FIELDS if intent.get(key) is None]
+    update = {"decision": "missing_info", "clarification_reason": "suggest_form", "missing_fields": missing,
+              "start_date_asked": True}
+    if {"destination", "days"} & set(missing):
+        update["clarification_rounds"] = int(state.get("clarification_rounds", 0) or 0) + 1
+    return update
+
+
 def route_result(state: dict, result: TurnRoute) -> dict:
-    """Update của `classify`: `travel` đi tiếp `extract`; trò chuyện và ngoài phạm vi đi `converse`."""
-    label = TurnRoute.model_validate(result).route
-    update = {"interaction_type": label, "refusal": label == "out_of_scope",
-              "events": [event("classify", f"route {label}")]}
-    if label == "travel":
+    """Update của `classify` (FR-AGT-06, chốt 2026-10-10).
+
+    Đã đồng ý lập lịch (`plan_consented`): như trước, `travel` đi `extract`, `vague` đi `clarify` kèm form khi còn thiếu
+    trường bắt buộc, câu hỏi về một nơi (`explore`) đi thẳng `explore` và giữ nguyên chuyến.
+    Chưa đồng ý: câu du lịch hay hỏi về một nơi đều qua `extract` để ghi lại điểm đến và thông tin đã nói, rồi
+    `extract_result` đưa sang `explore` (không hỏi thông tin chuyến); "không biết" đi bậc gợi ý của `converse` (bậc 2
+    tự chọn một điểm đến và khám phá luôn). Trò chuyện và ngoài phạm vi đi `converse`, trả lời thường kèm nút gợi ý.
+    """
+    route = TurnRoute.model_validate(result)
+    label = route.route
+    consent = plan_consented(state, label, route.plan_request)
+    update = {"interaction_type": "travel" if label in ("vague", "explore") else label,
+              "refusal": label == "out_of_scope",
+              "events": [event("classify", f"route {label}" + (" (plan consent)" if consent else ""))]}
+    if consent:
+        update.update(_consent_update(state) if not state.get("plan_consent") else {})
+    update.update(_rejection_update({**state, **update}, consent))
+    if update.get("explore_pick") and label not in ("out_of_scope",):
+        # Vừa chê một nơi khi chưa đồng ý lập lịch: câu có nêu nơi khác thì qua `extract` để ghi lại, không thì khám phá
+        # luôn một nơi khác.
+        decision = "travel" if label in ("travel", "explore") else "explore"
+        return {**update, "interaction_type": "conversation", "decision": decision, "missing_fields": []}
+    if _delegates_the_choice(state, label, consent):
+        return {**update, "interaction_type": "conversation", "decision": "explore", "explore_pick": True,
+                "dont_know_count": max(2, int(state.get("dont_know_count", 0) or 0) + 1), "missing_fields": []}
+    if label == "vague" and consent and not state.get("plan_consent"):
+        # Vừa đồng ý ("ok" sau lời mời): hỏi gộp một câu như AC-AGT-01, chưa đưa form.
         return {**update, "decision": "travel"}
-    # `converse` dùng `missing_fields` để mời người dùng nói tiếp phần chuyến đi còn thiếu.
-    missing = [key for key in ("destination", "days") if not state.get("intent", {}).get(key)]
-    return {**update, "decision": "simple", "missing_fields": missing}
+    if label == "vague" and consent:
+        return {**update, **(_vague_form({**state, **update}) or {"decision": "travel"})}
+    if label == "vague":
+        return {**update, **_not_knowing(state)}
+    if label == "explore" and consent:
+        return {**update, "decision": "explore"}
+    if label == "explore" and not _DIGIT.search(state.get("query", "")):
+        # Hỏi về một nơi, không kèm số ngày, ngày đi hay số người: `explore` tự tra tên nơi trong catalog, bớt một lượt gọi
+        # LLM của `extract` (FR-AGT-06). Không tra được tên thì `explore` trả về `extract` (`route_after_explore`).
+        return {**update, "decision": "explore", "explore_direct": True}
+    if label in ("travel", "explore"):
+        return {**update, "decision": "travel"}
+    # `converse` dùng `missing_fields` để mời người dùng nói tiếp phần chuyến đi còn thiếu; chưa đồng ý lập lịch thì
+    # chỉ mời nói điểm đến, không hỏi số ngày.
+    intent = {**state.get("intent", {}), **update.get("intent", {})}
+    keys = ("destination", "days") if consent else ("destination",)
+    missing = [key for key in keys if not intent.get(key)]
+    return {**update, "decision": "simple", "missing_fields": missing, "offer_suggestions": True}
+
+
+def _delegates_the_choice(state: dict, label: str, consent: bool) -> bool:
+    """"Cứ chọn đại một nơi đi" khi chưa có điểm đến và chưa đồng ý: trợ lý chọn luôn (bậc 2), không hỏi thêm.
+
+    Nhận bằng luật vì LLM hay xếp câu này là trò chuyện (LLM thật, 10/10/2026), và trợ lý lại bảo người dùng tự nhắn tên.
+    """
+    if consent or label == "out_of_scope" or state.get("pending_offer"):
+        return False
+    if (state.get("intent") or {}).get("destination"):
+        return False
+    return bool(_DELEGATE.search(fold(state.get("query", ""))))
+
+
+def _not_knowing(state: dict) -> dict:
+    """Người dùng chưa biết, chưa muốn ("không biết", "tuỳ bạn", "để sau") khi chưa đồng ý lập lịch: không form.
+
+    Đang có lời mời thì coi như để sau, xoá lời mời. Chưa có điểm đến thì đếm bậc: bậc 1 hỏi kiểu chuyến, bậc 2 tự
+    chọn điểm đến nhiều sản phẩm nhất và khám phá luôn (`explore_pick`), từ bậc 3 ngừng hỏi, chỉ giữ nút.
+    """
+    base = {"interaction_type": "conversation", "missing_fields": [], "offer_suggestions": True}
+    if state.get("pending_offer") or (state.get("intent") or {}).get("destination"):
+        return {**base, "decision": "simple", "pending_offer": None}
+    count = int(state.get("dont_know_count", 0) or 0) + 1
+    if count == 2:
+        return {**base, "decision": "explore", "explore_pick": True, "dont_know_count": count}
+    return {**base, "decision": "simple", "dont_know_count": count}
 
 
 def extraction_input(state: dict) -> list:
@@ -93,11 +285,25 @@ def _copied_from_selection(state: dict, changes: dict) -> None:
             changes.pop(key)
 
 
+def picked_option(state: dict) -> dict | None:
+    """Phương án khác người dùng chọn ở lượt này ("lấy phương án N"), chỉ trong các phương án đã hiện ở lượt trước
+    (`previous_options`, AC-AGT-04 chốt 2026-10-08); số không có trong đó thì None."""
+    match = _OPTION_PICK.search(fold(state.get("query", "")))
+    if match is None:
+        return None
+    return next((option for option in state.get("previous_options", [])
+                 if option.get("index") == int(match.group(1)) and option.get("stays")), None)
+
+
 def _merged_constraints(state: dict, result: Extraction, patch: dict, intent: dict) -> dict:
     """Ràng buộc mới; các luật dưới đây giữ cho `require_hotel` và `exclude_*` không tự mâu thuẫn."""
     constraints = deepcopy(state.get("constraints", {}))
     changes = result.constraints.model_dump(exclude_none=True)
     _copied_from_selection(state, changes)
+    option = picked_option(state)
+    if option is not None:
+        # Tên lấy từ phương án đã hiện (grounding), không từ LLM; phương án hai khách sạn giữ khách sạn đêm 1.
+        changes["specific_hotel"] = option["stays"][0]["name"]
     for key in changes.pop("clear_fields", []):
         constraints.pop(key, None)
     if "hotel_attributes" in changes:
@@ -121,6 +327,10 @@ def _merged_constraints(state: dict, result: Extraction, patch: dict, intent: di
                 constraints.pop("children_ages", None)
     if constraints.get("require_hotel"):
         constraints["exclude_taxonomies"] = [x for x in constraints.get("exclude_taxonomies", []) if x != "hotel"]
+    if changes.get("require_flight"):
+        constraints["exclude_taxonomies"] = [x for x in constraints.get("exclude_taxonomies", []) if x != "flight"]
+    elif "flight" in changes.get("exclude_taxonomies", []):
+        constraints.pop("require_flight", None)
     return constraints
 
 
@@ -154,6 +364,20 @@ def _date_from_message(state: dict, result: Extraction, patch: dict, today: date
     patch["startDate"] = stated
     remaining = [field for field in result.change_without_value if field != "startDate"]
     return result.model_copy(update={"change_without_value": remaining, "start_date_undecided": False})
+
+
+def _days_from_message(state: dict, result: Extraction, patch: dict) -> None:
+    """Lưới an toàn khi LLM bỏ trống số ngày dù câu chat viết thời lượng dạng gói ("1 ngày 2 đêm", "3n2d").
+
+    Trace thật (golden TC-03, 05/10): "nghỉ dưỡng ... 1 ngày 2 đêm" ra `days = null` nên agent hỏi lại số ngày, trong khi
+    hội thoại gốc chỉ hỏi điểm đến. Chỉ điền khi LLM không đưa số ngày, lượt này không có ngày kết thúc và không có chip
+    số ngày; ghi thẳng vào `patch`. Số ngày ngoài 1–7 vẫn bị `_invalid_inputs` hỏi lại như mọi giá trị khác.
+    """
+    if patch.get("days") is not None or result.end_date or "days" in state.get("intent_override", {}):
+        return
+    days = stated_days(state.get("query", ""))
+    if days is not None:
+        patch["days"] = days
 
 
 def _default_year(result: Extraction, intent: dict, patch: dict, today: date) -> Extraction:
@@ -206,16 +430,14 @@ def _invalid_inputs(intent: dict, today: date) -> list[dict]:
     return found
 
 
-#: Chi tiết chuyến đi được hỏi một lần sau điểm đến và số ngày (AC-AGT-01); trả lời bỏ qua vẫn lập lịch.
-TRIP_DETAILS = ("startDate", "party", "budget")
+#: Chi tiết chuyến đi hỏi gộp bằng câu chữ một lần sau điểm đến và số ngày; từ lượt sau còn thiếu ngày đi hoặc số
+#: người thì hiện form (AC-AGT-01).
+TRIP_DETAILS = ("startDate", "party", "budget", "origin")  # nơi đi: không bắt buộc, như ngân sách (AC-AGT-02)
 
 
-def trip_details_missing(intent: dict, result: Extraction) -> list[str]:
-    """Chi tiết còn thiếu; người dùng nói rõ chưa chốt ngày thì ngày đi không tính là thiếu."""
-    missing = [key for key in TRIP_DETAILS if intent.get(key) is None]
-    if result.start_date_undecided and "startDate" in missing:
-        missing.remove("startDate")
-    return missing
+def trip_details_missing(intent: dict) -> list[str]:
+    """Chi tiết còn thiếu; "chưa chốt ngày" vẫn tính ngày đi là thiếu, vì ngày đi là trường bắt buộc."""
+    return [key for key in TRIP_DETAILS if intent.get(key) is None]
 
 
 def _ask_invalid(state: dict, result: Extraction, intent: dict, invalid: list[dict], missing: list[str],
@@ -228,7 +450,7 @@ def _ask_invalid(state: dict, result: Extraction, intent: dict, invalid: list[di
     fields = [*missing, *(item["field"] for item in invalid if item["field"] not in missing)]
     asks_details = not missing and not asked and not state.get("intent_override")
     if asks_details:
-        fields += [key for key in trip_details_missing(intent, result) if key not in fields]
+        fields += [key for key in trip_details_missing(intent) if key not in fields]
     update = {"decision": "missing_info", "missing_fields": fields, "clarification_reason": "invalid_input",
               "start_date_asked": asked or asks_details or any(item["field"] == "startDate" for item in invalid)}
     if missing:
@@ -236,8 +458,8 @@ def _ask_invalid(state: dict, result: Extraction, intent: dict, invalid: list[di
     return update
 
 
-def extract_result(state: dict, result: Extraction) -> dict:
-    """Update của `extract`, gồm `route` quyết định nhánh đi tiếp (`routing.route_after_extract`)."""
+def _extract_update(state: dict, result: Extraction) -> dict:
+    """Update của `extract` khi đã đồng ý lập lịch: hỏi lại phần thiếu hoặc gọi tool (AC-AGT-01)."""
     result = Extraction.model_validate(result)
     patch = result.patch.model_dump(mode="json", exclude_none=True)
     if result.patch.party is not None:
@@ -246,6 +468,7 @@ def extract_result(state: dict, result: Extraction) -> dict:
         # Loại nơi bị điền nhầm vào cả `destination` ("biển"): không phải tên điểm đến, đừng đem đi khớp catalog.
         patch.pop("destination")
     result = _date_from_message(state, result, patch, vietnam_today())
+    _days_from_message(state, result, patch)
     intent, invalid_override = _merged_intent(state, patch)
     if invalid_override is not None:
         return invalid_override
@@ -283,6 +506,11 @@ def extract_result(state: dict, result: Extraction) -> dict:
     if conflict or constraints.get("unverified_requirements"):
         return {**update, "decision": "missing_info",
                 "clarification_reason": "conflict" if conflict else "unverified"}
+    if missing == ["days"] and not rounds and not asked and not state.get("intent_override"):
+        # Đã có điểm đến (vừa đồng ý lập lịch: "Ok, lên lịch Hà Nội luôn"): hỏi gộp số ngày cùng ngày đi, số người, ngân
+        # sách, nơi đi trong một câu (AC-AGT-01, kịch bản bản 5 cảnh 7); trước đây chỉ hỏi số ngày rồi lượt sau hỏi tiếp.
+        return {**update, "decision": "missing_info", "missing_fields": ["days", *trip_details_missing(intent)],
+                "start_date_asked": True, "clarification_reason": None, "clarification_rounds": rounds + 1}
     if missing:
         # Hỏi bằng câu chữ một lượt; từ lượt sau `clarify` gửi kèm form đã điền sẵn thay vì hỏi lại y hệt.
         asked_once = rounds + 1 >= 2
@@ -293,10 +521,69 @@ def extract_result(state: dict, result: Extraction) -> dict:
         return {**update, "decision": "missing_info",
                 "missing_fields": list(dict.fromkeys(result.change_without_value)),
                 "clarification_reason": "change_without_value"}
-    details = trip_details_missing(intent, result)
-    # Chip sửa tay là chỉnh có chủ ý trên hội thoại đã có, không hỏi thêm ở đó.
+    details = trip_details_missing(intent)
+    # Chip sửa tay là chỉnh có chủ ý trên hội thoại đã có, không hỏi thêm bằng câu chữ ở đó.
     if details and not asked and not state.get("intent_override"):
         return {**update, "decision": "missing_info", "missing_fields": details,
                 "start_date_asked": True, "clarification_reason": None}
-    # Đã lập lịch một lần thì không hỏi các chi tiết này nữa, kể cả khi người dùng đổi điểm đến sau đó.
+    # Đã hỏi một lần mà vẫn thiếu ngày đi hoặc số người (kể cả trả lời một phần): form ở mỗi lượt cho tới khi đủ.
+    if any(intent.get(key) is None for key in REQUIRED_FIELDS):
+        return {**update, "decision": "missing_info", "missing_fields": details,
+                "start_date_asked": True, "clarification_reason": "suggest_form"}
     return {**update, "decision": "tool", "start_date_asked": True, "clarification_reason": None}
+
+
+def _soft_preferences(state: dict, update: dict) -> dict:
+    """Sở thích nói là ưu tiên ("ưu tiên khách sạn có hồ bơi", câu xác nhận form): ghi nhãn vào `intent.interests`, và bỏ
+    cờ bắt buộc LLM vừa đặt cho đúng tiện ích đó trong `hotel_attributes` (FR-AGT-06, `domain/itinerary/preferences.py`).
+    """
+    stated = preferences.stated_preferences(state.get("query", ""))
+    if not stated or "intent" not in update:
+        return update
+    intent = dict(update["intent"])
+    interests = list(intent.get("interests") or [])
+    for item in stated:
+        if not any(preferences.from_interests([value]) == [item] for value in interests):
+            interests.append(item.label)
+    intent["interests"] = interests
+    constraints = dict(update.get("constraints") or {})
+    before = (state.get("constraints") or {}).get("hotel_attributes") or {}
+    attributes = dict(constraints.get("hotel_attributes") or {})
+    for item in stated:
+        if item.attribute and attributes.get(item.attribute) is True and before.get(item.attribute) is not True:
+            attributes.pop(item.attribute)
+    if attributes:
+        constraints["hotel_attributes"] = attributes
+    else:
+        constraints.pop("hotel_attributes", None)
+    return {**update, "intent": intent, "constraints": constraints}
+
+
+def extract_result(state: dict, result: Extraction) -> dict:
+    """Update của `extract`, gồm `decision` quyết định nhánh đi tiếp (`routing.route_after_extract`).
+
+    Chưa đồng ý lập lịch (FR-AGT-06): thông tin chuyến vẫn được ghi, nhưng thay cho hỏi lại hay gọi tool thì sang
+    `explore` (đã có điểm đến) hoặc `converse` (chưa có). Câu có thông tin chuyến ngoài điểm đến ("Hà Nội 3 ngày",
+    "đi 3 ngày") coi như đồng ý (`planning_implied`). Giá trị không hợp lệ và hỏi chọn điểm đến theo loại ("đi biển")
+    giữ như cũ.
+    """
+    update = _soft_preferences(state, _extract_update(state, result))
+    if state.get("plan_consent") or update.get("decision") in ("error", None):
+        return update
+    if update.get("clarification_reason") in ("invalid_input", "destination_kind"):
+        return update
+    intent = update.get("intent") or {}
+    if planning_implied(intent):
+        return {**update, **{key: value for key, value in _consent_update({**state, "intent": intent}).items()
+                             if key != "intent"}, "plan_consent": True}
+    calm = {"clarification_rounds": int(state.get("clarification_rounds", 0) or 0),
+            "start_date_asked": bool(state.get("start_date_asked")), "clarification_reason": None}
+    rejected = {fold(name) for name in state.get("rejected_destinations") or []}
+    if fold(intent.get("destination")) in rejected:
+        # LLM chép tên nơi vừa bị chê vào patch ("chán Đà Nẵng rồi"): không ghi lại nơi đó vào chuyến.
+        intent = {**intent, "destination": None}
+        update = {**update, "intent": intent}
+    if intent.get("destination") or state.get("explore_pick"):
+        return {**update, **calm, "decision": "explore", "missing_fields": []}
+    return {**update, **calm, "decision": "simple", "interaction_type": "conversation",
+            "missing_fields": ["destination"], "offer_suggestions": True}

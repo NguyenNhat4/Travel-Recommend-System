@@ -76,13 +76,14 @@ class GraphDeclarationTests(unittest.TestCase):
                           'vinpearl': ('crawl',)})
 
     def test_derived_tables_keep_the_job_behaviour(self):
-        # giá trị trước P3 (khai báo tay trong fresh_catalog.py); đổi ở đây là đổi hành vi của job
+        # giá trị trước P3 (khai báo tay trong fresh_catalog.py); đổi ở đây là đổi hành vi của job. Booking đứng cuối từ
+        # 08/10/2026 (làm mới cả catalog: Booking nhiều giờ nhất, không được ăn giờ của Agoda)
         self.assertEqual(graph.SITE_GROUPS, (('trip', ('trip-flights', 'trip-attractions')), ('vinpearl', ('vinpearl',)),
-                                             ('booking', ('booking-hotels',)), ('agoda', ('agoda-hotels',))))
+                                             ('agoda', ('agoda-hotels',)), ('booking', ('booking-hotels',))))
         self.assertEqual(graph.SITE_INTERIM, {'trip': ('trip_flights', 'trip_attractions', 'trip_hotels', 'trip_combos'),
                                               'vinpearl': ('vinpearl', 'vinpearl_bundles'),
                                               'booking': ('booking_hotels', 'booking_attractions', 'booking_flights'),
-                                              'agoda': ('agoda_hotels', 'agoda_api')})
+                                              'agoda': ('agoda_api', 'agoda_hotels')})
         self.assertEqual(graph.STEP_INTERIM['trip-hotels.prices'], ('trip_hotels',))
         self.assertNotIn('trip-hotels.discover', graph.STEP_INTERIM)
         self.assertEqual(graph.LIVE_KEYS, {'trip-flights': 'trip', 'trip-attractions': 'trip', 'vinpearl': 'vinpearl',
@@ -105,7 +106,7 @@ class JobOrderTests(unittest.TestCase):
                                                       encoding='utf-8')
         if mode == 'daily':
             (root / 'state' / 'trip_targets.json').write_text(json.dumps({'hotels': [target]}), encoding='utf-8')
-        env = {'CATALOG_STATE_DIR': f'{tmp.name}/state', 'CATALOG_RUN_ROOT': f'{tmp.name}/runs', 'DB_TARGET': 'local',
+        env = {'CATALOG_STATE_DIR': f'{tmp.name}/state', 'CATALOG_RUN_ROOT': f'{tmp.name}/runs', 'CATALOG_DB_RUN_LOCK': 'off', 'DB_TARGET': 'local',
                'SEED_DATABASE_URL': 'postgresql://seed', 'CATALOG_DESTINATIONS': 'Nha Trang', 'CRAWL_PARALLEL': '4'}
         fake = lambda value=None: (lambda *args, **kwargs: value)
         with patch.dict(os.environ, env, clear=True), \

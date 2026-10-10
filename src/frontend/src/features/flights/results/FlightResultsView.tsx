@@ -12,7 +12,7 @@ import { FlightCard } from './FlightCard';
 import { FlightDateStrip } from './FlightDateStrip';
 import { FlightFilters } from './FlightFilters';
 import { TicketPanel, type LegId, type TicketLeg } from './TicketPanel';
-import { shortDate, weekdayLong } from './flightFormat';
+import { shortDate, thousands, weekdayLong } from './flightFormat';
 import { buildFlightResultsHref, type FlightSearch } from './flightHref';
 import {
   FLIGHT_SORT_LABELS, applyFilters, canFollow, countActiveFilters, countFacets, noFilters, pickDate, pruneFilters,
@@ -25,7 +25,7 @@ type Chosen = { option: FlightOption; fare: FareOption } | null;
 const CARD = 'rounded-[20px] border border-slate-100 bg-white shadow-[0_8px_40px_rgba(15,28,58,0.05)]';
 
 const Notice: React.FC<{ tone?: 'info' | 'warn'; children: React.ReactNode }> = ({ tone = 'info', children }) => (
-  <p role="status" className={`flex items-start gap-2 rounded-xl px-3.5 py-2.5 text-[13px] ${tone === 'warn' ? 'bg-amber-50 text-amber-900' : 'bg-blue-50 text-blue-900'}`}>
+  <p role="status" className={`flex items-start gap-2 rounded-xl px-3.5 py-2.5 text-[13px] ${tone === 'warn' ? 'bg-amber-50 text-amber-900' : 'bg-brand-50 text-brand-900'}`}>
     <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
     <span>{children}</span>
   </p>
@@ -41,7 +41,7 @@ const Notice: React.FC<{ tone?: 'info' | 'warn'; children: React.ReactNode }> = 
  */
 export const FlightResultsView: React.FC<{ search: FlightSearch; notice?: string | null }> = ({ search, notice }) => {
   const { origin, destination, trip } = search;
-  const { addToCart, navigate, showToast, currentPersona, openLoginModal } = useTravel();
+  const { startBooking } = useTravel();
   const today = todayVN();
   const adults = trip.adults ?? 1;
   const kids = trip.children ?? 0;
@@ -81,9 +81,12 @@ export const FlightResultsView: React.FC<{ search: FlightSearch; notice?: string
   }
 
   const days = summarizeDays(legOptions, today);
-  const wantedDate = dates[step] ?? (step === 'out' ? trip.checkIn : trip.checkOut ?? chosen.out?.option.date);
+  // Ngày khách đã tìm hoặc đã bấm trên dải ngày. Chiều về không nhập ngày thì chưa có ngày mong muốn: mở ngày đầu tiên có chuyến
+  // nối được. Ngày mong muốn không có chuyến thì không hiện chuyến của ngày khác, chỉ báo và gợi ý ngày gần nhất (frontend §4.1b).
+  const wantedDate = dates[step] ?? (step === 'out' ? trip.checkIn : trip.checkOut);
   const pick = pickDate(days, wantedDate);
   const activeDate = pick?.date ?? null;
+  const pickDay = (date: string) => setDates((prev) => ({ ...prev, [step]: date }));
 
   const dayOptions = legOptions.filter((option) => option.date === activeDate);
   const facets = countFacets(dayOptions);
@@ -127,25 +130,16 @@ export const FlightResultsView: React.FC<{ search: FlightSearch; notice?: string
   const checkout = async () => {
     const picks = [chosen.out, roundTrip ? chosen.ret : null].filter((c): c is NonNullable<Chosen> => c !== null);
     if (picks.length === 0 || submitting) return;
-    if (!currentPersona) {
-      openLoginModal(() => { void checkout(); });
-      return;
-    }
     setSubmitting(true);
-    for (const { option, fare } of picks) {
-      const added = await addToCart(productFromApi(fare.summary), adults + kids, option.date, undefined, { silent: true, guests: { adults, children: kids } });
-      if (!added) {
-        showToast(`Chưa thêm được chuyến ${option.flightNumber} vào giỏ. Vui lòng thử lại.`);
-        setSubmitting(false);
-        return;
-      }
-    }
+    // Vé máy bay đặt trực tiếp: một đơn nháp cho một hoặc hai chặng rồi mở trang thanh toán, không qua giỏ (FR-BKG-01,
+    // FR-BKG-10). Khách chưa đăng nhập được mời đăng nhập trước (startBooking), xong thì tự tạo đơn nháp.
+    await startBooking(picks.map(({ option, fare }) => ({
+      product: productFromApi(fare.summary), quantity: adults + kids, usingDate: option.date,
+      guests: { adults, children: kids },
+    })));
     setSubmitting(false);
-    navigate('/checkout');
   };
 
-  const dateNote = pick && !pick.exact && wantedDate
-    ? `Không có chuyến ngày ${shortDate(wantedDate)}. Đang hiển thị ngày gần nhất có chuyến: ${weekdayLong(pick.date)}, ${shortDate(pick.date)}.` : null;
   const codes = outboundRoute
     ? [(outboundRoute.attributes as Record<string, unknown>).originAirports, (outboundRoute.attributes as Record<string, unknown>).destinationAirports]
       .map((list) => (Array.isArray(list) ? String(list[0] ?? '') : '')).filter(Boolean).join(' – ')
@@ -163,7 +157,7 @@ export const FlightResultsView: React.FC<{ search: FlightSearch; notice?: string
     body = (
       <div className={`${CARD} space-y-3 p-10 text-center`}>
         <h3 className="text-base font-bold text-slate-800">Chưa tải được chuyến bay lúc này.</h3>
-        <button type="button" onClick={() => setRetry((n) => n + 1)} className="cursor-pointer rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700">Thử lại</button>
+        <button type="button" onClick={() => setRetry((n) => n + 1)} className="cursor-pointer rounded-lg bg-brand-600 px-4 py-2 text-xs font-bold text-white hover:bg-brand-700">Thử lại</button>
       </div>
     );
   } else if (outbound.status === 'no-route') {
@@ -177,7 +171,7 @@ export const FlightResultsView: React.FC<{ search: FlightSearch; notice?: string
               {outbound.choices.map((choice) => (
                 <li key={choice.city}>
                   <Link href={buildFlightResultsHref({ origin: choice.city, destination, trip })}
-                    className="inline-flex h-9 items-center rounded-full border border-slate-200 bg-slate-50 px-3.5 text-sm font-semibold text-slate-700 hover:border-blue-300 hover:text-blue-700">
+                    className="inline-flex h-9 items-center rounded-full border border-slate-200 bg-slate-50 px-3.5 text-sm font-semibold text-slate-700 hover:border-brand-300 hover:text-brand-700">
                     {choice.city}{choice.code && <span className="ml-1.5 text-xs font-normal text-slate-500">{choice.code}</span>}
                   </Link>
                 </li>
@@ -194,14 +188,41 @@ export const FlightResultsView: React.FC<{ search: FlightSearch; notice?: string
         <p className="text-sm text-slate-600">
           {step === 'ret' ? 'Không có chuyến chiều về nào cất cánh sau chuyến chiều đi đã chọn.' : 'Các chuyến đã qua hoặc hết mở bán không được hiển thị.'}
         </p>
-        {step === 'ret' && <button type="button" onClick={() => setStep('out')} className="cursor-pointer text-sm font-semibold text-blue-700 hover:underline">Đổi chuyến chiều đi</button>}
+        {step === 'ret' && <button type="button" onClick={() => setStep('out')} className="cursor-pointer text-sm font-semibold text-brand-700 hover:underline">Đổi chuyến chiều đi</button>}
       </div>
+    );
+  } else if (activeDate === null && wantedDate) {
+    body = (
+      <>
+        <FlightDateStrip days={days} selected={null} onSelect={pickDay} />
+        <div role="status" className={`${CARD} space-y-3 p-10 text-center`} data-testid="no-flights-on-date">
+          <h3 className="font-display text-lg text-slate-900">
+            Không có chuyến bay {legFrom} → {legTo} ngày {weekdayLong(wantedDate)}, {shortDate(wantedDate)}/{wantedDate.slice(0, 4)}
+          </h3>
+          {step === 'ret' && chosen.out && (
+            <p className="text-sm text-slate-600">Không có chuyến chiều về nào ngày này cất cánh sau chuyến chiều đi đã chọn.</p>
+          )}
+          {pick && pick.nearest.length > 0 && (
+            <>
+              <p className="text-sm text-slate-600">Ngày gần nhất có chuyến:</p>
+              <div className="flex flex-wrap justify-center gap-2">
+                {pick.nearest.map((day) => (
+                  <button key={day.date} type="button" onClick={() => pickDay(day.date)}
+                    className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-full border border-brand-600 bg-white px-4 text-sm font-semibold text-brand-700 hover:bg-brand-50">
+                    <span>{weekdayLong(day.date)}, {shortDate(day.date)}</span>{' '}
+                    <span className="font-medium tabular-nums text-slate-500">· từ {thousands(day.minPrice)}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      </>
     );
   } else {
     body = (
       <>
-        <FlightDateStrip days={days} selected={activeDate} onSelect={(date) => setDates((prev) => ({ ...prev, [step]: date }))} />
-        {dateNote && <Notice>{dateNote}</Notice>}
+        <FlightDateStrip days={days} selected={activeDate} onSelect={pickDay} />
         <p className="px-0.5 text-[13px] text-slate-500" aria-live="polite">
           {visible.length} chuyến bay{visible.length !== dayOptions.length ? ` (lọc từ ${dayOptions.length})` : ''} · {legFrom} → {legTo}
           {activeDate && ` · ${weekdayLong(activeDate)}, ${shortDate(activeDate)}/${activeDate.slice(0, 4)}`}
@@ -218,7 +239,7 @@ export const FlightResultsView: React.FC<{ search: FlightSearch; notice?: string
         ) : (
           <div className={`${CARD} space-y-3 p-10 text-center`}>
             <h3 className="font-display text-lg text-slate-900">Không có chuyến nào khớp bộ lọc</h3>
-            <button type="button" onClick={() => setFilters(noFilters())} className="cursor-pointer rounded-full border border-blue-600 bg-white px-5 py-2 text-sm font-semibold text-blue-700">Đặt lại bộ lọc</button>
+            <button type="button" onClick={() => setFilters(noFilters())} className="cursor-pointer rounded-full border border-brand-600 bg-white px-5 py-2 text-sm font-semibold text-brand-700">Đặt lại bộ lọc</button>
           </div>
         )}
       </>
@@ -238,7 +259,7 @@ export const FlightResultsView: React.FC<{ search: FlightSearch; notice?: string
         <div role="group" aria-label="Loại vé" className="inline-flex gap-0.5 rounded-full border border-slate-200 bg-white p-[3px]">
           {([['round', 'Khứ hồi'], ['one', 'Một chiều']] as const).map(([id, label]) => (
             <button key={id} type="button" aria-pressed={mode === id} onClick={() => setTrip(id)}
-              className={`cursor-pointer rounded-full px-[18px] py-1.5 text-sm font-semibold transition-colors ${mode === id ? 'bg-gradient-to-br from-blue-600 to-blue-800 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>{label}</button>
+              className={`cursor-pointer rounded-full px-[18px] py-1.5 text-sm font-semibold transition-colors ${mode === id ? 'bg-gradient-to-br from-brand-600 to-brand-800 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>{label}</button>
           ))}
         </div>
       </div>

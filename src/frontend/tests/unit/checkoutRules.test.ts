@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import cases from '../../../shared/contracts/tests/booking-rules-cases.json';
 import {
   adultFrom, ageOn, checkCheckout, checkContact, checkItems, checkParty, fareTypeOn, flightDatesOf, formatDmy, isInfantOn, isValidIso,
-  isValidNamePart, maskDmy, messageFor, parseDmy, splitFullName,
+  isValidNamePart, maskDmy, messageFor, orderPartyCap, parseDmy, splitFullName,
   type CartFacts, type ContactInput, type ItemInput, type TravelerInput, type Violation,
 } from '../../src/components/checkout/checkoutRules';
 import { childUnitPrice, estimateFares } from '../../src/components/checkout/fareEstimate';
@@ -29,17 +29,37 @@ describe('checkout rules match the shared cases', () => {
     it(c.name, () => {
       const { contact, travelers, cart, details, today } = build(c);
       const earliest = cart.map((x) => x.usingDate).sort()[0];
+      const maxParty = orderPartyCap(cart);
       let got: Violation[];
       if (c.scope === 'party') {
-        got = [...checkContact(contact), ...checkParty(travelers, { earliest, today, flightDates: flightDatesOf(cart) }).violations];
+        got = [...checkContact(contact), ...checkParty(travelers, { earliest, today, flightDates: flightDatesOf(cart), maxParty }).violations];
       } else if (c.scope === 'items') {
-        got = checkItems(checkParty(travelers, { earliest, today, flightDates: flightDatesOf(cart) }).travelers, details, cart);
+        got = checkItems(checkParty(travelers, { earliest, today, flightDates: flightDatesOf(cart), maxParty }).travelers, details, cart);
       } else {
         got = checkCheckout(contact, travelers, details, cart, today).violations;
       }
       expect(got.map(key).sort()).toEqual(c.expect.map(key).sort());
     });
   }
+});
+
+describe('party limit messages (FR-BKG-08) match the backend wording', () => {
+  const msg = (field: string, reason: string, params?: Record<string, string | number>) => messageFor({ field, reason, params });
+  it('per item, per room and per order', () => {
+    expect(msg('guests', 'PARTY_TOO_LARGE')).toBe('Mỗi đơn tối đa 9 khách. Vui lòng tách thành nhiều đơn.');
+    expect(msg('travelers', 'PARTY_TOO_LARGE', { maxParty: 9 })).toBe('Mỗi đơn tối đa 9 khách. Vui lòng tách thành nhiều đơn.');
+    expect(msg('travelers', 'PARTY_TOO_LARGE', { maxParty: 18 })).toBe('Mỗi đơn tối đa 18 khách. Vui lòng tách thành nhiều đơn.');
+    expect(msg('guests', 'PARTY_TOO_LARGE', { maxParty: 18, rooms: 2 })).toBe('Mỗi phòng tối đa 9 khách (18 khách cho 2 phòng). Vui lòng thêm phòng.');
+    expect(msg('itemDetails', 'PARTY_TOO_LARGE', { scope: 'mixed', itemName: 'Lucky Sun' })).toBe('Lucky Sun trên 9 khách phải đặt riêng, không gộp với dịch vụ khác.');
+    expect(msg('quantity', 'ROOMS_TOO_MANY', { maxRooms: 9 })).toBe('Mỗi lần đặt tối đa 9 phòng.');
+  });
+
+  it('order cap: hotel-only follows the largest hotel, any other item caps the party at 9', () => {
+    expect(orderPartyCap([{ taxonomy: 'hotel', quantity: 2 }])).toBe(18);
+    expect(orderPartyCap([{ taxonomy: 'hotel', quantity: 2 }, { taxonomy: 'hotel', quantity: 3 }])).toBe(27);
+    expect(orderPartyCap([{ taxonomy: 'hotel', quantity: 2 }, { taxonomy: 'flight', quantity: 2 }])).toBe(9);
+    expect(orderPartyCap([])).toBe(9);
+  });
 });
 
 describe('age rules match the shared cases', () => {

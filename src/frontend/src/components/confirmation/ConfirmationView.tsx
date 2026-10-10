@@ -11,12 +11,16 @@ import type { RecommendationResponse } from '../../types/travel';
 import { ProductCard } from '../common/ProductCard';
 import { WhyPopover } from '../common/WhyPopover';
 import {
-  AlertTriangle, CheckCircle2, Clock, Copy, Check, HelpCircle, Home, Loader2, RefreshCw, ShoppingBag, Sparkles, XCircle,
+  AlertTriangle, CheckCircle2, Clock, Copy, Check, HelpCircle, Home, Loader2, RefreshCw, Sparkles, XCircle,
 } from 'lucide-react';
 import {
   BOOKING_STATUS_BADGE, FAILURE_REASON_TEXT, MAX_CARD_ATTEMPTS, formatCountdown, formatDateTimeVn, formatVnd,
 } from './bookingLabels';
 import { FareLines } from '../checkout/FareLines';
+import {
+  BookingBreadcrumb, CancellationPolicyBlock, CustomerBlock, PartyBlock, PaymentPanel, ServiceFacts, ServiceInfoBlock,
+} from './BookingDetailSections';
+import { useProductInfo, type PropertyInfo } from './useProductInfo';
 
 interface ConfirmationViewProps {
   referenceCode: string;
@@ -38,6 +42,7 @@ export const ConfirmationView: React.FC<ConfirmationViewProps> = ({ referenceCod
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
+  const [rebooking, setRebooking] = useState(false);
   const confirmedOnce = useRef(false);
 
   const fetchBooking = useCallback(async (signal?: AbortSignal) => {
@@ -62,6 +67,7 @@ export const ConfirmationView: React.FC<ConfirmationViewProps> = ({ referenceCod
 
   const status = booking?.status;
   const paymentStatus = booking?.payment?.status;
+  const propertyInfo = useProductInfo(booking ? bookingApi.bookingItems(booking) : []);
 
   // Đồng hồ đếm ngược theo holdExpiresAt do server trả.
   const holdExpiresAt = status === 'PENDING_PAYMENT' ? booking?.holdExpiresAt ?? null : null;
@@ -94,6 +100,23 @@ export const ConfirmationView: React.FC<ConfirmationViewProps> = ({ referenceCod
     if (paymentReturn === 'return') markJustBooked();
   }, [status, paymentReturn, refreshCart, markJustBooked]);
 
+  // Đặt lại: đơn nháp mới từ các mục của đơn, giá tính lại; mục không còn bán bị bỏ (R-RBK-02, R-RBK-03).
+  const rebook = async () => {
+    setRebooking(true);
+    try {
+      const draft = await bookingApi.createBookingDraft({ fromBooking: referenceCode, allowPartial: true });
+      if (draft.rejectedItems?.length) {
+        showToast(`${draft.rejectedItems.length} dịch vụ không còn đặt được nên không nằm trong lần đặt lại này.`);
+      }
+      void refreshCart();
+      navigate(bookingApi.checkoutPathOf(draft.draftId));
+    } catch (error) {
+      showToast(error instanceof ApiError ? error.message : 'Chưa đặt lại được đơn này. Vui lòng thử lại.');
+    } finally {
+      setRebooking(false);
+    }
+  };
+
   const cancel = async () => {
     setCancelling(true);
     setCancelError(null);
@@ -102,7 +125,7 @@ export const ConfirmationView: React.FC<ConfirmationViewProps> = ({ referenceCod
       setBooking(cancelled);
       rememberBooking(cancelled);
       setCancelOpen(false);
-      showToast(cancelled.payment?.status === 'EXPIRED' ? 'Đã huỷ đơn. Giỏ hàng vẫn còn.' : 'Đã huỷ đơn. Tiền hoàn về thẻ trong 5–10 ngày làm việc.');
+      showToast(cancelled.payment?.status === 'EXPIRED' ? 'Đã huỷ đơn. Đơn chưa thanh toán nên không phát sinh tiền.' : 'Đã huỷ đơn. Tiền hoàn về thẻ trong 5–10 ngày làm việc.');
     } catch (error) {
       if (error instanceof ApiError && error.code === 'BOOKING_ALREADY_PAID') {
         setCancelOpen(false);
@@ -152,34 +175,49 @@ export const ConfirmationView: React.FC<ConfirmationViewProps> = ({ referenceCod
   const canCancel = booking.status === 'PENDING_PAYMENT' && paymentStatus === 'OPEN' || canCancelConfirmed;
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-10">
-      <StatusCard
-        booking={booking}
-        paymentReturn={paymentReturn}
-        remainingMs={remainingMs}
-        pollsExhausted={polls >= bookingApi.PAYMENT_POLL_MAX_ATTEMPTS}
-        onContinue={() => booking.payment?.checkoutUrl && bookingApi.redirectToCheckout(booking.payment.checkoutUrl)}
-        onBackToCart={() => navigate('/cart')}
-        onHome={() => navigate('/')}
-        onAssistant={() => openFloatingWidget(`Gợi ý lịch trình 3 ngày ở ${booking.groups[0]?.destination ?? 'điểm đến của tôi'}`)}
-      />
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <BookingBreadcrumb />
+      <div className="space-y-6">
+        <StatusCard
+          booking={booking}
+          paymentReturn={paymentReturn}
+          remainingMs={remainingMs}
+          pollsExhausted={polls >= bookingApi.PAYMENT_POLL_MAX_ATTEMPTS}
+          onContinue={() => booking.payment?.checkoutUrl && bookingApi.redirectToCheckout(booking.payment.checkoutUrl)}
+          onRebook={() => void rebook()}
+          rebooking={rebooking}
+          onHome={() => navigate('/')}
+          onAssistant={() => openFloatingWidget(`Gợi ý lịch trình 3 ngày ở ${booking.groups[0]?.destination ?? 'điểm đến của tôi'}`)}
+        />
 
-      <BookingSummary booking={booking} />
-
-      {canCancel && (
-        <div className="flex justify-end">
-          <button
-            onClick={() => { setCancelError(null); setCancelOpen(true); }}
-            className="px-4 py-2 text-xs font-bold text-rose-700 border border-rose-300 rounded-xl hover:bg-rose-50"
-          >
-            Huỷ đơn
-          </button>
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
+          <div className="min-w-0 space-y-4">
+            <BookingSummary booking={booking} info={propertyInfo} />
+            <CustomerBlock booking={booking} />
+            <PartyBlock booking={booking} />
+            <ServiceInfoBlock items={bookingApi.bookingItems(booking)} info={propertyInfo} />
+            <CancellationPolicyBlock booking={booking} nowMs={now} />
+          </div>
+          <aside className="min-w-0 lg:sticky lg:top-4">
+            <PaymentPanel
+              booking={booking}
+              cancel={canCancel ? (
+                <button
+                  type="button"
+                  onClick={() => { setCancelError(null); setCancelOpen(true); }}
+                  className="mt-1 min-h-11 rounded-xl border border-rose-300 px-4 py-2 text-xs font-bold text-rose-700 hover:bg-rose-50"
+                >
+                  Huỷ đơn
+                </button>
+              ) : null}
+            />
+          </aside>
         </div>
-      )}
 
-      {booking.status === 'CONFIRMED' && (
-        <NextForTrip destination={booking.groups[0]?.destination} persona={currentPersona} events={activeEvents} />
-      )}
+        {booking.status === 'CONFIRMED' && (
+          <NextForTrip destination={booking.groups[0]?.destination} persona={currentPersona} events={activeEvents} />
+        )}
+      </div>
 
       {cancelOpen && (
         <div role="dialog" aria-modal="true" aria-labelledby="cancel-title"
@@ -195,7 +233,7 @@ export const ConfirmationView: React.FC<ConfirmationViewProps> = ({ referenceCod
                 Thao tác này không thể hoàn tác.
               </p>
             ) : (
-              <p className="text-xs text-slate-600">Đơn chưa thanh toán nên không phát sinh tiền. Giỏ hàng vẫn còn nguyên.</p>
+              <p className="text-xs text-slate-600">Đơn chưa thanh toán nên không phát sinh tiền. Tour, trải nghiệm và tiện ích của đơn vẫn nằm trong giỏ hàng; khách sạn và vé máy bay cần đặt lại.</p>
             )}
             {cancelError && <p role="alert" className="text-xs text-rose-700">{cancelError}</p>}
             <div className="flex gap-2 justify-end">
@@ -225,10 +263,11 @@ const StatusCard: React.FC<{
   remainingMs: number | null;
   pollsExhausted: boolean;
   onContinue: () => void;
-  onBackToCart: () => void;
+  onRebook: () => void;
+  rebooking: boolean;
   onHome: () => void;
   onAssistant: () => void;
-}> = ({ booking, paymentReturn, remainingMs, pollsExhausted, onContinue, onBackToCart, onHome, onAssistant }) => {
+}> = ({ booking, paymentReturn, remainingMs, pollsExhausted, onContinue, onRebook, rebooking, onHome, onAssistant }) => {
   const payment = booking.payment;
   const [copied, setCopied] = useState(false);
   const copy = () => {
@@ -239,7 +278,7 @@ const StatusCard: React.FC<{
 
   if (booking.status === 'PENDING_PAYMENT' && payment?.status === 'SUCCEEDED') {
     return (
-      <CenteredCard icon={<Loader2 className="w-10 h-10 text-blue-600 animate-spin" />} title="Đã nhận thanh toán, đang xác nhận đơn">
+      <CenteredCard icon={<Loader2 className="w-10 h-10 text-brand-600 animate-spin" />} title="Đã nhận thanh toán, đang xác nhận đơn">
         <p className="text-xs text-slate-500">Bạn có thể đóng trang, đơn sẽ tự cập nhật.</p>
       </CenteredCard>
     );
@@ -249,8 +288,8 @@ const StatusCard: React.FC<{
     // Phiên Stripe hết hạn cùng lúc với giữ chỗ: link thanh toán cũ không dùng được nữa.
     return (
       <CenteredCard icon={<Clock className="w-10 h-10 text-slate-400" />} title="Hết thời gian giữ chỗ">
-        <p className="text-xs text-slate-600">Giỏ hàng vẫn còn, bạn có thể đặt lại.</p>
-        <PrimaryButton onClick={onBackToCart}><ShoppingBag className="w-4 h-4" /> Đặt lại từ giỏ</PrimaryButton>
+        <p className="text-xs text-slate-600">{REBOOK_HINT}</p>
+        <RebookButton onClick={onRebook} busy={rebooking} />
       </CenteredCard>
     );
   }
@@ -259,7 +298,7 @@ const StatusCard: React.FC<{
     const confirming = paymentReturn === 'return' && !pollsExhausted;
     return (
       <CenteredCard
-        icon={confirming ? <Loader2 className="w-10 h-10 text-blue-600 animate-spin" /> : <Clock className="w-10 h-10 text-amber-500" />}
+        icon={confirming ? <Loader2 className="w-10 h-10 text-brand-600 animate-spin" /> : <Clock className="w-10 h-10 text-amber-500" />}
         title={confirming ? 'Đang kiểm tra thanh toán...' : 'Đơn đang được giữ chỗ'}
       >
         {booking.holdExpiresAt && (
@@ -298,7 +337,7 @@ const StatusCard: React.FC<{
           <PrimaryButton onClick={onHome}><Home className="w-4 h-4" /> Xem gợi ý mới trên trang chủ</PrimaryButton>
           <button
             onClick={onAssistant}
-            className="w-full sm:w-auto px-6 py-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-xs sm:text-sm rounded-xl flex items-center justify-center gap-2"
+            className="w-full sm:w-auto px-6 py-3 bg-brand-50 hover:bg-brand-100 text-brand-700 border border-brand-200 font-bold text-xs sm:text-sm rounded-xl flex items-center justify-center gap-2"
           >
             <Sparkles className="w-4 h-4" /> Lên lịch trình cho chuyến {booking.groups[0]?.destination}
           </button>
@@ -313,7 +352,7 @@ const StatusCard: React.FC<{
       <CenteredCard icon={<XCircle className="w-10 h-10 text-rose-600" />} title="Thanh toán không thành công">
         <p className="text-xs text-slate-600">{reason}</p>
         <ReferenceCode code={booking.referenceCode} copied={copied} onCopy={copy} />
-        <PrimaryButton onClick={onBackToCart}><ShoppingBag className="w-4 h-4" /> Đặt lại từ giỏ</PrimaryButton>
+        <RebookButton onClick={onRebook} busy={rebooking} />
       </CenteredCard>
     );
   }
@@ -321,8 +360,8 @@ const StatusCard: React.FC<{
   if (booking.status === 'EXPIRED') {
     return (
       <CenteredCard icon={<Clock className="w-10 h-10 text-slate-400" />} title="Hết thời gian giữ chỗ">
-        <p className="text-xs text-slate-600">Đơn chưa được thanh toán trong 30 phút. Giỏ hàng vẫn còn, bạn có thể đặt lại.</p>
-        <PrimaryButton onClick={onBackToCart}><ShoppingBag className="w-4 h-4" /> Đặt lại từ giỏ</PrimaryButton>
+        <p className="text-xs text-slate-600">Đơn chưa được thanh toán trong 30 phút. {REBOOK_HINT}</p>
+        <RebookButton onClick={onRebook} busy={rebooking} />
       </CenteredCard>
     );
   }
@@ -352,7 +391,7 @@ function TravelerName({ traveler }: { traveler: BookingTraveler }) {
     <span className="whitespace-nowrap">
       {traveler.fullName}
       {traveler.type === 'CHILD' && <span className="text-slate-400"> (trẻ em)</span>}
-      {traveler.isLead && <span className="ml-1 rounded bg-blue-50 px-1 py-0.5 text-[10px] font-semibold text-blue-700">Đại diện nhận phòng</span>}
+      {traveler.isLead && <span className="ml-1 rounded bg-brand-50 px-1 py-0.5 text-[10px] font-semibold text-brand-700">Đại diện nhận phòng</span>}
     </span>
   );
 }
@@ -391,10 +430,10 @@ function quantityText(item: ApiBookingItem): string {
   return item.product.taxonomy === 'combo' ? `${item.quantity} gói` : `${item.quantity} khách`;
 }
 
-const BookingSummary: React.FC<{ booking: BookingResponse }> = ({ booking }) => (
+const BookingSummary: React.FC<{ booking: BookingResponse; info: Record<string, PropertyInfo> }> = ({ booking, info }) => (
   <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
     <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-      <h3 className="text-sm font-bold text-slate-900">CHI TIẾT ĐƠN ĐẶT CHỖ</h3>
+      <h3 className="text-sm font-bold text-slate-900">Thông tin đặt chỗ</h3>
       <span className={`text-xs font-bold ${BOOKING_STATUS_BADGE[booking.status].className}`}>
         {BOOKING_STATUS_BADGE[booking.status].label}
       </span>
@@ -417,15 +456,14 @@ const BookingSummary: React.FC<{ booking: BookingResponse }> = ({ booking }) => 
                 <span className="text-xs font-semibold text-slate-800 font-mono">{formatVnd(item.lineTotal)}</span>
               </div>
               <FareLines fares={item.fares ?? []} />
+              <div className="-mx-1 overflow-hidden rounded-xl border border-slate-100">
+                <ServiceFacts item={item} info={info[item.bookingItemId]} />
+              </div>
             </div>
           ))}
         </div>
       </div>
     ))}
-    <div className="pt-3 border-t border-slate-100 text-xs text-slate-500 flex flex-wrap justify-between gap-2">
-      <span>Người liên hệ: <strong>{booking.contact.fullName}</strong> ({booking.contact.phone})</span>
-      <span>Tổng: <strong className="font-mono text-slate-900">{formatVnd(booking.total)}</strong></span>
-    </div>
   </div>
 );
 
@@ -454,7 +492,7 @@ const NextForTrip: React.FC<{
           <h2 className="text-lg font-black text-slate-900">TIẾP THEO CHO CHUYẾN {destination.toUpperCase()}</h2>
           <p className="text-xs text-slate-600">Vì bạn vừa đặt dịch vụ tại {destination} — đây là các đề xuất bổ trợ cho hành trình.</p>
         </div>
-        <button onClick={() => setShowWhy(true)} className="text-xs font-semibold text-blue-700 hover:text-blue-800 flex items-center gap-1">
+        <button onClick={() => setShowWhy(true)} className="text-xs font-semibold text-brand-700 hover:text-brand-800 flex items-center gap-1">
           <HelpCircle className="w-3.5 h-3.5" /> Vì sao?
         </button>
       </div>
@@ -491,10 +529,22 @@ const CenteredCard: React.FC<{ icon: React.ReactNode; title: string; children?: 
   </div>
 );
 
+/** Đặt lại một đơn chưa thanh toán xong: đơn nháp mới từ các mục của đơn, theo giá hiện tại (spec dat-truc-tiep-theo-don-nhap.md §7). */
+const REBOOK_HINT = 'Bạn có thể đặt lại các dịch vụ của đơn này theo giá hiện tại.';
+
+const RebookButton: React.FC<{ onClick: () => void; busy: boolean }> = ({ onClick, busy }) => (
+  <button
+    onClick={onClick} disabled={busy}
+    className="w-full sm:w-auto px-6 py-3 bg-brand-600 hover:bg-brand-700 disabled:bg-slate-300 text-white font-bold text-xs sm:text-sm rounded-xl shadow-xs transition-colors inline-flex items-center justify-center gap-2"
+  >
+    {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Đặt lại
+  </button>
+);
+
 const PrimaryButton: React.FC<{ onClick: () => void; children: React.ReactNode }> = ({ onClick, children }) => (
   <button
     onClick={onClick}
-    className="w-full sm:w-auto px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow-xs transition-colors inline-flex items-center justify-center gap-2"
+    className="w-full sm:w-auto px-6 py-3 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow-xs transition-colors inline-flex items-center justify-center gap-2"
   >
     {children}
   </button>
@@ -504,7 +554,7 @@ const ReferenceCode: React.FC<{ code: string; copied: boolean; onCopy: () => voi
   <div className="inline-flex items-center gap-3 px-5 py-3 rounded-2xl bg-slate-50 border border-slate-200">
     <div className="text-left">
       <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Mã đặt chỗ</span>
-      <span className="font-mono text-lg font-black text-blue-900 tracking-wider">{code}</span>
+      <span className="font-mono text-lg font-black text-brand-900 tracking-wider">{code}</span>
     </div>
     <button onClick={onCopy} className="p-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 text-slate-600" title="Sao chép mã">
       {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}

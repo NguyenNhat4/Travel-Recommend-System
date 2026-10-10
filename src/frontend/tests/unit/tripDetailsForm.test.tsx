@@ -101,3 +101,98 @@ describe('tripDetailsPrompt', () => {
     expect(prompt).toBe('Lên lịch trình 1 ngày tại Hà Nội.');
   });
 });
+
+describe('TripDetailsForm departure city (AC-AGT-02, AC-AGT-03)', () => {
+  const originalFetch = global.fetch;
+  const originForm: ClarificationForm = { ...baseForm, fields: [...baseForm.fields, 'origin'] };
+  const routes = {
+    results: [
+      { productId: 'r1', name: 'Hà Nội - Đà Nẵng', taxonomy: 'flight', destination: 'Đà Nẵng', unitPrice: null, priceUnit: 'PER_PERSON',
+        currency: 'VND', available: true, attributes: { level: 'route', originCity: 'Hà Nội', originLatitude: 21.2187, originLongitude: 105.8042 } },
+      { productId: 'r2', name: 'TP. Hồ Chí Minh - Đà Nẵng', taxonomy: 'flight', destination: 'Đà Nẵng', unitPrice: null, priceUnit: 'PER_PERSON',
+        currency: 'VND', available: true, attributes: { level: 'route', originCity: 'TP. Hồ Chí Minh', originLatitude: 10.8188, originLongitude: 106.652 } },
+    ],
+    total: 2, limit: 50, offset: 0, requestId: 'r',
+  };
+
+  afterEach(() => {
+    cleanup();
+    global.fetch = originalFetch;
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('adds the departure city to the request sentence', () => {
+    expect(tripDetailsPrompt({ ...baseForm.defaults, origin: 'Hà Nội' })).toContain('đi từ Hà Nội');
+    expect(tripDetailsPrompt(baseForm.defaults)).not.toContain('đi từ');
+  });
+
+  it('asks for the location only on click and sends just the nearest catalog city', async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => ({
+      ok: true, status: 200, json: async () => (String(url).includes('/products') ? routes : { destinations: [] }),
+    }));
+    global.fetch = fetchMock;
+    const getCurrentPosition = vi.fn((success: PositionCallback) =>
+      success({ coords: { latitude: 20.84, longitude: 106.69 } } as GeolocationPosition));
+    vi.stubGlobal('navigator', { ...navigator, geolocation: { getCurrentPosition } });
+    const onConfirm = vi.fn();
+
+    render(<TripDetailsForm form={originForm} onConfirm={onConfirm} />);
+    expect(getCurrentPosition).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /Dùng vị trí hiện tại/ }));
+    expect(getCurrentPosition).toHaveBeenCalledTimes(1);
+
+    const input = screen.getByLabelText('Nơi đi') as HTMLInputElement;
+    await vi.waitFor(() => expect(input.value).toBe('Hà Nội'));
+    fireEvent.click(screen.getByRole('button', { name: /Xác nhận/ }));
+    expect(onConfirm.mock.calls[0][0]).toContain('đi từ Hà Nội');
+    // Toạ độ không rời trình duyệt: không request nào mang vĩ độ/kinh độ.
+    for (const [url, init] of fetchMock.mock.calls) {
+      expect(`${url} ${JSON.stringify(init ?? {})}`).not.toMatch(/20\.84|106\.69/);
+    }
+  });
+
+  it('keeps the field for typing when permission is denied', async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ destinations: [] }) });
+    const getCurrentPosition = vi.fn((_: PositionCallback, failure: PositionErrorCallback) =>
+      failure({ code: 1, PERMISSION_DENIED: 1 } as GeolocationPositionError));
+    vi.stubGlobal('navigator', { ...navigator, geolocation: { getCurrentPosition } });
+
+    render(<TripDetailsForm form={originForm} onConfirm={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /Dùng vị trí hiện tại/ }));
+    expect(await screen.findByText(/chưa cho phép dùng vị trí/)).toBeTruthy();
+    expect((screen.getByLabelText('Nơi đi') as HTMLInputElement).disabled).toBe(false);
+  });
+});
+
+describe('hotel preferences (contract 1.24.0, FR-AGT-06)', () => {
+  const originalFetch = global.fetch;
+  const form: ClarificationForm = {
+    ...baseForm,
+    fields: [...baseForm.fields, 'interests'],
+    defaults: { ...baseForm.defaults, interests: ['Phù hợp trẻ nhỏ'] },
+    interestOptions: ['Hồ bơi', 'Phù hợp trẻ nhỏ', 'Spa'],
+  };
+
+  afterEach(() => {
+    cleanup();
+    global.fetch = originalFetch;
+  });
+
+  it('shows the options with the prefilled ones ticked and adds the choice to the prompt', () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ destinations: [] }) });
+    const onConfirm = vi.fn();
+    render(<TripDetailsForm form={form} onConfirm={onConfirm} />);
+
+    expect(screen.getByRole('button', { name: 'Phù hợp trẻ nhỏ' }).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: 'Hồ bơi' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Xác nhận' }));
+
+    expect(onConfirm).toHaveBeenCalledWith(expect.stringContaining('ưu tiên khách sạn có Phù hợp trẻ nhỏ, Hồ bơi'));
+  });
+
+  it('leaves the prompt without preferences when none is ticked, and ignores other interests', () => {
+    const prompt = tripDetailsPrompt({ ...baseForm.defaults, interests: ['ẩm thực'] }, ['Hồ bơi']);
+    expect(prompt).not.toContain('ưu tiên');
+  });
+});

@@ -7,6 +7,10 @@
  * (hộp đăng nhập lại hiện lên, dữ liệu đang nhập vẫn còn — §6.2); (2) các bước chỉ lo hiển thị.
  *
  * Quy tắc bất di bất dịch: Web không tự cộng tiền. Mọi con số tiền lấy từ `CartResponse` sau mỗi `PATCH /cart/items`.
+ *
+ * Nguồn mục là giỏ (`/checkout`) hoặc một đơn nháp của Đặt ngay (`/checkout?draft=<mã>`), qua `useCheckoutSource`; hai nguồn
+ * trả cùng hình dạng mục nên phần còn lại của hook không phân biệt (docs/spec/booking/dat-truc-tiep-theo-don-nhap.md §6, §13).
+ * Khách chưa đăng nhập đi hết ba bước được; bấm Thanh toán thì hộp đăng nhập mở ngay trên trang (R-CHK-06).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTravel } from '../../context/TravelContext';
@@ -20,11 +24,13 @@ import {
   travelerLabel, displayName, fixLead, type Allocation, type CartState, type FlightDraft, type RoomDraft, type TravelerDraft,
 } from './allocation';
 import {
-  MAX_PARTY, checkContact, checkItems, checkParty, fareTypeOn, formatDmy, isInfantOn, maskDmy, messageFor, normalizeName,
+  MAX_ROOMS, checkContact, checkItems, checkParty, fareTypeOn, formatDmy, isInfantOn, maskDmy, messageFor, normalizeName, orderPartyCap,
   parseDmy, splitFullName, type Violation,
 } from './checkoutRules';
+import { useCheckoutSource } from './checkoutSource';
 import { createPatchQueue } from './patchQueue';
 import { mapValidationFields, type Step, type SummaryEntry } from './serverErrors';
+import { stepHistoryState, useLeaveGuard } from './useLeaveGuard';
 
 export const STEPS: Array<{ key: Step; label: string }> = [
   { key: 'travelers', label: 'Hành khách' },
@@ -77,12 +83,17 @@ function readStep(): Step {
   return value === 'services' || value === 'review' ? value : 'travelers';
 }
 
+/** URL của một bước, giữ `draft=<mã>`: mất tham số này thì tải lại trang sẽ thành thanh toán giỏ thay vì đơn nháp. */
+function stepUrl(step: Step, draftId: string | null): string {
+  return draftId ? `?draft=${encodeURIComponent(draftId)}&step=${step}` : `?step=${step}`;
+}
+
 const sortItems = (items: ApiCartItem[]) => [...items].sort((a, b) => a.usingDate.localeCompare(b.usingDate));
 
 export function useCheckout() {
-  const {
-    cart, currentPersona, authReady, navigate, refreshCart, updateCartItem, rememberBooking, showToast, openLoginModal,
-  } = useTravel();
+  const { currentPersona, authReady, navigate, rememberBooking, showToast, openLoginModal } = useTravel();
+  const source = useCheckoutSource();
+  const { data: cart, refresh: refreshCart, updateItem: updateCartItem } = source;
   const items = useMemo(() => sortItems(cart?.items ?? []), [cart]);
   const email = currentPersona?.email ?? '';
 
@@ -114,12 +125,22 @@ export function useCheckout() {
   const [method, setMethod] = useState<'stripe'>('stripe');
   const [submitting, setSubmitting] = useState(false);
 
+  // Hỏi lại trước khi khách rời trang (FR-BKG-01): chỉ khi ba bước đang hiển thị và chưa gửi đơn. Màn hình hết hạn, không tìm
+  // thấy, đang tải và lúc đang sang Stripe thì không hỏi.
+  const { prompt: leavePrompt, stay: stayOnCheckout, leave: confirmLeave, allowLeave } = useLeaveGuard({
+    active: source.status === 'ready' && items.length > 0 && drafts.length > 0 && !submitting,
+    fallback: source.kind === 'cart' ? '/cart' : '/',
+  });
+
   // --- tham chiếu mới nhất cho mã bất đồng bộ (PATCH nối tiếp, submit) --------------------------------------------
   // Cập nhật sau mỗi lần vẽ (khai báo đầu tiên nên chạy trước các effect bên dưới); các hàm xử lý sự kiện tự ghi thẳng vào đây khi
   // cần thấy ngay giá trị mới (hai thao tác liên tiếp trước khi React kịp vẽ lại).
   const latest = useRef({ items, drafts, allocs, cart });
   useEffect(() => { latest.current = { items, drafts, allocs, cart }; });
   const initializedFor = useRef<string | null>(null);
+  // Tài khoản mới nhất cho mã chạy sau khi đăng nhập ngay trên trang (callback của hộp đăng nhập chạy ở lần vẽ sau).
+  const personaRef = useRef(currentPersona);
+  useEffect(() => { personaRef.current = currentPersona; });
   const knownPrices = useRef<Record<string, number | null>>({});
   const seenItemIds = useRef<string>('');
   /** Số lượng/số khách đã gửi (hoặc đang gửi) lên Backend cho từng mục: so với đây chứ không so với `items`, vì React chưa kịp vẽ lại giỏ mới. */
@@ -132,14 +153,23 @@ export function useCheckout() {
 
   // --- khởi tạo: đoàn mặc định từ giỏ, phân bổ mặc định (§6.5) ----------------------------------------------------
   useEffect(() => {
-    const owner = currentPersona?.id ?? null;
-    if (!owner || !cart || cart.items.length === 0) return;
+    if (!authReady || !cart || cart.items.length === 0) return;
+    const owner = source.draftId ? `draft:${source.draftId}` : `cart:${currentPersona?.id ?? 'guest'}`;
     if (initializedFor.current === owner) return;
+    // Khách vừa đăng nhập ngay trên trang thanh toán (giỏ của khách đã được gộp vào tài khoản): giữ thông tin đang nhập.
+    const keepsInput = initializedFor.current === 'cart:guest' && currentPersona !== null;
     initializedFor.current = owner;
+    // Số điện thoại hồ sơ (FR-USR-04) điền sẵn ô liên hệ; người dùng đã gõ rồi thì không ghi đè.
+    const profilePhone = currentPersona?.phone ?? '';
+    if (keepsInput) {
+      if (profilePhone) setPhone((current) => current || profilePhone);
+      return;
+    }
     const { drafts: initial, seq: nextSeq } = newDrafts(defaultParty(cart.items), currentPersona?.name ?? '');
     setDrafts(initial);
     setSeq(nextSeq);
     setContactName(currentPersona?.name ?? '');
+    setPhone(profilePhone);
     setAllocs(Object.fromEntries(cart.items.map((item) => [item.cartItemId, defaultAllocation(item, initial)])));
     setDone({ travelers: false, services: false });
     setErrors({});
@@ -148,10 +178,10 @@ export function useCheckout() {
     // Mở thẳng một bước sau khi chưa có dữ liệu (tải lại trang): về bước đầu và nói rõ vì sao.
     if (readStep() !== 'travelers') {
       setNotice(RELOAD_NOTE);
-      window.history.replaceState(null, '', '?step=travelers');
+      window.history.replaceState(stepHistoryState('replace'), '', stepUrl('travelers', source.draftId));
       setStepState('travelers');
     }
-  }, [cart, currentPersona]);
+  }, [cart, currentPersona, authReady, source.draftId]);
 
   // Giỏ đổi (ví dụ ở tab khác): mục mới nhận phân bổ mặc định, mục đã xoá bị bỏ (§6.2).
   useEffect(() => {
@@ -181,10 +211,13 @@ export function useCheckout() {
     }
   }, [cart, showToast]);
 
-  // Giỏ rỗng thì về /cart (§6.2), trừ khi đang gửi đơn.
+  // Giỏ rỗng thì về /cart (§6.2), trừ khi đang gửi đơn. Đơn nháp không còn mục nào (đã bỏ mục cuối) thì về trang chủ.
   useEffect(() => {
-    if (cart && cart.items.length === 0 && !submitting) navigate('/cart');
-  }, [cart, submitting, navigate]);
+    if (cart && cart.items.length === 0 && !submitting) {
+      allowLeave();
+      navigate(source.kind === 'cart' ? '/cart' : '/');
+    }
+  }, [cart, submitting, navigate, source.kind, allowLeave]);
 
   // Nút Back / Forward của trình duyệt đổi `?step=` mà không mất dữ liệu (§6.2).
   useEffect(() => {
@@ -197,6 +230,8 @@ export function useCheckout() {
   const travelers = useMemo(() => drafts.map(draftToTraveler), [drafts]);
   const earliest = useMemo(() => items.reduce<string | null>((min, i) => (min === null || i.usingDate < min ? i.usingDate : min), null), [items]);
   const facts = useMemo(() => items.map(cartFactsOf), [items]);
+  // Trần của đoàn: theo mục lớn nhất trong đơn (khách sạn 9 khách mỗi phòng, loại khác 9 khách; FR-BKG-08).
+  const partyCap = useMemo(() => orderPartyCap(facts), [facts]);
   const adult1 = drafts.find((d) => d.type === 'ADULT');
   const contactFullName = syncContact && adult1 ? normalizeName(`${adult1.surname} ${adult1.givenNames}`) : contactName;
   const labels = useMemo(() => Object.fromEntries(drafts.map((d) => [d.ref, travelerLabel(d, drafts)])), [drafts]);
@@ -212,10 +247,14 @@ export function useCheckout() {
   }, [flightDates]);
 
   const partyViolations = useCallback((): Violation[] => {
-    const party = checkParty(toTravelerInputs(latest.current.drafts, hasFlight), { earliest, today: todayVn(), flightDates });
+    const party = checkParty(toTravelerInputs(latest.current.drafts, hasFlight), { earliest, today: todayVn(), flightDates, maxParty: partyCap });
     // Thứ tự hiển thị trên màn hình (thẻ hành khách rồi tới người liên hệ) quyết định lỗi nào được đưa con trỏ tới trước.
-    return [...party.violations, ...checkContact(contactInputOf(contactFullName, phone, email))];
-  }, [earliest, flightDates, hasFlight, contactFullName, phone, email]);
+    const contact = checkContact(contactInputOf(contactFullName, phone, email));
+    // Khách chưa đăng nhập chưa có email: email nhận thông tin lấy theo tài khoản, và tạo đơn luôn cần đăng nhập (R-CHK-06),
+    // nên chỉ kiểm email khi đã có tài khoản. Nhờ vậy khách điền được cả ba bước trước khi đăng nhập.
+    const signedIn = Boolean(currentPersona);
+    return [...party.violations, ...contact.filter((v) => signedIn || v.field !== 'contact.email')];
+  }, [earliest, flightDates, hasFlight, partyCap, contactFullName, phone, email, currentPersona]);
 
   /**
    * Lỗi từng thẻ dịch vụ, tính trực tiếp từ phân bổ hiện tại (bước ②). Trong lúc PATCH của một mục còn chờ hoặc đang chạy thì
@@ -232,15 +271,16 @@ export function useCheckout() {
   }, []);
 
   const goto = useCallback((next: Step, opts: { replace?: boolean; refresh?: boolean } = {}) => {
-    const url = `?step=${next}`;
-    if (opts.replace) window.history.replaceState(null, '', url); else window.history.pushState(null, '', url);
+    const url = stepUrl(next, source.draftId);
+    // Giữ dấu của mục lịch sử để nút Back ở bước đầu vẫn rơi vào mục chặn rời trang (useLeaveGuard).
+    if (opts.replace) window.history.replaceState(stepHistoryState('replace'), '', url); else window.history.pushState(stepHistoryState('push'), '', url);
     setStepState(next);
     setSummary([]);
     focusHeading();
     // Mỗi lần chuyển bước tải lại giỏ vì giỏ có thể đã đổi ở tab khác (§6.2). Chờ các PATCH đang bay xong trước khi GET,
     // để bản GET cũ không đè kết quả PATCH.
     if (opts.refresh !== false) void queue.flush().then(() => refreshCart());
-  }, [focusHeading, refreshCart, queue]);
+  }, [focusHeading, refreshCart, queue, source.draftId]);
 
   // Chỉ vào được bước sau khi các bước trước đã đạt; nếu không thì về bước đầu tiên chưa đạt.
   useEffect(() => {
@@ -269,7 +309,7 @@ export function useCheckout() {
 
   const addTraveler = (type: 'ADULT' | 'CHILD') => {
     const counts = partyCounts(drafts);
-    if (counts.adults + counts.children >= MAX_PARTY) return;
+    if (counts.adults + counts.children >= orderPartyCap(latest.current.items.map(cartFactsOf))) return;
     const ref = `t${seq + 1}`;
     setSeq(seq + 1);
     const draft: TravelerDraft = { ref, type, surname: '', givenNames: '', birthText: '', flight: blankFlight() };
@@ -422,7 +462,7 @@ export function useCheckout() {
   }));
 
   const addRoom = (cartItemId: string) => editAlloc(cartItemId, (alloc, item) => {
-    if (alloc.rooms.length >= MAX_PARTY) return alloc;
+    if (alloc.rooms.length >= MAX_ROOMS) return alloc;
     // Phòng mới nhận người lớn chưa đứng tên phòng nào (nút chỉ hiện khi còn người lớn như vậy).
     const leads = new Set(alloc.rooms.map((r) => r.lead));
     const spare = latest.current.drafts.find((d) => fareTypeOn(draftToTraveler(d), item.usingDate) === 'ADULT'
@@ -443,7 +483,7 @@ export function useCheckout() {
   const setSpecialRequest = (cartItemId: string, value: string) => setSpecial((prev) => ({ ...prev, [cartItemId]: value.slice(0, 500) }));
 
   const removeItem = async (cartItemId: string) => {
-    await bookingApi.removeCartItem(cartItemId).then(() => refreshCart()).catch(() => refreshCart());
+    await source.removeItem(cartItemId);
   };
 
   // --- điều hướng bước ---------------------------------------------------------------------------------------------------------------
@@ -538,7 +578,9 @@ export function useCheckout() {
       };
     });
     return {
-      contact: { fullName: normalizeName(contactFullName), email, phone: phone.trim() },
+      // Có draftId thì Backend thanh toán đúng đơn nháp này, không kèm mục nào trong giỏ (R-CHK-01).
+      ...(source.draftId ? { draftId: source.draftId } : {}),
+      contact: { fullName: normalizeName(contactFullName), email: personaRef.current?.email ?? email, phone: phone.trim() },
       travelers: toTravelerInputs(nowDrafts, hasFlight).map((t) => ({
         travelerRef: t.travelerRef, type: t.type, surname: normalizeName(t.surname), givenNames: normalizeName(t.givenNames),
         ...(t.birthDate ? { birthDate: t.birthDate } : {}),
@@ -553,9 +595,12 @@ export function useCheckout() {
       setBanner({ kind: 'error', text: 'Có lỗi xảy ra. Vui lòng thử lại.', retryable: true, requestId: null });
       return;
     }
+    // Đơn nháp hết hạn hoặc không còn: chuyển sang màn hình hết hạn / không tìm thấy (R-DRF-20, R-CHK-04).
+    if (source.fail(error)) return;
     const details = error.details ?? {};
     switch (error.code) {
       case 'CART_EMPTY':
+        allowLeave();
         navigate('/cart');
         return;
       case 'BOOKING_PENDING_PAYMENT':
@@ -619,14 +664,25 @@ export function useCheckout() {
     }
   };
 
+  // Bản `pay` mới nhất cho callback sau đăng nhập.
+  const payRef = useRef<() => Promise<void>>(async () => undefined);
+
   const pay = async () => {
     if (submitting || !termsAgreed || hasUnavailable || method !== 'stripe') return;
+    if (!personaRef.current) {
+      // Tạo đơn luôn cần đăng nhập (R-CHK-06). Hộp đăng nhập mở ngay trên trang nên thông tin đã nhập còn nguyên; đăng nhập xong
+      // thì gửi tiếp, BFF gộp giỏ và đơn nháp của khách vào tài khoản trước khi chuyển tiếp request.
+      openLoginModal(() => { window.setTimeout(() => void payRef.current(), 0); });
+      return;
+    }
     setSubmitting(true);
     setBanner(null);
     const request = buildRequest();
     try {
       const booking: BookingResponse = await bookingApi.createBooking(request);
       rememberBooking(booking);
+      // Khách đang hoàn tất đơn: lần rời trang này không hỏi lại.
+      allowLeave();
       // Giữ nút ở trạng thái đang xử lý trong lúc trình duyệt rời sang trang Stripe.
       if (booking.payment?.checkoutUrl) bookingApi.redirectToCheckout(booking.payment.checkoutUrl);
       else navigate(`/booking/${booking.referenceCode}`);
@@ -634,6 +690,15 @@ export function useCheckout() {
       await showError(error, request);
       setSubmitting(false);
     }
+  };
+
+  useEffect(() => { payRef.current = pay; });
+
+  /** Rời trang thanh toán: nguồn giỏ về trang giỏ; nguồn đơn nháp về trang trước (trang sản phẩm, vé máy bay, trợ lý). */
+  const leave = () => {
+    if (source.kind === 'cart') navigate('/cart');
+    else if (typeof window !== 'undefined' && window.history.length > 1) window.history.back();
+    else navigate('/');
   };
 
   const acceptNewPrice = async () => {
@@ -647,6 +712,8 @@ export function useCheckout() {
 
   const continuePending = async () => {
     if (!pendingHold) return;
+    // Tiếp tục đơn đang giữ chỗ là hoàn tất đơn, không phải bỏ dở: không hỏi lại.
+    allowLeave();
     try {
       const held = await bookingApi.getBooking(pendingHold.referenceCode);
       rememberBooking(held);
@@ -664,7 +731,7 @@ export function useCheckout() {
     if (!pendingHold) return;
     const request = buildRequest();
     try {
-      rememberBooking(await bookingApi.cancelBooking(pendingHold.referenceCode, 'Đặt lại từ giỏ'));
+      rememberBooking(await bookingApi.cancelBooking(pendingHold.referenceCode, 'Đặt lại'));
       setPendingHold(null);
       await pay();
     } catch (error) {
@@ -675,7 +742,9 @@ export function useCheckout() {
 
   return {
     // dữ liệu
-    cart, items, email, currentPersona, authReady, earliest, facts,
+    cart, items, email, currentPersona, authReady, earliest, facts, partyCap,
+    sourceKind: source.kind, sourceStatus: source.status, draftId: source.draftId, draftExpiresAt: source.expiresAt,
+    expiredItems: source.expiredItems, leave, leavePrompt, stayOnCheckout, confirmLeave,
     drafts, travelers, hasFlight, flightDates, isInfant, contactFullName, phone, syncContact, allocs, special, confirmRemove,
     step, done, errors, summary, serverItemErrors, serverRoomErrors, itemViolations, patchErrors, busy, pending, anyPending,
     notice, cartChanged, banner, pendingHold, termsAgreed, method, submitting, hasUnavailable, labels,

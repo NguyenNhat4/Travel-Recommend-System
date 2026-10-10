@@ -79,12 +79,15 @@ class ConversationalUpdateTests(unittest.TestCase):
             ConversationalAnswer(title='Chào bạn', message='Xin chào! Bạn muốn đi đâu?'))
         self.assertEqual(update['response']['question'], 'Xin chào! Bạn muốn đi đâu?')
 
-    def test_an_out_of_scope_refusal_carries_the_title_in_the_error_message(self):
+    def test_an_out_of_scope_request_is_answered_with_a_title_not_an_error(self):
+        # FR-AGT-06 (chốt 2026-10-10): ngoài phạm vi là câu trả lời thường 200; chỉ đầu vào bị guardrail chặn mới là lỗi.
         update = conversation.conversational_update(
             state(refusal=True), ConversationalAnswer(message='Mình chỉ hỗ trợ lên lịch du lịch.'))
-        self.assertEqual(update['response']['error']['code'], 'VALIDATION_ERROR')
-        self.assertEqual(update['response']['error']['message'],
-                         '**Ngoài phạm vi hỗ trợ**\nMình chỉ hỗ trợ lên lịch du lịch.')
+        self.assertEqual(update['response']['status'], 'NEEDS_CLARIFICATION')
+        self.assertEqual(update['response']['question'], '**Ngoài phạm vi hỗ trợ**\nMình chỉ hỗ trợ lên lịch du lịch.')
+        blocked = conversation.conversational_update(
+            state(refusal=True, blocked_by_guardrail='x'), ConversationalAnswer(message='Mình không làm được.'))
+        self.assertEqual(blocked['response']['error']['code'], 'VALIDATION_ERROR')
 
 
 class FixedTextTests(unittest.TestCase):
@@ -115,14 +118,15 @@ class FixedTextTests(unittest.TestCase):
         blocked = conversation.conversational_fallback(state(refusal=True, blocked_by_guardrail='x'))
         scoped = conversation.conversational_fallback(state(refusal=True))
         self.assertTrue(blocked['response']['error']['message'].startswith('**Mình chưa thể hỗ trợ yêu cầu này**\n'))
-        self.assertTrue(scoped['response']['error']['message'].startswith('**Ngoài phạm vi hỗ trợ**\n'))
+        self.assertTrue(scoped['response']['question'].startswith('**Ngoài phạm vi hỗ trợ**\n'))
 
     def test_required_condition_without_products_is_titled(self):
         question = conversation.constraint_clarification(state())['response']['question']
         self.assertTrue(question.startswith('**Chưa có sản phẩm đáp ứng yêu cầu bắt buộc**\n'))
 
     def test_no_results_and_fallback_messages_are_titled(self):
-        self.assertTrue(messages.FALLBACK.startswith('**Chưa dựng được lịch trình hoàn chỉnh**\n'))
+        for language, title in (('vi', 'Chưa dựng được lịch trình hoàn chỉnh'), ('en', 'Could not build a complete itinerary')):
+            self.assertEqual(messages.message({'language': language}, 'fallback_title'), title)
         for language in ('vi', 'en'):
             for key in ('no_results', 'no_results_date'):
                 with self.subTest(language=language, key=key):
@@ -136,7 +140,7 @@ class HistoryTests(unittest.TestCase):
                    {'role': 'assistant', 'content': '**Chuyến đi kéo dài mấy ngày?**\nBạn đi mấy ngày?'}]
         context = llm_context(state(conversation_history=history))
         self.assertEqual(context['last_assistant_message'], 'Bạn đi mấy ngày?')
-        self.assertEqual(context['conversation_history'][1]['content'], 'Bạn đi mấy ngày?')
+        self.assertEqual(context['conversation_history'][1], {'assistant_did': 'Bạn đi mấy ngày?'})
         self.assertEqual(history[1]['content'], '**Chuyến đi kéo dài mấy ngày?**\nBạn đi mấy ngày?')  # bản lưu giữ nguyên
 
 

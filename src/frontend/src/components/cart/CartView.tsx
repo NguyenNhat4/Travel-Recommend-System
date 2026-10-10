@@ -4,12 +4,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useTravel } from '../../context/TravelContext';
 import { useAssistant } from '../../context/AssistantProvider';
 import { getProduct } from '../../services/catalog';
-import { fetchRecommendations } from '../../services/recsys';
 import type { ApiCartItem } from '../../services/booking';
-import type { RecommendationResponse, Taxonomy } from '../../types/travel';
+import type { Taxonomy } from '../../types/travel';
 import { TaxonomyBadge } from '../common/TaxonomyBadge';
 import { FlightSummary } from '../common/FlightSummary';
-import { ProductCard } from '../common/ProductCard';
 import { Trash2, ShoppingBag, ArrowRight, ShieldCheck, Sparkles, Loader2, AlertTriangle, Pencil } from 'lucide-react';
 import { formatVnd } from '../confirmation/bookingLabels';
 import { cartStateOf, guestsOfItem, sameCartState, type CartState } from '../checkout/allocation';
@@ -72,7 +70,7 @@ const GuestEditor: React.FC<{ item: ApiCartItem; onClose: () => void }> = ({ ite
       <div className="flex justify-end gap-2">
         <button type="button" onClick={onClose} className="px-4 py-2 text-xs font-semibold text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50">Huỷ</button>
         <button type="button" onClick={() => void save()} disabled={!valid || !changed || saving}
-          className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 rounded-lg inline-flex items-center gap-1.5">
+          className="px-4 py-2 text-xs font-bold text-white bg-brand-600 hover:bg-brand-700 disabled:bg-slate-300 rounded-lg inline-flex items-center gap-1.5">
           {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />}Cập nhật
         </button>
       </div>
@@ -82,15 +80,12 @@ const GuestEditor: React.FC<{ item: ApiCartItem; onClose: () => void }> = ({ ite
 
 export const CartView: React.FC = () => {
   const { openFloatingWidget } = useAssistant();
-  const {
-    cart, removeFromCart, navigate, currentPersona, authReady, activeEvents, addToCart, openLoginModal,
-  } = useTravel();
-  const [recs, setRecs] = useState<RecommendationResponse | null>(null);
+  // Giỏ dùng được cả khi chưa đăng nhập: khách chưa đăng nhập có giỏ riêng giữ 3 ngày (spec dat-truc-tiep-theo-don-nhap.md §8).
+  const { cart, removeFromCart, navigate, currentPersona, openLoginModal } = useTravel();
   const [editing, setEditing] = useState<string | null>(null);
 
   const items = useMemo(() => cart?.items ?? [], [cart]);
   const hasUnavailable = items.some((item) => !item.product.available);
-  const primaryDestination = items[0]?.product.destination;
 
   // Gom nhóm "Chuyến {destination}" phía client (docs/spec/hop-dong-tich-hop-frontend.md §4.4)
   const itemsByDestination = useMemo(() => {
@@ -98,30 +93,6 @@ export const CartView: React.FC = () => {
     for (const item of items) (groups[item.product.destination || 'Khác'] ??= []).push(item);
     return groups;
   }, [items]);
-
-  // Thường được đặt cùng: GET /recommendations theo điểm đến đầu tiên; lỗi thì ẩn.
-  useEffect(() => {
-    if (!currentPersona || !primaryDestination) return;
-    const controller = new AbortController();
-    fetchRecommendations({ k: 4, destination: primaryDestination, signal: controller.signal })
-      .then(setRecs).catch(() => setRecs(null));
-    return () => controller.abort();
-  }, [currentPersona, primaryDestination, activeEvents]);
-
-  if (authReady && !currentPersona) {
-    return (
-      <div className="max-w-4xl mx-auto px-4 py-16 text-center space-y-4">
-        <h2 className="text-xl font-bold text-slate-900">Đăng nhập để xem giỏ hàng</h2>
-        <p className="text-xs text-slate-500">Giỏ hàng được lưu theo tài khoản của bạn.</p>
-        <button
-          onClick={() => openLoginModal()}
-          className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors"
-        >
-          Đăng nhập
-        </button>
-      </div>
-    );
-  }
 
   if (!cart) {
     return (
@@ -134,25 +105,25 @@ export const CartView: React.FC = () => {
   if (items.length === 0) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-16 text-center space-y-6">
-        <div className="w-16 h-16 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto">
+        <div className="w-16 h-16 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center mx-auto">
           <ShoppingBag className="w-8 h-8" />
         </div>
         <div className="space-y-1">
           <h2 className="text-xl font-bold text-slate-900">Giỏ hàng của bạn đang trống</h2>
           <p className="text-xs text-slate-500 max-w-sm mx-auto">
-            Chưa có dịch vụ nào được thêm vào giỏ. Hãy bắt đầu chọn khách sạn, chuyến bay hoặc vé vui chơi!
+            Giỏ hàng giữ tour, trải nghiệm và các tiện ích khác. Khách sạn và vé máy bay được đặt ngay ở trang sản phẩm, không qua giỏ.
           </p>
         </div>
         <div className="flex justify-center gap-3">
           <button
             onClick={() => navigate('/')}
-            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors"
+            className="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors"
           >
             Khám phá gợi ý trang chủ
           </button>
           <button
             onClick={() => openFloatingWidget()}
-            className="px-5 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-xs rounded-xl transition-colors flex items-center gap-1.5"
+            className="px-5 py-2.5 bg-brand-50 hover:bg-brand-100 text-brand-700 border border-brand-200 font-bold text-xs rounded-xl transition-colors flex items-center gap-1.5"
           >
             <Sparkles className="w-3.5 h-3.5" />
             Lên kế hoạch cùng Trợ lý AI
@@ -223,7 +194,7 @@ export const CartView: React.FC = () => {
                       </div>
 
                       <div className="flex flex-col items-end gap-1.5 shrink-0">
-                        <span className="text-sm font-bold text-blue-900 font-mono">
+                        <span className="text-sm font-bold text-brand-900 font-mono">
                           {formatVnd(item.lineTotal)}
                         </span>
                         <div className="flex items-center gap-3">
@@ -232,7 +203,7 @@ export const CartView: React.FC = () => {
                               onClick={() => setEditing(editing === item.cartItemId ? null : item.cartItemId)}
                               aria-expanded={editing === item.cartItemId}
                               aria-label={`Sửa số khách của ${item.product.name}`}
-                              className="text-xs text-slate-400 hover:text-blue-600 flex items-center gap-1 transition-colors"
+                              className="text-xs text-slate-400 hover:text-brand-600 flex items-center gap-1 transition-colors"
                             >
                               <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
                               <span>Sửa</span>
@@ -257,25 +228,9 @@ export const CartView: React.FC = () => {
             </div>
           ))}
 
-          {/* Thường được đặt cùng (§4.4) */}
-          {recs && recs.recommendations.length > 0 && (
-            <div className="pt-4 space-y-3">
-              <h3 className="font-sans text-xs font-bold text-slate-700 uppercase tracking-wider">
-                Thường được đặt cùng chuyến {primaryDestination}
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {recs.recommendations.slice(0, 2).map(rec => (
-                  <ProductCard
-                    key={rec.product.id}
-                    product={rec.product}
-                    variant="compact"
-                    because={rec.because}
-                    onQuickAdd={(p) => void addToCart(p, 1)}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
+          <p className="text-[11px] text-slate-500 leading-relaxed" data-testid="cart-direct-note">
+            Khách sạn và vé máy bay không nằm trong giỏ: giá và chỗ thay đổi liên tục nên được đặt ngay ở trang sản phẩm.
+          </p>
         </div>
 
         {/* Right: Sticky Summary Box — mọi con số lấy từ CartResponse */}
@@ -299,7 +254,7 @@ export const CartView: React.FC = () => {
             </div>
             <div className="pt-3 border-t border-slate-200 flex justify-between items-baseline">
               <span className="text-sm font-bold text-slate-900">Tổng thanh toán:</span>
-              <span className="text-lg font-black text-blue-900 font-mono">{formatVnd(cart.total)}</span>
+              <span className="text-lg font-black text-brand-900 font-mono">{formatVnd(cart.total)}</span>
             </div>
           </div>
 
@@ -311,9 +266,10 @@ export const CartView: React.FC = () => {
           )}
 
           <button
-            onClick={() => navigate('/checkout')}
+            // Thanh toán cần đăng nhập (FR-BKG-01): khách mở hộp đăng nhập trước, xong thì vào /checkout.
+            onClick={() => (currentPersona ? navigate('/checkout') : openLoginModal(() => navigate('/checkout')))}
             disabled={hasUnavailable}
-            className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-bold text-sm rounded-xl shadow-xs transition-colors flex items-center justify-center gap-2"
+            className="w-full py-3 bg-brand-600 hover:bg-brand-700 disabled:bg-slate-300 text-white font-bold text-sm rounded-xl shadow-xs transition-colors flex items-center justify-center gap-2"
           >
             <span>Tiến hành đặt chỗ</span>
             <ArrowRight className="w-4 h-4" />

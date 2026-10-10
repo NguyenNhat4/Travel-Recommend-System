@@ -2,13 +2,15 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from datetime import timedelta
 
 from src.backend.app.application.itinerary.contracts import bounds
+from src.backend.app.domain.itinerary import preferences
 from src.backend.app.domain.itinerary.planning import empty_intent
 
 from ..models import ConversationalAnswer
-from . import messages
-from .classification import vietnam_today
+from . import exploration, messages
+from .classification import TRIP_DETAILS, vietnam_today
 from .explanations import constraint_question
 from .history import llm_context, prompt_yaml
 from .messages import display_date, event, failure, message, titled
@@ -16,7 +18,7 @@ from .prompts import CONVERSATION_PROMPT
 from .turn_notes import question_note
 
 #: Form gợi ý phủ mọi trường bắt buộc của chuyến đi, kể cả trường người dùng đã nói, để sửa được tại chỗ.
-FORM_FIELDS = ("destination", "days", "startDate", "party", "budget")
+FORM_FIELDS = ("destination", "days", "startDate", "party", "budget", "origin")
 #: Số ngày điền sẵn; người dùng chỉnh ngay trên form (giới hạn 1–7 lấy từ contract).
 DEFAULT_FORM_DAYS = 1
 DEFAULT_FORM_PARTY = {"type": None, "adults": 2, "children": 0}
@@ -40,7 +42,20 @@ def clarification_form(state: dict) -> dict:
     if defaults.get("destination") is None:
         supported = state.get("supported_destinations") or []
         defaults["destination"] = supported[0] if supported else None
-    return {"fields": list(FORM_FIELDS), "defaults": defaults, "startDateMin": today}
+    defaults["interests"] = _form_interests(defaults)
+    return {"fields": [*FORM_FIELDS, "interests"], "defaults": defaults, "startDateMin": today,
+            "interestOptions": preferences.labels()}
+
+
+def _form_interests(intent: dict) -> list[str]:
+    """Ô sở thích tích sẵn (FR-AGT-06): sở thích khách sạn đã nói, và "Phù hợp trẻ nhỏ" khi đoàn có trẻ em. Sở thích khác
+    (điểm tham quan) giữ nguyên trong `interests` để câu xác nhận không làm mất."""
+    interests = [value for value in intent.get("interests") or [] if isinstance(value, str)]
+    wanted = {item.key for item in preferences.from_interests(interests)}
+    if ((intent.get("party") or {}).get("children") or 0) > 0:
+        wanted.add("familyFriendly")
+    others = [value for value in interests if not preferences.is_preference(value)]
+    return [*others, *(item.label for item in preferences.PREFERENCES if item.key in wanted)]
 
 
 def _valid_ranges() -> dict:
@@ -57,12 +72,16 @@ def _invalid_for_llm(state: dict) -> list[dict]:
 
 
 def _form_shown(state: dict) -> bool:
-    """Câu hỏi kèm `clarificationForm`: đã hỏi một lượt mà vẫn thiếu điểm đến/số ngày.
+    """Câu hỏi kèm `clarificationForm`: đã hỏi một lượt mà vẫn thiếu trường bắt buộc (`suggest_form`), hoặc giá trị
+    không hợp lệ ở lượt đã hỏi một lần mà vẫn thiếu điểm đến/số ngày.
 
     Không kèm khi đang hỏi chọn điểm đến theo loại ("đi biển"): form điền sẵn điểm đến đầu catalog, có thể không hợp loại.
     """
-    if state.get("clarification_reason") == "destination_kind":
+    reason = state.get("clarification_reason")
+    if reason == "destination_kind":
         return False
+    if reason == "suggest_form":
+        return True
     return state.get("clarification_rounds", 0) >= 2 and bool({"destination", "days"} & set(state.get("missing_fields") or []))
 
 
@@ -93,8 +112,10 @@ def reply_title(state: dict) -> str | None:
     if state.get("refusal"):
         return message(state, "title_out_of_scope")
     missing = state.get("missing_fields", [])
-    if missing and set(missing) <= {"startDate", "party", "budget"}:
+    if missing and set(missing) <= set(TRIP_DETAILS):
         return message(state, "title_trip_details")
+    if _days_and_details(missing):
+        return message(state, "title_days_and_details")
     if {"destination", "days"} <= set(missing):
         return message(state, "title_missing_both")
     if "destination" in missing:
@@ -111,7 +132,14 @@ def conversation_input(state: dict) -> list:
                "interaction_type": state.get("interaction_type", ""),
                "missing_fields": state.get("missing_fields", []),
                "clarification_reason": state.get("clarification_reason"),
-               "refusal": bool(state.get("refusal"))}
+               "refusal": bool(state.get("refusal")),
+               # Trước khi đồng ý lập lịch (FR-AGT-06): không hỏi thông tin chuyến; bậc "không biết"; nút gợi ý.
+               "plan_consent": bool(state.get("plan_consent")),
+               "pending_offer": state.get("pending_offer"),
+               "dont_know_level": int(state.get("dont_know_count", 0) or 0),
+               "catalog_destinations": (state.get("supported_destinations") or [])[:exploration.CATALOG_HINT],
+               "previous_suggestions": state.get("last_suggestions", []),
+               "rejected_destinations": state.get("rejected_destinations", [])}
     if state.get("clarification_reason") == "invalid_input":
         payload.update(invalid_inputs=_invalid_for_llm(state), today=display_date(vietnam_today().isoformat()),
                        valid_ranges=_valid_ranges(), form_shown=_form_shown(state),
@@ -142,18 +170,44 @@ def _question_response(state: dict, question: str) -> dict:
     # Lượt hỏi đầu dùng câu chữ; hỏi rồi mà vẫn thiếu điểm đến/số ngày thì đưa form thay vì hỏi lại y hệt.
     if _form_shown(state):
         response["clarificationForm"] = clarification_form(state)
+        if "startDate" in (missing or []):
+            response["suggestions"] = date_suggestions(state)
     return {"response": response}
 
 
+def date_suggestions(state: dict) -> list[str]:
+    """Nút chọn nhanh ngày đi dưới form (kịch bản bản 5, cảnh 8): người dùng bấm thay cho điền ô ngày; câu trên nút là lời
+    người dùng ("Thứ 7 này (17/10)"), `extract` đọc được ngày tương đối như mọi câu chat."""
+    today = vietnam_today()
+    saturday = today + timedelta(days=(5 - today.weekday()) % 7 or 7)
+    return [message(state, "chip_date_this_saturday", date=display_date(saturday.isoformat())[:5]),
+            message(state, "chip_date_next_saturday", date=display_date((saturday + timedelta(days=7)).isoformat())[:5])]
+
+
+def with_suggestions(state: dict, update: dict, proposed: list[str] | None = None) -> dict:
+    """Gắn nút gợi ý vào câu trả lời của lượt trò chuyện (FR-AGT-06): nút LLM đề xuất qua kiểm, thiếu thì nút mẫu."""
+    response = update.get("response") or {}
+    if not state.get("offer_suggestions") or response.get("status") != "NEEDS_CLARIFICATION":
+        return update
+    supported = state.get("supported_destinations") or []
+    suggestions = exploration.checked_suggestions(proposed or [], state.get("last_suggestions", []),
+                                                  exploration.conversation_templates(state, supported),
+                                                  destinations=supported, avoid=state.get("rejected_destinations"))
+    if not suggestions:
+        return update
+    return {**update, "response": {**response, "suggestions": suggestions}}
+
+
 def conversational_update(state: dict, result: ConversationalAnswer) -> dict:
-    """Câu LLM viết ra; yêu cầu ngoài phạm vi thì trả lỗi 400 thay vì câu hỏi."""
+    """Câu LLM viết ra. Yêu cầu ngoài phạm vi (đặt vé hộ, chuyện ngoài du lịch) là câu trả lời thường 200 kèm nút, không
+    còn là lỗi 400 (FR-AGT-06, chốt 2026-10-10); chỉ đầu vào bị guardrail chặn mới bị từ chối bằng lỗi."""
     answer = ConversationalAnswer.model_validate(result)
     fallback_title = reply_title(state)
     # Dòng đầu in đậm do backend ghép, để mọi câu trả lời có cùng một dạng; chào hỏi, cảm ơn thì không có tiêu đề.
     text = titled(answer.title or fallback_title, answer.message.strip()) if fallback_title else answer.message.strip()
-    if state.get("refusal"):
+    if state.get("blocked_by_guardrail"):
         return failure(state, "VALIDATION_ERROR", text, 400)
-    return _question_response(state, text)
+    return with_suggestions(state, _question_response(state, text), answer.suggestions)
 
 
 def _invalid_input_question(state: dict) -> str:
@@ -172,11 +226,16 @@ def _invalid_input_question(state: dict) -> str:
         lines.append(message(state, "missing_destination"))
     elif "days" in rest:
         lines.append(message(state, "missing_days"))
-    details = [key for key in rest if key in ("startDate", "party", "budget")]
+    details = [key for key in rest if key in TRIP_DETAILS]
     if details:
         joined = message(state, "detail_joiner").join(message(state, f"detail_{key}") for key in details)
         lines.append(message(state, "missing_trip_details", details=joined))
     return "\n".join(lines)
+
+
+def _days_and_details(missing: list[str]) -> bool:
+    """Hỏi gộp số ngày cùng chi tiết chuyến (ngày đi, số người…) trong một câu (AC-AGT-01, kịch bản cảnh 7)."""
+    return "days" in missing and len(missing) > 1 and set(missing) - {"days"} <= set(TRIP_DETAILS)
 
 
 def clarification_fallback(state: dict) -> dict:
@@ -197,9 +256,13 @@ def clarification_fallback(state: dict) -> dict:
         question = messages.CLARIFY_CONFLICT
     elif reason == "unverified":
         question = messages.CLARIFY_UNVERIFIED
-    elif missing and set(missing) <= {"startDate", "party", "budget"}:
+    elif missing and set(missing) <= set(TRIP_DETAILS):
         details = message(state, "detail_joiner").join(message(state, f"detail_{key}") for key in missing)
         question = message(state, "missing_trip_details", details=details)
+    elif _days_and_details(missing):
+        details = message(state, "detail_joiner").join(message(state, f"detail_{key}") for key in missing
+                                                       if key != "days")
+        question = message(state, "missing_days_and_details", details=details)
     elif len(missing) == 2:
         question = message(state, "missing_both")
     elif "destination" in missing:
@@ -211,11 +274,15 @@ def clarification_fallback(state: dict) -> dict:
 
 
 def conversational_fallback(state: dict) -> dict:
-    """Bản dự phòng cho `converse`: từ chối thì trả lỗi cố định, còn lại hỏi như `clarify`."""
+    """Bản dự phòng cho `converse`: đầu vào bị guardrail chặn thì trả lỗi cố định; ngoài phạm vi thì câu cố định 200
+    kèm nút; còn lại hỏi như `clarify`."""
+    if state.get("blocked_by_guardrail"):
+        return failure(state, "VALIDATION_ERROR", messages.REFUSAL_BLOCKED, 400)
     if state.get("refusal"):
-        blocked = state.get("blocked_by_guardrail")
-        return failure(state, "VALIDATION_ERROR", messages.REFUSAL_BLOCKED if blocked else messages.REFUSAL, 400)
-    return clarification_fallback(state)
+        return with_suggestions(state, {"response": {"status": "NEEDS_CLARIFICATION",
+                                                     "conversationId": state["conversation_id"],
+                                                     "question": messages.REFUSAL, "knownIntent": state["intent"]}})
+    return with_suggestions(state, clarification_fallback(state))
 
 
 def unclear_input_reply(state: dict) -> dict:

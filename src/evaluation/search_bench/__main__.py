@@ -484,17 +484,23 @@ def run(c: typer.Context,
               f"dataset {ctx.dataset} · {env.n_items} item", highlight=False)
     if env.gold_version is None:
         con.print("  cảnh báo: gold chưa khớp tag gold_v* — kết quả không được trích dẫn hay promote (spec §1.5)", style="yellow")
-    app_ctx = None
-    if any(a.engine == "app" for a in loaded):
-        from .app_adapter import PRODUCT_BENCH, AppAdapterError, AppContext
+    app_ctxs: dict = {}                                          # model bench → AppContext (mỗi model một collection)
+    for a in loaded:
+        m_app = model or a.model
+        if a.engine != "app" or m_app in app_ctxs:
+            continue
+        from .app_adapter import AppAdapterError, AppContext
         try:
-            app_ctx = AppContext.open(cfg, ctx.dataset)          # dựng UnitIndex + nạp ProductBench nếu thiếu (0 Cohere)
+            app_ctxs[m_app] = AppContext.open(cfg, ctx.dataset, model=m_app)   # UnitIndex + nạp collection nếu thiếu (0 API)
         except (AppAdapterError, CatalogError) as e:
-            _fail(f"cổng APP: {e}", 2)
-        con.print(f"  cổng APP: SearchProducts thật · collection {PRODUCT_BENCH} ({len(app_ctx.cat.texts)} unit, hnsw)", highlight=False)
+            _fail(f"cổng APP ({m_app}): {e}", 2)
+        ac = app_ctxs[m_app]
+        con.print(f"  cổng APP: SearchProducts thật · collection {ac.collection} ({len(ac.cat.texts)} unit, hnsw, "
+                  f"{ac.cache_model}, {ac.dimension} chiều)", highlight=False)
     with _store(cfg) as st:
         for a in loaded:
             m = model or a.model
+            app_ctx = app_ctxs.get(m) if a.engine == "app" else None
             try:
                 if a.engine == "app":
                     logical, phys = f"app:{app_ctx.collection}", app_ctx.collection
@@ -512,10 +518,9 @@ def run(c: typer.Context,
                     con.print(f"[dim]{a.id}: đã có kết quả cùng cấu hình + gold_version trong run này — bỏ qua (--force để chạy lại)[/]")
                     continue
 
-            def _emb(arm, _m=m, _phys=phys, _app=(a.engine == "app")):
+            def _emb(arm, _m=m, _phys=phys, _app_ctx=app_ctx):
                 emb = make_embedder(cfg, _m, embedding_type=arm.embedding_types, preflight=False)
-                from .app_adapter import MODEL_VERSION
-                want = MODEL_VERSION.split(":")[0] if _app else st.description(_phys).get("cache_model")
+                want = _app_ctx.cache_model if _app_ctx is not None else st.description(_phys).get("cache_model")
                 if emb.name != want:
                     emb.close()
                     raise StoreError(f"collection {_phys} nạp vector của {want}, query đang embed bằng {emb.name}")
@@ -554,8 +559,8 @@ def run(c: typer.Context,
             if results["needs_labels"]:
                 con.print("  → `sb gold holes --arms …` → gán → `holes import` → tag → `sb rescore` (Part 11)", style="yellow")
             con.print(f"  → {R.arm_dir(run_id, a.id, create=False)}", style="dim", highlight=False)
-    if app_ctx is not None:
-        app_ctx.close()
+    for ac in app_ctxs.values():
+        ac.close()
 
 
 @app.command()
@@ -572,6 +577,7 @@ def sanity(c: typer.Context,
     from .embed import EmbedBatchError, EmbedderUnavailable, make_embedder
     from .metrics import MetricsError, load_gold
     from .store.weaviate_store import StoreError, collection_name
+    from .app_adapter import app_collection
     ctx = _ctx(c)
     cfg = ctx.cfg()
     gp = gold_p or paths.GOLD_JSONL
@@ -592,7 +598,11 @@ def sanity(c: typer.Context,
             cached = make_embedder(cfg, m, preflight=False)
             fresh = make_embedder(cfg, m, no_cache=True, preflight=False)
             try:
-                checks.append(S.input_type_vectors_differ(cached, sample, min_gap=pc["input_type_min_cos_gap"], model=m))
+                model_cfg = cfg.embedding.models[m]
+                if model_cfg.input_type_mode == "symmetric":
+                    checks.append(S.input_type_vectors_match(cached, sample, max_gap=1e-5, model=m))
+                else:
+                    checks.append(S.input_type_vectors_differ(cached, sample, min_gap=pc["input_type_min_cos_gap"], model=m))
                 checks.append(S.cache_recheck(cached, fresh, texts, n=pc["cache_recheck_n"], seed=cfg.run.seed, model=m))
             finally:
                 cached.close()
@@ -602,7 +612,7 @@ def sanity(c: typer.Context,
     counts: dict[str, int] = {}
     with _store(cfg) as st:
         for a in loaded:
-            phys = "ProductBench" if a.engine == "app" else collection_name(a.text_variant, a.model, ctx.dataset)[1]
+            phys = app_collection(a.model) if a.engine == "app" else collection_name(a.text_variant, a.model, ctx.dataset)[1]
             try:
                 counts[phys] = st.count(phys) if st.exists(phys) else 0
             except (StoreError, *_weaviate_errors()) as e:
@@ -624,24 +634,28 @@ def sanity(c: typer.Context,
 
 
 @app.command("app-load")
-def app_load(c: typer.Context, recreate: bool = typer.Option(False, "--recreate", help="xoá và nạp lại ProductBench")):
+def app_load(c: typer.Context, recreate: bool = typer.Option(False, "--recreate", help="xoá và nạp lại collection"),
+             model: str = typer.Option("cohere-v3", "--model", help="model bench của vector (cohere-v3 → ProductBench; "
+                                                                    "model khác → ProductBench__<model>)")):
     """Cổng APP: dựng collection `ProductBench` (hình dạng production: WeaviateClient của backend, hnsw, nameAscii /
-    searchTextAscii) trên Weaviate của bench và nạp vector B0 đã embed (`vec_T3+R_cohere-v3.npy`, 0 Cohere). Đủ và đúng
-    textHash thì không làm gì. `sb run --arm APP.*` tự gọi bước này."""
-    from .app_adapter import PRODUCT_BENCH, AppAdapterError, build_app_catalog, load_product_bench
+    searchTextAscii) trên Weaviate của bench và nạp vector document đã embed (`vec_T3+R_<model>.npy`, 0 lượt gọi API).
+    Đủ và đúng textHash thì không làm gì. `sb run --arm APP.*` tự gọi bước này."""
+    from .app_adapter import AppAdapterError, app_collection, build_app_catalog, load_product_bench, model_vectors
     from .catalog import CatalogError
+    from .embed import EmbedderUnavailable
     ctx = _ctx(c)
     cfg = ctx.cfg()
+    PRODUCT_BENCH = app_collection(model)
     try:
-        cat = build_app_catalog(cfg, ctx.dataset)
-        s = load_product_bench(cfg, ctx.dataset, cat, recreate=recreate)
+        cat = build_app_catalog(cfg, ctx.dataset, model_version=model_vectors(ctx.dataset, model)[3])
+        s = load_product_bench(cfg, ctx.dataset, cat, collection=PRODUCT_BENCH, recreate=recreate, model=model)
     except (AppAdapterError, CatalogError) as e:
         _fail(str(e), 2)
     except Exception as e:  # noqa: BLE001 — lỗi Weaviate / vector
         _fail(f"{type(e).__name__}: {str(e)[:300]}")
     typer.echo(f"{PRODUCT_BENCH}: {s['n']} object · khớp textHash {s['matching']} · thiếu {s['missing']} · text cũ {s['stale']} · "
-               f"nạp mới {s['loaded']} · index hnsw (backend không nhận flat) · {len(cat.index.units)} unit, "
-               f"{int(cat.index.available.sum())} available")
+               f"nạp mới {s['loaded']} · index hnsw (backend không nhận flat) · modelVersion {cat.index.model_version} · "
+               f"{len(cat.index.units)} unit, {int(cat.index.available.sum())} available")
 
 
 def paths_gold() -> Path:
@@ -650,53 +664,218 @@ def paths_gold() -> Path:
 
 
 @app.command()
-def compare(c: typer.Context, arm_a: str = typer.Argument(..., help="arm mốc (A)"), arm_b: str = typer.Argument(..., help="arm so (B)")):
+def compare(c: typer.Context, arm_a: str = typer.Argument(..., help="arm mốc (A)"), arm_b: str = typer.Argument(..., help="arm so (B)"),
+            gold_version: Optional[str] = typer.Option(None, "--gold", help="gold_vN; mặc định bản mới nhất có ở cả hai arm"),
+            condensed: bool = typer.Option(False, "--condensed", help="Bỏ kết quả chưa nhãn rồi dồn hạng; vẫn báo coverage full"),
+            split: Optional[str] = typer.Option(None, "--split", help="dev | test | all (mặc định all): chỉ so câu thuộc phần "
+                                                                      "đó của gold/splits/devtest@<gold_version>.json"),
+            split_file: Optional[Path] = typer.Option(None, "--split-file", help="file phân chia dùng thay devtest@<gold_version>"
+                                                                                 ".json (gold chưa tag / chưa chia)")):
     """So hai arm trong cùng run (--run-id; mặc định run mới nhất): paired bootstrap Δrecall / Δndcg, Δ theo slice và kết luận
-    win_rule (WIN / TIE / LOSE — spec Part 8). Hai arm phải cùng gold_version. Mã thoát: 0 · 1 khác gold_version · 2 thiếu kết quả."""
+    win_rule (WIN / TIE / LOSE — spec Part 8), cuối cùng là bảng theo khối rubric (v3 = câu của tag gold_v3, v4 = câu thêm
+    từ gold_v4 — hai rubric khác nhau, gold-guide.md): Δ nDCG full và condensed. `--split dev|test` lọc câu của cả hai arm theo
+    file phân chia rồi tính lại mọi số trên phần đó (không có devtest@<gold_version>.json thì dùng --split-file, hoặc tự lấy
+    file devtest@gold_v*.json mới nhất phủ đủ câu và in ghi chú). Hai arm phải cùng gold_version. Mã thoát: 0 · 1 khác
+    gold_version · 2 thiếu kết quả / file phân chia."""
     from rich.table import Table
-    from . import runner as R
+    from . import devtest as DT, metrics as M, runner as R
     ctx = _ctx(c)
     cfg = ctx.cfg()
     k = cfg.metrics.k
     try:
         run_id = _run_id_or_latest(ctx)
-        ra, rb = R.read_results(run_id, arm_a), R.read_results(run_id, arm_b)
-        rows_a, rows_b = R.read_rows(run_id, arm_a), R.read_rows(run_id, arm_b)
-    except R.RunnerError as e:
+        versions_a = R.available_versions(run_id, arm_a)
+        versions_b = R.available_versions(run_id, arm_b)
+        if not versions_a or not versions_b:
+            missing = arm_a if not versions_a else arm_b
+            raise R.RunnerError(f"chưa có kết quả {missing} trong run {run_id} — chạy `sb run --arm {missing}` trước")
+        if gold_version is None:
+            common = set(versions_a) & set(versions_b)
+            if not common:
+                raise R.RunnerError(f"{arm_a} và {arm_b} không có chung gold_version — chạy sb rescore cho cả hai")
+            selected = max(common, key=R._version_key)
+        else:
+            selected = gold_version
+        ra, rows_a, _ = R.read_results_at(run_id, arm_a, selected)
+        rb, rows_b, _ = R.read_results_at(run_id, arm_b, selected)
+        split_note = split_src = None
+        if split not in (None, "all"):
+            if split not in DT.SPLITS:
+                raise DT.DevTestError(f"--split phải là dev | test | all, nhận {split!r}")
+            data, split_src, split_note = R.resolve_split(selected, {r["qid"] for r in rows_a} | {r["qid"] for r in rows_b},
+                                                          split_file=split_file)
+            rows_a, rows_b = DT.filter_rows(rows_a, data, split), DT.filter_rows(rows_b, data, split)
+            if not rows_a or not rows_b:
+                raise DT.DevTestError(f"split {split}: không còn câu nào ({len(rows_a)} / {len(rows_b)})")
+    except (R.RunnerError, DT.DevTestError) as e:
         _fail(str(e), 2)
-    if ra.get("gold_version") != rb.get("gold_version"):
-        _fail(f"{arm_a} chấm trên gold {ra.get('gold_version')} còn {arm_b} trên {rb.get('gold_version')} — `sb rescore` bản cũ lên "
-              "version mới trước (Part 11)", 1)
-    cmp = R.compare(rows_a, rows_b, cfg)
+    if condensed and (not ra.get("condensed") or not rb.get("condensed")):
+        _fail("artifact chưa có condensed metrics; chạy sb rescore bằng code hiện tại", 2)
+    if split_src is not None:            # số trong results.json là của cả gold → tính lại trên phần câu đã lọc
+        def _view(res, rows):
+            agg = M.aggregate(rows, cfg.metrics, hub_score_max=res["overall"].get("hub_score_max"))
+            out = {**res, "overall": agg["overall"], "by_slice": agg["by_slice"]}
+            if res.get("condensed"):
+                out["condensed"] = M.aggregate_condensed(rows, cfg.metrics)
+            return out
+        ra, rb = _view(ra, rows_a), _view(rb, rows_b)
+    cmp = R.compare(rows_a, rows_b, cfg, condensed=condensed)
+    aa = ra["condensed"] if condensed else ra
+    bb = rb["condensed"] if condensed else rb
     con = _console()
 
     def _f(v):
         return "-" if v is None else f"{v:.3f}"
-    t = Table(title=f"run {run_id} · gold {ra.get('gold_version')} · {arm_a} → {arm_b} (Δ = B − A, điểm %)")
+    mode = "condensed" if condensed else "full"
+    if split_note:
+        con.print(f"  ghi chú: {split_note}", style="yellow", highlight=False)
+    split_tag = f" · split {split} ({split_src.name}, {len(rows_a)} câu)" if split_src is not None else ""
+    t = Table(title=f"run {run_id} · gold {ra.get('gold_version')} · {mode} · {arm_a} → {arm_b} (Δ = B − A, điểm %){split_tag}")
     for col in ("metric", arm_a, arm_b, "Δ", "CI95", "p (một phía)"):
         t.add_column(col, justify="left" if col == "metric" else "right")
     for mname in (f"recall@{k}", f"ndcg@{k}"):
         b = cmp[mname]
-        t.add_row(mname, _f(ra["overall"][mname]), _f(rb["overall"][mname]), "-" if b["delta"] is None else f"{b['delta']:+.2f}",
+        t.add_row(mname, _f(aa["overall"][mname]), _f(bb["overall"][mname]), "-" if b["delta"] is None else f"{b['delta']:+.2f}",
                   "-" if b["ci95"][0] is None else f"[{b['ci95'][0]:+.2f}, {b['ci95'][1]:+.2f}]",
                   "-" if b["p_one_sided"] is None else f"{b['p_one_sided']:.3f} (n={b['n']})")
     for mname in (f"mrr@{k}", f"judged@{k}", "constraint_precision", "zero_result_in_catalog", "zero_result_out_of_catalog"):
-        t.add_row(mname, _f(ra["overall"].get(mname)), _f(rb["overall"].get(mname)), "", "", "")
+        t.add_row(mname, _f(aa["overall"].get(mname)), _f(bb["overall"].get(mname)), "", "", "")
+    if condensed:
+        t.add_row(f"full judged@{k}", _f(ra["overall"].get(f"judged@{k}")), _f(rb["overall"].get(f"judged@{k}")), "", "", "")
+        t.add_row("retained ratio", _f(aa["coverage"].get("retained_ratio")), _f(bb["coverage"].get("retained_ratio")), "", "", "")
     con.print(t)
     ts = Table(title=f"theo slice: ndcg@{k} (Δ điểm %) · judged@{k}")
     for col in ("slice", "n", f"{arm_a} ndcg", f"{arm_b} ndcg", "Δ ndcg", f"{arm_a} judged", f"{arm_b} judged"):
         ts.add_column(col, justify="left" if col == "slice" else "right")
-    for s in sorted(set(ra["by_slice"]) | set(rb["by_slice"])):
-        va, vb = ra["by_slice"].get(s, {}), rb["by_slice"].get(s, {})
+    for s in sorted(set(aa["by_slice"]) | set(bb["by_slice"])):
+        va, vb = aa["by_slice"].get(s, {}), bb["by_slice"].get(s, {})
+        full_va, full_vb = ra["by_slice"].get(s, {}), rb["by_slice"].get(s, {})
         d = cmp["slice_delta_ndcg"].get(s)
         ts.add_row(s, str(va.get("n", vb.get("n", "-"))), _f(va.get(f"ndcg@{k}")), _f(vb.get(f"ndcg@{k}")),
-                   "-" if d is None else f"{d:+.2f}", _f(va.get(f"judged@{k}")), _f(vb.get(f"judged@{k}")))
+                   "-" if d is None else f"{d:+.2f}", _f(full_va.get(f"judged@{k}")), _f(full_vb.get(f"judged@{k}")))
     con.print(ts)
     style = {"WIN": "green", "TIE": "yellow", "LOSE": "red"}[cmp["verdict"]]
     con.print(f"[{style}]{cmp['verdict']}[/]: {cmp['reason']}", highlight=False)
     low = [a for a, r in ((arm_a, ra), (arm_b, rb)) if r.get("needs_labels")]
     if low:
-        con.print(f"  cảnh báo: {', '.join(low)} chưa đạt judged@{k} (NEEDS_LABELS) — chưa nên đọc Δ, gán hole trước", style="yellow")
+        con.print(f"  cảnh báo: {', '.join(low)} chưa đạt judged@{k} (NEEDS_LABELS) — đọc condensed cùng coverage", style="yellow")
+    if condensed:
+        con.print("  condensed chỉ chấm kết quả đã có nhãn; đọc cùng full judged và retained ratio ở trên", style="yellow")
+    _print_block_table(con, rows_a, rows_b, arm_a, arm_b, k)
+
+
+def _print_block_table(con, rows_a: list[dict], rows_b: list[dict], arm_a: str, arm_b: str, k: int) -> None:
+    """Bảng theo khối rubric (06/10): nDCG@k full và condensed của A, B và Δ (điểm %) trên cặp qid cả hai xác định."""
+    from rich.table import Table
+    from . import metrics as M, runner as R
+    R.attach_query_meta(rows_a)
+    R.attach_query_meta(rows_b)
+    full = M.group_delta_stats(rows_a, rows_b, f"ndcg@{k}", "block")
+    cond = M.group_delta_stats(rows_a, rows_b, f"condensed_ndcg@{k}", "block")
+    n_rows = {b: sum(1 for r in rows_a if r.get("block") == b) for b in sorted(set(full) | set(cond))}
+
+    def _f(v):
+        return "-" if v is None else f"{v:.3f}"
+
+    def _d(v):
+        return "-" if v is None else f"{v:+.2f}"
+    tb = Table(title=f"theo khối rubric: ndcg@{k} full / condensed (Δ = B − A, điểm %) — v3 = câu của tag gold_v3 (rubric v3), "
+                     "v4 = câu thêm từ gold_v4 (rubric v4); không trộn hai rubric khi trích dẫn")
+    for col in ("khối", "n", f"{arm_a} full", f"{arm_b} full", "Δ full", f"{arm_a} cond", f"{arm_b} cond", "Δ cond"):
+        tb.add_column(col, justify="left" if col == "khối" else "right")
+    for b, n in n_rows.items():
+        f_, c_ = full.get(b, {}), cond.get(b, {})
+        tb.add_row(b, f"{n} (cặp {f_.get('n', 0)})", _f(f_.get("a")), _f(f_.get("b")), _d(f_.get("delta")),
+                   _f(c_.get("a")), _f(c_.get("b")), _d(c_.get("delta")))
+    con.print(tb)
+    if not cond:
+        con.print("  condensed: artifact chưa có cột condensed_ndcg — chạy sb rescore bằng code hiện tại", style="yellow")
+
+
+# ------------------------------------------------------------------ Day 5: regression gọn (regress.py)
+regress_app = typer.Typer(no_args_is_help=True, help="Day 5 (bản gọn của Part 13): `baseline` ghi ảnh chụp metric từng câu của "
+                                                     "một arm; `check` so lượt chạy mới với ảnh chụp đó")
+app.add_typer(regress_app, name="regress")
+
+
+def _split_qids(gold_version: str, which: Optional[str]) -> Optional[set]:
+    if which in (None, "all"):
+        return None
+    from . import devtest as DT
+    if which not in DT.SPLITS:
+        raise DT.DevTestError(f"--split phải là dev | test | all, nhận {which!r}")
+    data = DT.load(gold_version)
+    return {q for q, s_ in data["assignment"].items() if s_ == which}
+
+
+@regress_app.command("baseline")
+def regress_baseline(c: typer.Context,
+                     arm: str = typer.Option(..., "--arm", help="arm làm mốc, vd APP.e5s.hybrid_norm"),
+                     note: str = typer.Option(..., "--note", help="vì sao đặt mốc này (trỏ entry history)"),
+                     gold_version: Optional[str] = typer.Option(None, "--gold", help="gold_vN; mặc định bản mới nhất của arm"),
+                     force: bool = typer.Option(False, "--force", help="ghi đè baseline đã có (đổi mốc có chủ đích)")):
+    """Ghi `regression/baseline_v1.json` từ kết quả arm trong run (--run-id; mặc định run mới nhất): metric overall,
+    theo slice và từng câu + top_ids, gold_version, sha catalog, commit. Mã thoát: 0 · 2 thiếu kết quả / đã có baseline."""
+    from . import regress as RG, runner as R
+    from .catalog import read_stats
+    ctx = _ctx(c)
+    cfg = ctx.cfg()
+    try:
+        run_id = _run_id_or_latest(ctx)
+        res, rows, _ = R.read_results_at(run_id, arm, gold_version)
+        th = RG.Thresholds.from_cfg(cfg)
+        data = RG.make_baseline(res, rows, th, items_sha256=read_stats(ctx.dataset)["items_sha256"], note=note)
+        out = RG.write_baseline(data, RG.baseline_path(cfg), force=force)
+    except (R.RunnerError, RG.RegressError) as e:
+        _fail(str(e), 2)
+    o = data["overall"]
+    typer.echo(f"{out}: {arm} · run {run_id} · {data['gold_version']} · {len(data['per_query'])} câu · "
+               + " · ".join(f"{m} {o[m]:.3f}" for m in data["metrics"]) + ("  (cây làm việc có thay đổi chưa commit)" if data["git_dirty"] else ""))
+
+
+@regress_app.command("check")
+def regress_check(c: typer.Context,
+                  arm: Optional[str] = typer.Option(None, "--arm", help="mặc định arm của baseline"),
+                  split: Optional[str] = typer.Option(None, "--split", help="dev | test | all (mặc định all)"),
+                  out_json: Optional[Path] = typer.Option(None, "--json", help="ghi kết quả JSON ra file")):
+    """So arm trong run (--run-id; mặc định run mới nhất) với baseline_v1 trên tập câu chung: FAIL khi Δ overall < −ngưỡng
+    hoặc một slice < −ngưỡng (điểm ×100, `regression.regress_v1`). Mã thoát: 0 PASS · 1 FAIL · 2 không so được."""
+    import json as _json
+    from . import devtest as DT, regress as RG, runner as R
+    ctx = _ctx(c)
+    cfg = ctx.cfg()
+    try:
+        th = RG.Thresholds.from_cfg(cfg)
+        base = RG.load_baseline(RG.baseline_path(cfg))
+        run_id = _run_id_or_latest(ctx)
+        res, rows, _ = R.read_results_at(run_id, arm or base["arm"], base["gold_version"])
+        rep = RG.check(base, res, rows, th, qids=_split_qids(base["gold_version"], split))
+    except (R.RunnerError, RG.RegressError, DT.DevTestError) as e:
+        _fail(str(e), 2)
+    con = _console()
+    from rich.table import Table
+    t = Table(title=f"regress · run {run_id} vs {base['version']} ({base['arm']} @ {base['run_id']}) · {base['gold_version']} · "
+                    f"split {split or 'all'} · n = {rep['n_queries']}")
+    for col in ("phạm vi", "n", "metric", "baseline", "hiện tại", "Δ điểm", "ngưỡng", ""):
+        t.add_column(col, justify="left" if col in ("phạm vi", "metric") else "right")
+    for ln in rep["lines"]:
+        if ln["scope"] != "overall" and ln["status"] == "ok":
+            continue
+        f = (lambda v: "-" if v is None else f"{v:.3f}")
+        t.add_row(ln["scope"], str(ln["n"]), ln["metric"], f(ln["baseline"]), f(ln["current"]),
+                  "-" if ln["delta"] is None else f"{ln['delta']:+.2f}", f"{ln['limit']:g}", ln["status"])
+    con.print(t)
+    con.print(f"top_ids đổi ở {rep['n_top_ids_changed']}/{rep['n_queries']} câu; slice không in = trong ngưỡng", highlight=False)
+    for w in rep["warnings"]:
+        con.print(f"  cảnh báo: {w}", style="yellow", highlight=False)
+    for d in rep["worst"][:5]:
+        con.print(f"  tụt: {d['qid']} ({d['slice']}) {d['metric']} {d['delta']:+.1f}", highlight=False)
+    if out_json:
+        out_json.write_text(_json.dumps(rep, ensure_ascii=False, indent=1), encoding="utf-8")
+    style = "green" if rep["status"] == "PASS" else "red"
+    con.print(f"[{style}]{rep['status']}[/]" + (f": {'; '.join(rep['failures'])}" if rep["failures"] else ""), highlight=False)
+    if rep["status"] != "PASS":
+        raise typer.Exit(1)
 
 
 # ------------------------------------------------------------------ Part 5 (ngày 2: pool, split)
@@ -783,6 +962,60 @@ def latency_http(c: typer.Context,
     con.print(f"  → {p}", style="dim", highlight=False)
     if summary["n_ok"] == 0:
         raise typer.Exit(1)
+
+
+@latency_app.command("embed")
+def latency_embed(c: typer.Context,
+                  models: str = typer.Option(..., "--models", help="model IDs, cách nhau bằng dấu phẩy"),
+                  gold_p: Optional[Path] = typer.Option(None, "--gold", help="mặc định gold/gold.jsonl"),
+                  warmup: int = typer.Option(20, "--warmup", min=0, help="số query làm nóng, không tính vào p50/p95"),
+                  delay_ms: float = typer.Option(0.0, "--delay-ms", min=0.0,
+                                                 help="nghỉ giữa request, không tính vào latency; dùng để tránh rate limit API")):
+    """Đo p50/p95 embed query từng model trên gold active, mỗi câu một request không qua cache."""
+    import hashlib
+    import json
+    from . import latency as L, paths, runner as R
+    from .embed import EmbedBatchError, EmbedderUnavailable, make_embedder
+    from .metrics import MetricsError, load_gold
+    from .holes import gold_version_of
+    ctx = _ctx(c)
+    cfg = ctx.cfg()
+    gp = gold_p or paths.GOLD_JSONL
+    names = list(dict.fromkeys(x.strip() for x in models.split(",") if x.strip()))
+    if not names:
+        _fail("--models cần ít nhất một model", 2)
+    try:
+        texts = [q.text for q in load_gold(gp)]
+    except (OSError, MetricsError) as e:
+        _fail(str(e), 2)
+    run_id = ctx.run_id or R.new_run_id()
+    rows = []
+    for model in names:
+        try:
+            embedder = make_embedder(cfg, model, no_cache=True, preflight=False)
+            try:
+                result = L.measure_embed_queries(embedder, texts, warmup=warmup, delay_s=delay_ms / 1000.0)
+                result.update(model=model, dim=cfg.model_cfg(model).dim, model_version=embedder.name)
+            finally:
+                embedder.close()
+        except (EmbedderUnavailable, EmbedBatchError, L.LatencyError, ValueError) as e:
+            _fail(f"{model}: {e}")
+        rows.append(result)
+        typer.echo(f"{model}: n={result['n']} warmup={result['warmup']} "
+                   f"p50={result['p50_ms']:.1f} ms p95={result['p95_ms']:.1f} ms")
+    path = paths.run_dir(run_id) / "latency-embed.json"
+    gold_sha = hashlib.sha256(gp.read_bytes()).hexdigest()
+    previous = json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+    if previous and (previous.get("gold_sha256") != gold_sha or previous.get("warmup") != warmup):
+        _fail(f"{path}: gold/warmup khác phép đo cũ — dùng --run-id khác", 2)
+    all_rows = {r["model"]: r for r in (previous or {}).get("models", [])}
+    all_rows.update({r["model"]: r for r in rows})
+    payload = {"run_id": run_id, "gold_path": str(gp), "gold_version": gold_version_of(gp),
+               "gold_sha256": gold_sha, "warmup": warmup,
+               "method": "sequential one query per uncached request; wall clock; no concurrent benchmark; inter-request delay excluded",
+               "models": list(all_rows.values())}
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    typer.echo(f"→ {path}")
 
 
 @app.command()
@@ -910,9 +1143,9 @@ def gold_drafts(c: typer.Context,
     from .labeling import JsonlLabelStore
     ctx = _ctx(c)
     cfg = ctx.cfg()
-    overrides_p = paths.GOLD_DIR / "overrides.tsv"
     labels_p = labels or paths.sbench_home() / "labels" / "labels.jsonl"
     raw_p = raw or paths.GOLD_DIR / "drafts_raw.tsv"
+    overrides_p = raw_p.parent / "overrides.tsv"                # cạnh drafts_raw (05/10, như `gold pool`); v1: gold/
     out_p = out or paths.GOLD_DIR / "drafts.txt"
     if not labels_p.exists():
         _fail(f"không thấy kho nhãn {labels_p} — chạy app soát draft (streamlit_app.py) trước", 2)
@@ -995,7 +1228,7 @@ def gold_pool(c: typer.Context,
         if qid_mode == "case":
             raw_p = raw or paths.GOLD_DIR / "drafts_raw.tsv"
             cases = read_draft_cases(raw_p)
-            overrides = read_overrides(paths.GOLD_DIR / "overrides.tsv", {r["case_id"] for r in cases})
+            overrides = read_overrides(raw_p.parent / "overrides.tsv", {r["case_id"] for r in cases})   # cạnh drafts_raw (v4a: gold/v4a/)
             ds = [d.with_qid(q) for d, q in zip(ds, case_ids_for(ds, cases, overrides))]
         if slice_:
             ds = [d for d in ds if d.slice == slice_]
@@ -1179,20 +1412,42 @@ def gold_import(c: typer.Context,
                 catalog_p: Optional[Path] = typer.Option(None, "--catalog", help="products.jsonl của snapshot (mặc định "
                                                                                   "catalog.products_path)"),
                 out: Optional[Path] = typer.Option(None, "-o", "--out", help="mặc định gold/gold.jsonl"),
-                provenance: str = typer.Option("pool@gold_v1", "--provenance"),
+                provenance: Optional[str] = typer.Option(None, "--provenance", help="mặc định pool@gold_v1; với --append "
+                                                                                     "mặc định pool@<version>"),
                 overwrite: bool = typer.Option(False, "--overwrite", help="ghi đè gold.jsonl khác nội dung (chỉ trước tag)"),
+                append: bool = typer.Option(False, "--append", help="gold_v4+: nối các câu MỚI của pool này vào cuối "
+                                                                    "gold.jsonl đang có (Part 11: gold chỉ thêm); qid đã có → "
+                                                                    "từ chối; provenance theo nguồn từng nhãn"),
+                accept_unreviewed: bool = typer.Option(False, "--accept-unreviewed",
+                                                       help="(--append) cho nhãn máy CHƯA duyệt vào gold, provenance "
+                                                            "`…:machine_unreviewed@…`; mặc định từ chối"),
                 version: Optional[str] = typer.Option(None, "--version", help="version ghi vào changelog; mặc định tag "
                                                                                 "gold_v* mới nhất + 1 (chưa có tag: gold_v1)")):
     """merged.csv → gold.jsonl (GoldRecord) + một mục `changelog.yaml` cạnh file (Part 11). Từ chối nếu còn
     needs_discussion, thiếu / thừa cặp, id lạ với catalog, nhãn sai luật (exit 1) hoặc sha pool lệch meta, file thiếu /
-    sai định dạng (exit 2)."""
+    sai định dạng (exit 2). `--append` (gold_v4+): thêm câu mới vào gold đã tag thay vì ghi file mới — provenance từng nhãn
+    theo `labels/provenance_<X>.csv` (người · `pool:machine@…` máy đã duyệt), nhãn máy chưa duyệt bị từ chối (trừ
+    `--accept-unreviewed`), `verify-append` với gold cũ phải xanh."""
+    from collections import Counter
+
     from . import paths
     from .catalog import CatalogError, _jsonl_path
-    from .gold import GoldError, build_gold, load_pool_set, read_catalog_parents, write_gold_checked
-    from .gold_schema import read_merged_csv
-    from .holes import append_changelog, changelog_entry, list_gold_tags, next_version
+    from .gold import (SOURCE_HUMAN, SOURCE_MACHINE_UNREVIEWED, GoldError, RuleViolation, append_gold, build_gold,
+                       load_pool_set, pair_sources, read_catalog_parents, write_gold_checked)
+    from .gold_schema import read_gold_jsonl, read_merged_csv
+    from .holes import append_changelog, changelog_entry, gold_at, list_gold_tags, next_version, verify_append
     out_p = out or paths.GOLD_JSONL
+    if append and overwrite:
+        _fail("--append và --overwrite loại trừ nhau", 2)
+    if accept_unreviewed and not append:
+        _fail("--accept-unreviewed chỉ dùng với --append", 2)
+    by_source: Counter = Counter()
+    ver = version
     with _gold_errors():
+        tags = list_gold_tags() if append else None                      # git chỉ khi cần (không --append: lúc ghi)
+        if append and ver is None:
+            ver = next_version(tags)
+        prov = provenance or (f"pool@{ver}" if append else "pool@gold_v1")
         ps = load_pool_set(_meta_path(meta))
         try:
             cat = catalog_p or _jsonl_path(_ctx(c).cfg())
@@ -1201,15 +1456,46 @@ def gold_import(c: typer.Context,
         if ps.meta.snapshot not in str(cat):
             typer.secho(f"  cảnh báo: pool dựng từ snapshot {ps.meta.snapshot}, catalog đang kiểm là {cat}",
                         fg=typer.colors.YELLOW)
-        records = build_gold(ps, read_merged_csv(merged), read_catalog_parents(cat), provenance)
-        changed = write_gold_checked(records, out_p, overwrite=overwrite)
+        rows = read_merged_csv(merged)
+        if not append:
+            records = new_records = build_gold(ps, rows, read_catalog_parents(cat), prov)
+            changed = write_gold_checked(records, out_p, overwrite=overwrite)
+        else:
+            if not out_p.exists():
+                raise GoldError(f"--append cần gold đang có ở {out_p}")
+            sources = pair_sources(ps.meta_path)
+            keys = ps.all_keys()
+            unrev = sorted(k for k in keys if sources.get(k) == SOURCE_MACHINE_UNREVIEWED)
+            if unrev and not accept_unreviewed:
+                raise RuleViolation("import --append: nhãn máy chưa duyệt (duyệt trong app, hoặc --accept-unreviewed)",
+                                    [f"{q}/{p}" for q, p in unrev])
+            new_records = build_gold(ps, rows, read_catalog_parents(cat), prov, sources=sources)
+            existing = read_gold_jsonl(out_p)
+            records = append_gold(existing, new_records)
+            # gold của package: so với tag gold_v* mới nhất (bắt cả trôi giữa tag và file đang có); file khác: so với chính nó
+            is_pkg = out_p.resolve() == paths.GOLD_JSONL.resolve()
+            base_ref = tags[-1] if (is_pkg and tags) else None
+            problems = verify_append(gold_at(base_ref) if base_ref else existing, records)
+            if problems:
+                raise RuleViolation(f"import --append: verify-append {base_ref or out_p.name} → bản mới", problems)
+            by_source = Counter(sources.get(k, SOURCE_HUMAN) for k in keys)
+            changed = write_gold_checked(records, out_p, overwrite=True)
         if changed:
-            ver = version or next_version(list_gold_tags())
-            append_changelog(changelog_entry(ver, "import", records, source=provenance, merged=str(merged.name),
-                                             snapshot=ps.meta.snapshot), out_p.parent / paths.GOLD_CHANGELOG.name)
-    n = sum(len(r.judgments) for r in records)
-    typer.echo(f"{out_p}: {len(records)} câu · {n} nhãn · provenance {provenance}" + ("" if changed else " (không đổi)"))
-    typer.echo("  tiếp: `sb gold check`")
+            ver = ver or next_version(list_gold_tags())
+            extra = {"source": prov, "merged": str(merged.name), "snapshot": ps.meta.snapshot}
+            if append:
+                extra.update(new_queries=len(new_records), new_labels_by_source=dict(sorted(by_source.items())),
+                             pool_dir=str(ps.meta_path.parent.name))
+            append_changelog(changelog_entry(ver, "import_append" if append else "import", records, **extra),
+                             out_p.parent / paths.GOLD_CHANGELOG.name)
+    n = sum(len(r.judgments) for r in new_records)
+    head = f"+{len(new_records)} câu (tổng {len(records)})" if append else f"{len(records)} câu"
+    typer.echo(f"{out_p}: {head} · {n} nhãn · provenance {prov}" + ("" if changed else " (không đổi)"))
+    if append:
+        typer.echo(f"  nguồn nhãn mới: {dict(sorted(by_source.items()))}")
+        typer.echo(f"  tiếp: `sb gold check` → `sb gold verify-append <tag cũ>` → commit → `git tag {ver}`")
+    else:
+        typer.echo("  tiếp: `sb gold check`")
 
 
 @gold_app.command("retire")
@@ -1273,10 +1559,16 @@ def gold_holes(c: typer.Context,
                stage: Optional[str] = typer.Option(None, "--stage", help="cổng (Part 12) — chưa cài, dùng --arms"),
                tag: Optional[str] = typer.Option(None, "--tag", help="tên đợt, mặc định = --stage hoặc arm nối bằng +"),
                k: Optional[int] = typer.Option(None, "--k", help="mặc định holes.k"),
+               cap: Optional[int] = typer.Option(None, "--cap", min=1,
+                                                  help="giới hạn cặp người gán; round-robin theo slice/query"),
                split: bool = typer.Option(False, "--split", help="chia câu xen kẽ A/B (hai người gán, không câu chung)"),
                gold_p: Optional[Path] = typer.Option(None, "--gold", help="mặc định gold/gold.jsonl"),
                out_dir: Optional[Path] = typer.Option(None, "--out-dir", help="mặc định gold/holes/<gold_version>__<tag>/"),
-               variant: str = typer.Option("T3+R", "--variant", help="text lấy snippet (B0)")):
+               variant: str = typer.Option("T3+R", "--variant", help="text lấy snippet (B0)"),
+               qids: Optional[str] = typer.Option(None, "--qids", help="chỉ quét các câu này (phẩy), vd câu mới của gold_v4"),
+               new_since: Optional[str] = typer.Option(None, "--new-since",
+                                                       help="chỉ quét câu CHƯA có trong tag / commit / file gold này "
+                                                            "(vd gold_v3 → các câu thêm ở gold_v4)")):
     """Quét per_query của các arm trong run (--run-id, mặc định run mới nhất): cặp trong top-k chưa có nhãn → thư mục
     hole để gán (app: nhập pool_meta.json của thư mục đó). Câu out_of_catalog tự gán 0 (auto_ooc). Mã thoát: 0 ·
     1 không có hole · 2 lỗi đầu vào."""
@@ -1307,8 +1599,30 @@ def gold_holes(c: typer.Context,
         _fail(str(e), 2)
     except CatalogError as e:
         _fail(str(e))
+    scan = records
+    if qids is not None or new_since is not None:
+        from pydantic import ValidationError
+
+        from .gold_schema import SchemaError
+        want = {q.strip() for q in qids.split(",") if q.strip()} if qids is not None else None
+        if want is not None and not want:
+            _fail("--qids rỗng — liệt kê qid cách nhau bằng phẩy", 2)
+        try:
+            old_q = {r.qid for r in H.gold_at(new_since)} if new_since else set()
+        except (GoldError, H.RuleViolation, SchemaError, ValidationError, OSError, ValueError) as e:
+            _fail(f"--new-since {new_since}: {e}", 2)
+        unknown = sorted((want or set()) - {r.qid for r in records})
+        if unknown:
+            _fail(f"--qids không có trong gold: {', '.join(unknown)}", 2)
+        scan = [r for r in records if (want is None or r.qid in want) and r.qid not in old_q]
+        if not scan:
+            _fail("--qids / --new-since không còn câu nào để quét", 2)
+        typer.echo(f"  chỉ quét {len(scan)}/{len(records)} câu" + (f" (mới so với {new_since})" if new_since else ""))
     kk = k or cfg.holes.k
-    to_label, auto = H.find_holes(records, rows_by_arm, kk)
+    to_label, auto = H.find_holes(scan, rows_by_arm, kk)
+    n_uncapped = len(to_label)
+    if cap is not None:
+        to_label = H.cap_holes(to_label, scan, cap, seed=cfg.run.seed)
     if not to_label and not auto:
         _fail(f"không có hole: mọi cặp top-{kk} của {', '.join(arm_ids)} đã có nhãn", 1)
     out = out_dir or paths.HOLES_DIR / f"{gv or 'untagged'}__{tag_}"
@@ -1317,6 +1631,8 @@ def gold_holes(c: typer.Context,
                           collection=collection, k=kk, run_id=run_id, arms=arm_ids, gold_version=gv, tag=tag_)
     typer.echo(f"{out}: {s['n_to_label']} cặp cần gán / {s['n_queries']} câu · {s['n_auto_ooc']} hole out_of_catalog tự gán 0 · "
                f"gold {gv} · run {run_id}")
+    if cap is not None and n_uncapped > len(to_label):
+        typer.echo(f"  cap: {n_uncapped} → {len(to_label)} cặp, round-robin theo slice/query")
     for x, f in s["files"].items():
         typer.echo(f"  pool_{x}.csv: {f['n_queries']} câu · {f['n_pairs']} cặp")
     typer.echo(f"  gán trong app (nhập {out / 'pool_meta.json'}), rồi: sb gold holes import {out}")
@@ -1327,11 +1643,14 @@ def gold_holes_import(c: typer.Context,
                       holes_dir: Path = typer.Argument(..., help="thư mục do `sb gold holes` tạo (có labels/labels_X.csv)"),
                       gold_p: Optional[Path] = typer.Option(None, "--gold", help="mặc định gold/gold.jsonl"),
                       version: Optional[str] = typer.Option(None, "--version", help="mặc định tag gold_v* mới nhất + 1"),
-                      partial: bool = typer.Option(False, "--partial", help="cho phép còn cặp chưa gán (chỉ thêm phần đã gán)")):
+                      partial: bool = typer.Option(False, "--partial", help="cho phép còn cặp chưa gán (chỉ thêm phần đã gán)"),
+                      accept_unreviewed: bool = typer.Option(False, "--accept-unreviewed",
+                                                             help="cho nhãn máy CHƯA duyệt vào gold (provenance "
+                                                                  "`holes:<tag>:machine_unreviewed@…`); mặc định từ chối")):
     """Thêm nhãn hole vào gold.jsonl (provenance holes:<tag>@<version>; hole out_of_catalog: auto_ooc). Từ chối cặp đã có
     nhãn (gold chỉ thêm), nhãn sai luật, thiếu nhãn (trừ --partial). In lệnh `git tag` cần chạy. Mã thoát: 0 · 1 · 2."""
     from . import holes as H, paths
-    from .gold import GoldError
+    from .gold import GoldError, pair_sources
     from .gold_schema import read_gold_jsonl
     p = gold_p or paths.GOLD_JSONL
     with _gold_errors():
@@ -1339,12 +1658,16 @@ def gold_holes_import(c: typer.Context,
             raise GoldError(f"không thấy {p}")
         s = H.read_holes_summary(holes_dir)
         ver = version or H.next_version(H.list_gold_tags())
-        records, stats = H.import_holes(read_gold_jsonl(p), holes_dir, version=ver, tag=s["tag"], partial=partial)
+        sources = pair_sources(holes_dir / "pool_meta.json") or None          # 05/10: nguồn nhãn máy / người
+        records, stats = H.import_holes(read_gold_jsonl(p), holes_dir, version=ver, tag=s["tag"], partial=partial,
+                                        sources=sources, accept_unreviewed=accept_unreviewed)
         H.write_gold(records, p)
         H.append_changelog(H.changelog_entry(ver, "holes_import", records, tag=s["tag"], new_labels_by_source=stats,
                                              holes_dir=str(holes_dir.name), run_id=s.get("run_id"), arms=s.get("arms")),
                            p.parent / paths.GOLD_CHANGELOG.name)
-    typer.echo(f"{p}: +{stats['human']} nhãn người · +{stats['auto_ooc']} auto_ooc · {stats['queries']} câu · version {ver}")
+    machine = (f" · +{stats['machine']} nhãn máy đã duyệt" if "machine" in stats else "") + (
+        f" · +{stats['machine_unreviewed']} nhãn máy CHƯA duyệt" if stats.get("machine_unreviewed") else "")
+    typer.echo(f"{p}: +{stats['human']} nhãn người{machine} · +{stats['auto_ooc']} auto_ooc · {stats['queries']} câu · version {ver}")
     typer.echo(f"  tiếp: `sb gold check` → `sb gold verify-append <tag cũ> {p}` → commit → `git tag {ver}` → `sb rescore`")
 
 
@@ -1414,6 +1737,30 @@ def gold_check(c: typer.Context,
         _fail(f"gold check đỏ: {len(rep.problems)} lỗi (min_per_slice = {n_min})", 1)
     typer.secho(f"gold check xanh ({sum(rep.n_queries.values())} câu, min_per_slice = {n_min}) — chốt bằng: git tag gold_v1 "
                 "(lần thêm sau: gold_vN+1, spec Part 11)", fg=typer.colors.GREEN)
+
+
+@gold_app.command("devtest")
+def gold_devtest(c: typer.Context,
+                 seed: int = typer.Option(42, "--seed", help="seed xáo trong từng slice"),
+                 gold_p: Optional[Path] = typer.Option(None, "--gold", help="mặc định gold/gold.jsonl (phải khớp tag gold_v*)"),
+                 force: bool = typer.Option(False, "--force", help="ghi đè file phân chia đã có (chia lại có chủ đích)")):
+    """Chia câu active của gold đã tag thành `dev` (chỉnh tham số) / `test` (chỉ báo cáo), phân tầng theo slice →
+    `gold/splits/devtest@<gold_version>.json` (devtest.py; quyết định 05/10: ~65/66, không 100/100). Mã thoát: 0 · 2 lỗi."""
+    from . import devtest as DT, metrics as M, paths, runner as R
+    from .gold_schema import file_sha256
+    gp = gold_p or paths.GOLD_JSONL
+    try:
+        version = R.gold_version_for(gp, allow_untagged=False)
+        if not version or not version.startswith("gold_v"):
+            raise DT.DevTestError(f"{gp} không phải gold đã tag (version {version!r})")
+        gold = M.load_gold(gp)
+        data = DT.build_file(gold, gold_version=version, gold_sha256=file_sha256(gp), seed=seed)
+        out = DT.write(data, force=force)
+    except (DT.DevTestError, R.RunnerError) as e:
+        _fail(str(e), 2)
+    typer.echo(f"{out}: {version} · dev {data['n_dev']} / test {data['n_test']} câu · seed {seed}")
+    for s_, v in data["by_slice"].items():
+        typer.echo(f"  {s_:22} dev {v['dev']:>2} · test {v['test']:>2}")
 
 
 # ------------------------------------------------------------------ nhãn máy (máy gán phần còn lại, người duyệt trong app)
@@ -1563,6 +1910,389 @@ def cost():
     t.add_row("[bold]tổng[/]", "", "", str(sum(r["calls"] for r in rows)), str(sum(r["texts"] for r in rows)),
               str(sum(r["tokens"] for r in rows)), f"{sum(r['usd'] for r in rows):.6f}")
     _console().print(t)
+
+
+# ------------------------------------------------------------------ Phase A (05/10): chẩn đoán, không cần Weaviate / Cohere
+def topids_compare(rows_a: list[dict], rows_b: list[dict]) -> tuple[int, int, list[tuple[str, int, str | None, str | None]], list[str]]:
+    """So `top_ids` theo qid: (số câu trùng, số câu chung, [(qid, vị trí khác đầu tiên (0-based), A[pos], B[pos])…],
+    qid chỉ có ở một bên)."""
+    a = {r["qid"]: list(r.get("top_ids") or []) for r in rows_a}
+    b = {r["qid"]: list(r.get("top_ids") or []) for r in rows_b}
+    common = sorted(set(a) & set(b))
+    only = sorted(set(a) ^ set(b))
+    same, diffs = 0, []
+    for q in common:
+        if a[q] == b[q]:
+            same += 1
+            continue
+        pos = next((i for i, (x, y) in enumerate(zip(a[q], b[q])) if x != y), min(len(a[q]), len(b[q])))
+        diffs.append((q, pos, a[q][pos] if pos < len(a[q]) else None, b[q][pos] if pos < len(b[q]) else None))
+    return same, len(common), diffs, only
+
+
+@app.command("topids-diff")
+def topids_diff(run_a: str = typer.Argument(..., help="run_id A"), arm_a: str = typer.Argument(..., help="arm A"),
+                run_b: Optional[str] = typer.Option(None, "--run-b", help="mặc định = RUN_A"),
+                arm_b: Optional[str] = typer.Option(None, "--arm-b", help="mặc định = ARM_A")):
+    """So `top_ids` của hai per_query.parquet theo qid (kiểm một arm chạy lại có ra đúng danh sách — tính tất định): in số câu
+    trùng / tổng và tối đa 5 qid khác kèm vị trí khác đầu tiên. Mã thoát: 0 trùng hết · 1 có câu khác (hoặc tập qid khác) ·
+    2 thiếu kết quả."""
+    from . import runner as R
+    run_b, arm_b = run_b or run_a, arm_b or arm_a
+    try:
+        rows_a, rows_b = R.read_rows(run_a, arm_a), R.read_rows(run_b, arm_b)
+    except R.RunnerError as e:
+        _fail(str(e), 2)
+    same, total, diffs, only = topids_compare(rows_a, rows_b)
+    typer.echo(f"{same}/{total} câu trùng top_ids  ·  A = {run_a}/{arm_a}  ·  B = {run_b}/{arm_b}")
+    for q, pos, x, y in diffs[:5]:
+        typer.echo(f"  {q}: khác từ vị trí {pos + 1}: A={x} B={y}")
+    if len(diffs) > 5:
+        typer.echo(f"  … và {len(diffs) - 5} câu khác nữa")
+    if only:
+        typer.echo(f"  qid chỉ có ở một bên: {only[:5]}{' …' if len(only) > 5 else ''}")
+    raise typer.Exit(1 if diffs or only else 0)
+
+
+# ------------------------------------------------------------------ 06/10: guard Phase A, phân tích "kết quả yếu"
+def _rows_for(run_id: str, arm: str, gold_version: Optional[str], split: Optional[str], split_file: Optional[Path]):
+    """(results, rows, gold_version, ghi chú phân chia | None, tên file phân chia | None) của một arm, đã lọc theo split."""
+    from . import devtest as DT, runner as R
+    res, rows, gv = R.read_results_at(run_id, arm, gold_version)
+    if split in (None, "all"):
+        return res, rows, gv, None, None
+    if split not in DT.SPLITS:
+        raise DT.DevTestError(f"--split phải là dev | test | all, nhận {split!r}")
+    data, src, note = R.resolve_split(gv, {r["qid"] for r in rows}, split_file=split_file)
+    return res, DT.filter_rows(rows, data, split), gv, note, src.name
+
+
+@app.command()
+def guards(c: typer.Context,
+           arms: str = typer.Option(..., "--arms", help="id arm, phân cách bằng dấu phẩy"),
+           split: Optional[str] = typer.Option(None, "--split", help="dev | test | all (mặc định all)"),
+           split_file: Optional[Path] = typer.Option(None, "--split-file", help="file phân chia thay devtest@<gold_version>.json"),
+           gold_version: Optional[str] = typer.Option(None, "--gold", help="gold_vN; mặc định bản mới nhất của từng arm"),
+           recompute: bool = typer.Option(False, "--recompute", help="chấm lại trong RAM từ top_ids + extra đã lưu với gold + "
+                                                                    "query_annotations hiện tại (không ghi file; cần catalog local, "
+                                                                    "không Weaviate / model)")):
+    """Guard Phase A của từng arm trong run (--run-id; mặc định run mới nhất) so với ngưỡng ĐỀ XUẤT `metrics.guards_proposed`
+    (kiến trúc search OTA §15 "Hard fail khi forbidden …"): forbidden_at_10, forbidden_query_rate, direction_accuracy,
+    filter_pass_rate, parse_accuracy từng trường, constraint_precision, zero_result_in_catalog / out_of_catalog — PASS / FAIL
+    / n/a (không câu nào định nghĩa) kèm số câu định nghĩa và qid làm trượt. Chỉ báo, không chặn: mã thoát 0, trừ lỗi đầu
+    vào (2). Số đọc từ per_query đã lưu (chấm lúc chạy); annotations thêm sau đó chỉ có tác dụng với --recompute hoặc sau
+    `sb rescore`."""
+    from rich.table import Table
+    from . import devtest as DT, metrics as M, paths, runner as R
+    from .catalog import CatalogError
+    from .gold import GoldError
+    ctx = _ctx(c)
+    cfg = ctx.cfg()
+    prop = cfg.metrics.guards_proposed
+    if prop is None:
+        _fail("sbench.yaml thiếu metrics.guards_proposed (ngưỡng đề xuất cho sb guards)", 2)
+    arm_ids = [a.strip() for a in arms.split(",") if a.strip()]
+    if not arm_ids:
+        _fail("--arms rỗng", 2)
+    per_arm: dict[str, tuple[str, list[dict], int]] = {}
+    notes: list[str] = []
+    try:
+        run_id = _run_id_or_latest(ctx)
+        env = R.load_env(cfg, ctx.dataset, paths.GOLD_JSONL, run_id=run_id, allow_untagged=True) if recompute else None
+        for a in arm_ids:
+            res, rows, gv, note, src = _rows_for(run_id, a, gold_version, split, split_file)
+            if note:
+                notes.append(f"{a}: {note}")
+            if env is not None:
+                old = {r["qid"]: r for r in R.read_rows(run_id, a)}
+                keep = {r["qid"] for r in rows}
+                rows = [R.rescore_row(g, old[g.qid], env) for g in env.gold if g.qid in old and g.qid in keep]
+                gv = f"{env.gold_version or 'gold chưa tag'}, chấm lại trong RAM"
+            label = f"{gv}" + (f" · split {split} ({src})" if src else "")
+            per_arm[a] = (label, M.guard_lines(rows, prop), len(rows))
+    except (R.RunnerError, DT.DevTestError, M.MetricsError, GoldError) as e:
+        _fail(str(e), 2)
+    except CatalogError as e:
+        _fail(str(e), 2)
+    con = _console()
+    for n_ in notes:
+        con.print(f"  ghi chú: {n_}", style="yellow", highlight=False)
+    t = Table(title=f"guard Phase A · run {run_id} · ngưỡng metrics.guards_proposed (đề xuất 06/10, chưa chốt — chỉ báo)")
+    t.add_column("guard", justify="left")
+    t.add_column("ngưỡng", justify="right")
+    for a in arm_ids:
+        t.add_column(f"{a}\n{per_arm[a][0]} · {per_arm[a][2]} câu", justify="right")
+    names: list[str] = []
+    for a in arm_ids:
+        for ln in per_arm[a][1]:
+            if ln["name"] not in names:
+                names.append(ln["name"])
+    style = {"PASS": "green", "FAIL": "red", "n/a": "dim", "-": ""}
+    for name in names:
+        lines = {a: next((ln for ln in per_arm[a][1] if ln["name"] == name), None) for a in arm_ids}
+        ref = next(ln for ln in lines.values() if ln is not None)
+        thr = "-" if ref["op"] is None or ref["threshold"] is None else f"{'≤' if ref['op'] == 'max' else '≥'} {ref['threshold']:g}"
+        cells = []
+        for a in arm_ids:
+            ln = lines[a]
+            if ln is None:
+                cells.append("[dim]n/a[/]")
+                continue
+            v = "-" if ln["value"] is None else f"{ln['value']:.3f}"
+            st = ln["status"]
+            cells.append(f"{v} (n={ln['n']})" + (f" [{style[st]}]{st}[/]" if st not in ("-",) else ""))
+        t.add_row(name, thr, *cells)
+    con.print(t)
+    for a in arm_ids:
+        bad = [ln for ln in per_arm[a][1] if ln["status"] == "FAIL"]
+        for ln in bad:
+            q = ln["bad"]
+            con.print(f"  {a} · {ln['name']} trượt ở {len(q)} câu: {', '.join(q[:10])}{' …' if len(q) > 10 else ''}",
+                      highlight=False)
+    raise typer.Exit(0)
+
+
+def _float_list(raw: Optional[str], default: list[float], what: str) -> list[float]:
+    if not raw:
+        return list(default)
+    try:
+        return [float(x) for x in raw.split(",") if x.strip()]
+    except ValueError:
+        _fail(f"{what}: danh sách số phân cách bằng dấu phẩy, nhận {raw!r}", 2)
+
+
+@app.command("weak-results")
+def weak_results(c: typer.Context,
+                 arm: str = typer.Option(..., "--arm", help="arm có top_scores là cosine (arm APP / dense)"),
+                 model: Optional[str] = typer.Option(None, "--model", help="model bench của vector (mặc định model trong "
+                                                                           "results.json của arm), vd e5-small"),
+                 split: Optional[str] = typer.Option(None, "--split", help="dev | test | all (mặc định all)"),
+                 split_file: Optional[Path] = typer.Option(None, "--split-file", help="file phân chia thay devtest@<gold>.json"),
+                 gold_version: Optional[str] = typer.Option(None, "--gold", help="gold_vN; mặc định bản mới nhất của arm"),
+                 top_grid: Optional[str] = typer.Option(None, "--top-grid", help="ngưỡng topScore thử, vd 0.80,0.84 (mặc định "
+                                                                                 "metrics.weak_results.top_score_grid)"),
+                 margin_grid: Optional[str] = typer.Option(None, "--margin-grid", help="ngưỡng margin thử (mặc định "
+                                                                                       "metrics.weak_results.margin_grid)"),
+                 top_source: str = typer.Option("top_scores", "--top-source", help="top_scores: max top_scores đã lưu (top-k) | "
+                                                                                   "diagnostics: diagnostics.topScore của arm APP "
+                                                                                   "(= topScore của response, max trên cả R)")):
+    """Phân tích quy tắc "kết quả yếu" của hợp đồng search §3.4 (S2: WEAK_RESULT_TOP_SCORE / MARGIN) trên một arm đã chạy, không
+    Weaviate / model / API: topScore = max top_scores đã lưu; backgroundScore = trung vị cosine giữa vector truy vấn (cache embed
+    sqlite của bench, khoá = câu arm đã embed) và MỌI vector document `vec_T3+R_<model>.npy` — F = cả catalog vì phân tích này
+    không dựng lại filter của arm (hợp đồng: F = tập đã lọc); margin = topScore − backgroundScore. In từng câu out_of_catalog,
+    phân vị của câu trong catalog và lưới (T, M): số câu ngoài catalog bị chặn (rỗng hoặc weak) vs câu trong catalog bị gắn
+    weak nhầm. Thiếu vector truy vấn thì câu đó chỉ xét topScore. Mã thoát: 0 · 2 thiếu kết quả / vector / config."""
+    from rich.table import Table
+    import numpy as np
+    from . import devtest as DT, metrics as M, paths, runner as R, vectors
+    ctx = _ctx(c)
+    cfg = ctx.cfg()
+    wr = cfg.metrics.weak_results
+    if wr is None and (not top_grid or not margin_grid):
+        _fail("sbench.yaml thiếu metrics.weak_results (top_score_grid, margin_grid) — hoặc truyền --top-grid và --margin-grid", 2)
+    tgrid = _float_list(top_grid, wr.top_score_grid if wr else [], "--top-grid")
+    mgrid = _float_list(margin_grid, wr.margin_grid if wr else [], "--margin-grid")
+    try:
+        run_id = _run_id_or_latest(ctx)
+        res, rows, gv, note, src = _rows_for(run_id, arm, gold_version, split, split_file)
+        m = model or res.get("model")
+        if not m:
+            raise R.RunnerError(f"{arm}: results.json không ghi model — truyền --model")
+        ids, doc_vecs, vmeta = vectors.read(ctx.dataset, res.get("text_variant") or "T3+R", m, "document")
+        gold = {g.qid: g for g in M.load_gold(paths.GOLD_JSONL, include_retired=True, gold_fields=cfg.metrics.gold_fields)}
+    except (R.RunnerError, DT.DevTestError, M.MetricsError, vectors.VectorsMissing) as e:
+        _fail(str(e), 2)
+    except Exception as e:  # noqa: BLE001 — model không có trong config (embedder_name) …
+        _fail(f"{type(e).__name__}: {e}", 2)
+    bad_scores = [r["qid"] for r in rows for x in (r.get("top_scores") or []) if x is not None and not (-1.0001 <= x <= 1.0001)]
+    if bad_scores:
+        _fail(f"{arm}: top_scores ngoài [-1, 1] (vd {bad_scores[:3]}) — không phải cosine (arm bm25?)", 2)
+    missing_gold = sorted({r["qid"] for r in rows} - set(gold))
+    texts = [R.embedded_query_text(gold[r["qid"]].text if r["qid"] in gold else "", R.extra_of(r)) for r in rows]
+    try:
+        qvecs = R.query_vectors_from_cache(cfg, m, texts)
+    except Exception as e:  # noqa: BLE001
+        _fail(f"không đọc được cache embed: {type(e).__name__}: {e}", 2)
+    if top_source not in ("top_scores", "diagnostics"):
+        _fail(f"--top-source phải là top_scores | diagnostics, nhận {top_source!r}", 2)
+    entries = R.weak_entries(rows, gold, doc_vecs, qvecs, top_source=top_source)
+    grid = M.weak_grid(entries, tgrid, mgrid)
+    con = _console()
+    if note:
+        con.print(f"  ghi chú: {note}", style="yellow", highlight=False)
+    con.print(f"weak-results · run {run_id} · {arm} · gold {gv}" + (f" · split {split} ({src})" if src else "") +
+              f" · topScore từ {top_source}" +
+              f" · model {m} ({vmeta.get('cache_model')}) · {len(ids)} vector document · {len(rows)} câu "
+              f"({grid['n_ooc']} out_of_catalog, {grid['n_in']} trong catalog)", highlight=False)
+    con.print(f"  vector truy vấn từ cache embed: {sum(1 for e in entries if e['background'] is not None)}/{len(entries)} câu"
+              + (f" — {len(entries) - sum(1 for e in entries if e['background'] is not None)} câu thiếu: chỉ xét topScore"
+                 if any(e['background'] is None and e['top'] is not None for e in entries) else ""), highlight=False)
+    con.print("  backgroundScore = trung vị cosine trên CẢ catalog (F = mọi search unit — phân tích không dựng lại filter của "
+              "arm); hợp đồng §3.4 lấy trung vị trên tập F đã lọc, nên với arm có filter, margin thật có thể khác.",
+              style="dim", highlight=False)
+    if missing_gold:
+        con.print(f"  cảnh báo: {len(missing_gold)} qid không có trong gold/gold.jsonl: {missing_gold[:5]}", style="yellow")
+    diff_top = [e for e in entries if e["diag_top"] is not None and e["scores_top"] is not None
+                and abs(e["diag_top"] - e["scores_top"]) > 1e-3]
+    if diff_top:
+        con.print(f"  {len(diff_top)} câu: max(top_scores) khác diagnostics.topScore (kết quả cosine cao nhất của R nằm ngoài "
+                  f"top-k), vd {diff_top[0]['qid']} {diff_top[0]['scores_top']:.4f} vs {diff_top[0]['diag_top']:.4f} — "
+                  f"--top-source {'diagnostics' if top_source == 'top_scores' else 'top_scores'} để xem bên kia", style="dim")
+
+    def _f(v):
+        return "-" if v is None else f"{v:.3f}"
+    to = Table(title="câu out_of_catalog (muốn: rỗng hoặc weak)")
+    for col in ("qid", "topScore", "background", "margin", "câu đã embed"):
+        to.add_column(col, justify="left" if col in ("qid", "câu đã embed") else "right")
+    for e in sorted((e for e in entries if e["ooc"]), key=lambda e: (e["margin"] is None, e["margin"] or 0.0)):
+        to.add_row(e["qid"], _f(e["top"]) if e["top"] is not None else "rỗng", _f(e["background"]), _f(e["margin"]), e["text"][:70])
+    con.print(to)
+    inc = [e for e in entries if not e["ooc"] and e["top"] is not None]
+    if inc:
+        tp = Table(title=f"câu trong catalog có kết quả ({len(inc)} câu; {grid['n_in_empty']} câu rỗng không tính): phân vị")
+        for col in ("", "p5", "p10", "p25", "p50", "min"):
+            tp.add_column(col, justify="left" if col == "" else "right")
+        for name, vals in (("topScore", [e["top"] for e in inc]), ("margin", [e["margin"] for e in inc if e["margin"] is not None])):
+            if vals:
+                a = np.asarray(vals, dtype=float)
+                tp.add_row(name, *(f"{np.percentile(a, q):.3f}" for q in (5, 10, 25, 50)), f"{a.min():.3f}")
+        con.print(tp)
+    tg = Table(title=f"lưới weak: ô = câu ngoài catalog bị chặn (rỗng hoặc weak) /{grid['n_ooc']} · câu trong catalog bị gắn weak "
+                     f"nhầm /{grid['n_in'] - grid['n_in_empty']} (weak khi topScore < T HOẶC margin < M; tạm của hợp đồng 0.70 / "
+                     "0.06)")
+    tg.add_column("T \\ M", justify="left")
+    for mm in mgrid:
+        tg.add_column(f"{mm:g}", justify="right")
+    by = {(cell["top"], cell["margin"]): cell for cell in grid["cells"]}
+    for tt in tgrid:
+        tg.add_row(f"{tt:g}", *(f"{by[(float(tt), float(mm))]['ooc_suppressed']} · {by[(float(tt), float(mm))]['in_weak']}"
+                               for mm in mgrid))
+    con.print(tg)
+    raise typer.Exit(0)
+
+
+qu_app = typer.Typer(no_args_is_help=True, help="Phase A: chẩn đoán query understanding của backend trên gold "
+                                                 "(QueryNormalizer + build_query_plan; không Weaviate / Cohere)")
+app.add_typer(qu_app, name="qu")
+
+#: Chặng bay kỳ vọng cho câu gold_v3 chưa có trường origin / destination_city (gold v4 có trường thì trường thắng).
+ROUTE_EXPECTED_V3: dict[str, tuple[str | None, str | None]] = {"c0373": ("Buôn Ma Thuột", "Hà Nội")}
+
+
+def _num_eq(a, b) -> bool:
+    return a is not None and b is not None and float(a) == float(b)
+
+
+def _scan_checks(gq, plan) -> list[tuple[str, bool, str]]:
+    """Kiểm ĐỊNH NGHĨA câu gold (không chấm nhãn) so với query plan của backend: [(tên kiểm, đạt?, parser cho ra gì)].
+    `plan` = `QueryPlan` (hoặc object cùng thuộc tính). Mỗi slice một nhóm kiểm; chặng bay kiểm khi gold nêu
+    origin / destination_city hoặc câu nằm trong `ROUTE_EXPECTED_V3`."""
+    from .metrics import _conjuncts
+    out: list[tuple[str, bool, str]] = []
+    dest = getattr(plan.destination, "value", None)
+    cands = list(plan.taxonomy_candidates or ())
+    if gq.slice == "multi_constraint":
+        for n in _conjuncts(gq.filter):
+            (op, arg), = n.items()
+            if not (isinstance(arg, list) and len(arg) == 2):
+                continue
+            f, v = arg
+            if op == "lte" and f == "unit_price_min":
+                out.append(("multi_constraint.price_max", _num_eq(plan.price_max, v), f"price_max={plan.price_max} (gold ≤ {v})"))
+            elif op == "gte" and f == "star_rating":
+                out.append(("multi_constraint.star_min", _num_eq(plan.star_min, v), f"star_min={plan.star_min} (gold ≥ {v})"))
+            elif op == "eq" and f == "destination":
+                out.append(("multi_constraint.destination", dest == v, f"destination={dest!r} (gold {v!r})"))
+    elif gq.slice == "cross_vertical":
+        out.append(("cross_vertical.taxonomy_none", plan.taxonomy is None,
+                    f"taxonomy={plan.taxonomy!r} skipped={plan.taxonomy_skipped!r} candidates={cands}"))
+    elif gq.slice == "amenity_negation":
+        out.append(("amenity_negation.must_not", bool(plan.must_not_amenities),
+                    f"must_not={list(plan.must_not_amenities)} unresolved={list(plan.unresolved or ())}"))
+    elif gq.slice == "dest_type":
+        out.append(("dest_type.single_vertical", len(cands) <= 1, f"candidates={cands} taxonomy={plan.taxonomy!r}"))
+    # 07/10 (1.18.0): hai slice gold_v6 — kiểm định nghĩa tối thiểu (parse chi tiết theo expected_parse chấm ở `sb guards`)
+    elif gq.slice == "duration_false_positive":
+        # parse ra thời lượng thì cụm "N ngày / M đêm" phải rời lexical_text (BM25 không còn vớt hotel "Chợ Đêm" / "Ngay trung tâm");
+        # không parse ra (chợ đêm, 2 triệu/đêm, 3 tiếng) thì chỉ báo parser cho ra gì
+        from evaluation.vector_bench.lexical import fold
+        dur = (getattr(plan, "duration_days", None), getattr(plan, "duration_nights", None))
+        left = [t for t in fold(plan.lexical_text).split() if t in ("ngay", "dem", "day", "days", "night", "nights")]
+        out.append(("duration_false_positive.consumed_or_none", dur == (None, None) or not left,
+                    f"duration={dur} còn lại={left} lexical_text={plan.lexical_text!r} "
+                    f"entity={list(getattr(plan, 'entity_keys', ()) or ())} role={getattr(plan, 'entity_role', None)!r}"))
+    elif gq.slice == "poi_resolution":
+        loc = getattr(plan, "location", None)
+        cand = list(getattr(plan.destination, "candidates", ()) or ())
+        out.append(("poi_resolution.destination_or_multi", dest is not None or len(cand) >= 2,
+                    f"destination={dest!r} candidates={cand} location={getattr(loc, 'key', None)!r} "
+                    f"via_poi={getattr(plan, 'destination_via_poi', None)} skipped={getattr(plan.destination, 'skipped', None)!r}"))
+    route = (gq.origin, gq.destination_city) if (gq.origin or gq.destination_city) else ROUTE_EXPECTED_V3.get(gq.qid)
+    if route:
+        o, d = route
+        ok = (not o or plan.route_origin == o) and (not d or plan.route_destination == d)
+        out.append(("route.origin_destination", ok,
+                    f"origin={plan.route_origin!r} destination={plan.route_destination!r} direction={plan.route_direction!r} "
+                    f"skipped={plan.route_skipped!r} (gold {o!r} → {d!r})"))
+    return out
+
+
+@qu_app.command("gold-scan")
+def qu_gold_scan(c: typer.Context, gold_p: Optional[Path] = typer.Option(None, "--gold", help="mặc định gold/gold.jsonl")):
+    """Chạy QueryNormalizer + build_query_plan của backend (MỌI cờ bật, kể cả ba cờ 1.18.0; gazetteer điểm đến / tên từ items,
+    thành phố bay + IATA + thương hiệu từ attributes của catalog như `SearchProducts`) trên mọi câu gold active và kiểm ĐỊNH
+    NGHĨA câu (không chấm nhãn): multi_constraint (giá / sao / điểm đến khớp filter gold) · cross_vertical (không chốt
+    taxonomy) · amenity_negation (có must_not) · dest_type (≤ 1 loại sản phẩm) · duration_false_positive (parse ra thời lượng
+    thì cụm rời lexical_text) · poi_resolution (có điểm đến hoặc ≥ 2 ứng viên) · chặng bay (c0373, hoặc gold có origin /
+    destination_city). In bảng đạt / tổng từng kiểm và câu trượt kèm parser cho ra gì. Luôn thoát 0 (chẩn đoán)."""
+    from rich.table import Table
+    from . import catalog, metrics as M, paths
+    from .app_adapter import AppAdapterError, _backend
+    from .catalog import CatalogError
+    ctx = _ctx(c)
+    cfg = ctx.cfg()
+    try:
+        _backend()
+        from src.backend.app.application.search.use_cases import _plan_gazetteers
+        from src.backend.app.domain.catalog import Product
+        from src.backend.app.domain.search import PlanFlags, PlanParams, QueryNormalizer, build_query_plan
+    except (AppAdapterError, ImportError) as e:
+        _fail(f"không import được backend: {e}")
+    try:
+        items = catalog.read_items(ctx.dataset)
+        records = catalog.reload_records(cfg, ctx.dataset)
+        gold = M.load_gold(gold_p or paths.GOLD_JSONL, gold_fields=cfg.metrics.gold_fields)
+    except (CatalogError, M.MetricsError, FileNotFoundError) as e:
+        _fail(str(e), 2)
+    units, _, _, _ = catalog.group_children(records, cfg.catalog.search_unit_variants)
+    normalizer = QueryNormalizer(destinations=set(items["destination"].tolist()), names=items["name"].tolist())
+    gaz = _plan_gazetteers([Product.from_cdp(r) for r in units])
+    # 07/10 (1.18.0): ba cờ mới cũng bật — gold-scan chỉ chẩn đoán định nghĩa câu, không phải cấu hình production
+    flags = PlanFlags(destination=True, negation=True, taxonomy=True, route=True, numeric=True,
+                      duration=True, poi=True, entity=True)
+    results: dict[str, list[tuple[str, bool, str, str]]] = {}
+    for gq in gold:
+        plan = build_query_plan(normalizer(gq.text), gq.text, PlanParams(), flags, gaz)
+        for name, ok, detail in _scan_checks(gq, plan):
+            results.setdefault(name, []).append((gq.qid, ok, detail, gq.text))
+    con = _console()
+    con.print(f"gold-scan: {len(gold)} câu active · {len(units)} unit · thành phố bay {len(gaz.flight_cities)} · IATA {len(gaz.iata)} · "
+              f"cờ: destination, negation, taxonomy, route, numeric, duration, poi, entity = bật", highlight=False)
+    t = Table(title="kiểm định nghĩa câu (ok / tổng)")
+    for col in ("kiểm", "ok", "tổng"):
+        t.add_column(col, justify="left" if col == "kiểm" else "right")
+    for name in sorted(results):
+        rs = results[name]
+        n_ok = sum(1 for _, ok, _, _ in rs if ok)
+        t.add_row(name, f"[{'green' if n_ok == len(rs) else 'red'}]{n_ok}[/]", str(len(rs)))
+    con.print(t)
+    for name in sorted(results):
+        bad = [(q, d, txt) for q, ok, d, txt in results[name] if not ok]
+        if bad:
+            con.print(f"[bold]{name}[/] trượt {len(bad)}:", highlight=False)
+            for q, d, txt in bad:
+                con.print(f"  {q} «{txt}» → {d}", highlight=False)
+    raise typer.Exit(0)
 
 
 if __name__ == "__main__":

@@ -35,6 +35,7 @@ from src.backend.app.application.auth.principal import AuthPrincipal
 from src.backend.app.application.catalog.errors import CatalogError
 from src.backend.app.application.catalog.views import destination_list
 from src.backend.app.application.ports.call_telemetry import CallTelemetry
+from src.backend.app.application.ports.embedder import EmbeddingUnavailableError
 from src.backend.app.application.ports.itinerary_tools import ToolError
 from src.backend.app.application.recommendation.responses import recommendation_response
 from src.backend.app.application.search.responses import search_tool_payload
@@ -45,8 +46,19 @@ logger = logging.getLogger("uvicorn.error")
 
 Provider = Callable[[], Any]
 
-#: Tham số search mà adapter HTTP gửi xuống GET /search; search không bao giờ nhận danh tính.
-SEARCH_ENGINE_ARGUMENTS = ("taxonomy", "destination", "limit", "offset")
+#: Tham số `SearchRequest` → tham số engine, giống route POST /search (adapter HTTP gửi đúng body đó). Search không bao giờ
+#: nhận danh tính. `sort`, `includeVariants`, `availabilityMode`, ngày của `travelContext` engine chưa nhận nên không chuyển.
+SEARCH_ENGINE_ARGUMENTS = {"taxonomy": "taxonomy", "destination": "destination", "limit": "limit", "offset": "offset",
+                           "origin": "origin", "priceMin": "price_min", "priceMax": "price_max",
+                           "starRatingMin": "star_min", "availableOnly": "available_only"}
+
+
+def search_engine_kwargs(request: dict[str, Any]) -> dict[str, Any]:
+    """kwargs của engine Search cho một `SearchRequest`; số khách (`travelContext.guests`) là filter sức chứa (1.16.0)."""
+    kwargs = {target: request[key] for key, target in SEARCH_ENGINE_ARGUMENTS.items() if request.get(key) is not None}
+    guests = (request.get("travelContext") or {}).get("guests") or {}
+    kwargs.update({key: guests[key] for key in ("adults", "children") if guests.get(key) is not None})
+    return kwargs
 
 
 def _unavailable() -> ToolError:
@@ -59,12 +71,14 @@ class InProcessItineraryTools:
 
     def __init__(self, *, search: Provider, recommend: Provider, index: Provider, product_detail: Provider,
                  similar_products: Provider, token_verifier: Provider, revoked_tokens: Provider,
+                 list_products: Provider | None = None,
                  executor: Executor | None = None, telemetry: CallTelemetry | None = None):
         self._search = search
         self._recommend = recommend
         self._index = index
         self._product_detail = product_detail
         self._similar_products = similar_products
+        self._list_products = list_products or (lambda: None)
         self._token_verifier = token_verifier
         self._revoked_tokens = revoked_tokens
         self._executor = executor
@@ -87,14 +101,16 @@ class InProcessItineraryTools:
     async def get_product_detail(self, product_id: str) -> dict[str, Any]:
         return await self._guard("get_product_detail", self._get_product_detail(product_id))
 
+    async def list_products(self, params: dict[str, Any]) -> dict[str, Any]:
+        return await self._guard("list_products", self._list_products_page(params))
+
     async def list_destinations(self) -> dict[str, Any]:
         # Index None → 503: agent bỏ qua bước kiểm điểm đến thay vì báo mọi điểm đến là ngoài catalog.
         return await self._guard("list_destinations", self._list_destinations())
 
     async def _search_products(self, request: dict[str, Any]) -> dict[str, Any]:
         engine = self._require("search_products", self._search)
-        kwargs = {key: request[key] for key in SEARCH_ENGINE_ARGUMENTS if request.get(key) is not None}
-        return search_tool_payload(await self._run(engine, request["query"].strip(), **kwargs))
+        return search_tool_payload(await self._run(engine, request["query"].strip(), **search_engine_kwargs(request)))
 
     async def _get_recommendations(self, request: dict[str, Any], authorization: str | None) -> dict[str, Any]:
         principal = await self._principal(authorization)  # kiểm token trước engine: 401 thắng 503
@@ -111,6 +127,14 @@ class InProcessItineraryTools:
 
     async def _get_product_detail(self, product_id: str) -> dict[str, Any]:
         return await self._require("get_product_detail", self._product_detail)(product_id)
+
+    async def _list_products_page(self, params: dict[str, Any]) -> dict[str, Any]:
+        use_case = self._require("list_products", self._list_products)
+        result = await use_case(destination=params.get("destination"), taxonomy=params.get("taxonomy"),
+                                available_only=bool(params.get("availableOnly")), sort=params.get("sort", "popular"),
+                                limit=params.get("limit", 20), offset=params.get("offset", 0),
+                                parent_product_id=params.get("parentProductId"))
+        return {**result, "requestId": current_request_id() or "catalog"}
 
     async def _list_destinations(self) -> dict[str, Any]:
         return destination_list(self._require("list_destinations", self._index).destination)
@@ -163,6 +187,9 @@ class InProcessItineraryTools:
             raise
         except CatalogError as exc:
             raise ToolError(exc.code, retryable=exc.retryable, http_status=exc.http_status) from None
+        except EmbeddingUnavailableError as exc:  # adapter embedding đã log lỗi; lý do đi tiếp vào trace
+            raise ToolError("SEARCH_UNAVAILABLE", retryable=exc.retryable, http_status=503,
+                            reason=f"embed:{exc.reason}") from None
         except Exception as exc:
             # Tên kiểu lỗi và các frame traceback (chỉ file, dòng, mã nguồn), không kèm thông điệp: thông điệp có thể
             # chứa câu truy vấn của người dùng. Frame đủ để lần ra bug, vì lỗi này bị thử lại chứ không nổi lên 500.

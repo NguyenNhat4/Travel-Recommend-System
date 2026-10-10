@@ -21,6 +21,7 @@ from urllib.parse import urlencode
 from curl_cffi.requests import AsyncSession
 from playwright.async_api import async_playwright
 
+import log
 from . import live_control
 from .common import BrowserOptions, BrowserSession, Paths, StateDB, now_iso
 from .plan import DEFAULT_BUDGET, Destination
@@ -142,20 +143,25 @@ async def fetch_metadata(targets: list[dict], stay: tuple[str, str], run_dir: Pa
                 started = time.monotonic()
                 try:
                     response = await session.get(url, headers=HEADERS, allow_redirects=True)
-                    ok = response.status_code == 200 and 'hotelDetailResponse' in response.text
-                    print(f'Trip meta {hotel_id} lần {attempt + 1}: HTTP {response.status_code} · '
-                          f'{round((time.monotonic() - started) * 1000)} ms · {len(response.content)} B'
-                          + ('' if ok else ' · thiếu hotelDetailResponse'), flush=True)
+                    detail = extract_anchored_json(response.text, DETAIL_ANCHOR) if response.status_code == 200 else None
+                    ok = bool(detail)
+                    log.say(f'Trip meta {hotel_id} lần {attempt + 1}: HTTP {response.status_code} · '
+                            f'{round((time.monotonic() - started) * 1000)} ms · {len(response.content)} B'
+                            + ('' if ok else ' · thiếu hotelDetailResponse'), event='trip.meta',
+                            severity='INFO' if ok else 'WARNING', source='tripHotels', step='trip-hotels.prices',
+                            http_status=response.status_code, hotel_id=str(hotel_id))
                     if not ok:
                         continue
                     _write_capture(run_dir, hotel_id, f'{stay[0]}.detail', {
                         'url': url, 'fetchedAt': now_iso(), 'httpStatus': response.status_code,
-                        'hotelDetailResponse': extract_anchored_json(response.text, DETAIL_ANCHOR)})
+                        'hotelDetailResponse': detail})
                     out[hotel_id] = parse_hotel_detail(response.text, url, target.get('card') or {}, now_iso(),
                                                         checkin=stay[0], checkout=stay[1], adults=2)
                     return
                 except Exception as exc:
-                    print(f'Trip meta {hotel_id} lần {attempt + 1}: lỗi {type(exc).__name__}: {str(exc)[:160]}', flush=True)
+                    log.say(f'Trip meta {hotel_id} lần {attempt + 1}: lỗi {type(exc).__name__}: {str(exc)[:160]}',
+                            event='trip.meta', severity='WARNING', source='tripHotels', step='trip-hotels.prices',
+                            hotel_id=str(hotel_id))
                     if attempt == 1:
                         break
         out[hotel_id] = None
@@ -198,7 +204,11 @@ def price_packet(payload: dict) -> tuple[str, dict[str, dict], int]:
                              'occupancy': (sale.get('guestCountInfo') or {}).get('guestCount')}
     if best:
         return 'priced', {'physical': physical, 'best': best}, offers
-    if data.get('isRoomListSoldOut') is True and not sales:
+    # Hết phòng: Trip đánh dấu cả danh sách và không còn phòng nào mở (không có hạng bán, hoặc mọi hạng `isFullRoom`).
+    # Trước đây trường hợp sau rơi vào `missing` và làm bước giá phòng `partial` (lượt local 07/10: 5/231 lượt).
+    all_full = all(isinstance(sale, dict) and (sale.get('bookingStatusInfo') or {}).get('isFullRoom')
+                   for sale in sales.values())
+    if data.get('isRoomListSoldOut') is True and all_full:
         return 'sold_out', {'physical': physical, 'best': {}}, 0
     return 'missing', {}, offers
 
@@ -223,9 +233,9 @@ async def wait_for_prices(page, ready: asyncio.Event) -> None:
 async def capture_prices(targets: list[dict], date_pairs: list[tuple[str, str]], run_dir: Path,
                          options: LiveOptions) -> dict[tuple[str, str], tuple[str, dict, int, str | None]]:
     jobs = asyncio.Queue()
-    for target in targets:
-        for checkin, checkout in date_pairs:
-            jobs.put_nowait((target, checkin, checkout))
+    planned = [(target, checkin, checkout) for target in targets for checkin, checkout in date_pairs]
+    for job in planned:
+        jobs.put_nowait(job)
     results = {}
     start_lock = asyncio.Lock()
     clock = {'last': float('-inf')}
@@ -246,11 +256,16 @@ async def capture_prices(targets: list[dict], date_pairs: list[tuple[str, str]],
                     url = detail_url(target, checkin, checkout)
                     page = await context.new_page()
                     packets: list[dict] = []
+                    response_statuses: list[int] = []
+                    capture_error = None
                     ready = asyncio.Event()
                     pending: set[asyncio.Task] = set()
                     browser_html = None
                     async def receive(response) -> None:
-                        if 'getHotelRoomListOversea' not in response.url or response.status != 200:
+                        if 'getHotelRoomListOversea' not in response.url:
+                            return
+                        response_statuses.append(response.status)
+                        if response.status != 200:
                             return
                         try:
                             body = await response.json()
@@ -281,8 +296,8 @@ async def capture_prices(targets: list[dict], date_pairs: list[tuple[str, str]],
                         await wait_for_prices(page, ready)
                         if pending:
                             await asyncio.gather(*pending, return_exceptions=True)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        capture_error = type(exc).__name__
                     finally:
                         page.remove_listener("response", on_response)
                         for task in pending:
@@ -295,11 +310,25 @@ async def capture_prices(targets: list[dict], date_pairs: list[tuple[str, str]],
                                                 ('missing', {}, 0))
                     _write_capture(run_dir, hotel_id, f'{checkin}.rooms', {
                         'url': url, 'fetchedAt': now_iso(), 'status': status, 'offers': offers,
-                        'packets': packets})
-                    results[(hotel_id, checkin)] = (status, data, offers, browser_html)
-                    print(f'Trip {hotel_id}@{checkin}: {status}, {offers} offers', flush=True)
+                        'packets': packets, 'httpStatuses': response_statuses, 'errorKind': capture_error})
+                    previous = results.get((hotel_id, checkin))
+                    if status != 'missing' or previous is None:  # lần thử lại hỏng không xoá kết quả cũ
+                        results[(hotel_id, checkin)] = (status, data, offers, browser_html or (previous or (None,) * 4)[3])
+                    log.say(f'Trip {hotel_id}@{checkin}: {status}, {offers} offers · '
+                            f'HTTP {response_statuses} · error={capture_error}', event='trip.price',
+                            source='tripHotels', step='trip-hotels.prices', hotel_id=str(hotel_id),
+                            checkin=str(checkin), offers=offers)
                     jobs.task_done()
             await asyncio.gather(*(worker() for _ in range(min(options.price_workers, jobs.qsize()))))
+            # Một vòng thử lại cho (khách sạn, ngày) chưa bắt được gói giá: thường là lỗi thoáng qua (HTTP 200 nhưng
+            # 0 gói trong 16 s). Lượt local 07/10: 1/219 như vậy làm cả bước `partial` dù khách sạn có giá ở ngày khác.
+            for job in planned:
+                if results.get((job[0]['trip_hotel_id'], job[1]), ('missing',))[0] == 'missing':
+                    jobs.put_nowait(job)
+            if not jobs.empty():
+                log.say(f'Trip: thử lại {jobs.qsize()} lượt chưa có gói giá', event='trip.price.retry',
+                        source='tripHotels', step='trip-hotels.prices', retries=jobs.qsize())
+                await asyncio.gather(*(worker() for _ in range(min(options.price_workers, jobs.qsize()))))
         finally:
             try:
                 await context.close()
@@ -364,7 +393,7 @@ def assemble(targets: list[dict], date_pairs: list[tuple[str, str]], metadata: d
         prices = [room['minPrice'] for room in record['rooms'] if room.get('minPrice')]
         record['minPrice'] = min(prices) if prices else None
         record['currency'] = 'VND'
-        record['plan'] = {'destination': target['destination']}
+        record['plan'] = {'destination': target['destination'], **({'via': 'refresh'} if target.get('refresh') else {})}
         record['crawledAt'] = now_iso()
         records.append(record)
     report = {'stays': [{'checkin': a, 'checkout': b} for a, b in date_pairs],

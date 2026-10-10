@@ -7,15 +7,13 @@ chỉ dẫn thứ tự đọc tối thiểu và chọn thêm tài liệu/source 
 
 | File | Nội dung |
 |---|---|
+| [nghiep-vu/README.md](nghiep-vu/README.md) | Nghiệp vụ agent đang thực hiện, theo domain (hỏi lại, tìm, vé, xếp lịch, diễn giải, nhiều lượt) kèm glossary |
 | [working-context.md](working-context.md) | Context tối thiểu, bản đồ module và nhánh đọc riêng cho tune/eval/debug |
 | [langgraph-nodes.md](langgraph-nodes.md) | Vì sao graph chia thành mười node, vì sao mọi nhánh qua `finalize`, cách đọc bảng trace |
 | [state-fields.md](state-fields.md) | Tra theo từng field của `AgentState`: node nào ghi, node nào đọc, dùng để làm gì |
-| [field-review.md](field-review.md) | Review field của request/response và `AgentState`: đề xuất giữ, bỏ, gộp — đã chốt và áp dụng 2026-09-28 |
 | [response-and-errors.md](response-and-errors.md) | `status` so với `error.code`, luồng sau khi nhập giá trị không hợp lệ |
-| [golden-run.md](golden-run.md) | Chạy bộ golden: chuẩn bị Postgres/backend, các cờ của runner, đọc kết quả, luật chấm, ngưỡng kết luận, lỗi thường gặp |
-| [golden-dataset-how-to-add-more-case.md](golden-dataset-how-to-add-more-case.md) | Cấu trúc bộ golden 14 case (mỗi category một case khó nhất), các khoá `expect`, cách thêm case và xử lý khi case fail |
-| [presentation-slides.html](presentation-slides.html) | Bộ 14 slide giới thiệu agent (mở bằng trình duyệt, phím ←/→); số liệu golden ngày 2026-09-24 |
-| [presentation-script.md](presentation-script.md) | Kịch bản nói theo từng slide, phần demo trực tiếp và câu hỏi dễ gặp |
+| [golden-run.md](golden-run.md) | Chạy bộ test case: chuẩn bị Postgres/backend, các cờ của runner, đọc kết quả, luật chấm, ngưỡng kết luận, lỗi thường gặp |
+| [golden-dataset-how-to-add-more-case.md](golden-dataset-how-to-add-more-case.md) | Cấu trúc dataset test case, các khoá `expect`, cách thêm case và xử lý khi case fail |
 
 ## Chạy demo
 
@@ -31,7 +29,7 @@ Cấu hình provider/key/model trong `.env` theo Backend README. UI chat chỉ g
 
 Demo yêu cầu `destination` và `days`. Nếu thiếu, backend trả `NEEDS_CLARIFICATION`, lưu phần intent đã biết cùng lịch sử chat user/assistant gần đây theo `conversationId` và chưa gọi tool. Lịch sử được giới hạn ở 20 message/8.000 ký tự và chỉ dùng để hiểu tham chiếu; giá/availability vẫn tải lại từ tool. `context.language` hỗ trợ `vi`/`en`; khi vắng mặt backend mặc định tiếng Việt và lưu lựa chọn theo conversation. Store hiện tại nằm trong memory của process nên restart backend sẽ mất conversation.
 
-Timeout LLM của graph lấy từ `ITINERARY_LLM_TIMEOUT_SECONDS`, áp dụng cho cả `classify`, `extract`, chọn điểm đến trong `tool`, `clarify` và `converse`; timeout tool lấy từ `ITINERARY_TOOL_TIMEOUT_SECONDS`. `.env.example` đặt 30 giây và 1 giây để model thật có thời gian phản hồi khi demo. Đây là cấu hình đánh giá offline và **vượt** ngân sách của spec §7.2 (classify 2 giây, composition 3 giây, toàn request mục tiêu 5 giây), nên không dùng số đo ở chế độ này làm bằng chứng đạt SLA. `ITINERARY_LLM_MODEL` và `ITINERARY_USE_LLM` nay **được** `Settings` đọc; bỏ trống `ITINERARY_LLM_MODEL` thì OpenAI dùng `MODEL_NAME`, các provider khác dùng mặc định của mình. Nhiệt độ của agent lấy từ `ITINERARY_LLM_TEMPERATURE` (mặc định 0), không dùng chung `LLM_TEMPERATURE`.
+Timeout LLM của graph lấy từ `ITINERARY_LLM_TIMEOUT_SECONDS`, áp dụng cho cả `classify`, `extract`, chọn điểm đến trong `tool`, `clarify` và `converse`; timeout tool lấy từ `ITINERARY_TOOL_TIMEOUT_SECONDS`. `.env.example` đặt 30 giây và 1 giây để model thật có thời gian phản hồi khi demo. Đây là cấu hình đánh giá offline và **vượt** ngân sách của spec §7.2 (classify 2 giây, composition 3 giây, toàn request mục tiêu 5 giây), nên không dùng số đo ở chế độ này làm bằng chứng đạt SLA. `ITINERARY_LLM_MODEL` và `ITINERARY_USE_LLM` nay **được** `Settings` đọc; đây là biến model duy nhất (`MODEL_NAME` đã bỏ, 2026-10-05); bỏ trống thì mỗi provider dùng mặc định của mình (OpenAI `gpt-4o-mini`). Nhiệt độ của agent lấy từ `ITINERARY_LLM_TEMPERATURE` (mặc định 0), không dùng chung `LLM_TEMPERATURE`.
 
 ## Chạy đánh giá tự động (golden dataset)
 
@@ -50,10 +48,10 @@ Runner dựng graph trong tiến trình của nó và luôn gọi Search/Recomme
 bản (golden-run.md). Staging/production chạy `ITINERARY_DATA_MODE=inprocess`, nên golden không đo đường gọi engine
 trong tiến trình; hai đường được đối chiếu output bằng test parity trong `src/backend/tests`.
 
-Ghi `src/evaluation/reports/eval-YYYY-MM-DD-golden.md` (commit được) và `.json` cùng tên (gitignored).
-`--only G-051,G-062` chạy một phần; `--sweep` thêm một lượt cho mọi điểm đến thật hiện có trong catalog;
+Ghi `src/evaluation/reports/eval-YYYY-MM-DD-agent-test-cases.md` (commit được) và `.json` cùng tên (gitignored).
+`--only TC-01,TC-02` chạy một phần; `--sweep` thêm một lượt cho mọi điểm đến thật hiện có trong catalog;
 `--repeat N` chạy lại để soi độ ổn định của bước `classify`; `--trace-project <tên>` gửi trace từng
-lượt lên LangSmith project đó (key lấy từ `.env`), tên trace dạng `G-059#3 <câu nhập>`, tag `golden`,
+lượt lên LangSmith project đó (key lấy từ `.env`), tên trace dạng `TC-01#3 <câu nhập>`, tag `golden`,
 id case và category. Runner không qua `lifespan` nên không bật cờ này thì không có trace nào.
 
 ## Đọc input/output từng node bằng LangSmith
@@ -69,6 +67,7 @@ Mỗi lượt sinh ra một trace **đặt tên theo chính câu bạn gõ**, n�
   extract → extract_node       ← trích intent
   tool
   evaluate → evaluate_node
+  filter → filter_node         ← lời gọi LLM chỉ ra cặp điểm tham quan trùng (input: mã + tên)
   compose → compose_node
   finalize → finalize_node
 ```

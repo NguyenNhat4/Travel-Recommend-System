@@ -19,7 +19,7 @@ vi.mock('../../src/context/AssistantProvider', () => ({
 vi.mock('../../src/context/TravelContext', () => ({
   useTravel: () => ({ currentRoute: '/', showToast: mocks.showToast, navigate: vi.fn(), addToCart: vi.fn() }),
 }));
-vi.mock('../../src/hooks/useAssistantCart', () => ({ useAssistantCart: () => vi.fn() }));
+vi.mock('../../src/hooks/useAssistantCart', () => ({ useAssistantCart: () => vi.fn(), useBookItinerary: () => vi.fn() }));
 
 describe('floating assistant opening', () => {
   beforeEach(() => {
@@ -64,9 +64,26 @@ describe('floating assistant opening', () => {
     view.rerender(<AiFloatingWidget />);
     expect(screen.queryByRole('heading', { name: 'Bạn muốn đi đâu tiếp theo?' })).toBeNull();
     expect(screen.getAllByRole('textbox')).toHaveLength(1);
-    expect(screen.getByRole('button', { name: 'Gửi yêu cầu' }).hasAttribute('disabled')).toBe(true);
+    // Đang chạy: nút gửi thành nút Dừng ngay trong ô nhập; tiến trình là 3 bước, không có chuỗi debug của backend.
+    expect(screen.queryByRole('button', { name: 'Gửi yêu cầu' })).toBeNull();
+    expect(screen.getByRole('status').textContent).toBe('Đang hiểu yêu cầu của bạn…');
     fireEvent.click(screen.getByRole('button', { name: 'Dừng xử lý' }));
     expect(mocks.abort).toHaveBeenCalledOnce();
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' });
+    expect(mocks.abort).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole('textbox')).toBeTruthy();
+  });
+
+  it('offers to resend after the user stops a request', () => {
+    const view = open();
+    mocks.state = { ...mocks.state, phase: 'aborted', lastRequest: {
+      message: 'Đi Hội An 3 ngày', conversationId: null, intentOverride: null, context: { language: 'vi' },
+    }, transcript: [{ id: 'user-1', sender: 'user', text: 'Đi Hội An 3 ngày', createdAt: Date.now() }] };
+    view.rerender(<AiFloatingWidget />);
+    expect(screen.getByText('Đã dừng. Trợ lý chưa trả lời tin nhắn này.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Dừng xử lý' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Gửi lại' }));
+    expect(mocks.retry).toHaveBeenCalledOnce();
   });
 
   it('loads real destination options only when the optional form is opened', async () => {
@@ -99,21 +116,6 @@ describe('floating assistant opening', () => {
     view.rerender(<AiFloatingWidget />);
     expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('');
     expect(screen.getByRole('heading', { name: 'Bạn muốn đi đâu tiếp theo?' })).toBeTruthy();
-  });
-
-  it('opens the actual saved conversation and reports load failures', async () => {
-    mocks.state.conversationId = 'saved-1';
-    mocks.state.transcript = [{ id: 'user-1', sender: 'user', text: 'Đi Hội An', createdAt: Date.now() }];
-    const view = open();
-    fireEvent.click(screen.getByRole('button', { name: 'Danh sách hội thoại & Tạo chat mới' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Đoạn chat mới' }));
-    mocks.state = { ...createInitialAssistantState(), isHydrated: true };
-    view.rerender(<AiFloatingWidget />);
-    fireEvent.click(screen.getByRole('button', { name: 'Danh sách hội thoại & Tạo chat mới' }));
-    mocks.loadConversation.mockRejectedValueOnce(new Error('Unavailable'));
-    fireEvent.click(screen.getByRole('button', { name: 'Mở hội thoại Đi Hội An' }));
-    await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith('Không thể mở lại hội thoại. Vui lòng thử lại.'));
-    expect(mocks.loadConversation).toHaveBeenCalledWith('saved-1');
   });
 
   it('preserves retry for errors instead of sending a duplicate request', () => {

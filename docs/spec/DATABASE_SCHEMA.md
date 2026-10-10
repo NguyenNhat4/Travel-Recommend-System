@@ -2,7 +2,7 @@
 
 Bản 20/09/2026 · tuần 1 · đi kèm trang "V-OTA Database Schema" (artifact). **Đây là nguồn DDL duy nhất** của hệ thống (`vota_schema.sql`, `insider_schema.sql` ở cuối). `PRODUCT_SCHEMA.md` giải thích sâu phần product catalog; `SCHEMA.md` là contract của file `products.jsonl`.
 
-Hai database trên một PostgreSQL 16 (docker-compose): `vota` với ba schema `cdp` (mirror CDP), `catalog` (dựng lại được), `app` (trạng thái BE/FE/agent); và `insider` (mock của Insider, service riêng). 24 bảng, 4 view (`vota` 19 bảng + 3 view, `insider` 5 bảng + 1 view — đếm lại 29/09/2026 sau migration `0005_checkout_travelers` thêm `app.booking_travelers`; trước đó 23 bảng, đếm 24/09/2026 sau migration `0003_booking_payments` thêm `app.payments`; con số "20 bảng" trước đây có từ trước khi migration `0001_auth_p0` thêm `refresh_tokens`, `login_attempts` và `schema_migrations`). Vector sản phẩm KHÔNG nằm trong Postgres — collection `Product` trên Weaviate giữ vector (`docs/prd/data-model.md` §1). Cả hai DDL đã chạy thử và qua test ràng buộc, quyền, TTL.
+Hai database trên một PostgreSQL 16 (docker-compose): `vota` với ba schema `cdp` (mirror CDP), `catalog` (dựng lại được), `app` (trạng thái BE/FE/agent); và `insider` (mock của Insider, service riêng). 24 bảng, 4 view (`vota` 19 bảng + 3 view, `insider` 5 bảng + 1 view — đếm lại 29/09/2026 sau migration `0005_checkout_travelers` thêm `app.booking_travelers`; trước đó 23 bảng, đếm 24/09/2026 sau migration `0003_booking_payments` thêm `app.payments`; con số "20 bảng" trước đây có từ trước khi migration `0001_auth_p0` thêm `refresh_tokens`, `login_attempts` và `schema_migrations`). Vector sản phẩm KHÔNG nằm trong Postgres — collection `ProductE5` trên Weaviate giữ vector (`intfloat/multilingual-e5-small`, 384 chiều; collection `Product` 1024 chiều của Cohere chỉ giữ cho đường lui) (`docs/prd/data-model.md` §1). Cả hai DDL đã chạy thử và qua test ràng buộc, quyền, TTL.
 
 ---
 
@@ -30,7 +30,7 @@ Hai database trên một PostgreSQL 16 (docker-compose): `vota` với ba schema 
 |---|---|---|---|---|
 | `vota.cdp` | `products` · `profiles` · `events` — mirror CDP field-for-field | Loader (crawl, seed_histories); backend ghi `events`/`profiles` **chỉ qua `LocalCdpClient`** (connection riêng `CDP_DATABASE_URL`, role `cdp_writer`) | `CdpClient` (role `cdp_reader`/`cdp_writer`, không có USAGE trên `catalog`/`app`); `vota_app` chỉ SELECT `cdp.products` để dựng `catalog.*` | `HttpCdpClient` thay `LocalCdpClient`; `cdp.products` vẫn là bảng local do job sync ghi qua CdpClient; `events`/`profiles` local không dùng nữa |
 | `vota.catalog` | `product_meta` (view) · `combo_items` · `product_parents` · `search_rows` | Job `parse_combos` | Search, Recsys, Product detail | Giữ nguyên — dựng lại từ `cdp.products` |
-| `vota.app` | `users` · `carts` · `cart_items` · `bookings` · `booking_items` · `booking_travelers` · `payments` · `conversations` · `conversation_messages` · `itineraries` · `recommendation_logs` · `search_logs` | Backend (role `vota_app`), agent, job | Backend, Evaluation (chỉ đọc) | Giữ nguyên — phải backup |
+| `vota.app` | `users` · `carts` · `cart_items` · `booking_drafts` · `booking_draft_items` · `bookings` · `booking_items` · `booking_travelers` · `payments` · `conversations` · `conversation_messages` · `itineraries` · `recommendation_logs` · `search_logs` | Backend (role `vota_app`), agent, job | Backend, Evaluation (chỉ đọc) | Giữ nguyên — phải backup |
 | database `insider` | `partners` · `insider_profiles` · `identifiers` · `insider_events` (+ view `live_events`) · `channel_events` | Chỉ Insider clone service | Chỉ Insider clone service; V-OTA đi qua HTTP (`InsiderClient`) | Thay bằng Insider thật |
 
 Feedback loop (handbook §2) nằm trọn trong `vota`: checkout ghi `app.bookings` + `cdp.events` (cùng `event_group_id`) → User Profile Builder đọc `cdp.events` và dịch vụ vector → `/recommendations` đổi → tuần 5 batch đẩy sang Insider làm attribute. Không có mũi tên nào từ Insider về CDP. Web (React) chỉ nói chuyện với backend qua REST/JSON + JWT, không chạm DB. Data collection và Evaluation là Python, ghi một lần theo job / chỉ đọc.
@@ -145,6 +145,7 @@ erDiagram
         text email UK
         text password_hash "Argon2id (PHC); bcrypt seed được rehash khi đăng nhập"
         text display_name
+        text phone "NULL hoặc 10 chữ số bắt đầu bằng 0 (FR-USR-04)"
         text cdp_user_id UK,FK "→ cdp.profiles"
         text persona "P1_frequent · P2_first_time · P3_dormant · P4_no_history"
         timestamptz created_at
@@ -186,6 +187,25 @@ erDiagram
         numeric unit_price_snapshot
         timestamptz added_at
         int adults "≥ 1; tổng adults + children ≤ 9"
+        int children "≥ 0"
+        numeric child_unit_price_snapshot "NULL = trẻ em trả giá người lớn"
+    }
+    booking_drafts {
+        uuid draft_id PK "do Backend cấp"
+        text cdp_user_id FK
+        timestamptz created_at
+        timestamptz expires_at "created_at + 30 phút"
+    }
+    booking_draft_items {
+        uuid draft_item_id PK
+        uuid draft_id FK
+        uuid product_id FK "→ cdp.products"
+        int quantity
+        date using_date
+        date using_date_to "trả phòng, NULL với vé"
+        numeric unit_price_snapshot
+        timestamptz added_at
+        int adults "≥ 1; tổng adults + children ≤ 81 (khách sạn 9 khách mỗi phòng)"
         int children "≥ 0"
         numeric child_unit_price_snapshot "NULL = trẻ em trả giá người lớn"
     }
@@ -312,6 +332,9 @@ erDiagram
     profiles ||--o| carts : ""
     carts ||--o{ cart_items : ""
     products ||--o{ cart_items : ""
+    profiles ||--o{ booking_drafts : ""
+    booking_drafts ||--|{ booking_draft_items : ""
+    products ||--o{ booking_draft_items : ""
     profiles ||--o{ bookings : ""
     bookings ||--|{ booking_items : ""
     bookings ||--o{ booking_travelers : ""
@@ -419,7 +442,8 @@ erDiagram
 | `product_meta`, `product_parents`, `search_rows` | catalog | View suy từ products | — | — |
 | `combo_items` | catalog | Thành phần combo, parse từ description | parse_combos | 93 combo → ~250 dòng |
 | `users` | app | Credential + persona demo, 1:1 profile | seed + register | 4 persona + 50 test |
-| `carts`, `cart_items` | app | Giỏ phía server, một giỏ / user | backend | 0 |
+| `carts`, `cart_items` | app | Giỏ phía server, một giỏ / user. Chỉ chứa `attraction`, `golf`, `combo` (FR-BKG-01); khách sạn và vé máy bay đi qua đơn nháp | backend | 0 |
+| `booking_drafts`, `booking_draft_items` | app | Đơn nháp của một lần "Đặt ngay" (FR-BKG-01, migration `0007_booking_drafts.sql`): chỉ các mục của lần đặt đó, hết hiệu lực sau 30 phút, không giữ chỗ; xoá khi tạo đơn giữ chỗ hoặc khi dọn bản ghi hết hạn. Giỏ và đơn nháp của khách chưa đăng nhập nằm ở Redis, không có bảng (`docs/spec/booking/dat-truc-tiep-theo-don-nhap.md` §8) | backend | 0 |
 | `booking_travelers` | app | Đoàn khách của đơn (FR-BKG-08): họ, tên đệm và tên, loại khách, ngày sinh (trẻ em; người lớn khi có vé bay), giấy tờ cho vé bay `documents` (FR-BKG-13, migration `0006_traveler_documents`). Ngày sinh và số giấy tờ chỉ lưu ở đây, không trả qua API (chỉ 4 số cuối số giấy tờ), không gửi CDP, Insider, Stripe. Xoá theo đơn | backend | chỉ persona |
 | `bookings`, `booking_items` | app | Đơn đặt chỗ: giữ chỗ `pending_payment` 30 phút → `confirmed` khi Stripe thu tiền (hoặc `payment_failed` · `expired` · `cancelled`); tối đa một đơn `pending_payment` mỗi user (unique index một phần). 1 checkout = 1 event_group_id; nối sang event purchase bằng event_group_id + product_id + using_date | backend · seed persona | chỉ persona |
 | `payments` | app | Một phiên Stripe Checkout mỗi đơn; trạng thái thanh toán tách khỏi trạng thái đơn (spec booking §5.2). Không lưu dữ liệu thẻ, chỉ id của Stripe (NFR-SEC-03) | backend · seed (`provider = 'seed'` cho booking của P1) | booking của P1 |
@@ -439,7 +463,7 @@ Handbook §6: random data makes a broken recommender look fine. Mục tiêu củ
 
 Bảng dưới là tóm tắt. **Nguồn chi tiết là `docs/spec/MOCK_DATA_SPEC.md`** (mọi tỷ lệ, cùng các diễn giải chốt 21/09 ở §0); tham số chạy thật ở `src/data_collection/seed/config.py`. Khi hai tài liệu lệch nhau, MOCK_DATA_SPEC thắng.
 
-**Thứ tự nạp:** (1) `cdp.products` ← `products.jsonl`, loader gán thêm `attributes.nights` / `priceBasis` / `minPax` cho combo; (2) `catalog.combo_items` ← `parse_combos`; (3) `cdp.profiles` + `cdp.events` ← `seed_histories.py`, số liệu sinh ra in vào `data-collection/README.md`; (4) `app.users` 4 persona + 50 test — `seed_histories` ghi hash **Argon2id** của mật khẩu demo chung `Demo@2026` ngay lúc seed (đúng tham số backend nên không bị rehash; auth §8.1–8.2), `app.bookings` chỉ cho persona có chuyến sắp tới; (5) vector ← job `embed_products` gọi Cohere `embed-multilingual-v3.0` (`input_type=search_document`) rồi ghi vào collection `Product` của Weaviate, chỉ cho `is_search_unit = true`; gợi ý chỉ lấy `is_recommendable = true`; job này nằm NGOÀI vòng seed Postgres và chỉ chạy lại khi `textHash` hoặc `modelVersion` đổi; (5b) lịch 30 ngày: mỗi `hotel_room` một chuỗi `attributes.availability.calendar` 30 ký tự từ ngày crawl, kín 25–40% theo cụm 1–4 đêm, cuối tuần và Vinpearl kín nhiều hơn; attraction / golf toàn trống trừ 15% sản phẩm blackout 2–3 ngày; flight, property, route, combo không có lịch; `available_from/to` của mọi sản phẩm = cửa sổ `[as_of, as_of + 29]` cắt với khoảng của nguồn; loader `--as-of`, chạy lại trước demo; (6) `insider`: `partners` → `insider_profiles` + `identifiers` → `insider_events` (bản sao 90 ngày + purchase 730) → `channel_events`; (7) sanity check: baseline không gần 0 và không bất khả chiến bại; mỗi chuyến một destination; 4 persona mở Home đúng section (UX spec §4.1.3).
+**Thứ tự nạp:** (1) `cdp.products` ← `products.jsonl`, loader gán thêm `attributes.nights` / `priceBasis` / `minPax` cho combo; (2) `catalog.combo_items` ← `parse_combos`; (3) `cdp.profiles` + `cdp.events` ← `seed_histories.py`, số liệu sinh ra in vào `data-collection/README.md`; (4) `app.users` 4 persona + 50 test — `seed_histories` ghi hash **Argon2id** của mật khẩu demo chung `Demo@2026` ngay lúc seed (đúng tham số backend nên không bị rehash; auth §8.1–8.2), `app.bookings` chỉ cho persona có chuyến sắp tới; (5) vector ← job `embed_products` embed bằng model local `intfloat/multilingual-e5-small` (tiền tố `passage: `, 384 chiều; đường lui `EMBED_PROVIDER=cohere`: Cohere `embed-multilingual-v3.0`, `input_type=search_document`, collection `Product`) rồi ghi vào collection `ProductE5` của Weaviate, chỉ cho `is_search_unit = true`; gợi ý chỉ lấy `is_recommendable = true`; job này nằm NGOÀI vòng seed Postgres và chỉ chạy lại khi `textHash` hoặc `modelVersion` đổi; (5b) lịch 30 ngày: mỗi `hotel_room` một chuỗi `attributes.availability.calendar` 30 ký tự từ ngày crawl, mở đủ 30 đêm trừ ngày nguồn đã hỏi và báo hết phòng (chốt 02/10/2026, thay lịch kín 25–40%); attraction / golf toàn trống trừ 15% sản phẩm blackout 2–3 ngày; flight, property, route, combo không có lịch; `available_from/to` của mọi sản phẩm = cửa sổ `[as_of, as_of + 29]` cắt với khoảng của nguồn, riêng hạng phòng lấy nguyên cửa sổ, không cắt theo ngày nguồn (chốt 02/10/2026); loader `--as-of`, chạy lại trước demo; (6) `insider`: `partners` → `insider_profiles` + `identifiers` → `insider_events` (bản sao 90 ngày + purchase 730) → `channel_events`; (7) sanity check: baseline không gần 0 và không bất khả chiến bại; mỗi chuyến một destination; 4 persona mở Home đúng section (UX spec §4.1.3).
 
 | Quy tắc | Đề xuất |
 |---|---|
@@ -689,14 +713,16 @@ CREATE TABLE app.users (
     password_hash  text NOT NULL,                                     -- Argon2id, chuỗi PHC tự mô tả thuật toán (auth §8.1).
                                                                       -- bcrypt của user seed vẫn kiểm được và được rehash ngay khi đăng nhập (auth §8.2).
     display_name   text NOT NULL,
+    phone          text,                                              -- số điện thoại hồ sơ (FR-USR-04); chỉ ở app.users, không gửi CDP/Insider/Stripe
     cdp_user_id    text NOT NULL UNIQUE REFERENCES cdp.profiles (cdp_user_id),
     persona        text CHECK (persona IN ('P1_frequent','P2_first_time','P3_dormant','P4_no_history')),  -- tài khoản seed cho demo
     created_at     timestamptz NOT NULL DEFAULT now(),
     email_verified_at timestamptz,                                    -- NULL = chưa xác minh; chặn checkout, không chặn đăng nhập (auth §11.1)
-    last_login_at  timestamptz
+    last_login_at  timestamptz,
+    CONSTRAINT users_phone_format CHECK (phone IS NULL OR phone ~ '^0[0-9]{9}$')
 );
 
--- app.carts / app.cart_items — giỏ phía server, một giỏ đang mở / user (UX spec D6)
+-- app.carts / app.cart_items — giỏ phía server, một giỏ đang mở / user (UX spec D6). Chỉ chứa attraction, golf, combo (FR-BKG-01).
 CREATE TABLE app.carts (
     cart_id      uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     cdp_user_id  text NOT NULL UNIQUE REFERENCES cdp.profiles (cdp_user_id),
@@ -721,6 +747,38 @@ CREATE TABLE app.cart_items (
     CONSTRAINT cart_items_children_min CHECK (children >= 0),
     CONSTRAINT cart_items_party_size CHECK (adults + children <= 9),
     CONSTRAINT cart_items_uq UNIQUE (cart_id, product_id, using_date)
+);
+
+-- app.booking_drafts / app.booking_draft_items — đơn nháp của một lần "Đặt ngay" (FR-BKG-01,
+--   docs/spec/booking/dat-truc-tiep-theo-don-nhap.md §4). Chỉ chứa các mục của lần đặt đó, hết hiệu lực tại expires_at
+--   (30 phút), không giữ chỗ. Bị xoá khi đơn giữ chỗ được tạo hoặc khi dọn bản ghi hết hạn. draft_id do Backend cấp
+--   (khi gộp đơn nháp của khách chưa đăng nhập phải giữ nguyên mã). Giỏ và đơn nháp của khách chưa đăng nhập nằm ở Redis,
+--   không có bảng. app.cart_items từ nay chỉ chứa attraction, golf, combo; khách sạn và vé máy bay đi qua đơn nháp.
+CREATE TABLE app.booking_drafts (
+    draft_id     uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    cdp_user_id  text NOT NULL REFERENCES cdp.profiles (cdp_user_id),
+    created_at   timestamptz NOT NULL DEFAULT now(),
+    expires_at   timestamptz NOT NULL
+);
+CREATE INDEX booking_drafts_user_idx    ON app.booking_drafts (cdp_user_id);
+CREATE INDEX booking_drafts_expires_idx ON app.booking_drafts (expires_at);
+CREATE TABLE app.booking_draft_items (
+    draft_item_id        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    draft_id             uuid NOT NULL REFERENCES app.booking_drafts (draft_id) ON DELETE CASCADE,
+    product_id           uuid NOT NULL REFERENCES cdp.products (product_id),
+    quantity             integer NOT NULL CHECK (quantity > 0),
+    using_date           date NOT NULL,
+    using_date_to        date,                                         -- trả phòng (hotel); NULL với vé, chuyến
+    unit_price_snapshot  numeric(14,2) NOT NULL,                       -- giá khách thấy gần nhất; thanh toán so lại với products
+    added_at             timestamptz NOT NULL DEFAULT now(),
+    adults               integer NOT NULL DEFAULT 1,
+    children             integer NOT NULL DEFAULT 0,
+    child_unit_price_snapshot numeric(14,2),                           -- NULL = trẻ em trả giá người lớn
+    CONSTRAINT booking_draft_items_dates CHECK (using_date_to IS NULL OR using_date_to > using_date),
+    CONSTRAINT booking_draft_items_adults_min CHECK (adults >= 1),
+    CONSTRAINT booking_draft_items_children_min CHECK (children >= 0),
+    CONSTRAINT booking_draft_items_party_size CHECK (adults + children <= 81),  -- khách sạn: 9 khách × 9 phòng
+    CONSTRAINT booking_draft_items_uq UNIQUE (draft_id, product_id, using_date)
 );
 
 -- app.bookings / app.booking_items — demo only (handbook §6, §10). Một checkout = một booking = một event_group_id.
@@ -784,7 +842,8 @@ CREATE TABLE app.booking_travelers (
     traveler_id    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     booking_id     uuid NOT NULL REFERENCES app.bookings (booking_id) ON DELETE CASCADE,
     traveler_ref   text NOT NULL,                                          -- mã tạm do Web sinh; booking_items.metadata tham chiếu bằng mã này
-    position       integer NOT NULL CHECK (position BETWEEN 1 AND 9),      -- thứ tự khai báo; đoàn tối đa 9 người
+    position       integer NOT NULL,                                        -- thứ tự khai báo; đoàn tối đa 81 người (9 phòng × 9)
+    CONSTRAINT booking_travelers_position_range CHECK (position BETWEEN 1 AND 81),
     traveler_type  text NOT NULL CHECK (traveler_type IN ('adult','child')),
     surname        text NOT NULL,                                          -- Họ
     given_names    text NOT NULL,                                          -- Tên đệm và tên
@@ -937,7 +996,7 @@ CREATE INDEX login_attempts_ip_idx    ON app.login_attempts (ip_prefix, attempte
 --                 đọc cdp.*, ghi events (INSERT; DELETE chỉ để bù trừ theo event_group_id khi commit booking lỗi),
 --                 cập nhật profiles. KHÔNG có USAGE trên catalog/app → không JOIN được sang bảng riêng của V-OTA.
 --    vota_app   : backend/agent qua DATABASE_URL — toàn quyền catalog + app; trên cdp CHỈ SELECT cdp.products
---                 (catalog.* dựng từ nó, FK của booking_items/cart_items trỏ tới nó). Không ghi cdp.*, không đọc events/profiles.
+--                 (catalog.* dựng từ nó, FK của booking_items/cart_items/booking_draft_items trỏ tới nó). Không ghi cdp.*, không đọc events/profiles.
 --    Loader/seed chạy bằng superuser (postgres) — ngoài các role này.
 --  Lên production: HttpCdpClient thay LocalCdpClient; cdp.products vẫn là bảng local do job sync ghi qua CdpClient;
 --  cdp.events/profiles không còn dùng — code ngoài CdpClient chưa bao giờ chạm chúng nên không phải sửa.
@@ -1043,6 +1102,6 @@ CREATE INDEX channel_events_profile_idx ON channel_events (profile_id, event_tim
 
 ## 13. Test đã chạy (PostgreSQL 16; vector nằm ngoài DB)
 
-Các kiểm tra dưới đây là kiểm tra phần quan hệ. `pgvector` và `catalog.product_vectors` đã được gỡ bằng migration `0002`; Cohere/Weaviate được kiểm riêng bởi job index và test adapter backend.
+Các kiểm tra dưới đây là kiểm tra phần quan hệ. `pgvector` và `catalog.product_vectors` đã được gỡ bằng migration `0002`; embedding (model local e5-small, hoặc Cohere ở đường lui) và Weaviate được kiểm riêng bởi job index và test adapter backend.
 
 `vota`: 15 bảng + 3 view tạo được; luồng checkout mẫu (cart → booking → booking_items, 2 event purchase cùng `event_group_id`, JOIN đơn ↔ event bằng event_group_id + product_id + using_date) chạy đúng; từ chối đúng: purchase không có `product_id`, xoá sản phẩm đã có booking, hai user cùng `cdp_user_id`, `cdp_reader` đọc schema `app`; hàng đợi soát tay combo trả đúng dòng chưa map. `insider`: 5 bảng + 1 view; từ chối `partner_name` viết hoa và identifier trùng đang hiệu lực; PATCH identity giữ lịch sử 3 dòng; view `live_events` giữ purchase 400 ngày, bỏ product_view 100 ngày.

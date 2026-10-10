@@ -18,6 +18,7 @@ import {
   type AssistantStreamEvent,
 } from '../services/assistantStream';
 import { getAssistantConversation } from '../services/assistantHistory';
+import { ApiError, apiJson } from '../services/http';
 
 const CONVERSATION_STORAGE_KEY = 'vota.assistant.conversationId';
 type IntentOverride = components['schemas']['TripIntentPatch'];
@@ -27,6 +28,11 @@ interface AssistantContextValue {
   state: AssistantState;
   sendMessage: (message: string, context?: AssistantContextData) => void;
   submitIntentOverride: (intentOverride: IntentOverride, context?: AssistantContextData) => void;
+  /**
+   * Bấm thẻ khách sạn trong hàng "Phương án khác" (contract 1.20.0): lưu lựa chọn lên server ở nền, không thêm tin nhắn.
+   * `true` khi server đã đổi lịch (câu trả lời gần nhất mang lịch mới), `false` khi lỗi.
+   */
+  selectStayOption: (index: number) => Promise<boolean>;
   retry: () => void;
   abort: () => void;
   resetConversation: () => void;
@@ -45,7 +51,7 @@ function id() {
 }
 
 function assistantError(error: unknown): AssistantError {
-  if (error instanceof AssistantStreamError) {
+  if (error instanceof AssistantStreamError || error instanceof ApiError) {
     return {
       code: error.code,
       message: error.message,
@@ -84,6 +90,8 @@ function isAssistantResponse(value: unknown): value is AssistantResponse {
     && typeof response.conversationId === 'string';
 }
 
+const SLOW_NODE_MS = 12_000;
+
 function nodeProgress(data: Record<string, unknown>) {
   return {
     sequence: typeof data.sequence === 'number' ? data.sequence : undefined,
@@ -100,14 +108,15 @@ function intentDescription(intent: IntentOverride) {
 }
 
 export function AssistantProvider({ children }: { children: ReactNode }) {
-  const { currentLocale, currentPersona } = useTravel();
+  const { currentLocale, currentPersona, authReady } = useTravel();
   const [state, dispatch] = useReducer(assistantReducer, null, () => createInitialAssistantState());
   const activeRunIdRef = useRef<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const hydrationCompleteRef = useRef(false);
+  const historyVersionRef = useRef(0);
   const previousPersonaRef = useRef<string | null | undefined>(undefined);
 
   const abortCurrentRun = useCallback(() => {
+    historyVersionRef.current += 1;
     const controller = abortControllerRef.current;
     if (controller && !controller.signal.aborted) controller.abort();
     abortControllerRef.current = null;
@@ -115,6 +124,17 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (!authReady) return;
+    const personaId = currentPersona?.id ?? null;
+    if (previousPersonaRef.current !== undefined) {
+      if (previousPersonaRef.current !== personaId) {
+        abortCurrentRun();
+        dispatch({ type: 'reset' });
+        previousPersonaRef.current = personaId;
+        return;
+      }
+    }
+    previousPersonaRef.current = personaId;
     let conversationId: string | null = null;
     try {
       conversationId = window.sessionStorage.getItem(CONVERSATION_STORAGE_KEY);
@@ -122,31 +142,30 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       // Storage can be unavailable in privacy-restricted contexts; runtime remains usable.
     }
     dispatch({ type: 'hydrate-conversation', conversationId });
-    hydrationCompleteRef.current = true;
-  }, []);
+    if (conversationId && personaId) {
+      const version = historyVersionRef.current;
+      void getAssistantConversation(conversationId).then((detail) => {
+        if (version === historyVersionRef.current) dispatch({ type: 'conversation-loaded', detail });
+      }).catch((error: unknown) => {
+        if (version !== historyVersionRef.current) return;
+        if (error instanceof ApiError && error.code === 'CONVERSATION_NOT_FOUND') {
+          dispatch({ type: 'reset' });
+        } else {
+          dispatch({ type: 'request-failed', error: assistantError(error) });
+        }
+      });
+    }
+  }, [authReady, currentPersona?.id, abortCurrentRun]);
 
   useEffect(() => {
-    if (!hydrationCompleteRef.current) return;
+    if (!state.isHydrated) return;
     try {
       if (state.conversationId) window.sessionStorage.setItem(CONVERSATION_STORAGE_KEY, state.conversationId);
       else window.sessionStorage.removeItem(CONVERSATION_STORAGE_KEY);
     } catch {
       // The backend session remains usable for this tab even if browser storage is disabled.
     }
-  }, [state.conversationId]);
-
-  useEffect(() => {
-    const personaId = currentPersona?.code ?? null;
-    if (previousPersonaRef.current === undefined) {
-      previousPersonaRef.current = personaId;
-      return;
-    }
-    if (previousPersonaRef.current !== personaId) {
-      abortCurrentRun();
-      dispatch({ type: 'reset' });
-      previousPersonaRef.current = personaId;
-    }
-  }, [currentPersona?.code, abortCurrentRun]);
+  }, [state.conversationId, state.isHydrated]);
 
   useEffect(() => () => abortCurrentRun(), [abortCurrentRun]);
 
@@ -165,9 +184,16 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'request-started', request, userText, appendUser });
 
     const isCurrent = () => activeRunIdRef.current === runId && !controller.signal.aborted;
-    const slowTimer = window.setTimeout(() => {
-      if (isCurrent()) dispatch({ type: 'slow-state', isSlow: true });
-    }, 8_000);
+    // Chậm = 12 giây không có node nào xong. Thời gian dồn vào các node gọi LLM, nên đo theo từng node chứ không
+    // theo cả lượt: lượt dài nhưng vẫn tiến đều thì không báo chậm.
+    let slowTimer = 0;
+    const armSlowTimer = () => {
+      window.clearTimeout(slowTimer);
+      slowTimer = window.setTimeout(() => {
+        if (isCurrent()) dispatch({ type: 'slow-state', isSlow: true });
+      }, SLOW_NODE_MS);
+    };
+    armSlowTimer();
 
     void requestAssistantStream(request, {
       signal: controller.signal,
@@ -179,6 +205,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
           dispatch({ type: 'topology-received', topology: event.data });
         } else if (event.event === 'node.completed') {
           dispatch({ type: 'node-completed', progress: nodeProgress(event.data) });
+          armSlowTimer();
         } else if (event.event === 'run.completed') {
           const response = event.data.response;
           if (!isAssistantResponse(response)) {
@@ -242,11 +269,40 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     executeRequest(request, intentDescription(intentOverride), true);
   }, [currentLocale, executeRequest, state.conversationId]);
 
+  const selectStayOption = useCallback(async (index: number) => {
+    if (!state.conversationId) return false;
+    const request: AssistantRequest = {
+      message: null,
+      conversationId: state.conversationId,
+      intentOverride: null,
+      selectStayOption: { index },
+      context: { language: currentLocale === 'en' ? 'en' : 'vi' },
+    };
+    try {
+      const response = await apiJson<AssistantResponse>('/api/v1/assistant/itineraries', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request), cache: 'no-store',
+      });
+      if (!isAssistantResponse(response) || response.status !== 'COMPLETED') return false;
+      dispatch({ type: 'stay-option-applied', response });
+      return true;
+    } catch {
+      return false;
+    }
+  }, [currentLocale, state.conversationId]);
+
   const retry = useCallback(() => {
     if (state.lastRequest) {
       executeRequest(state.lastRequest, state.lastRequest.message || 'Tiếp tục cập nhật lịch trình', false);
+    } else if (state.conversationId && currentPersona?.id) {
+      abortCurrentRun();
+      const version = historyVersionRef.current;
+      void getAssistantConversation(state.conversationId).then((detail) => {
+        if (version === historyVersionRef.current) dispatch({ type: 'conversation-loaded', detail });
+      }).catch((error: unknown) => {
+        if (version === historyVersionRef.current) dispatch({ type: 'request-failed', error: assistantError(error) });
+      });
     }
-  }, [executeRequest, state.lastRequest]);
+  }, [abortCurrentRun, currentPersona?.id, executeRequest, state.lastRequest, state.conversationId]);
 
   const abort = useCallback(() => {
     if (!activeRunIdRef.current) return;
@@ -261,14 +317,16 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
 
   const loadConversation = useCallback(async (conversationId: string) => {
     abortCurrentRun();
+    const version = historyVersionRef.current;
     const detail = await getAssistantConversation(conversationId);
-    dispatch({ type: 'conversation-loaded', detail });
+    if (version === historyVersionRef.current) dispatch({ type: 'conversation-loaded', detail });
   }, [abortCurrentRun]);
 
   const value = useMemo<AssistantContextValue>(() => ({
     state,
     sendMessage,
     submitIntentOverride,
+    selectStayOption,
     retry,
     abort,
     resetConversation,
@@ -278,7 +336,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     closeFloatingWidget: () => dispatch({ type: 'close-floating' }),
     closeHeaderDrawer: () => dispatch({ type: 'close-header-drawer' }),
     consumeFloatingInitialMessage: () => dispatch({ type: 'consume-floating-initial-message' }),
-  }), [state, sendMessage, submitIntentOverride, retry, abort, resetConversation, loadConversation]);
+  }), [state, sendMessage, submitIntentOverride, selectStayOption, retry, abort, resetConversation, loadConversation]);
 
   return <AssistantContext.Provider value={value}>{children}</AssistantContext.Provider>;
 }

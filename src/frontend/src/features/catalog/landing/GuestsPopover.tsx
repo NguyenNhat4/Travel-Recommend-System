@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Minus, Plus } from 'lucide-react';
-import { MAX_PARTY_SIZE } from '../../search/tripContext';
+import { MAX_PARTY_SIZE, MAX_ROOMS, maxGuestsFor } from '../../search/tripContext';
 
 export interface GuestsValue {
   adults: number;
@@ -49,11 +49,18 @@ function Stepper({ label, hint, value, min, max, onChange }: {
 }
 
 /**
- * Bộ đếm phòng, người lớn, trẻ em theo luật đoàn của checkout (FR-BKG-08): tối đa 9 người mỗi lần đặt, ít nhất
- * một người lớn, mỗi phòng ít nhất một người lớn. Backend vẫn là nơi quyết định cuối.
+ * Bộ đếm phòng, người lớn, trẻ em theo luật đoàn của checkout (FR-BKG-08): tối đa 9 khách mỗi phòng và 9 phòng mỗi lần đặt
+ * (khách sạn), còn lại tối đa 9 khách mỗi lần đặt; ít nhất một người lớn, mỗi phòng ít nhất một người lớn. Backend vẫn là
+ * nơi quyết định cuối.
  */
 export function GuestsPopover({ value, onChange, showRooms }: GuestsPopoverProps) {
   const { adults, children, rooms } = value;
+  const roomCount = showRooms ? rooms : 1;
+  const total = adults + children;
+  const cap = maxGuestsFor(roomCount);
+  // Số người lớn tối thiểu để bớt người lớn không làm số phòng (bị kéo xuống bằng số người lớn) không đủ chỗ cho đoàn.
+  let minAdults = 1;
+  while (showRooms && minAdults < adults && minAdults + children > maxGuestsFor(Math.min(rooms, minAdults))) minAdults += 1;
   return (
     <div className="w-[min(calc(100vw-3rem),20rem)] space-y-3" role="dialog" aria-label="Số lượng khách">
       {showRooms && (
@@ -61,8 +68,8 @@ export function GuestsPopover({ value, onChange, showRooms }: GuestsPopoverProps
           label="Phòng"
           hint="Mỗi phòng có ít nhất 1 người lớn"
           value={rooms}
-          min={1}
-          max={Math.min(adults, MAX_PARTY_SIZE)}
+          min={Math.max(1, Math.ceil(total / MAX_PARTY_SIZE))}
+          max={Math.min(adults, MAX_ROOMS)}
           onChange={(next) => onChange({ ...value, rooms: next })}
         />
       )}
@@ -70,8 +77,8 @@ export function GuestsPopover({ value, onChange, showRooms }: GuestsPopoverProps
         label="Người lớn"
         hint="Từ 12 tuổi trở lên"
         value={adults}
-        min={1}
-        max={MAX_PARTY_SIZE - children}
+        min={minAdults}
+        max={cap - children}
         onChange={(next) => onChange({ ...value, adults: next, rooms: Math.min(rooms, next) })}
       />
       <Stepper
@@ -79,10 +86,12 @@ export function GuestsPopover({ value, onChange, showRooms }: GuestsPopoverProps
         hint="Dưới 12 tuổi"
         value={children}
         min={0}
-        max={MAX_PARTY_SIZE - adults}
+        max={cap - adults}
         onChange={(next) => onChange({ ...value, children: next })}
       />
-      <p className="text-xs text-slate-500">Tối đa {MAX_PARTY_SIZE} khách mỗi lần đặt.</p>
+      <p className="text-xs text-slate-500">
+        {showRooms ? `Tối đa ${MAX_PARTY_SIZE} khách mỗi phòng, ${MAX_ROOMS} phòng mỗi lần đặt.` : `Tối đa ${MAX_PARTY_SIZE} khách mỗi lần đặt.`}
+      </p>
     </div>
   );
 }

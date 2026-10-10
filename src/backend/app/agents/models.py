@@ -33,6 +33,7 @@ class IntentUpdate(StrictModel):
     budget: int | None = None
     interests: list[str] | None = Field(default=None, max_length=20)
     pace: Pace | None = None
+    origin: str | None = Field(default=None, max_length=150)
 
 
 class HotelAttributes(StrictModel):
@@ -58,6 +59,8 @@ class ConstraintUpdate(StrictModel):
     specific_hotel: str | None = Field(default=None, max_length=200)
     specific_activity: str | None = Field(default=None, max_length=200)
     children_ages: list[int] | None = Field(default=None, max_length=20)
+    require_flight: bool | None = Field(
+        default=None, description="true khi người dùng hỏi rõ vé máy bay hoặc chuyến bay cho chuyến đi này.")
     unverified_requirements: list[str] | None = Field(default=None, max_length=20)
     exclude_products: list[str] | None = Field(
         default=None, max_length=20,
@@ -69,8 +72,16 @@ class ConstraintUpdate(StrictModel):
 
 
 class TurnRoute(StrictModel):
-    """Nhãn của `classify`: chỉ phân luồng, không trích gì khác."""
-    route: Literal["travel", "conversation", "out_of_scope"]
+    """Nhãn của `classify`: chỉ phân luồng, không trích gì khác.
+
+    `explore` (FR-AGT-06): hỏi một điểm đến có gì, khách sạn, điểm tham quan ở đó, khi chưa xin lập lịch.
+    `plan_request`: người dùng xin lập lịch hoặc đồng ý lời mời lập lịch; luật trong `classification.plan_consented`
+    nhận các câu đồng ý ngắn trước, LLM chỉ bổ sung cho cách nói khác.
+    """
+    route: Literal["travel", "explore", "vague", "conversation", "out_of_scope"]
+    plan_request: bool = Field(
+        default=False,
+        description="true khi tin nhắn xin lập lịch trình/kế hoạch, hoặc đồng ý lời mời lập lịch của trợ lý.")
 
 
 class Extraction(StrictModel):
@@ -82,7 +93,7 @@ class Extraction(StrictModel):
         default=False,
         description="true khi người dùng nói rõ chưa chốt hoặc linh hoạt về ngày đi; không có ngày cũng không có lời này thì false.")
     conflict: bool = False
-    change_without_value: list[Literal["destination", "days", "startDate", "party", "budget"]] = Field(
+    change_without_value: list[Literal["destination", "days", "startDate", "party", "budget", "origin"]] = Field(
         default_factory=list,
         description="Trường người dùng muốn đổi nhưng chưa nói giá trị mới ('đổi ngày', 'đổi địa điểm'). "
                     "Đã có giá trị mới thì điền patch, không liệt kê ở đây.")
@@ -101,9 +112,34 @@ class ConversationalAnswer(StrictModel):
     #: Cho phép dài hơn mức hiển thị một chút: `titled()` cắt, không để tiêu đề dài làm hỏng cả câu.
     title: str | None = Field(default=None, max_length=200)
     message: str = Field(min_length=1, max_length=1000)
+    #: Nút gợi ý LLM đề xuất (FR-AGT-06); code kiểm và cắt còn tối đa 3 (`exploration.checked_suggestions`).
+    suggestions: list[str] = Field(default_factory=list, max_length=6)
+
+
+class ExploreNarration(StrictModel):
+    """Output của `explore`: lời dẫn cho các thẻ code đã chọn; số do code điền vào placeholder."""
+    title: str | None = Field(default=None, max_length=200)
+    message: str = Field(min_length=1, max_length=2000)
+    suggestions: list[str] = Field(default_factory=list, max_length=6)
 
 
 class ItineraryNarration(StrictModel):
     """Output của `narrate`: lời diễn giải lịch trình đã dựng; tên sản phẩm và giá do backend điền từ dữ liệu."""
     title: str | None = Field(default=None, max_length=200)
     message: str = Field(min_length=1, max_length=3000)
+
+
+class DuplicatePair(StrictModel):
+    """Hai mã điểm tham quan cùng một nơi hoặc cùng một trải nghiệm (node `filter`); mã phải có trong danh sách gửi đi.
+
+    `duplicate` đứng sau `reason` để model kết luận sau khi nêu lý do: trace 08/10/2026 có cặp (hòn Thơm, Vinpearl Safari)
+    với lý do "là hai địa điểm khác nhau". Chỉ cặp `duplicate=true` được áp.
+    """
+    ids: list[str] = Field(min_length=2, max_length=2)
+    reason: str = Field(default="", max_length=200)
+    duplicate: bool
+
+
+class DuplicatePairs(StrictModel):
+    """Output của `filter`: chỉ cặp mã trùng; giữ mã nào do luật (`domain/itinerary/dedupe.py`) quyết định."""
+    pairs: list[DuplicatePair] = Field(default_factory=list, max_length=30)

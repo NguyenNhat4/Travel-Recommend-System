@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { Calendar, Loader2, MapPin, RotateCcw, Send, Users, Wallet } from 'lucide-react';
+import { Calendar, LocateFixed, Loader2, MapPin, PlaneTakeoff, RotateCcw, Send, Sparkles, Users, Wallet } from 'lucide-react';
 import { listDestinations } from '../../services/destinations';
+import { listDepartureAirports, nearestDepartureCity } from '../../services/flights';
 import type { components } from '../../types/api.gen';
 
 type TripIntent = components['schemas']['TripIntent'];
@@ -23,8 +24,11 @@ function formatBudget(value: number): string {
   return `${(value / 1_000_000).toLocaleString('vi-VN', { maximumFractionDigits: 1 })} triệu`;
 }
 
-/** Câu yêu cầu hoàn chỉnh dựng từ form; đặt vào ô nhập để người dùng đọc lại, sửa rồi mới gửi. */
-export function tripDetailsPrompt(intent: TripIntent): string {
+/**
+ * Câu yêu cầu hoàn chỉnh dựng từ form; đặt vào ô nhập để người dùng đọc lại, sửa rồi mới gửi. Sở thích khách sạn chọn
+ * trong form (`interestOptions`, contract 1.24.0) đứng cuối câu sau chữ "ưu tiên": backend coi đó là ưu tiên, không bắt buộc.
+ */
+export function tripDetailsPrompt(intent: TripIntent, interestOptions: readonly string[] = []): string {
   const parts: string[] = [];
   parts.push(`Lên lịch trình ${intent.days ?? MIN_DAYS} ngày tại ${intent.destination ?? 'điểm đến bạn chọn'}`);
   if (intent.startDate) parts.push(`bắt đầu từ ngày ${intent.startDate}`);
@@ -34,7 +38,51 @@ export function tripDetailsPrompt(intent: TripIntent): string {
     parts.push(`cho ${partyText}`);
   }
   if (intent.budget) parts.push(`ngân sách khoảng ${formatBudget(intent.budget)}`);
+  if (intent.origin?.trim()) parts.push(`đi từ ${intent.origin.trim()}`);
+  const preferred = (intent.interests ?? []).filter((value) => interestOptions.includes(value));
+  if (preferred.length > 0) parts.push(`ưu tiên khách sạn có ${preferred.join(', ')}`);
   return `${parts.join(', ')}.`;
+}
+
+type LocateState = 'idle' | 'locating' | 'denied' | 'failed';
+
+const LOCATE_MESSAGE: Record<Exclude<LocateState, 'idle' | 'locating'>, string> = {
+  denied: 'Bạn chưa cho phép dùng vị trí. Bạn nhập nơi đi giúp mình nhé.',
+  failed: 'Chưa xác định được nơi đi từ vị trí. Bạn nhập nơi đi giúp mình nhé.',
+};
+
+/**
+ * Gợi ý nơi đi từ vị trí trình duyệt (AC-AGT-03): chỉ hỏi quyền khi người dùng bấm nút. Toạ độ chỉ dùng trong hàm này
+ * để chọn thành phố có sân bay gần nhất trong catalog; không lưu vào state, không gửi lên server.
+ */
+function useDepartureFromLocation(onCity: (city: string) => void) {
+  const [state, setState] = useState<LocateState>('idle');
+  const locate = useCallback(() => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setState('failed');
+      return;
+    }
+    setState('locating');
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        void listDepartureAirports()
+          .then((airports) => {
+            const city = nearestDepartureCity({ latitude, longitude }, airports);
+            if (city) {
+              onCity(city);
+              setState('idle');
+            } else {
+              setState('failed');
+            }
+          })
+          .catch(() => setState('failed'));
+      },
+      (error) => setState(error.code === error.PERMISSION_DENIED ? 'denied' : 'failed'),
+      { enableHighAccuracy: false, timeout: 10_000, maximumAge: 600_000 },
+    );
+  }, [onCity]);
+  return { state, locate };
 }
 
 export function TripDetailsForm({
@@ -49,6 +97,8 @@ export function TripDetailsForm({
   const [options, setOptions] = useState<string[]>([]);
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'empty' | 'error'>('loading');
   const [intent, setIntent] = useState<TripIntent>(form.defaults);
+  // Điểm đến đến từ ô gõ hay từ chip: ô gõ chỉ hiện chữ người dùng tự gõ, chọn chip thì ô để trống (hiện placeholder).
+  const [typedDestination, setTypedDestination] = useState(false);
   const requestRef = useRef<AbortController | null>(null);
   const titleId = useId();
   const today = form.startDateMin ?? new Date().toISOString().slice(0, 10);
@@ -86,30 +136,38 @@ export function TripDetailsForm({
   const setChildren = (value: number) => setIntent((prev) => ({
     ...prev, party: { type: prev.party?.type ?? null, adults: prev.party?.adults ?? 1, children: Math.max(0, value) },
   }));
+  const setOrigin = useCallback((origin: string) => setIntent((prev) => ({ ...prev, origin })), []);
+  const departure = useDepartureFromLocation(setOrigin);
   const setBudget = (value: string) => {
     const parsed = value.trim() ? Number(value) * 1_000_000 : null;
     setIntent((prev) => ({ ...prev, budget: parsed && parsed > 0 ? parsed : null }));
   };
 
+  const interestOptions = form.interestOptions ?? [];
+  const toggleInterest = (label: string) => setIntent((prev) => {
+    const current = prev.interests ?? [];
+    return { ...prev, interests: current.includes(label) ? current.filter((value) => value !== label) : [...current, label] };
+  });
+
   const confirm = (event: React.FormEvent) => {
     event.preventDefault();
-    onConfirm(tripDetailsPrompt(intent));
+    onConfirm(tripDetailsPrompt(intent, interestOptions));
   };
 
-  const chipClass = (selected: boolean) => `min-h-9 rounded-lg border px-2.5 py-1 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
-    selected ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-blue-50'
+  const chipClass = (selected: boolean) => `min-h-9 rounded-lg border px-2.5 py-1 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ai-500 focus-visible:ring-offset-2 ${
+    selected ? 'border-ai-600 bg-ai-600 text-white' : 'border-slate-200 bg-white text-slate-700 hover:border-ai-300 hover:bg-ai-50'
   } disabled:cursor-not-allowed disabled:opacity-50`;
 
   const stepperButton = 'flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-sm font-bold text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40';
 
   return (
-    <section aria-labelledby={titleId} className="mt-2 space-y-3 rounded-2xl border border-blue-200 bg-white p-3.5 text-slate-800 shadow-sm">
+    <section aria-labelledby={titleId} className="mt-2 space-y-3 rounded-2xl border border-ai-200 bg-white p-3.5 text-slate-800 shadow-sm">
       <h3 id={titleId} className="sr-only">Form gợi ý thông tin chuyến đi</h3>
       <form onSubmit={confirm} className="space-y-3">
         {form.fields.includes('destination') && (
           <fieldset>
             <legend className="mb-1.5 flex items-center gap-1.5 text-xs font-bold text-slate-700">
-              <MapPin className="h-3.5 w-3.5 text-blue-600" aria-hidden="true" /> Điểm đến
+              <MapPin className="h-3.5 w-3.5 text-ai-600" aria-hidden="true" /> Điểm đến
             </legend>
             {loadState === 'loading' && (
               <div role="status" className="flex min-h-9 items-center gap-2 rounded-lg bg-slate-50 px-3 text-xs text-slate-500">
@@ -126,29 +184,34 @@ export function TripDetailsForm({
             )}
             {loadState === 'ready' && (
               <div className="flex flex-wrap gap-1.5" aria-label="Điểm đến gợi ý">
-                {options.map((destination) => (
-                  <button key={destination} type="button" disabled={disabled} aria-pressed={intent.destination === destination}
-                    onClick={() => setIntent((prev) => ({ ...prev, destination }))} className={chipClass(intent.destination === destination)}>
+                {options.map((destination) => {
+                  const selected = !typedDestination && intent.destination === destination;
+                  return (
+                  <button key={destination} type="button" disabled={disabled} aria-pressed={selected}
+                    onClick={() => { setTypedDestination(false); setIntent((prev) => ({ ...prev, destination })); }} className={chipClass(selected)}>
                     {destination}
                   </button>
-                ))}
+                  );
+                })}
               </div>
             )}
-            <input type="text" disabled={disabled} value={intent.destination ?? ''}
-              onChange={(event) => setIntent((prev) => ({ ...prev, destination: event.target.value }))}
-              onFocus={() => setIntent((prev) => (
-                // Bấm vào ô gõ khi đang chọn chip: xoá để không còn chip nào hiện đang chọn, tránh nhầm hai lựa chọn cùng lúc.
-                prev.destination && options.includes(prev.destination) ? { ...prev, destination: '' } : prev
-              ))}
+            <input type="text" disabled={disabled}
+              value={typedDestination || !intent.destination || !options.includes(intent.destination) ? intent.destination ?? '' : ''}
+              onChange={(event) => { setTypedDestination(true); setIntent((prev) => ({ ...prev, destination: event.target.value })); }}
+              onFocus={() => {
+                // Bấm vào ô gõ khi đang chọn chip: bỏ chọn chip, tránh nhầm hai lựa chọn cùng lúc.
+                if (typedDestination) return;
+                setIntent((prev) => (prev.destination && options.includes(prev.destination) ? { ...prev, destination: '' } : prev));
+              }}
               placeholder="Hoặc nhập điểm đến khác…"
-              className="mt-1.5 w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs outline-hidden focus:ring-1 focus:ring-blue-500" />
+              className="mt-1.5 w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs outline-hidden focus:ring-1 focus:ring-ai-500" />
           </fieldset>
         )}
 
         {form.fields.includes('days') && (
           <fieldset className="flex items-center justify-between gap-3">
             <legend className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
-              <Calendar className="h-3.5 w-3.5 text-blue-600" aria-hidden="true" /> Số ngày
+              <Calendar className="h-3.5 w-3.5 text-ai-600" aria-hidden="true" /> Số ngày
             </legend>
             <div className="flex items-center gap-2.5">
               <button type="button" disabled={disabled || (intent.days ?? MIN_DAYS) <= MIN_DAYS} onClick={() => setDays((intent.days ?? MIN_DAYS) - 1)} className={stepperButton}>−</button>
@@ -163,14 +226,14 @@ export function TripDetailsForm({
             <legend className="text-xs font-bold text-slate-700">Ngày khởi hành</legend>
             <input type="date" value={intent.startDate ?? today} min={today} disabled={disabled}
               onChange={(event) => setStartDate(event.target.value)}
-              className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs outline-hidden focus:ring-1 focus:ring-blue-500" />
+              className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs outline-hidden focus:ring-1 focus:ring-ai-500" />
           </fieldset>
         )}
 
         {form.fields.includes('party') && (
           <fieldset className="space-y-1.5">
             <legend className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
-              <Users className="h-3.5 w-3.5 text-blue-600" aria-hidden="true" /> Số người
+              <Users className="h-3.5 w-3.5 text-ai-600" aria-hidden="true" /> Số người
               {intent.party?.type && PARTY_LABELS[intent.party.type] ? ` · ${PARTY_LABELS[intent.party.type]}` : ''}
             </legend>
             <div className="flex flex-wrap items-center gap-3 text-xs">
@@ -191,20 +254,63 @@ export function TripDetailsForm({
         {form.fields.includes('budget') && (
           <fieldset className="flex items-center justify-between gap-3">
             <legend className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
-              <Wallet className="h-3.5 w-3.5 text-blue-600" aria-hidden="true" /> Ngân sách (không bắt buộc)
+              <Wallet className="h-3.5 w-3.5 text-ai-600" aria-hidden="true" /> Ngân sách (không bắt buộc)
             </legend>
             <div className="flex items-center gap-1.5">
               <input type="number" min={0} step={0.5} inputMode="decimal" disabled={disabled}
                 value={intent.budget ? intent.budget / 1_000_000 : ''}
                 onChange={(event) => setBudget(event.target.value)}
                 placeholder="Không giới hạn"
-                className="w-24 rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs outline-hidden focus:ring-1 focus:ring-blue-500" />
+                className="w-24 rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs outline-hidden focus:ring-1 focus:ring-ai-500" />
               <span className="text-xs font-semibold text-slate-500">triệu VNĐ</span>
             </div>
           </fieldset>
         )}
 
-        <button type="submit" disabled={disabled} className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300">
+        {form.fields.includes('origin') && (
+          <fieldset className="space-y-1.5">
+            <legend className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+              <PlaneTakeoff className="h-3.5 w-3.5 text-ai-600" aria-hidden="true" /> Nơi đi (không bắt buộc)
+            </legend>
+            <div className="flex items-center gap-1.5">
+              <input type="text" disabled={disabled} value={intent.origin ?? ''} aria-label="Nơi đi"
+                onChange={(event) => setOrigin(event.target.value)}
+                placeholder="Để thêm vé máy bay, ví dụ Hà Nội"
+                className="min-w-0 flex-1 rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs outline-hidden focus:ring-1 focus:ring-ai-500" />
+              <button type="button" disabled={disabled || departure.state === 'locating'} onClick={departure.locate}
+                className="inline-flex min-h-8 shrink-0 items-center gap-1 rounded-lg border border-ai-200 bg-ai-50 px-2.5 text-xs font-semibold text-ai-700 transition hover:bg-ai-100 disabled:cursor-not-allowed disabled:opacity-50">
+                {departure.state === 'locating'
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                  : <LocateFixed className="h-3.5 w-3.5" aria-hidden="true" />}
+                Dùng vị trí hiện tại
+              </button>
+            </div>
+            {(departure.state === 'denied' || departure.state === 'failed') && (
+              <p role="status" className="text-xs text-slate-500">{LOCATE_MESSAGE[departure.state]}</p>
+            )}
+          </fieldset>
+        )}
+
+        {form.fields.includes('interests') && interestOptions.length > 0 && (
+          <fieldset>
+            <legend className="mb-1.5 flex items-center gap-1.5 text-xs font-bold text-slate-700">
+              <Sparkles className="h-3.5 w-3.5 text-ai-600" aria-hidden="true" /> Sở thích nơi ở (không bắt buộc)
+            </legend>
+            <div className="flex flex-wrap gap-1.5" aria-label="Sở thích nơi ở">
+              {interestOptions.map((label) => {
+                const selected = (intent.interests ?? []).includes(label);
+                return (
+                  <button key={label} type="button" disabled={disabled} aria-pressed={selected}
+                    onClick={() => toggleInterest(label)} className={chipClass(selected)}>
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </fieldset>
+        )}
+
+        <button type="submit" disabled={disabled} className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-ai-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-ai-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ai-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300">
           <Send className="h-3.5 w-3.5" aria-hidden="true" /> Xác nhận
         </button>
       </form>

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { convertItineraryCompletedToGroundedPlan, isFreeToVisit, locateProduct } from '../../src/features/itinerary/widget/widgetPlan';
+import { convertItineraryCompletedToGroundedPlan, isFreeToVisit, locateProduct, partyLabel } from '../../src/features/itinerary/widget/widgetPlan';
+import { hotelTags } from '../../src/features/itinerary/widget/widgetVisuals';
 import type { components } from '../../src/types/api.gen';
 
 const product = (productId: string, name: string, taxonomy: 'hotel' | 'attraction') => ({
@@ -26,6 +27,51 @@ describe('convertItineraryCompletedToGroundedPlan', () => {
   it('maps the API slot time to the lowercase buổi used by the widget and the map', () => {
     const plan = convertItineraryCompletedToGroundedPlan(response);
     expect(plan.days[1].slots.map((slot) => slot.time)).toEqual(['morning', 'afternoon']);
+  });
+
+  it('places map points only from catalog coordinates, never at a guessed city centre', () => {
+    const located = {
+      ...response,
+      itinerary: {
+        ...response.itinerary,
+        days: [{ day: 1, slots: [
+          { time: 'MORNING', note: null, source: 'SEARCH',
+            product: { ...product('t1', 'Tháp Bà', 'attraction'), attributes: { latitude: 12.2655, longitude: 109.1953, address: '2 Tháng 4, Nha Trang' } } },
+          { time: 'AFTERNOON', note: null, source: 'SEARCH', product: product('t2', 'Tour 2', 'attraction') },
+          { time: 'EVENING', product: null, activityType: 'MEAL', note: 'Ăn tối gần biển.', source: null },
+        ] }],
+      },
+    } as unknown as components['schemas']['ItineraryCompleted'];
+    const [withCoords, withoutCoords, meal] = convertItineraryCompletedToGroundedPlan(located).days[0].slots;
+    expect(withCoords.coordinates).toEqual({ lat: 12.2655, lng: 109.1953 });
+    expect(withCoords.locationName).toBe('2 Tháng 4, Nha Trang');
+    expect(withoutCoords.coordinates).toBeUndefined();
+    expect(meal).toMatchObject({ coordinates: undefined, activityTitle: 'Ăn uống', activityType: 'MEAL', isActivityNote: true });
+  });
+
+  it('labels the party from intent.party and invents neither a party nor a stay note', () => {
+    const plan = convertItineraryCompletedToGroundedPlan(response);
+    expect(plan.partyLabel).toBe('2 người lớn');
+    expect(plan.stay?.note).toBe('');
+    const unknownParty = convertItineraryCompletedToGroundedPlan({
+      ...response, intent: { ...response.intent!, party: null },
+    } as components['schemas']['ItineraryCompleted']);
+    expect(unknownParty.partyLabel).toBeNull();
+  });
+});
+
+describe('partyLabel', () => {
+  it('counts adults and children, else falls back to the party type', () => {
+    expect(partyLabel({ type: 'FAMILY_WITH_KIDS', adults: 2, children: 1 })).toBe('2 người lớn, 1 trẻ em');
+    expect(partyLabel({ type: 'COUPLE', adults: 0, children: 0 })).toBe('Cặp đôi');
+    expect(partyLabel(null)).toBeNull();
+  });
+});
+
+describe('hotelTags', () => {
+  it('builds tags only from real attributes, with no default tag', () => {
+    expect(hotelTags({ attributes: { starRating: 4, oceanView: true, pool: true } })).toEqual(['4 sao', 'Hướng biển', 'Hồ bơi']);
+    expect(hotelTags({ attributes: {} })).toEqual([]);
   });
 });
 

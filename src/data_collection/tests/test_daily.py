@@ -212,3 +212,66 @@ class IndexQuotaTest(unittest.TestCase):
             self.assertEqual(recorded.call_count, 2)
             self.assertEqual(run.state['load']['cloud']['status'], 'partial')
             self.assertEqual(run.state['load']['local']['status'], 'ok')
+
+
+class IndexGateTest(unittest.TestCase):
+    """Bước embed sau khi nạp: e5-small chạy trong tiến trình (FR-SRC-02) nên chỉ cần WEAVIATE_URL, không cần khoá embedding."""
+
+    def test_index_needs_only_weaviate(self):
+        self.assertEqual(daily.index_missing({'WEAVIATE_URL': 'https://w'}), [])
+        self.assertEqual(daily.index_missing({'WEAVIATE_URL': 'https://w', 'COHERE_API_KEY': ''}), [])
+        self.assertEqual(daily.index_missing({'WEAVIATE_URL': ''}), ['WEAVIATE_URL'])
+        self.assertEqual(daily.index_missing({'COHERE_API_KEY': 'k'}), ['WEAVIATE_URL'])
+
+    def load(self, env):
+        with tempfile.TemporaryDirectory() as d:
+            run = daily.Run(Path(d), 'gate-test')
+            with patch.object(daily, 'target_env', return_value=(env, [])),                     patch.object(daily.subprocess, 'call', return_value=0) as call,                     patch.object(daily, 'record_loaded'):
+                ok = daily.load_targets(run, ['local'], True, date(2026, 10, 6))
+            return ok, call, run.state['load']['local']
+
+    def test_load_runs_the_index_without_any_embedding_key(self):
+        ok, call, res = self.load({'WEAVIATE_URL': 'http://localhost:8080'})
+        self.assertTrue(ok)
+        self.assertEqual(call.call_count, 2)  # seed + index_backlog
+        self.assertIn('src.data_collection.index_backlog', call.call_args_list[1].args[0])
+        self.assertNotIn('index', res)
+
+    def test_load_skips_the_index_without_weaviate(self):
+        ok, call, res = self.load({'WEAVIATE_URL': ''})
+        self.assertTrue(ok)
+        self.assertEqual(call.call_count, 1)  # chỉ seed
+        self.assertEqual(res['index'], 'skipped: thiếu WEAVIATE_URL')
+
+
+class CrawlerImageEmbeddingTest(unittest.TestCase):
+    """Image job index (daily, fresh-catalog) có đúng model/revision mà image backend dùng để tra (cùng không gian)."""
+
+    def test_crawler_images_pin_the_backend_model_and_cpu_torch(self):
+        import re
+        backend_file = (daily.REPO_ROOT / 'Dockerfile.backend').read_text(encoding='utf-8')
+        for name in ('Dockerfile.daily', 'Dockerfile.fresh-catalog'):
+            image = (daily.REPO_ROOT / name).read_text(encoding='utf-8')
+            with self.subTest(image=name):
+                for arg in ('EMBED_MODEL', 'EMBED_MODEL_REVISION'):
+                    pattern = rf'^ARG {arg}=(\S+)'
+                    self.assertEqual(re.search(pattern, image, re.M).group(1),
+                                     re.search(pattern, backend_file, re.M).group(1))
+                self.assertIn('--index-url https://download.pytorch.org/whl/cpu', image)
+                self.assertIn('HF_HUB_OFFLINE=1', image)
+
+    def test_build_checks_only_call_existing_embedder_methods(self):
+        # `.warmup()` không tồn tại từng làm hỏng build image backend/daily ở bước kiểm model lúc build.
+        # Đọc method bằng ast (không import backend: job test crawler không có torch / đường dẫn backend).
+        import ast
+        import re
+        source = daily.REPO_ROOT / 'src/backend/app/infrastructure/embeddings/local_e5_embedder.py'
+        cls = next(n for n in ast.walk(ast.parse(source.read_text(encoding='utf-8')))
+                   if isinstance(n, ast.ClassDef) and n.name == 'LocalE5Embedder')
+        methods = {n.name for n in cls.body if isinstance(n, ast.FunctionDef)}
+        self.assertIn('embed_query', methods)
+        for name in ('Dockerfile.backend', 'Dockerfile.daily', 'Dockerfile.fresh-catalog'):
+            image = (daily.REPO_ROOT / name).read_text(encoding='utf-8')
+            for method in re.findall(r'LocalE5Embedder\([^)]*\)\.(\w+)\(', image):
+                with self.subTest(image=name, method=method):
+                    self.assertIn(method, methods)

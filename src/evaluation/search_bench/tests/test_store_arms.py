@@ -82,3 +82,30 @@ def test_arm_yaml_errors_are_arm_errors(tmp_path):
     (tmp_path / "N.yaml").write_text(base.replace("id: B0", "id: N").replace("text_variant: T3+R", "text_variant: T3+DF+R"),
                                      encoding="utf-8")
     assert arms.load_arm("N", tmp_path).text_variant == "T3+R+DF"
+
+
+def test_tier1_embedding_arms_share_dense_retrieval_and_distinct_vector_identity():
+    from evaluation.search_bench.config import load_config
+    from evaluation.search_bench.embed import embedder_name
+    cfg = load_config(None)
+    names = {}
+    for arm_id, dim in {"E2.e5s": 384, "E2.e5L": 1024, "E2.gte": 768, "E2.bge": 1024,
+                        "E2.v4-1536": 1536, "E2.v4-1024": 1024,
+                        "E2.v4-512": 512, "E2.v4-256": 256}.items():
+        arm = arms.load_arm(arm_id)
+        baseline = arms.load_arm("E2.e5")
+        assert arm.text_variant == baseline.text_variant == "T3+R"
+        assert arm.retrieval == baseline.retrieval == "dense"
+        assert arm.filters == baseline.filters and arm.cutoff == baseline.cutoff
+        assert arm.query_input_type == "query" and cfg.model_cfg(arm.model).dim == dim
+        names[arm_id] = (embedder_name(cfg, arm.model), ws.collection_name(arm.text_variant, arm.model)[1])
+    assert len({name for name, _ in names.values()}) == len(names)
+    assert len({collection for _, collection in names.values()}) == len(names)
+    assert cfg.model_cfg("e5-small").query_prefix == "query: "
+    assert cfg.model_cfg("e5-small").passage_prefix == "passage: "
+    e5_large = cfg.model_cfg("e5-large-instruct")
+    assert e5_large.dim == 1024
+    assert e5_large.query_prefix == (
+        "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery: "
+    )
+    assert e5_large.passage_prefix == ""

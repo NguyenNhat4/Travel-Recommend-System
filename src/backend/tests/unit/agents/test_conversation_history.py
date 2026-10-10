@@ -69,9 +69,10 @@ class ConversationHistoryTests(unittest.TestCase):
         conversation_payload = yaml.safe_load(conversation_input(state)[1][1])
 
         self.assertEqual(extraction_payload["message"], "Đi 3 ngày")
-        self.assertEqual(extraction_payload["conversation_history"], state["conversation_history"])
+        expected = [{"user": "Tôi muốn đi Nha Trang"}, {"assistant_did": "Bạn muốn đi mấy ngày?"}]
+        self.assertEqual(extraction_payload["conversation_history"], expected)
         self.assertEqual(conversation_payload["message"], "Đi 3 ngày")
-        self.assertEqual(conversation_payload["conversation_history"], state["conversation_history"])
+        self.assertEqual(conversation_payload["conversation_history"], expected)
 
 
 class ConversationHistoryLifecycleTests(unittest.IsolatedAsyncioTestCase):
@@ -149,7 +150,7 @@ class ConversationHistoryLifecycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(error)
         self.assertEqual(plan[0]["args"]["destination"], "Nha Trang")
         payload = yaml.safe_load(captured["prompt"][1][1])
-        self.assertEqual(payload["conversation_history"], history)
+        self.assertEqual(payload["conversation_history"], [{"user": "Tôi thích đi biển"}])
 
 
 if __name__ == "__main__":

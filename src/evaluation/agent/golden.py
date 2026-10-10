@@ -1,7 +1,7 @@
 """Golden dataset runner cho Itinerary Agent.
 
 Chấm theo docs/prd/test-plan.md §2.4: Tool Calling Accuracy ≥ 95%, Grounding Rate 100%,
-Structured Output Integrity 100%. Dataset: src/evaluation/datasets/itinerary_agent_golden.yaml.
+Structured Output Integrity 100%. Dataset: src/evaluation/datasets/agent_test_cases_nhat.yaml.
 Chi tiết luật chấm và cách chạy: src/evaluation/agent/README.md.
 
 Cần trước khi chạy:
@@ -17,9 +17,12 @@ dựng dependency ở mode `http`. Runner luôn đi đường HTTP này, bất k
 
 Usage:
     .venv/bin/python -m src.evaluation.agent.golden \\
-        --dataset src/evaluation/datasets/itinerary_agent_golden.yaml \\
-        --api-base-url http://127.0.0.1:8000 [--only G-051,G-062] [--sweep] [--repeat N] \\
-        [--trace-project claude-golden]
+        --dataset src/evaluation/datasets/agent_test_cases_nhat.yaml \\
+        --api-base-url http://127.0.0.1:8000 [--only TC-01,TC-02] [--sweep] [--repeat N] \\
+        [--trace-project claude-golden] [--progress-file run/progress.jsonl] [--report-dir run/]
+
+Giao diện chạy và xem tiến độ: `src/evaluation/agent/eval_app.py` (`make agent-eval`), gọi đúng CLI này với
+`--progress-file`.
 """
 
 from __future__ import annotations
@@ -37,21 +40,23 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import httpx
 import yaml
+from pydantic import BaseModel, Field
 
 from src.backend.app.agents.runtime_dependencies import RuntimeAgentDependencies
 from src.backend.app.agents.steps.classification import vietnam_today
 from src.backend.app.agents.tools.itinerary_gateway import ItineraryToolGateway
 from src.backend.app.application.itinerary.contracts import valid
 from src.backend.app.core.config import get_settings
+from src.backend.app.domain.itinerary.normalization import fold
 from src.backend.app.domain.itinerary.planning import (
-    MAX_ACTIVITIES_PER_DAY, SLOT_TAXONOMIES, STAY_TAXONOMY, _stay_order,
+    MAX_ACTIVITIES_PER_DAY, SLOT_TAXONOMIES, STAY_TAXONOMY,
 )
 from src.backend.app.infrastructure.clients.itinerary_http_clients import ItineraryHttpClients
-from src.backend.app.infrastructure.llm import build_chat_model
+from src.backend.app.infrastructure.llm import build_chat_model, chat_model_name
 from src.backend.app.infrastructure.persistence.conversation_store import InMemoryConversationStore
 from src.evaluation.agent.grounding import check_product_grounding, products_in_response
 
@@ -66,10 +71,12 @@ SECRET_PATTERNS = [
 
 # ----------------------------------------------------------------------------------------- dates
 
-# `{today}`, `{today+7}`, `{today-1}` → dd/mm/yyyy (câu người dùng gõ); thêm `:iso` → yyyy-mm-dd (để so `intent.startDate`).
+# `{today}`, `{today+7}`, `{today-1}` → dd/mm/yyyy (câu người dùng gõ); thêm `:iso` → yyyy-mm-dd (để so `intent.startDate`);
+# `:dm` → "14/10" và `:vi` → "14 tháng 10" (cách người dùng thật gõ, không có năm).
 # Runner đổi lúc chạy theo ngày ở Việt Nam, cùng nguồn với mốc `today` của agent (`vietnam_today`), nên ngày luôn nằm
 # gần hôm nay và trong cửa sổ đặt chỗ 30 ngày của catalog mới nạp; câu gửi đi là ngày tường minh, LLM không phải đoán.
-DATE_PLACEHOLDER = re.compile(r"\{today([+-]\d+)?(:iso)?\}")
+DATE_PLACEHOLDER = re.compile(r"\{today([+-]\d+)?(?::(iso|dm|vi))?\}")
+DATE_FORMATS = {None: "{d:%d/%m/%Y}", "iso": "{d:%Y-%m-%d}", "dm": "{d.day}/{d.month}", "vi": "{d.day} tháng {d.month}"}
 
 
 def resolve_dates(value: Any, today: date) -> Any:
@@ -77,7 +84,7 @@ def resolve_dates(value: Any, today: date) -> Any:
     if isinstance(value, str):
         def replace(match: re.Match[str]) -> str:
             day = today + timedelta(days=int(match.group(1) or 0))
-            return day.isoformat() if match.group(2) else day.strftime("%d/%m/%Y")
+            return DATE_FORMATS[match.group(2)].format(d=day)
         return DATE_PLACEHOLDER.sub(replace, value)
     if isinstance(value, dict):
         return {key: resolve_dates(item, today) for key, item in value.items()}
@@ -103,7 +110,9 @@ TURN_KEYS = {"message", "expect", "language", "conversationId"}
 EXPECT_KEYS = {
     "httpStatus", "status", "errorCode", "intent", "missingFieldsInclude", "toolCalled", "nodesInclude",
     "nodesExclude", "forbiddenText", "excludeProductsFromTurn", "minActivities", "hasStay", "warningsExclude",
-    "toolsInclude", "titleFirstLine",
+    "toolsInclude", "titleFirstLine", "formMatchesAnswer", "judge",
+    # Kịch bản bản 5 và chat thử 10/10 (agent_scenarios_v5.yaml): lượt khám phá, giá vé, lịch tham khảo.
+    "textIncludes", "phraseMaxCount", "cardsMin", "cardsMax", "cardTaxonomies", "suggestionsMin", "warningsInclude",
 }
 
 
@@ -295,8 +304,19 @@ def _product_ids(response: dict[str, Any], role: str) -> set[str]:
     return ids
 
 
-def schedule_findings(response: dict[str, Any], candidates: dict[str, dict[str, Any]]) -> list[str]:
-    """Nhóm B (cấu trúc) + C1 (chỗ ở rẻ nhất) — chỉ áp dụng khi status=COMPLETED."""
+#: Thứ tự buổi trong ngày (contract `slots[].time`).
+_TIME_ORDER = {"MORNING": 0, "NOON": 1, "AFTERNOON": 2, "EVENING": 3}
+
+
+def schedule_findings(response: dict[str, Any], candidates: dict[str, dict[str, Any]],
+                      sources: dict[str, str] | None = None) -> list[str]:
+    """Nhóm B (cấu trúc) — chỉ áp dụng khi status=COMPLETED.
+
+    Bỏ hai kiểm tra lỗi thời (10/10/2026, `history/2026-10-08-node-filter-loc-trung-lap.md` đã ghi): "chỗ ở là hotel rẻ nhất"
+    (AC-AGT-04 chọn khách sạn gần các điểm, vừa ngân sách) và "hoạt động đầu là buổi sáng, thứ hai là buổi chiều" (lịch xếp
+    theo giờ bay, ngày hạ cánh có thể bắt đầu buổi chiều). Thay bằng: các buổi trong một ngày đi đúng thứ tự thời gian.
+    `sources` giữ cho tương thích chữ ký cũ.
+    """
     if response.get("status") != "COMPLETED":
         return []
     failures: list[str] = []
@@ -307,16 +327,12 @@ def schedule_findings(response: dict[str, Any], candidates: dict[str, dict[str, 
         failures.append(f"itinerary.days có {len(days)} ngày, khác intent.days={intent_days}")
 
     seen_ids: set[str] = set()
+    seen_names: set[str] = set()  # node `filter` bỏ điểm cùng tên trước khi xếp (AC-AGT-04, chốt 2026-10-08)
     stay = (itinerary.get("stay") or {}).get("product")
     if stay:
         if stay.get("taxonomy") != STAY_TAXONOMY:
             failures.append(f"stay taxonomy={stay.get('taxonomy')!r}, phải là {STAY_TAXONOMY!r}")
         seen_ids.add(stay["productId"])
-        hotel_candidates = [p for p in candidates.values() if p.get("taxonomy") == STAY_TAXONOMY]
-        if hotel_candidates:
-            cheapest = min(hotel_candidates, key=_stay_order)
-            if stay["productId"] != cheapest["productId"]:
-                failures.append(f"stay={stay['productId']} nhưng hotel rẻ nhất là {cheapest['productId']}")
 
     for day in days:
         slots = day.get("slots") or []
@@ -334,11 +350,14 @@ def schedule_findings(response: dict[str, Any], candidates: dict[str, dict[str, 
             if product["productId"] in seen_ids:
                 failures.append(f"productId {product['productId']} lặp lại trong itinerary")
             seen_ids.add(product["productId"])
-        times = [s.get("time") for s in slots if s.get("product")]
-        if times and times[0] != "MORNING":
-            failures.append(f"ngày {day.get('day')} hoạt động đầu ở {times[0]!r}, phải là MORNING")
-        if len(times) >= 2 and times[1] != "AFTERNOON":
-            failures.append(f"ngày {day.get('day')} hoạt động thứ hai ở {times[1]!r}, phải là AFTERNOON")
+            name = fold(product.get("name"))
+            if name and name in seen_names:
+                failures.append(f"tên {product.get('name')!r} lặp lại trong itinerary (khác productId)")
+            seen_names.add(name)
+        order = [_TIME_ORDER.get(s.get("time"), -1) for s in slots if s.get("product")]
+        if any(later < earlier for earlier, later in zip(order, order[1:])):
+            failures.append(f"ngày {day.get('day')} có buổi không theo thứ tự thời gian: "
+                            f"{[s.get('time') for s in slots if s.get('product')]}")
     return failures
 
 
@@ -413,6 +432,8 @@ def dataset_findings(
     if "titleFirstLine" in expect and has_title_first_line(answer_text(response)) != bool(expect["titleFirstLine"]):
         failures.append("dòng đầu của câu trả lời " + ("không phải" if expect["titleFirstLine"] else "lại là")
                         + " `**Tiêu đề**` kèm phần chi tiết")
+    if expect.get("formMatchesAnswer"):
+        failures += form_answer_findings(response)
     if "forbiddenText" in expect:
         blob = _text_blob(response).lower()
         for phrase in expect["forbiddenText"]:
@@ -436,10 +457,146 @@ def dataset_findings(
     for code in expect.get("warningsExclude", []):
         if any(w.get("code") == code for w in response.get("warnings") or []):
             failures.append(f"response có warning {code!r} không được phép")
+    failures += scenario_findings(response, expect)
     return failures
 
 
+def _cards(response: dict[str, Any]) -> list[dict[str, Any]]:
+    """Thẻ sản phẩm của lượt khám phá (`searchResults` theo taxonomy) hoặc của lượt dự phòng."""
+    results = response.get("searchResults") or {}
+    if isinstance(results, dict):
+        return [item for items in results.values() if isinstance(items, list) for item in items]
+    return []
+
+
+def scenario_findings(response: dict[str, Any], expect: dict[str, Any]) -> list[str]:
+    """Các khoá của bộ kịch bản: chữ phải có (không phân biệt hoa thường), cụm không được lặp quá n lần, số thẻ, loại
+    thẻ được phép, số nút gợi ý tối thiểu, cảnh báo phải có."""
+    failures: list[str] = []
+    text = answer_text(response).casefold()
+    for phrase in expect.get("textIncludes", []):
+        if str(phrase).casefold() not in text:
+            failures.append(f"câu trả lời thiếu {phrase!r}")
+    for phrase, limit in (expect.get("phraseMaxCount") or {}).items():
+        count = text.count(str(phrase).casefold())
+        if count > limit:
+            failures.append(f"cụm {phrase!r} xuất hiện {count} lần, tối đa {limit}")
+    cards = _cards(response)
+    if "cardsMin" in expect and len(cards) < expect["cardsMin"]:
+        failures.append(f"có {len(cards)} thẻ, kỳ vọng ít nhất {expect['cardsMin']}")
+    if "cardsMax" in expect and len(cards) > expect["cardsMax"]:
+        failures.append(f"có {len(cards)} thẻ, kỳ vọng tối đa {expect['cardsMax']}")
+    if "cardTaxonomies" in expect:
+        extra = {card.get("taxonomy") for card in cards} - set(expect["cardTaxonomies"])
+        if extra:
+            failures.append(f"thẻ loại {sorted(map(str, extra))} không được phép (chỉ {expect['cardTaxonomies']})")
+    if "suggestionsMin" in expect and len(response.get("suggestions") or []) < expect["suggestionsMin"]:
+        failures.append(f"có {len(response.get('suggestions') or [])} nút gợi ý, kỳ vọng ít nhất {expect['suggestionsMin']}")
+    for code in expect.get("warningsInclude", []):
+        if not any(w.get("code") == code for w in response.get("warnings") or []):
+            failures.append(f"thiếu warning {code!r}")
+    return failures
+
+
+def form_answer_findings(response: dict[str, Any]) -> list[str]:
+    """Form điền sẵn phải khớp điểm đến câu trả lời gợi ý (TC-02: lời gợi ý Đà Nẵng mà form chưa chọn Đà Nẵng).
+
+    Điểm đến "được gợi ý" là tên trong `suggestedValues.destination` (danh sách catalog) xuất hiện trong câu trả lời.
+    Câu trả lời không nêu tên nào thì không có gì để so; prompt `suggest_form` cho phép không nêu giá trị.
+    """
+    form = response.get("clarificationForm")
+    if not form:
+        return ["không có clarificationForm"]
+    default = (form.get("defaults") or {}).get("destination")
+    text = answer_text(response).casefold()
+    named = [name for name in (response.get("suggestedValues") or {}).get("destination") or []
+             if name.casefold() in text]
+    if named and default not in named:
+        return [f"câu trả lời gợi ý {named}, form điền sẵn {default!r}"]
+    return []
+
+
+# ------------------------------------------------------------------------------------------- judge
+#
+# LLM giám khảo chấm tiêu chí khó viết thành luật ("giải thích nguyên nhân", "thông báo ngày vừa cập nhật").
+# Chỉ bổ sung cho các check tất định ở trên, không thay chúng: kết luận của LLM dao động giữa các lần chạy, nên
+# đọc cùng `--repeat` và đọc lý do; finding của giám khảo luôn mang tiền tố `[judge]`.
+
+JUDGE_PROMPT = """You are a strict QA reviewer for a Vietnamese travel-itinerary chat assistant.
+You receive `transcript` (earlier turns: user messages verbatim, assistant replies as the user saw them), the latest
+user `message`, the assistant `reply` the user sees, `facts` (what the system actually returned for that reply:
+status, trip intent, missing fields, prefilled form, products, warnings) and a list of `criteria`.
+For EACH criterion set passed=true only when the reply and facts clearly satisfy it; when in doubt, passed=false.
+Judge only what is shown: never assume the assistant said or did something that is not in the reply or facts.
+A criterion that starts with "Nếu" only applies when its condition holds; when the condition does not hold, it passes.
+reason: one short sentence in Vietnamese that quotes the decisive words of the reply.
+Return exactly one verdict per criterion, in the same order."""
+
+
+class JudgeVerdict(BaseModel):
+    passed: bool
+    reason: str = Field(max_length=500)
+
+
+class JudgeResult(BaseModel):
+    verdicts: list[JudgeVerdict]
+
+
+def judge_facts(response: dict[str, Any]) -> dict[str, Any]:
+    """Phần response người dùng nhìn thấy ngoài câu chữ, rút gọn cho giám khảo (không có id, không có giá)."""
+    itinerary = response.get("itinerary") or {}
+    stay = (itinerary.get("stay") or {}).get("product") or {}
+    form = response.get("clarificationForm") or {}
+    return {
+        "status": response.get("status") or (response.get("error") or {}).get("code"),
+        "intent": response.get("intent") or response.get("knownIntent"),
+        "missingFields": response.get("missingFields"),
+        "prefilledForm": form.get("defaults"),
+        "suggestions": response.get("suggestions"),
+        "warnings": [w.get("code") for w in response.get("warnings") or []],
+        "stay": stay.get("name"),
+        "days": [[(slot.get("product") or {}).get("name") for slot in day.get("slots") or [] if slot.get("product")]
+                 for day in itinerary.get("days") or []],
+    }
+
+
+async def judge_findings(judge_llm, transcript: list[dict[str, str]], message: str, response: dict[str, Any],
+                         criteria: list[str], timeout: float, config: dict[str, Any] | None = None) -> list[str]:
+    """Finding `[judge] <tiêu chí>: <lý do>` cho mỗi tiêu chí không đạt; lỗi gọi giám khảo cũng là finding."""
+    payload = {"transcript": transcript, "message": message, "reply": answer_text(response),
+               "facts": judge_facts(response), "criteria": list(criteria)}
+    human = yaml.dump(payload, allow_unicode=True, sort_keys=False, width=1_000_000)
+    try:
+        raw = await asyncio.wait_for(
+            judge_llm.with_structured_output(JudgeResult).ainvoke([("system", JUDGE_PROMPT), ("human", human)],
+                                                                 config=config),
+            timeout=timeout)
+        result = JudgeResult.model_validate(raw)
+    except Exception as exc:  # giám khảo lỗi thì lượt không được coi là đạt
+        return [f"[judge] không chấm được: {type(exc).__name__}"]
+    if len(result.verdicts) != len(criteria):
+        return [f"[judge] trả {len(result.verdicts)} kết luận cho {len(criteria)} tiêu chí"]
+    return [f"[judge] {criterion}: {verdict.reason}"
+            for criterion, verdict in zip(criteria, result.verdicts) if not verdict.passed]
+
+
 # -------------------------------------------------------------------------------------------- run
+
+# Callback nhận từng event tiến độ (dict có khoá "event"); `--progress-file` ghi chúng ra JSONL cho eval_app.py.
+ProgressCallback = Callable[[dict[str, Any]], None]
+
+
+def progress_writer(path: Path | None) -> ProgressCallback | None:
+    """Mỗi event một dòng JSON, ghi và đóng file ngay, để app đọc được giữa chừng và còn dấu vết nếu bị dừng."""
+    if path is None:
+        return None
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    def write(event: dict[str, Any]) -> None:
+        line = json.dumps({"at": datetime.now(timezone.utc).isoformat(), **event}, ensure_ascii=False)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(line + "\n")
+    return write
 
 
 @dataclass
@@ -454,6 +611,9 @@ class TurnResult:
     tool_called: bool
     tool_expected: bool | None
     findings: list[str]
+    # Điểm tham quan node `filter` bỏ vì trùng (`state["dropped_duplicates"]`): productId, name, duplicateOf,
+    # duplicateOfName, by (rule/llm). Chỉ để đọc, không phải finding (AC-AGT-04, chốt 2026-10-08).
+    dropped: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def passed(self) -> bool:
@@ -461,9 +621,11 @@ class TurnResult:
 
 
 async def run_case(
-    case: Case, planner, dsn: str | None, settings: Any, timeout: float,
+    case: Case, planner, dsn: str | None, settings: Any, timeout: float, judge_llm=None,
+    on_event: ProgressCallback | None = None, repetition: int = 1,
 ) -> list[TurnResult]:
     results: list[TurnResult] = []
+    transcript: list[dict[str, str]] = []  # cho giám khảo: các lượt trước như người dùng thấy
     conversation_id: str | None = None
     previous_products: dict[int, dict[str, set[str]]] = {}
     today = vietnam_today()
@@ -472,15 +634,22 @@ async def run_case(
         expect = resolve_dates(turn.expect, today)
         started = time.perf_counter()
         request_id = uuid.uuid4().hex
+        trace = trace_config(case, index, message, request_id)
+        position = {"caseId": case.id, "turn": index, "turns": len(case.turns), "repetition": repetition}
+        if on_event:
+            on_event({"event": "turn_start", **position, "message": message})
         try:
             state = await run_turn(planner, message, turn.conversation_id or conversation_id, timeout,
-                                   trace_config(case, index, message, request_id), request_id,
-                                   turn.language)
+                                   trace, request_id, turn.language)
         except TimeoutError:
             results.append(TurnResult(
                 case.id, index, message, 503, "TIMEOUT", 0, 0, False, None,
                 [f"vượt timeout {timeout}s"],
             ))
+            if on_event:
+                on_event({"event": "turn_done", **position, "message": message, "httpStatus": 503,
+                          "status": "TIMEOUT", "latencyMs": 0, "passed": False, "findings": results[-1].findings,
+                          "reply": "", "intent": None, "traceName": trace["run_name"], "requestId": request_id})
             break
         latency_ms = round((time.perf_counter() - started) * 1000)
         response = state["response"]
@@ -496,9 +665,17 @@ async def run_case(
         findings += gate_secrets(response, settings)
         findings += gate_no_booking_claim(response)
         findings += gate_no_tool_before_info(response, events)
-        findings += schedule_findings(response, candidates)
+        findings += schedule_findings(response, candidates, state.get("sources", {}))
         findings += dataset_findings(response, http_status, events, expect, previous_products,
                                      {call.get("name") for call in state.get("tool_plan") or []})
+        if expect.get("judge"):
+            if judge_llm is None:
+                findings.append("[judge] lượt có tiêu chí giám khảo nhưng runner không có LLM giám khảo")
+            else:
+                judge_config = {**trace, "tags": ["golden-judge", case.id]}
+                findings += await judge_findings(judge_llm, transcript, message, response, expect["judge"], timeout,
+                                                 judge_config)
+        transcript += [{"user": message}, {"assistant": answer_text(response)}]
 
         tool_called = retrieval_ran(events)
         tool_expected = expected_tool_call(response)
@@ -512,24 +689,40 @@ async def run_case(
         results.append(TurnResult(
             case.id, index, message, http_status, response.get("status") or
             (response.get("error") or {}).get("code"), latency_ms, grounding_checked,
-            tool_called, tool_expected, findings,
+            tool_called, tool_expected, findings, list(state.get("dropped_duplicates") or []),
         ))
+        if on_event:
+            on_event({"event": "turn_done", **position, "message": message, "httpStatus": http_status,
+                      "status": results[-1].status, "latencyMs": latency_ms, "passed": not findings,
+                      "findings": findings, "reply": answer_text(response),
+                      "intent": response.get("intent") or response.get("knownIntent"),
+                      "missingFields": response.get("missingFields"), "dropped": results[-1].dropped,
+                      "traceName": trace["run_name"], "requestId": request_id})
         # Lượt đầu sai vẫn chạy tiếp các lượt sau (không dừng sớm): silent-skip che mất lỗi ở
         # những lượt kế, và excludeProductsFromTurn cần previous_products của mọi lượt đã chạy.
+    if on_event:
+        # Lượt timeout làm case dừng sớm; turnsRun < turns cho app biết các lượt còn lại bị bỏ.
+        on_event({"event": "case_done", "caseId": case.id, "repetition": repetition,
+                  "turns": len(case.turns), "turnsRun": len(results),
+                  "passed": all(r.passed for r in results) and len(results) == len(case.turns)})
     return results
 
 
-async def run_sweep(planner, dsn: str | None, settings: Any, timeout: float, http: httpx.AsyncClient) -> list[TurnResult]:
+async def run_sweep(planner, dsn: str | None, settings: Any, timeout: float, http: httpx.AsyncClient,
+                    on_event: ProgressCallback | None = None) -> list[TurnResult]:
     """Nhóm A/B/C cho MỌI điểm đến hiện có trong catalog — không cần ai viết case."""
     listed = (await http.get("destinations", timeout=30)).json()["destinations"]
+    if on_event:
+        on_event({"event": "sweep_start", "destinations": len(listed), "turns": 2 * len(listed)})
     results: list[TurnResult] = []
     for item in listed:
         destination = item["destination"]
         case = Case(id=f"SWEEP-{destination}", category="sweep", fr=["FR-AGT-04"],
-                    # Chưa nêu ngày đi thì agent hỏi ngày (AC-AGT-01); lượt thứ hai trả lời để chạm tới truy xuất.
+                    # Chưa nêu ngày đi thì agent hỏi ngày (AC-AGT-01); lượt thứ hai đủ ngày đi và số người (trường
+                    # bắt buộc) để chạm tới truy xuất.
                     turns=[Turn(message=f"{destination} 2 ngày", expect={}),
-                           Turn(message="chưa chốt ngày đi", expect={})])
-        results += await run_case(case, planner, dsn, settings, timeout)
+                           Turn(message="đi từ {today+7}, 2 người lớn", expect={})])
+        results += await run_case(case, planner, dsn, settings, timeout, on_event=on_event)
     return results
 
 
@@ -550,7 +743,7 @@ def build_report(results: list[TurnResult], settings: Any, mode: str, product_co
     return {
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "mode": mode,
-        "model": settings.itinerary_llm_model or settings.model_name,
+        "model": chat_model_name(settings),
         # Runner luôn gọi backend qua ItineraryHttpClients (build_runtime), bất kể ITINERARY_DATA_MODE của máy chạy.
         "dataMode": "http",
         "productCount": product_count,
@@ -568,7 +761,8 @@ def build_report(results: list[TurnResult], settings: Any, mode: str, product_co
         },
         "turns": [
             {"caseId": r.case_id, "turn": r.turn_index, "message": r.message, "httpStatus": r.http_status,
-             "status": r.status, "latencyMs": r.latency_ms, "passed": r.passed, "findings": r.findings}
+             "status": r.status, "latencyMs": r.latency_ms, "passed": r.passed, "findings": r.findings,
+             "dropped": r.dropped}
             for r in results
         ],
     }
@@ -588,6 +782,7 @@ def render_markdown(report: dict[str, Any], commit_sha: str) -> str:
         f"- Model: `{report['model']}` · dataMode: `{report['dataMode']}` · mode: `{report['mode']}`",
         f"- productCount: {report['productCount']}",
         f"- LangSmith project: `{report.get('traceProject') or 'không bật'}`",
+        *([f"- LLM giám khảo: `{report['judgeModel']}` (finding `[judge]`)"] if report.get("judgeModel") else []),
         "",
         "## Ba chỉ số PRD (test-plan.md §2.4)",
         "",
@@ -617,10 +812,36 @@ def render_markdown(report: dict[str, Any], commit_sha: str) -> str:
             for finding in turn["findings"]:
                 lines.append(f"- {finding}")
             lines.append("")
+    lines += ["## Đã loại", "", "Điểm tham quan node `filter` bỏ vì trùng trước khi xếp lịch (AC-AGT-04).", ""]
+    dropped = [(turn, item) for turn in report["turns"] for item in turn.get("dropped") or []]
+    if not dropped:
+        lines.append("Không có.")
+    else:
+        lines += ["| Case | Lượt | Bỏ | Trùng với | Do |", "|---|---|---|---|---|"]
+        lines += [f"| {turn['caseId']} | {turn['turn']} | {dropped_label(item, 'productId', 'name')} | "
+                  f"{dropped_label(item, 'duplicateOf', 'duplicateOfName')} | {item.get('by')} |"
+                  for turn, item in dropped]
     return "\n".join(lines)
 
 
+def dropped_label(item: dict[str, Any], id_key: str, name_key: str) -> str:
+    """`Tên` (`8 ký tự đầu của mã`) cho một ô của bảng "Đã loại"; `|` trong tên bị thay để không vỡ bảng."""
+    name = str(item.get(name_key) or "").replace("|", "/")
+    return f"{name} (`{str(item.get(id_key) or '')[:8]}`)"
+
+
 # -------------------------------------------------------------------------------------------- cli
+
+
+# Bộ mặc định là các case người dùng tái hiện (agent-test-cases-nhat.md).
+DEFAULT_DATASET = "src/evaluation/datasets/agent_test_cases_nhat.yaml"
+REPORT_SLUGS = {"agent_test_cases_nhat.yaml": "agent-test-cases"}
+
+
+def report_slug(dataset: str) -> str:
+    """Tên biên bản theo dataset, để chạy bộ này không ghi đè biên bản của bộ kia."""
+    name = Path(dataset).name
+    return REPORT_SLUGS.get(name, Path(dataset).stem.replace("_", "-"))
 
 
 def _commit_sha() -> str:
@@ -632,13 +853,30 @@ def _commit_sha() -> str:
 
 
 async def _main_async(args: argparse.Namespace) -> int:
+    progress = progress_writer(Path(args.progress_file) if args.progress_file else None)
+    try:
+        return await _run(args, progress)
+    except Exception as exc:
+        if progress:
+            progress({"event": "failed", "error": f"{type(exc).__name__}: {exc}"})
+        raise
+
+
+async def _run(args: argparse.Namespace, progress: ProgressCallback | None) -> int:
     cases = load_dataset(Path(args.dataset))
     if args.only:
         wanted = set(args.only.split(","))
         cases = [c for c in cases if c.id in wanted]
         if not cases:
             print(f"Không case nào khớp --only {args.only}", file=sys.stderr)
+            if progress:
+                progress({"event": "failed", "error": f"Không case nào khớp --only {args.only}"})
             return 2
+    repeat = max(1, args.repeat)
+    if progress:
+        progress({"event": "start", "repeat": repeat, "sweep": args.sweep,
+                  "cases": [{"id": c.id, "category": c.category, "turns": len(c.turns)} for c in cases],
+                  "turns": repeat * sum(len(c.turns) for c in cases)})
 
     if args.trace_project:
         enable_tracing(get_settings(), args.trace_project)
@@ -648,16 +886,24 @@ async def _main_async(args: argparse.Namespace) -> int:
         runtime, settings = build_runtime(http)
         planner = runtime.planner()
         dsn = args.dsn or settings.database_url or None
+        judge_llm = None
+        if any(turn.expect.get("judge") for case in cases for turn in case.turns):
+            # Nhiệt độ 0 để kết luận ổn định nhất có thể; `--judge-model` cho phép dùng model khác agent.
+            judge_settings = settings.model_copy(update={
+                "itinerary_llm_temperature": 0.0,
+                **({"itinerary_llm_model": args.judge_model} if args.judge_model else {})})
+            judge_llm = build_chat_model(judge_settings)
 
         status = await http.get("assistant/status", timeout=10)
         product_count = status.json().get("productCount") if status.status_code == 200 else None
 
         results: list[TurnResult] = []
-        for repetition in range(max(1, args.repeat)):
+        for repetition in range(1, repeat + 1):
             for case in cases:
-                results += await run_case(case, planner, dsn, settings, args.timeout)
+                results += await run_case(case, planner, dsn, settings, args.timeout, judge_llm,
+                                          on_event=progress, repetition=repetition)
         if args.sweep:
-            results += await run_sweep(planner, dsn, settings, args.timeout, http)
+            results += await run_sweep(planner, dsn, settings, args.timeout, http, on_event=progress)
 
     if args.trace_project:
         from langchain_core.tracers.langchain import wait_for_all_tracers
@@ -666,13 +912,16 @@ async def _main_async(args: argparse.Namespace) -> int:
     mode = "dataset+sweep" if args.sweep else "dataset"
     report = build_report(results, settings, mode, product_count)
     report["traceProject"] = args.trace_project
+    if judge_llm is not None:
+        report["judgeModel"] = args.judge_model or report["model"]
     commit_sha = _commit_sha()
 
-    reports_dir = REPO_ROOT / "src/evaluation/reports"
+    reports_dir = Path(args.report_dir) if args.report_dir else REPO_ROOT / "src/evaluation/reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
     today = datetime.now(timezone.utc).date().isoformat()
-    json_path = reports_dir / f"eval-{today}-golden.json"
-    md_path = reports_dir / f"eval-{today}-golden.md"
+    slug = args.report_slug or report_slug(args.dataset)
+    json_path = reports_dir / f"eval-{today}-{slug}.json"
+    md_path = reports_dir / f"eval-{today}-{slug}.md"
     json_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     md_path.write_text(render_markdown(report, commit_sha), encoding="utf-8")
     print(f"Đã ghi {json_path} và {md_path}")
@@ -685,20 +934,35 @@ async def _main_async(args: argparse.Namespace) -> int:
 
     gate_ok = (metrics["groundingRate"] in (None, 1.0) and metrics["structuredOutputIntegrity"] in (None, 1.0))
     tool_ok = metrics["toolCallingAccuracy"] is None or metrics["toolCallingAccuracy"] >= 0.95
-    return 0 if (gate_ok and tool_ok and report["totals"]["failed"] == 0) else 1
+    exit_code = 0 if (gate_ok and tool_ok and report["totals"]["failed"] == 0) else 1
+    if progress:
+        progress({"event": "done", "exitCode": exit_code, "commit": commit_sha, "totals": report["totals"],
+                  "metrics": metrics, "latencyMs": report["latencyMs"], "model": report["model"],
+                  "judgeModel": report.get("judgeModel"), "productCount": product_count,
+                  "reportMd": str(md_path), "reportJson": str(json_path)})
+    return exit_code
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--dataset", default="src/evaluation/datasets/itinerary_agent_golden.yaml")
+    parser.add_argument("--dataset", default=DEFAULT_DATASET,
+                        help="Mặc định bộ test case người dùng tái hiện.")
     parser.add_argument("--api-base-url", default="http://127.0.0.1:8000")
     parser.add_argument("--dsn", default=None, help="Mặc định dùng DATABASE_URL từ Settings.")
     parser.add_argument("--only", default=None, help="Danh sách id case, phân tách bằng dấu phẩy.")
     parser.add_argument("--sweep", action="store_true", help="Thêm một lượt Nhóm A/B/C cho mọi điểm đến thật.")
     parser.add_argument("--repeat", type=int, default=1, help="Chạy lại toàn bộ case đã chọn N lần để đo ổn định.")
     parser.add_argument("--timeout", type=float, default=90.0)
+    parser.add_argument("--judge-model", default=None,
+                        help="Model của LLM giám khảo (khoá expect `judge`); mặc định cùng model với agent.")
+    parser.add_argument("--report-slug", default=None,
+                        help="Tên biên bản eval-<ngày>-<slug>.md; mặc định suy từ dataset (REPORT_SLUGS).")
     parser.add_argument("--trace-project", default=None,
                         help="Gửi trace từng lượt lên LangSmith project này (key lấy từ .env).")
+    parser.add_argument("--progress-file", default=None,
+                        help="Ghi tiến độ từng lượt ra file JSONL (eval_app.py đọc file này).")
+    parser.add_argument("--report-dir", default=None,
+                        help="Thư mục ghi biên bản; mặc định src/evaluation/reports/.")
     args = parser.parse_args()
     sys.exit(asyncio.run(_main_async(args)))
 

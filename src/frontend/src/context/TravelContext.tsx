@@ -12,7 +12,7 @@ import { SupportedLocale, DEFAULT_LOCALE } from '../types/locale';
 import { PERSONA_LOGIN, SEED_PERSONAS } from '../data/personas';
 import * as authApi from '../services/auth';
 import * as bookingApi from '../services/booking';
-import type { BookingResponse, CartResponse, GuestCounts, UpdateCartItemRequest } from '../services/booking';
+import type { AddCartItemRequest, BookingDraft, BookingResponse, CartResponse, GuestCounts, UpdateCartItemRequest } from '../services/booking';
 import { ApiError, SESSION_EXPIRED_EVENT } from '../services/http';
 import { clearSectionCache } from '../hooks/useLazySection';
 
@@ -31,6 +31,8 @@ interface TravelContextType {
   signOut: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, fullName: string) => Promise<void>;
+  /** Sửa họ tên, số điện thoại (FR-USR-04) và cập nhật người dùng hiện tại ngay, không cần đăng nhập lại. */
+  updateProfile: (changes: authApi.ProfileChanges) => Promise<authApi.AuthUser>;
   /** Email điền sẵn khi phiên hết hạn giữa chừng (§4.2 điều 4). */
   loginPrefillEmail: string | null;
   currentLocale: SupportedLocale;
@@ -47,6 +49,11 @@ interface TravelContextType {
     product: Product, quantity?: number, usingDate?: string, checkOutDate?: string,
     options?: { silent?: boolean; guests?: GuestCounts },
   ) => Promise<boolean>;
+  /**
+   * Đặt ngay: tạo đơn nháp chỉ gồm các mục này rồi mở trang thanh toán `/checkout?draft=<mã>`; không kèm mục nào trong giỏ
+   * (docs/spec/booking/dat-truc-tiep-theo-don-nhap.md §4). Trả null khi không tạo được (đã báo lỗi bằng toast).
+   */
+  startBooking: (items: BookNowItem[], options?: { allowPartial?: boolean }) => Promise<BookingDraft | null>;
   removeFromCart: (cartItemId: string) => Promise<void>;
   /**
    * Sửa một mục giỏ và cập nhật `cart` bằng response. Trả về lỗi API (null nếu thành công) để checkout gắn lỗi vào thẻ dịch vụ;
@@ -73,7 +80,21 @@ interface TravelContextType {
   closeLoginModal: () => void;
   currentRoute: string;
   navigate: (route: string) => void;
+  /**
+   * Trang đang mở đăng ký một guard cho `navigate` (trang thanh toán hỏi lại trước khi khách rời, FR-BKG-01). Guard trả `true`
+   * là đã chặn lần chuyển trang đó và tự lo phần còn lại; `null` để gỡ.
+   */
+  setNavigationGuard: (guard: ((route: string) => boolean) | null) => void;
   pendingPostLoginAction: (() => void) | null;
+}
+
+/** Một mục của lần Đặt ngay: sản phẩm, ngày, số lượng và số khách như khi thêm giỏ. */
+export interface BookNowItem {
+  product: Product;
+  quantity?: number;
+  usingDate?: string;
+  checkOutDate?: string;
+  guests?: GuestCounts;
 }
 
 const TravelContext = createContext<TravelContextType | undefined>(undefined);
@@ -94,6 +115,19 @@ function nightsBetween(checkIn: string, checkOut?: string): number {
   return Math.max(1, days);
 }
 
+/** Body của một mục giỏ hoặc mục đơn nháp: cùng quy tắc ngày, số đêm, số lượng và số khách (frontend spec §4.3). */
+function lineRequest(item: BookNowItem): AddCartItemRequest {
+  const { product, quantity = 1, usingDate, checkOutDate, guests } = item;
+  const start = usingDate || defaultUsingDate(product);
+  const nights = product.taxonomy === 'hotel' ? nightsBetween(start, checkOutDate) : undefined;
+  // Dịch vụ tính theo người gửi `guests` thì Backend tự tính quantity = người lớn + trẻ em; khách sạn và combo gửi cả hai.
+  const perPerson = product.taxonomy === 'flight' || product.taxonomy === 'attraction' || product.taxonomy === 'golf';
+  return {
+    productId: product.id, usingDate: start, nights, ...(guests ? { guests } : {}),
+    ...(guests && perPerson ? {} : { quantity }),
+  } as AddCartItemRequest;
+}
+
 /** Thông điệp cho lỗi thêm/sửa giỏ (docs/spec/hop-dong-tich-hop-frontend.md §8). */
 function cartErrorMessage(error: unknown, productName?: string): string {
   if (!(error instanceof ApiError)) return 'Không cập nhật được giỏ hàng. Vui lòng thử lại.';
@@ -103,6 +137,8 @@ function cartErrorMessage(error: unknown, productName?: string): string {
       return `${name} hiện không bán trên V-OTA.`;
     case 'PRODUCT_UNAVAILABLE':
       return `${name} vừa hết chỗ.`;
+    case 'DIRECT_BOOKING_ONLY':
+      return `${name} được đặt trực tiếp, không thêm vào giỏ hàng. Hãy bấm Đặt ngay.`;
     case 'DATE_OUT_OF_RANGE': {
       const from = error.details?.availableFrom, to = error.details?.availableTo;
       return from && to ? `${name} chỉ mở bán từ ${from} đến ${to}.` : `Ngày sử dụng của ${name} nằm ngoài thời gian mở bán.`;
@@ -117,10 +153,10 @@ function cartErrorMessage(error: unknown, productName?: string): string {
 /** Người dùng của phiên → persona hiển thị. 4 persona seed giữ thẻ demo; tài khoản khác dùng thẻ chung. */
 function personaFromUser(user: authApi.AuthUser): UserPersona {
   const seedKey = Object.keys(PERSONA_LOGIN).find((key) => PERSONA_LOGIN[key].cdpUserId === user.cdpUserId);
-  if (seedKey) return { ...SEED_PERSONAS[seedKey], email: user.email };
+  if (seedKey) return { ...SEED_PERSONAS[seedKey], email: user.email, name: user.fullName, phone: user.phone ?? null };
   const initials = user.fullName.split(/\s+/).filter(Boolean).slice(-2).map((w) => w[0]).join('').toUpperCase() || 'KH';
   return {
-    id: user.cdpUserId, code: initials, name: user.fullName, email: user.email, avatarText: initials,
+    id: user.cdpUserId, code: initials, name: user.fullName, email: user.email, phone: user.phone ?? null, avatarText: initials,
     tagline: 'Tài khoản mới', description: 'Tài khoản vừa đăng ký, chưa có lịch sử.',
     historySummary: 'Chưa có lịch sử', coldStart: true, bookedVerticals: [], seedEvents: [],
   };
@@ -167,7 +203,12 @@ export const TravelProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   // Keep the existing navigation API while delegating URL state to Next.
   const currentRoute = pathname || '/';
+  const navigationGuard = useRef<((route: string) => boolean) | null>(null);
+  const setNavigationGuard = useCallback((guard: ((route: string) => boolean) | null) => {
+    navigationGuard.current = guard;
+  }, []);
   const navigate = useCallback((route: string) => {
+    if (navigationGuard.current?.(route)) return;
     router.push(route);
   }, [router]);
 
@@ -255,6 +296,12 @@ export const TravelProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     applySession(session);
   }, [applySession, resetClientState]);
 
+  const updateProfile = useCallback(async (changes: authApi.ProfileChanges) => {
+    const user = await authApi.updateProfile(changes);
+    setCurrentPersona(personaFromUser(user));
+    return user;
+  }, []);
+
   const signOut = useCallback(async () => {
     await authApi.logout().catch(() => undefined);
     setCurrentPersona(null);
@@ -303,8 +350,9 @@ export const TravelProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
   }, [showToast, resetClientState]);
 
+  // Khách chưa đăng nhập cũng có giỏ (BFF gắn mã khách, giỏ nằm ở Redis 3 ngày); sau khi đăng nhập, BFF gộp giỏ khách vào
+  // tài khoản trước khi trả `GET /cart` (docs/spec/booking/dat-truc-tiep-theo-don-nhap.md §8).
   const refreshCart = useCallback(async (): Promise<CartResponse | null> => {
-    if (!personaRef.current) return null;
     try {
       return await trackCart(bookingApi.getCart);
     } catch (error) {
@@ -313,11 +361,45 @@ export const TravelProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
   }, [trackCart]);
 
-  // Giỏ là state phía server: tải lại mỗi khi người dùng đăng nhập hoặc đổi tài khoản.
+  // Giỏ là state phía server: tải khi phiên đã sẵn sàng và mỗi khi người dùng đăng nhập, đăng xuất hoặc đổi tài khoản.
   const personaId = currentPersona?.id ?? null;
   useEffect(() => {
-    if (personaId) void refreshCart();
-  }, [personaId, refreshCart]);
+    if (authReady) void refreshCart();
+  }, [authReady, personaId, refreshCart]);
+
+  const startBooking = useCallback(async (
+    items: BookNowItem[], options: { allowPartial?: boolean } = {},
+  ): Promise<BookingDraft | null> => {
+    if (!items.length) return null;
+    // Đặt ngay cần đăng nhập (FR-BKG-01): mở hộp đăng nhập trên trang; đăng nhập xong thì tạo đơn nháp và vào /checkout.
+    if (!personaRef.current) {
+      openLoginModal(() => { void startBookingRef.current(items, options); });
+      return null;
+    }
+    let draft: BookingDraft;
+    try {
+      draft = await bookingApi.createBookingDraft({
+        items: items.map(lineRequest), allowPartial: Boolean(options.allowPartial),
+      });
+    } catch (error) {
+      showToast(cartErrorMessage(error, items.length === 1 ? items[0].product.name : undefined));
+      return null;
+    }
+    const accepted = new Set(draft.items.map((i) => i.product.productId));
+    for (const item of items) if (accepted.has(item.product.id)) recordEvent('add_to_cart', item.product);
+    if (draft.rejectedItems?.length) {
+      const names = draft.rejectedItems.map((r) => items.find((i) => i.product.id === r.productId)?.product.name ?? 'Một mục');
+      showToast(`Chưa đặt được: ${names.join(', ')}. Các mục còn lại vẫn trong lần thanh toán này.`);
+    }
+    // Tour, trải nghiệm, tiện ích của lần đặt được chép vào giỏ: cập nhật số đếm giỏ.
+    void refreshCart();
+    navigate(bookingApi.checkoutPathOf(draft.draftId));
+    return draft;
+  }, [showToast, recordEvent, refreshCart, navigate, openLoginModal]);
+
+  // Bản `startBooking` mới nhất cho callback sau đăng nhập (tránh closure cũ).
+  const startBookingRef = useRef(startBooking);
+  useEffect(() => { startBookingRef.current = startBooking; });
 
   const addToCart = useCallback(async (
     product: Product,
@@ -326,20 +408,14 @@ export const TravelProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     checkOutDate?: string,
     options: { silent?: boolean; guests?: GuestCounts } = {},
   ): Promise<boolean> => {
-    // Khách phải đăng nhập trước hành động ghi (§3.1). Đọc qua ref: callback sau đăng nhập chạy ở render sau.
-    if (!personaRef.current) {
-      openLoginModal(() => { void addToCart(product, quantity, usingDate, checkOutDate, options); });
+    // Khách sạn và vé máy bay không vào giỏ (R-DIR-02): mọi nơi gọi thêm giỏ cho hai loại này đều thành Đặt ngay.
+    if (!bookingApi.isCartEligible(product.taxonomy)) {
+      await startBooking([{ product, quantity, usingDate, checkOutDate, guests: options.guests }]);
       return false;
     }
-    const start = usingDate || defaultUsingDate(product);
-    const nights = product.taxonomy === 'hotel' ? nightsBetween(start, checkOutDate) : undefined;
     try {
-      // Dịch vụ tính theo người gửi `guests` thì Backend tự tính quantity = người lớn + trẻ em; khách sạn và combo gửi cả hai.
-      const perPerson = product.taxonomy === 'flight' || product.taxonomy === 'attraction' || product.taxonomy === 'golf';
-      await trackCart(() => bookingApi.addCartItem({
-        productId: product.id, usingDate: start, nights, ...(options.guests ? { guests: options.guests } : {}),
-        ...(options.guests && perPerson ? {} : { quantity }),
-      }));
+      // Không cần đăng nhập: khách chưa đăng nhập có giỏ riêng, được gộp vào tài khoản khi đăng nhập (§8).
+      await trackCart(() => bookingApi.addCartItem(lineRequest({ product, quantity, usingDate, checkOutDate, guests: options.guests })));
     } catch (error) {
       if (!options.silent) showToast(cartErrorMessage(error, product.name));
       return false;
@@ -349,7 +425,7 @@ export const TravelProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       showToast(`Đã thêm "${product.name}" vào giỏ hàng`, 'Xem giỏ', () => navigate('/cart'));
     }
     return true;
-  }, [openLoginModal, trackCart, recordEvent, showToast, navigate]);
+  }, [startBooking, trackCart, recordEvent, showToast, navigate]);
 
   const removeFromCart = useCallback(async (cartItemId: string) => {
     const item = cart?.items.find((i) => i.cartItemId === cartItemId);
@@ -419,6 +495,7 @@ export const TravelProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         signOut,
         signIn,
         signUp,
+        updateProfile,
         loginPrefillEmail,
         currentLocale,
         setLocale,
@@ -426,6 +503,7 @@ export const TravelProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         cartCount: cart?.itemCount ?? 0,
         refreshCart,
         addToCart,
+        startBooking,
         removeFromCart,
         updateCartItem,
         activeEvents,
@@ -447,6 +525,7 @@ export const TravelProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         closeLoginModal,
         currentRoute,
         navigate,
+        setNavigationGuard,
         pendingPostLoginAction
       }}
     >

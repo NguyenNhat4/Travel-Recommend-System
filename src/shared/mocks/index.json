@@ -51,6 +51,22 @@
       "file": "auth/getMe.401-token-expired.json"
     },
     {
+      "operationId": "updateMe",
+      "method": "patch",
+      "path": "/auth/me",
+      "status": 200,
+      "case": "default",
+      "file": "auth/updateMe.200-default.json"
+    },
+    {
+      "operationId": "updateMe",
+      "method": "patch",
+      "path": "/auth/me",
+      "status": 422,
+      "case": "invalid-phone",
+      "file": "auth/updateMe.422-invalid-phone.json"
+    },
+    {
       "operationId": "createSession",
       "method": "post",
       "path": "/auth/session",
@@ -177,6 +193,22 @@
       "status": 503,
       "case": "unavailable",
       "file": "search/searchProducts.503-unavailable.json"
+    },
+    {
+      "operationId": "suggestSearch",
+      "method": "get",
+      "path": "/search/suggestions",
+      "status": 200,
+      "case": "default",
+      "file": "search/suggestSearch.200-default.json"
+    },
+    {
+      "operationId": "suggestSearch",
+      "method": "get",
+      "path": "/search/suggestions",
+      "status": 200,
+      "case": "empty",
+      "file": "search/suggestSearch.200-empty.json"
     },
     {
       "operationId": "getRecommendations",
@@ -399,6 +431,14 @@
       "method": "post",
       "path": "/assistant/itineraries",
       "status": 200,
+      "case": "completed-two-stays",
+      "file": "assistant/createItinerary.200-completed-two-stays.json"
+    },
+    {
+      "operationId": "createItinerary",
+      "method": "post",
+      "path": "/assistant/itineraries",
+      "status": 200,
       "case": "completed-invalid-slots",
       "file": "assistant/createItinerary.200-completed-invalid-slots.json"
     },
@@ -409,6 +449,14 @@
       "status": 200,
       "case": "needs-clarification",
       "file": "assistant/createItinerary.200-needs-clarification.json"
+    },
+    {
+      "operationId": "createItinerary",
+      "method": "post",
+      "path": "/assistant/itineraries",
+      "status": 200,
+      "case": "needs-clarification-explore",
+      "file": "assistant/createItinerary.200-needs-clarification-explore.json"
     },
     {
       "operationId": "createItinerary",
@@ -499,6 +547,38 @@
       "file": "booking/getBooking.200-cancelled-refunded.json"
     },
     {
+      "operationId": "listBookings",
+      "method": "get",
+      "path": "/bookings",
+      "status": 200,
+      "case": "default",
+      "file": "booking/listBookings.200-default.json"
+    },
+    {
+      "operationId": "listBookings",
+      "method": "get",
+      "path": "/bookings",
+      "status": 200,
+      "case": "cancelled",
+      "file": "booking/listBookings.200-cancelled.json"
+    },
+    {
+      "operationId": "listBookings",
+      "method": "get",
+      "path": "/bookings",
+      "status": 200,
+      "case": "empty",
+      "file": "booking/listBookings.200-empty.json"
+    },
+    {
+      "operationId": "listBookings",
+      "method": "get",
+      "path": "/bookings",
+      "status": 422,
+      "case": "invalid-tab",
+      "file": "booking/listBookings.422-invalid-tab.json"
+    },
+    {
       "operationId": "cancelBooking",
       "method": "post",
       "path": "/bookings/{referenceCode}/cancel",
@@ -561,6 +641,126 @@
       "status": 200,
       "case": "guests",
       "file": "booking/updateCartItem.200-guests.json"
+    },
+    {
+      "operationId": "createBookingDraft",
+      "method": "post",
+      "path": "/booking-drafts",
+      "status": 201,
+      "case": "hotel",
+      "file": "booking/createBookingDraft.201-hotel.json"
+    },
+    {
+      "operationId": "createBookingDraft",
+      "method": "post",
+      "path": "/booking-drafts",
+      "status": 201,
+      "case": "itinerary",
+      "file": "booking/createBookingDraft.201-itinerary.json"
+    },
+    {
+      "operationId": "createBookingDraft",
+      "method": "post",
+      "path": "/booking-drafts",
+      "status": 409,
+      "case": "none-accepted",
+      "file": "booking/createBookingDraft.409-none-accepted.json"
+    },
+    {
+      "operationId": "createBookingDraft",
+      "method": "post",
+      "path": "/booking-drafts",
+      "status": 400,
+      "case": "duplicate-item",
+      "file": "booking/createBookingDraft.400-duplicate-item.json"
+    },
+    {
+      "operationId": "getBookingDraft",
+      "method": "get",
+      "path": "/booking-drafts/{draftId}",
+      "status": 200,
+      "case": "family",
+      "file": "booking/getBookingDraft.200-family.json"
+    },
+    {
+      "operationId": "getBookingDraft",
+      "method": "get",
+      "path": "/booking-drafts/{draftId}",
+      "status": 200,
+      "case": "guest-flight",
+      "file": "booking/getBookingDraft.200-guest-flight.json"
+    },
+    {
+      "operationId": "getBookingDraft",
+      "method": "get",
+      "path": "/booking-drafts/{draftId}",
+      "status": 410,
+      "case": "expired",
+      "file": "booking/getBookingDraft.410-expired.json"
+    },
+    {
+      "operationId": "getBookingDraft",
+      "method": "get",
+      "path": "/booking-drafts/{draftId}",
+      "status": 404,
+      "case": "not-found",
+      "file": "booking/getBookingDraft.404-not-found.json"
+    },
+    {
+      "operationId": "updateBookingDraftItem",
+      "method": "patch",
+      "path": "/booking-drafts/{draftId}/items/{cartItemId}",
+      "status": 200,
+      "case": "default",
+      "file": "booking/updateBookingDraftItem.200-default.json"
+    },
+    {
+      "operationId": "addCartItem",
+      "method": "post",
+      "path": "/cart/items",
+      "status": 422,
+      "case": "direct-booking-only",
+      "file": "booking/addCartItem.422-direct-booking-only.json"
+    },
+    {
+      "operationId": "getCart",
+      "method": "get",
+      "path": "/cart",
+      "status": 200,
+      "case": "guest",
+      "file": "booking/getCart.200-guest.json"
+    },
+    {
+      "operationId": "createBooking",
+      "method": "post",
+      "path": "/bookings",
+      "status": 410,
+      "case": "draft-expired",
+      "file": "booking/createBooking.410-draft-expired.json"
+    },
+    {
+      "operationId": "createBooking",
+      "method": "post",
+      "path": "/bookings",
+      "status": 404,
+      "case": "draft-not-found",
+      "file": "booking/createBooking.404-draft-not-found.json"
+    },
+    {
+      "operationId": "mergeGuestBooking",
+      "method": "post",
+      "path": "/guest-bookings/merge",
+      "status": 200,
+      "case": "default",
+      "file": "booking/mergeGuestBooking.200-default.json"
+    },
+    {
+      "operationId": "removeBookingDraftItem",
+      "method": "delete",
+      "path": "/booking-drafts/{draftId}/items/{cartItemId}",
+      "status": 200,
+      "case": "default",
+      "file": "booking/removeBookingDraftItem.200-default.json"
     }
   ]
 }

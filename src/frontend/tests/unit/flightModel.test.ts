@@ -170,13 +170,19 @@ describe('days', () => {
     expect(summarizeDays(all, '2026-10-06').map((d) => d.date)).toEqual(['2026-10-06']);
   });
 
-  it('opens on the wanted day, else the next day with flights, else the last one', () => {
+  it('opens on the wanted day, or on the first day with flights when no day was asked for', () => {
     const days = summarizeDays(options());
-    expect(pickDate(days, '2026-10-06')).toEqual({ date: '2026-10-06', exact: true });
-    expect(pickDate(days, '2026-10-02')).toEqual({ date: '2026-10-05', exact: false });
-    expect(pickDate(days, '2026-11-01')).toEqual({ date: '2026-10-06', exact: false });
-    expect(pickDate(days, undefined)).toEqual({ date: '2026-10-05', exact: true });
+    expect(pickDate(days, '2026-10-06')).toEqual({ date: '2026-10-06', nearest: [] });
+    expect(pickDate(days, undefined)).toEqual({ date: '2026-10-05', nearest: [] });
     expect(pickDate([], '2026-10-05')).toBeNull();
+  });
+
+  it('never swaps a day without flights for another day: it only offers the nearest day before and after', () => {
+    const day = (date: string, minPrice: number) => ({ date, minPrice, count: 1 });
+    const days = [day('2026-10-05', 700000), day('2026-10-06', 650000), day('2026-10-09', 900000)];
+    expect(pickDate(days, '2026-10-07')).toEqual({ date: null, nearest: [days[1], days[2]] });
+    expect(pickDate(days, '2026-10-02')).toEqual({ date: null, nearest: [days[0]] });        // trước ngày đầu: chỉ có ngày sau
+    expect(pickDate(days, '2026-11-01')).toEqual({ date: null, nearest: [days[2]] });        // sau ngày cuối: chỉ có ngày trước
   });
 });
 

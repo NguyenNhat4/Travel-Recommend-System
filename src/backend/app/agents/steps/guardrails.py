@@ -128,6 +128,8 @@ _REPEAT_RUN = re.compile(r"(.)\1{2,}")
 _LAUGH = re.compile(r"^(?:ha|he|hi|ho|hu|k)+$")
 _LATIN = re.compile(r"^[a-z]+$")
 _CONSONANT_RUN = re.compile(r"[^aeiouy]{5,}")
+_VOWEL_RUN = re.compile(r"[aeiouy]{4,}")  # "puaiegapoiga": không từ thật nào dồn ≥ 4 nguyên âm
+_MAX_UNKNOWN_TOKEN_LENGTH = 14            # tên riêng/thương hiệu ngoài từ điển ngắn hơn; chuỗi gõ bậy thì dài
 _KEYBOARD_ROWS = ("qwertyuiop", "asdfghjkl", "zxcvbnm")
 _HOME_ROW = frozenset("asdfghjkl")
 
@@ -153,8 +155,8 @@ def _keyboard_mash(bare: str) -> bool:
 def _pronounceable(bare: str) -> bool:
     """Tên riêng, thương hiệu, từ tiếng Anh ngoài từ điển ("VinWonders", "Đray Nur"): có nguyên âm,
     không dồn ≥ 5 phụ âm liền nhau, không phải gõ dọc bàn phím."""
-    return (any(ch in "aeiouy" for ch in bare) and not _CONSONANT_RUN.search(bare)
-            and not _keyboard_mash(bare))
+    return (any(ch in "aeiouy" for ch in bare) and len(bare) <= _MAX_UNKNOWN_TOKEN_LENGTH
+            and not _CONSONANT_RUN.search(bare) and not _VOWEL_RUN.search(bare) and not _keyboard_mash(bare))
 
 
 def _valid_token(token: str) -> bool:

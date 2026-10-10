@@ -1,0 +1,51 @@
+# Cấu hình chung của mọi node. Phần riêng từng node (tên, IP, mật khẩu, địa chỉ etcd) đi qua biến môi trường PATRONI_*
+# (entrypoint.sh), không có secret trong file này.
+#
+# Số liệu failover (docs/plan/2026-10-07-ha-vung-crawler-rolling.md §2): mất leader -> khoá DCS hết hạn sau tối đa
+# ttl = 30s -> replica đồng bộ tự nâng (vài giây) -> ILB thấy /primary 200 trên node mới sau ~10s. Ước tính ~45-60s,
+# ĐO LOCAL bằng ops/tests/test_patroni_failover.sh; chưa đo trên GCP.
+restapi:
+  listen: 0.0.0.0:8008
+
+bootstrap:
+  dcs:
+    ttl: 30
+    loop_wait: 10
+    retry_timeout: 10
+    # Chỉ replica trễ không quá 1 MiB WAL mới được nâng; còn đồng bộ thì trễ bằng 0.
+    maximum_lag_on_failover: 1048576
+    # Đồng bộ không nghiêm ngặt: bình thường mọi commit đã nằm ở replica ở zone khác (RPO 0 cho đơn đã thanh toán);
+    # mất replica thì primary tự hạ xuống bất đồng bộ thay vì chặn ghi.
+    synchronous_mode: true
+    synchronous_mode_strict: false
+    postgresql:
+      use_pg_rewind: true       # primary cũ vào lại cụm bằng pg_rewind, không phải dựng lại từ đầu
+      use_slots: true
+      remove_data_directory_on_rewind_failure: true   # rewind hỏng thì tự basebackup lại
+      parameters:
+        wal_level: replica
+        hot_standby: "on"
+        wal_log_hints: "on"     # bắt buộc cho pg_rewind khi không bật data-checksums
+        max_wal_senders: 10
+        max_replication_slots: 10
+        max_slot_wal_keep_size: 2GB
+        max_connections: 200
+        password_encryption: scram-sha-256
+
+  initdb:
+    - encoding: UTF8
+    - data-checksums
+
+postgresql:
+  listen: 0.0.0.0:5432
+  use_unix_socket: true
+  pg_hba:
+    - local all all trust
+    - host replication replicator 0.0.0.0/0 scram-sha-256
+    - host all all 0.0.0.0/0 scram-sha-256
+
+tags:
+  nofailover: false
+  noloadbalance: false
+  clonefrom: false
+  nosync: false

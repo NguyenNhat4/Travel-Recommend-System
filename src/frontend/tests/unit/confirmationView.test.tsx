@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import pendingFixture from '../../../shared/mocks/booking/createBooking.201-default.json';
 import confirmedFixture from '../../../shared/mocks/booking/getBooking.200-default.json';
@@ -9,14 +9,18 @@ import expiredFixture from '../../../shared/mocks/booking/getBooking.200-expired
 import cancelledFixture from '../../../shared/mocks/booking/getBooking.200-cancelled-refunded.json';
 import tooLateFixture from '../../../shared/mocks/booking/cancelBooking.409-too-late.json';
 import familyFixture from '../../../shared/mocks/booking/createBooking.201-family.json';
+import rebookDraft from '../../../shared/mocks/booking/createBookingDraft.201-hotel.json';
+import notRebookable from '../../../shared/mocks/booking/createBooking.409-pending-payment.json';
 import type { BookingResponse } from '../../src/services/booking';
 
 const api = vi.hoisted(() => ({
   getBooking: vi.fn(),
   cancelBooking: vi.fn(),
   redirectToCheckout: vi.fn(),
+  createBookingDraft: vi.fn(),
   fetchRecommendations: vi.fn(),
 }));
+const catalog = vi.hoisted(() => ({ getProduct: vi.fn() }));
 const travel = vi.hoisted(() => ({
   getBookingByCode: vi.fn(),
   rememberBooking: vi.fn(),
@@ -34,12 +38,18 @@ vi.mock('../../src/services/booking', async (importOriginal) => ({
   getBooking: api.getBooking,
   cancelBooking: api.cancelBooking,
   redirectToCheckout: api.redirectToCheckout,
+  createBookingDraft: api.createBookingDraft,
   PAYMENT_POLL_INTERVAL_MS: 5,
 }));
 vi.mock('../../src/services/recsys', () => ({ fetchRecommendations: api.fetchRecommendations }));
+vi.mock('../../src/services/catalog', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/services/catalog')>()),
+  getProduct: catalog.getProduct,
+}));
 vi.mock('../../src/context/TravelContext', () => ({ useTravel: () => travel }));
 
 import { ConfirmationView } from '../../src/components/confirmation/ConfirmationView';
+import { resetProductInfoCache } from '../../src/components/confirmation/useProductInfo';
 import { ApiError } from '../../src/services/http';
 
 const NOW = Date.parse('2026-09-16T10:30:00Z');
@@ -98,18 +108,19 @@ describe('ConfirmationView — trạng thái đơn', () => {
     expect(await screen.findByText('Đã nhận thanh toán, đang xác nhận đơn')).toBeTruthy();
   });
 
-  it('treats a hold past its deadline as expired and points back to the cart', async () => {
+  it('treats a hold past its deadline as expired and offers to rebook', async () => {
     const late = pending();
     late.holdExpiresAt = '2026-09-16T10:29:00Z';
     api.getBooking.mockResolvedValue(late);
     render(<ConfirmationView referenceCode="VOTA-20260916-8K3F" />);
     expect(await screen.findByText('Hết thời gian giữ chỗ')).toBeTruthy();
     expect(screen.queryByText('Tiếp tục thanh toán')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Đặt lại' })).toBeTruthy();
   });
 
   it.each([
-    [failedFixture, 'Thanh toán không thành công', 'Thanh toán không thành công sau 3 lần. Giỏ hàng vẫn còn, bạn có thể đặt lại.'],
-    [expiredFixture, 'Hết thời gian giữ chỗ', 'Đơn chưa được thanh toán trong 30 phút. Giỏ hàng vẫn còn, bạn có thể đặt lại.'],
+    [failedFixture, 'Thanh toán không thành công', 'Thanh toán không thành công sau 3 lần. Bạn có thể đặt lại các dịch vụ của đơn này theo giá hiện tại.'],
+    [expiredFixture, 'Hết thời gian giữ chỗ', 'Đơn chưa được thanh toán trong 30 phút. Bạn có thể đặt lại các dịch vụ của đơn này theo giá hiện tại.'],
     [cancelledFixture, 'Đã huỷ đơn', 'Đã hoàn 12.840.000 ₫ về thẻ.'],
   ])('renders closed booking %#', async (fixture, title, text) => {
     api.getBooking.mockResolvedValue(clone(fixture));
@@ -118,6 +129,34 @@ describe('ConfirmationView — trạng thái đơn', () => {
     expect(screen.getByText(text.replace(/ /g, ' '), { normalizer: (s) => s.replace(/ /g, ' ') })).toBeTruthy();
     expect(api.fetchRecommendations).not.toHaveBeenCalled();
     expect(screen.queryByText('Huỷ đơn')).toBeNull();
+  });
+
+  it.each([[failedFixture], [expiredFixture]])('"Đặt lại" on an unpaid order %# makes a new draft from the order and opens its payment page', async (fixture) => {
+    api.getBooking.mockResolvedValue(clone(fixture));
+    api.createBookingDraft.mockResolvedValue(rebookDraft);
+    render(<ConfirmationView referenceCode={fixture.referenceCode} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Đặt lại' }));
+    await waitFor(() => expect(travel.navigate).toHaveBeenCalledWith(`/checkout?draft=${rebookDraft.draftId}`));
+    // Chỉ gửi mã đơn: mục, số khách và giá do Backend dựng lại theo giá hiện tại; không chép tên hay ngày sinh hành khách (R-RBK).
+    expect(api.createBookingDraft).toHaveBeenCalledWith({ fromBooking: fixture.referenceCode, allowPartial: true });
+    expect(travel.navigate).not.toHaveBeenCalledWith('/cart');
+  });
+
+  it('"Đặt lại" says which part could not be rebooked, and stays on the page when the backend refuses', async () => {
+    api.getBooking.mockResolvedValue(clone(expiredFixture));
+    api.createBookingDraft.mockResolvedValueOnce({
+      ...rebookDraft,
+      rejectedItems: [{ productId: 'nt-a-02', usingDate: '2026-10-16', code: 'PRODUCT_UNAVAILABLE', message: 'Sản phẩm đã hết chỗ.' }],
+    });
+    render(<ConfirmationView referenceCode={expiredFixture.referenceCode} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Đặt lại' }));
+    await waitFor(() => expect(travel.showToast).toHaveBeenCalledWith('1 dịch vụ không còn đặt được nên không nằm trong lần đặt lại này.'));
+
+    travel.navigate.mockClear();
+    api.createBookingDraft.mockRejectedValueOnce(apiError(notRebookable as any, 409));
+    fireEvent.click(screen.getByRole('button', { name: 'Đặt lại' }));
+    await waitFor(() => expect(travel.showToast).toHaveBeenCalledWith(notRebookable.error.message));
+    expect(travel.navigate).not.toHaveBeenCalled();
   });
 
   it('shows not found for someone else’s or unknown reference', async () => {
@@ -181,7 +220,7 @@ describe('ConfirmationView — hành khách và dòng giá của từng dịch v
     expect(ticket.textContent).toContain('3 khách');
     expect(ticket.querySelector('[data-testid="item-travelers"]')!.textContent).toBe('Nguyễn Minh Anh, Trần Thu Hà, Nguyễn Gia Bảo (trẻ em)');
     expect(ticket.textContent).not.toContain('Đại diện nhận phòng');
-    expect(document.body.textContent).not.toMatch(/\d{2}\/\d{2}\/\d{4}|birth|ngày sinh/i);
+    expect(document.body.textContent).not.toMatch(/birth|ngày sinh/i); // response không trả ngày sinh nên trang không có chỗ để hiện
   });
 
   it('hiện các dòng giá theo loại khách của Backend', async () => {
@@ -205,3 +244,114 @@ describe('ConfirmationView — hành khách và dòng giá của từng dịch v
   });
 });
 
+describe('ConfirmationView — chi tiết đơn đầy đủ (FR-BKG-15)', () => {
+  const detail = (patch: Partial<BookingResponse> = {}): BookingResponse => ({ ...clone(familyFixture), status: 'CONFIRMED', ...patch });
+  const product = (productId: string, over: Record<string, unknown> = {}) => ({
+    productId, name: productId, taxonomy: 'hotel', destination: 'Nha Trang', unitPrice: 1, currency: 'VND', available: true,
+    priceUnit: 'PER_NIGHT', attributes: {}, imageUrl: null, ...over,
+  });
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    travel.getBookingByCode.mockReturnValue(undefined);
+    resetProductInfoCache();
+    catalog.getProduct.mockRejectedValue(new Error('offline'));
+    api.fetchRecommendations.mockResolvedValue({
+      strategy: 'cross_vertical', destination: 'Nha Trang', recommendations: [],
+      diagnostics: { eventsUsed: 1, coldStart: false, excludedVerticals: [], modelVersion: 't' }, generatedAt: '',
+    });
+  });
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+  });
+
+  it('có đường dẫn về Đơn hàng của tôi và các khối khách hàng, hành khách, dịch vụ, chính sách', async () => {
+    api.getBooking.mockResolvedValue(detail());
+    render(<ConfirmationView referenceCode="VOTA-20260929-7Q2M" />);
+    await screen.findByText('Đặt chỗ thành công!');
+    expect(screen.getByRole('link', { name: 'Đơn hàng của tôi' }).getAttribute('href')).toBe('/profile/booking_history');
+    for (const title of ['Thông tin khách hàng', 'Thông tin hành khách', 'Thông tin dịch vụ', 'Chính sách hoàn huỷ', 'Thông tin thanh toán']) {
+      expect(screen.getByRole('heading', { name: title })).toBeTruthy();
+    }
+    const customer = screen.getByRole('heading', { name: 'Thông tin khách hàng' }).parentElement!;
+    expect(within(customer).getByText('Nguyễn Minh Anh')).toBeTruthy();
+    expect(screen.getByText('0912345678')).toBeTruthy();
+    expect(screen.getByText('minhanh@example.vn')).toBeTruthy();
+  });
+
+  it('khách sạn hiện giờ nhận và trả phòng mặc định chung', async () => {
+    api.getBooking.mockResolvedValue(detail());
+    render(<ConfirmationView referenceCode="VOTA-20260929-7Q2M" />);
+    await screen.findByText('Đặt chỗ thành công!');
+    const hotel = screen.getAllByTestId('booking-item').find((el) => el.textContent?.includes('Lucky Sun'))!;
+    const timeline = hotel.querySelector('[data-testid="item-timeline"]')!;
+    expect(timeline.textContent).toContain('Nhận phòng');
+    expect(timeline.textContent).toContain('Sau 14:00');
+    expect(timeline.textContent).toContain('Trả phòng');
+    expect(timeline.textContent).toContain('Trước 12:00');
+    expect(timeline.textContent).toContain('2 đêm · 3 khách');
+  });
+
+  it('địa chỉ, hạng sao, bản đồ và tiện ích lấy từ khách sạn cha trong catalog; lỗi catalog không làm hỏng trang', async () => {
+    api.getBooking.mockResolvedValue(detail());
+    catalog.getProduct.mockImplementation(async (id: string) => {
+      if (id === 'nt-h-luckysun-d3') return product(id, { name: 'Phòng Deluxe 3 Người', attributes: { level: 'room', parentProductId: 'nt-h-luckysun', wifi: true, freeBreakfast: true } });
+      if (id === 'nt-h-luckysun') return product(id, { name: 'Lucky Sun Hotel Nha Trang Beach', attributes: { level: 'property', starRating: 4, address: '12 Trần Phú, Nha Trang' } });
+      throw new Error('offline');
+    });
+    render(<ConfirmationView referenceCode="VOTA-20260929-7Q2M" />);
+    await screen.findByText('Đặt chỗ thành công!');
+    expect((await screen.findAllByText('Lucky Sun Hotel Nha Trang Beach')).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/12 Trần Phú, Nha Trang/).length).toBeGreaterThan(0);
+    expect(screen.getByRole('img', { name: '4 sao' })).toBeTruthy();
+    const map = screen.getAllByRole('link', { name: /Bản đồ/ })[0];
+    expect(map.getAttribute('href')).toContain('google.com/maps');
+    expect(map.getAttribute('href')).toContain(encodeURIComponent('12 Trần Phú'));
+    expect(screen.getByText('Wi-Fi miễn phí')).toBeTruthy();
+    expect(screen.getByText('Bữa sáng')).toBeTruthy();
+  });
+
+  it('không lấy được catalog thì vẫn hiện đơn từ dữ liệu của đơn, không có địa chỉ giả', async () => {
+    api.getBooking.mockResolvedValue(detail());
+    render(<ConfirmationView referenceCode="VOTA-20260929-7Q2M" />);
+    await screen.findByText('Đặt chỗ thành công!');
+    await waitFor(() => expect(catalog.getProduct).toHaveBeenCalled());
+    expect(screen.queryByRole('link', { name: /Bản đồ/ })).toBeNull();
+    expect(screen.queryByRole('img', { name: /sao/ })).toBeNull();
+    expect(screen.getAllByTestId('booking-item')).toHaveLength(3);
+  });
+
+  it('chính sách hoàn huỷ nêu hạn hoàn 100% của Backend và đánh dấu mốc đang áp dụng', async () => {
+    api.getBooking.mockResolvedValue(detail({ cancellableUntil: '2026-10-16T17:00:00Z' }));
+    render(<ConfirmationView referenceCode="VOTA-20260929-7Q2M" />);
+    await screen.findByText('Đặt chỗ thành công!');
+    const policy = screen.getByRole('heading', { name: 'Chính sách hoàn huỷ' }).parentElement!;
+    expect(policy.textContent).toContain('Miễn phí huỷ, hoàn 100%');
+    expect(policy.textContent).toMatch(/Trước .*17\/10\/2026/);
+    expect(policy.textContent).toContain('Không huỷ trực tuyến được');
+    expect(policy.textContent).toContain('Huỷ áp dụng cho cả đơn');
+    expect(policy.querySelectorAll('li')[0].className).not.toContain('opacity-50'); // còn trong hạn: mốc đầu đang áp dụng
+    expect(policy.querySelectorAll('li')[1].className).toContain('opacity-50');
+  });
+
+  it('khung thanh toán có mã đơn, từng dòng giá, tổng khớp Backend và nút huỷ khi còn hạn', async () => {
+    api.getBooking.mockResolvedValue(detail({ cancellableUntil: '2026-10-16T17:00:00Z' }));
+    render(<ConfirmationView referenceCode="VOTA-20260929-7Q2M" />);
+    await screen.findByText('Đặt chỗ thành công!');
+    const panel = screen.getByRole('heading', { name: 'Thông tin thanh toán' }).parentElement!;
+    expect(within(panel).getByTestId('panel-reference').textContent).toBe('VOTA-20260929-7Q2M');
+    expect(within(panel).getByTestId('panel-total').textContent?.replace(/\u00a0/g, ' ')).toBe('6.960.384 ₫');
+    expect(within(panel).getByText('3.504.000 ₫', { normalizer: (t) => t.replace(/\u00a0/g, ' ') })).toBeTruthy();
+    expect(within(panel).getByRole('button', { name: 'Huỷ đơn' })).toBeTruthy();
+    expect(within(panel).getByRole('button', { name: /Sao chép/ })).toBeTruthy();
+  });
+
+  it('đơn quá hạn huỷ thì khung thanh toán không có nút huỷ', async () => {
+    api.getBooking.mockResolvedValue(detail({ cancellableUntil: '2026-09-01T00:00:00Z' }));
+    render(<ConfirmationView referenceCode="VOTA-20260929-7Q2M" />);
+    await screen.findByText('Đặt chỗ thành công!');
+    expect(screen.queryByRole('button', { name: 'Huỷ đơn' })).toBeNull();
+  });
+});

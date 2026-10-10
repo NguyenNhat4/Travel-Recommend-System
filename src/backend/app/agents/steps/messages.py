@@ -1,12 +1,17 @@
 """Câu chữ trả về người dùng, và ba helper mọi node dùng chung: message, event, failure."""
 from __future__ import annotations
 
+import logging
 import re
+from time import perf_counter
 
 from src.backend.app.application.itinerary.contracts import bounds, error_response
 from src.backend.app.application.ports.llm import ChatModelPort
+from src.backend.app.core.logging_config import log_event
 
 from ..state import make_event
+
+logger = logging.getLogger(__name__)
 
 MESSAGES = {
     "vi": {
@@ -19,13 +24,17 @@ MESSAGES = {
         "missing_days": "Bạn dự định đi trong mấy ngày, hoặc từ ngày nào đến ngày nào?",
         "suggest_form": "Mình đã điền sẵn một vài gợi ý cho chuyến đi bên dưới. "
                         "Bạn chỉnh lại theo nhu cầu rồi bấm xác nhận giúp mình nhé.",
+        "missing_days_and_details": "Bạn cho mình biết đi mấy ngày, {details} nhé. Mục nào chưa rõ thì cứ nói, "
+                                    "ví dụ: \"3 ngày, đi 17/10, 2 người lớn, 6 triệu\".",
         "missing_trip_details": "Để lên lịch sát hơn, bạn cho mình biết thêm {details} nhé. "
+                                "Có sở thích nơi ở (hồ bơi, phù hợp trẻ nhỏ…) thì nói luôn. "
                                 "Mục nào chưa rõ thì cứ nói, mình vẫn lên lịch được.",
         # Tiêu đề (dòng in đậm) tóm tắt cả câu; dùng khi LLM không đặt tiêu đề hoặc không viết được câu.
         "title_missing_both": "Cần biết điểm đến và số ngày",
         "title_missing_destination": "Bạn muốn đi đâu?",
         "title_missing_days": "Chuyến đi kéo dài mấy ngày?",
         "title_trip_details": "Thêm vài chi tiết cho chuyến đi",
+        "title_days_and_details": "Thêm vài thông tin để lập lịch",
         "title_form": "Điền nhanh thông tin chuyến đi",
         "title_conflict": "Thông tin chuyến đi chưa khớp nhau",
         "title_unverified": "Chưa xác minh được yêu cầu của bạn",
@@ -62,9 +71,23 @@ MESSAGES = {
         "stage_planned": "đã gửi lịch trình cho chuyến này",
         "stage_collecting": "đang hỏi thông tin chuyến đi, chưa lập lịch trình",
         "stage_start": "đầu hội thoại",
-        "note_itinerary": "gửi lịch trình {destination} {days} ngày: {products}",
+        "note_itinerary": "gửi lịch trình {destination} {days} ngày",
         "note_no_results": "không tìm thấy sản phẩm phù hợp ở {destination}",
         "note_fallback": "gửi vài sản phẩm tham khảo ở {destination}, chưa dựng được lịch trình",
+        "fallback_title": "Chưa dựng được lịch trình hoàn chỉnh",
+        "fallback_search_failed": "Mình chưa tải được kết quả tìm {noun} ở {destination}.",
+        "fallback_recommendations_failed": "Phần gợi ý cá nhân hoá đang trả dữ liệu lỗi nên mình chưa dùng được.",
+        "fallback_source_failed": "Một nguồn dữ liệu sản phẩm đang lỗi.",
+        "fallback_nothing_schedulable": "Ở {destination} mình chỉ tìm thấy {found}, chưa có khách sạn hay điểm tham quan để xếp vào lịch.",
+        "fallback_compose_failed": "Bước xếp lịch gặp lỗi hệ thống.",
+        "fallback_found": "Mình tìm được {found}; bạn xem các thẻ bên dưới (giá, điều kiện và ngày sử dụng cần kiểm tra lại khi đặt). Bạn có thể gửi lại yêu cầu để mình thử dựng lịch lần nữa.",
+        "fallback_count": "{count} {noun}",
+        "fallback_noun_hotel": "khách sạn",
+        "fallback_noun_attraction": "điểm tham quan",
+        "fallback_noun_golf": "sân golf",
+        "fallback_noun_combo": "combo",
+        "fallback_noun_flight": "vé máy bay",
+        "fallback_noun_other": "sản phẩm",
         "note_unclear": "chưa hiểu tin nhắn, nhờ người dùng nói rõ hơn",
         "note_chat": "trò chuyện",
         "note_refusal": "từ chối: yêu cầu ngoài phạm vi lập lịch trình",
@@ -135,7 +158,31 @@ MESSAGES = {
         "unmet_ask_relax": "Bạn muốn nới yêu cầu này, hay lập lịch không kèm {noun}?",
         "unmet_ask_other": "Bạn muốn lập lịch không kèm {noun}, hay chọn điểm đến khác?",
         "dropped_date": "Chỉ mở bán từ {start} đến {end}, không khớp ngày khởi hành.",
+        "dropped_duplicate": "Bỏ \"{name}\" vì trùng với \"{kept}\".",
         "section_no_stay": "Chưa có khách sạn",
+        "change_field_origin": "nơi đi",
+        "change_to_origin": "nơi đi thành {value}",
+        "detail_origin": "nơi bạn khởi hành (để mình thêm vé máy bay)",
+        "trip_origin": "đi từ {origin}",
+        "section_flights": "Vé máy bay",
+        "flight_OUTBOUND": "Chặng đi",
+        "flight_RETURN": "Chặng về",
+        "flight_ROUND_TRIP": "Khứ hồi",
+        "flight_nonstop": "bay thẳng",
+        "flight_passengers": "{price}/khách × {count} khách",
+        "flight_warn_NO_ORIGIN": "Lịch trình chưa gồm vé máy bay vì mình chưa biết bạn đi từ đâu. Bạn cho mình biết "
+                                 "nơi khởi hành, mình thêm vé ngay.",
+        "flight_warn_NO_ROUTE": "Chưa có chuyến bay từ {origin} đến {destination} trong dữ liệu, nên lịch trình chưa "
+                                "gồm vé máy bay.",
+        "flight_warn_NO_FLIGHT_ON_DATES": "Chưa có chuyến bay từ {origin} đến {destination} còn bán đúng ngày đi {out} "
+                                          "và ngày về {back}. Bạn thử đổi ngày khởi hành nhé.",
+        "flight_warn_MISSING_RETURN": "Mới có chặng đi; chưa có chuyến từ {destination} về {origin} đúng ngày {back}.",
+        "flight_warn_MISSING_OUTBOUND": "Mới có chặng về; chưa có chuyến từ {origin} đến {destination} đúng ngày {out}.",
+        # Ngày gần nhất có vé, giữ số ngày của chuyến (kịch bản bản 5, cảnh 10).
+        "flight_nearest": "Ngày gần nhất có vé: {dates}. Muốn đổi thì nhắn \"đổi sang {example}\" nhé.",
+        "flight_nearest_both": "đi {out}, về {back} (đủ hai chiều)",
+        "flight_nearest_out_only": "đi {out} (mới có chiều đi)",
+        "flight_warn_UNAVAILABLE": "Chưa tra được vé máy bay lúc này, nên lịch trình chưa gồm vé.",
         "no_stay_DATE": "Khách sạn ở {destination} trong dữ liệu hiện chỉ nhận đặt từ {open_from} đến {open_to}, nên "
                         "lịch này chưa kèm chỗ ở cho chuyến từ {start}.",
         "no_stay_other": "Chưa có khách sạn ở {destination} phù hợp với chuyến này, nên lịch chưa kèm chỗ ở.",
@@ -167,6 +214,7 @@ MESSAGES = {
         "time_EVENING": "Buổi tối",
         "time_FULL_DAY": "Cả ngày",
         "stay_nights": "{nights} đêm",
+        "stay_rooms": " × {rooms} phòng",
         "free_day": "Ngày này để bạn tự do nghỉ ngơi hoặc khám phá theo ý thích.",
         "unit_PER_NIGHT": "/đêm",
         "unit_PER_PERSON": "/người",
@@ -181,8 +229,144 @@ MESSAGES = {
         "cost_UNKNOWN": "Mình chưa cộng thành một con số tổng vì lịch có mục chưa có giá; "
                         "giá từng mục có vé bạn xem ở khung lịch trình bên phải nhé.",
         "narrate_notes": "Giá là giá tham khảo, chưa gồm ăn uống và đi lại; cần kiểm tra lại khi đặt.",
+        "section_criteria": "Cách mình xếp lịch",
+        "plan_criteria": "Mình chọn điểm, ghép các ngày và chọn nơi ở để tổng quãng đường bạn phải đi là ít nhất; nếu "
+                         "hai cách xếp gần ngang nhau thì mình chọn cách rẻ hơn.",
+        "plan_criteria_change": "Các điểm nằm ở hai khu cách xa nhau, nên từ đêm {night} bạn chuyển từ {first} sang "
+                                "{second}: đỡ đi lại hơn nhiều so với ở một chỗ cả chuyến.",
+        "plan_criteria_budget": "Mình chọn điểm, ghép các ngày và chọn nơi ở để tổng quãng đường bạn phải đi là ít "
+                                "nhất mà tổng chi phí vẫn nằm trong ngân sách của bạn; nếu hai cách xếp gần ngang nhau "
+                                "thì mình chọn cách rẻ hơn, và nếu không cách nào vừa ngân sách thì mình chọn cách rẻ "
+                                "nhất.",
+        "stay_nights_range": "Đêm {first}–{last}",
+        "stay_night_single": "Đêm {first}",
+        "options_total": "Lịch trên: đi lại ≈{km} km cả chuyến.",
+        "option_closer": "• Phương án {n}: thêm {money} — ở {hotels}: bớt ≈{km} km đi lại",
+        "option_cheaper": "• Phương án {n}: bớt {money} — ở {hotels}: đi thêm ≈{km} km",
+        "option_over_budget": " (vượt ngân sách {money})",
+        "options_pick": "Bấm một thẻ khách sạn để đổi ngay, hoặc nhắn \"lấy phương án 1\".",
+        "options_swap_title": "Lịch trình đã đổi khách sạn",
+        "swap_done": "Mình đã đổi sang {hotels}: {money}, {km} so với lịch trước. Cả chuyến đi lại ≈{total_km} km.",
+        "swap_money_more": "thêm {money}",
+        "swap_money_less": "bớt {money}",
+        "swap_money_same": "tổng tiền không đổi",
+        "swap_km_less": "bớt ≈{km} km đi lại",
+        "swap_km_more": "đi thêm ≈{km} km",
         "narrate_outro": "Bấm vào tên sản phẩm để xem chi tiết ở khung lịch trình bên phải, hoặc nhắn mình nếu muốn "
                          "đổi ngày, khách sạn hay hoạt động.",
+        # Lượt khám phá và trò chuyện trước khi lập lịch (FR-AGT-06, chốt 2026-10-10).
+        "not_on_sale_item": "Vé chưa mở bán cho ngày đi ({window}); lịch giữ nơi này để bạn tham khảo.",
+        "sale_window": "đang mở bán từ {start} đến {end}",
+        "sale_window_unknown": "chưa rõ ngày mở bán",
+        "reference_note": "Mình chưa tìm thấy vé mở bán cho ngày {date} (vé tham quan ở {destination} đang mở bán đến {end}), nhưng {destination} vẫn có những nơi rất đáng đến, nên mình dựng lịch tham khảo dưới đây. Các điểm có vé sẽ đặt được khi mở bán cho ngày của bạn.",
+        "reference_nearest": "Muốn đặt được ngay thì bạn nhắn \"Đi {destination} {days} ngày từ ngày {nearest}\" nhé.",
+        "explore_title": "{destination} có gì đáng đi",
+        "explore_hotel_title": "Chỗ ở tại {destination}",
+        "explore_intro": "Mình gợi ý vài chỗ ở {destination}, mỗi chỗ mạnh một điểm khác nhau.",
+        "explore_filtered_pool": "Mình chỉ tính những chỗ có ghi nhận hồ bơi.",
+        "explore_filtered_near": "Mình chỉ tính những chỗ ở ngay quanh {place}.",
+        "explore_none": "Mình chưa tìm thấy chỗ nào ở {destination} trong dữ liệu hiện có.",
+        "explore_none_pool": "Mình chưa thấy chỗ ở nào tại {destination} ghi nhận có hồ bơi trong dữ liệu hiện có.",
+        "explore_unavailable": "Mình chưa tải được gợi ý ở {destination} lúc này. Bạn hỏi lại sau ít phút giúp mình nhé.",
+        "explore_offer": "Bạn có muốn mình lên lịch {destination} không?",
+        "explore_continue": "Thông tin chuyến của bạn mình vẫn giữ. Khi sẵn sàng thì bấm \"Tiếp tục lập lịch\" nhé.",
+        "explore_card_line": "{link}: {reason}.",
+        "reason_most_reviewed": "nhiều người ghé nhất ở đây",
+        "reason_top_rated": "được du khách khen nhiều",
+        "reason_cheapest": "giá mềm",
+        "reason_free_entry": "tham quan tự do, không mất vé",
+        "reason_also_popular": "cũng được nhiều người ghé",
+        "reason_asked": "nơi bạn hỏi",
+        "reason_near": "ngay gần đó",
+        "explore_price_free": "tham quan tự do",
+        "explore_price_unknown": "giá đang cập nhật",
+        "explore_price_from": "từ {money}",
+        "chip_plan": "Lên lịch {destination} cho mình",
+        "chip_continue": "Tiếp tục lập lịch",
+        "chip_hotels": "Khách sạn ở {destination}",
+        # Hỏi giá vé trước khi lập lịch (kịch bản bản 5 cảnh 6).
+        "fare_ask_destination": "Bạn muốn bay đến đâu để mình xem giá vé nhé?",
+        "fare_ask_origin": "Bạn bay từ đâu ra {destination}? Mình có chuyến từ {origins}.",
+        "fare_no_routes": "Mình chưa có chuyến bay nào tới {destination} trong dữ liệu hiện có.",
+        "fare_title": "Vé {origin} – {destination}",
+        "fare_cheapest": "Vé một chiều {origin} → {destination} rẻ nhất mình thấy là {money}/khách, bay ngày {day} ({flight}).",
+        "fare_dearest": "Vé một chiều {origin} → {destination} đắt nhất mình thấy là {money}/khách, bay ngày {day} ({flight}).",
+        "fare_on_day_cheapest": "Ngày {day}, vé một chiều {origin} → {destination} rẻ nhất là {money}/khách ({flight}).",
+        "fare_on_day_dearest": "Ngày {day}, vé một chiều {origin} → {destination} đắt nhất là {money}/khách ({flight}).",
+        "fare_window_cheapest": "Còn tính cả đợt đang mở bán (tới {end}) thì rẻ nhất là {money}/khách, bay ngày {day} ({flight}).",
+        "fare_window_dearest": "Còn tính cả đợt đang mở bán (tới {end}) thì đắt nhất là {money}/khách, bay ngày {day} ({flight}).",
+        "fare_is_best_cheapest": "Đây cũng là giá rẻ nhất cả đợt đang mở bán (tới {end}).",
+        "fare_is_best_dearest": "Đây cũng là vé đắt nhất cả đợt đang mở bán (tới {end}).",
+        "fare_ask_kind": "Bạn muốn xem giá vé máy bay, phòng khách sạn hay vé tham quan?",
+        "fare_ask_kind_at": "Bạn muốn xem giá vé máy bay ra {destination}, phòng khách sạn hay vé tham quan ở {destination}?",
+        "fare_ask_origin_anywhere": "Bạn bay từ đâu? Mình so giá các tuyến từ đó cho bạn nhé.",
+        "fare_anywhere_title": "Vé từ {origin} đi các nơi",
+        "fare_anywhere_none": "Mình chưa thấy chuyến bay còn vé nào từ {origin} trong 30 ngày tới.",
+        "fare_anywhere_cheapest": "Từ {origin}, vé một chiều rẻ nhất mình thấy là đi {destination}: {money}/khách, bay ngày {day} ({flight}).",
+        "fare_anywhere_dearest": "Từ {origin}, vé một chiều đắt nhất mình thấy là đi {destination}: {money}/khách, bay ngày {day} ({flight}).",
+        "fare_anywhere_others_cheapest": "Các tuyến khác (vé rẻ nhất mỗi tuyến): {routes}.",
+        "fare_anywhere_others_dearest": "Các tuyến khác (vé đắt nhất mỗi tuyến): {routes}.",
+        "fare_route_item": "{destination} {money}",
+        "chip_kind_flight": "Vé máy bay rẻ nhất",
+        "chip_kind_flight_at": "Vé máy bay ra {destination} rẻ nhất",
+        "chip_kind_hotel": "Khách sạn giá rẻ",
+        "chip_kind_hotel_at": "Khách sạn giá rẻ ở {destination}",
+        "chip_kind_sights": "Giá vé tham quan",
+        "chip_kind_sights_at": "Giá vé tham quan ở {destination}",
+        "chip_fare_cheapest": "Rẻ nhất thì sao?",
+        "chip_fare_dearest": "Đắt nhất thì sao?",
+        "chip_fare_cheapest_anywhere": "Tuyến nào rẻ nhất?",
+        "chip_fare_dearest_anywhere": "Tuyến nào đắt nhất?",
+        "fare_other_days": "Ngày khác: {days}.",
+        "fare_other_day_cheapest": "{day} từ {money}",
+        "fare_other_day_dearest": "{day}: {money}",
+        "fare_departs": "cất cánh {time}",
+        "fare_note": "Giá theo dữ liệu hiện có, có thể đổi khi đặt.",
+        "fare_none": "Mình chưa thấy chuyến bay còn vé từ {origin} đến {destination} trong 30 ngày tới.",
+        "fare_none_on_day": "Ngày {day} chưa có chuyến bay còn vé từ {origin} đến {destination}.",
+        "fare_unavailable": "Mình chưa tải được dữ liệu chuyến bay lúc này, bạn thử lại sau chút nhé.",
+        "chip_fare_from": "Từ {origin}",
+        "chip_fare_to": "Vé ra {destination} bao nhiêu?",
+        "chip_sights": "{destination} có gì chơi?",
+        "chip_near": "Gần {place} có gì nữa?",
+        "explore_ask_old_quarter": "Bạn muốn tìm quanh phố cổ {first} hay phố cổ {second}?",
+        "chip_old_quarter": "Phố cổ {city}",
+        "chip_more_sights": "{destination} còn gì đáng đi?",
+        "chip_elsewhere": "Gợi ý nơi khác cho mình",
+        "chip_beach": "Tìm chỗ đi biển cuối tuần",
+        "chip_pick": "Bạn chọn giúp mình một nơi",
+        "chip_cool": "Muốn đi đâu đó mát mẻ",
+        # Đổi khách sạn, chuyến bay khi chưa nói đổi thế nào (`steps/changes.py`, kịch bản bản 5).
+        "change_stay_title": "Đổi khách sạn",
+        "change_stay_intro": "Bạn muốn đổi sang chỗ nào? Đây là các phương án mình đã tính sẵn cho lịch này:",
+        "change_stay_line": "• Phương án {index}: {hotels} — {money}, {km}.",
+        "chip_stay_option": "Lấy phương án {index}: {hotel}",
+        "chip_stay_any": "Bạn chọn giúp mình khách sạn khác",
+        "change_flight_title": "Đổi chuyến bay",
+        "change_flight_intro": "Bạn muốn đổi sang chuyến nào?",
+        "change_flight_leg_OUTBOUND": "Chặng đi ngày {date}",
+        "change_flight_leg_RETURN": "Chặng về ngày {date}",
+        "change_flight_leg_ROUND_TRIP": "Vé khứ hồi đi ngày {date}",
+        "change_flight_leg_none": "{leg}: không còn chuyến nào khác trong ngày.",
+        "change_flight_line": "• {flight} {airline}, bay {time}, {price}/khách ({delta})",
+        "change_flight_line_round": "• {flight} / {back_flight} {airline}, đi {time}, về {back_time}, {price}/khách ({delta})",
+        "chip_flight_round": "Khứ hồi {flight} / {back_flight}",
+        "change_flight_none": "Ngày bay này không còn chuyến nào khác. Muốn đổi thì đổi ngày, ví dụ nhắn \"đổi sang 20/10\".",
+        "change_flight_no_cheaper": "Trong ngày đó không có chuyến nào rẻ hơn chuyến đang chọn.",
+        "change_flight_no_earlier": "Trong ngày đó không có chuyến nào bay sớm hơn chuyến đang chọn.",
+        "change_flight_no_later": "Trong ngày đó không có chuyến nào bay muộn hơn chuyến đang chọn.",
+        "change_flight_no_any": "Trong ngày đó không còn chuyến nào khác.",
+        "chip_flight": "{way} chuyến {flight} lúc {time}",
+        "chip_way_OUTBOUND": "Đi",
+        "chip_way_RETURN": "Về",
+        "chip_way_ROUND_TRIP": "Đổi sang khứ hồi",
+        "chip_change_date": "Đổi ngày đi",
+        "chip_date_this_saturday": "Thứ 7 này ({date})",
+        "chip_date_next_saturday": "Thứ 7 tuần sau ({date})",
+        "flight_price_more": "đắt hơn {money}",
+        "flight_price_less": "rẻ hơn {money}",
+        "flight_price_same": "cùng giá",
+        "chip_later": "Để mình nghĩ thêm",
     },
     "en": {
         "conversation_not_found": "The conversation does not exist or has expired.",
@@ -194,12 +378,16 @@ MESSAGES = {
         "missing_days": "How many days will your trip last, or what are your start and end dates?",
         "suggest_form": "I have filled in a few suggestions for your trip below. "
                         "Adjust anything you like, then confirm.",
+        "missing_days_and_details": "How many days will you go, and {details}? Anything not settled yet is fine, "
+                                    "for example: \"3 days, from 17/10, 2 adults, 6 million\".",
         "missing_trip_details": "To plan this better, could you tell me {details}? "
+                                "Any hotel preference (a pool, kid-friendly…) is welcome too. "
                                 "If any of it is not decided yet, just say so and I will still plan the trip.",
         "title_missing_both": "I need your destination and trip length",
         "title_missing_destination": "Where would you like to go?",
         "title_missing_days": "How many days is the trip?",
         "title_trip_details": "A few more trip details",
+        "title_days_and_details": "A few details to plan your trip",
         "title_form": "Quick trip details form",
         "title_conflict": "Your trip details do not match",
         "title_unverified": "I could not verify your requirement",
@@ -241,9 +429,23 @@ MESSAGES = {
         "stage_planned": "an itinerary has been sent for this trip",
         "stage_collecting": "still collecting trip details, no itinerary yet",
         "stage_start": "start of the conversation",
-        "note_itinerary": "sent a {days}-day itinerary for {destination}: {products}",
+        "note_itinerary": "sent a {days}-day itinerary for {destination}",
         "note_no_results": "found no matching products in {destination}",
         "note_fallback": "sent a few candidate products in {destination}, no itinerary built",
+        "fallback_title": "Could not build a complete itinerary",
+        "fallback_search_failed": "I could not load the {noun} search results in {destination}.",
+        "fallback_recommendations_failed": "The personalised suggestions returned invalid data, so I could not use them.",
+        "fallback_source_failed": "One product data source is failing.",
+        "fallback_nothing_schedulable": "In {destination} I only found {found}, with no hotel or attraction to schedule.",
+        "fallback_compose_failed": "The scheduling step hit a system error.",
+        "fallback_found": "I found {found}; see the cards below (check price, conditions and dates when booking). You can send the request again and I will retry the itinerary.",
+        "fallback_count": "{count} {noun}",
+        "fallback_noun_hotel": "hotel(s)",
+        "fallback_noun_attraction": "attraction(s)",
+        "fallback_noun_golf": "golf course(s)",
+        "fallback_noun_combo": "combo(s)",
+        "fallback_noun_flight": "flight(s)",
+        "fallback_noun_other": "product(s)",
         "note_unclear": "did not understand the message, asked the user to rephrase",
         "note_chat": "small talk",
         "note_refusal": "declined: outside itinerary planning",
@@ -302,7 +504,31 @@ MESSAGES = {
         "unmet_ask_relax": "Would you like to relax this requirement, or plan without a {noun}?",
         "unmet_ask_other": "Would you like to plan without a {noun}, or pick another destination?",
         "dropped_date": "Only on sale from {start} to {end}, which does not match the departure date.",
+        "dropped_duplicate": "Left out \"{name}\" because it duplicates \"{kept}\".",
         "section_no_stay": "No hotel yet",
+        "change_field_origin": "the departure city",
+        "change_to_origin": "departure city changed to {value}",
+        "detail_origin": "where you are travelling from (so I can add flights)",
+        "trip_origin": "from {origin}",
+        "section_flights": "Flights",
+        "flight_OUTBOUND": "Outbound",
+        "flight_RETURN": "Return",
+        "flight_ROUND_TRIP": "Round trip",
+        "flight_nonstop": "nonstop",
+        "flight_passengers": "{price} per passenger × {count}",
+        "flight_warn_NO_ORIGIN": "Flights are not included yet because I do not know where you are travelling from. "
+                                 "Tell me your departure city and I will add them.",
+        "flight_warn_NO_ROUTE": "There are no flights from {origin} to {destination} in our data, so the itinerary has "
+                                "no flights.",
+        "flight_warn_NO_FLIGHT_ON_DATES": "No flights from {origin} to {destination} are on sale for {out} out and {back} "
+                                          "back. Try another departure date.",
+        "flight_warn_MISSING_RETURN": "Only the outbound flight was found; nothing from {destination} back to {origin} "
+                                      "on {back}.",
+        "flight_warn_MISSING_OUTBOUND": "Only the return flight was found; nothing from {origin} to {destination} on {out}.",
+        "flight_nearest": "Nearest dates with flights: {dates}. To switch, send \"change to {example}\".",
+        "flight_nearest_both": "out {out}, back {back} (both ways)",
+        "flight_nearest_out_only": "out {out} (outbound only)",
+        "flight_warn_UNAVAILABLE": "Flights could not be looked up right now, so the itinerary has none.",
         "no_stay_DATE": "Hotels in {destination} can currently only be booked from {open_from} to {open_to}, so this "
                         "plan has no stay for a trip starting {start}.",
         "no_stay_other": "No hotel in {destination} fits this trip yet, so the plan has no stay.",
@@ -333,6 +559,7 @@ MESSAGES = {
         "time_EVENING": "Evening",
         "time_FULL_DAY": "Full day",
         "stay_nights": "{nights} night(s)",
+        "stay_rooms": " × {rooms} rooms",
         "free_day": "This day is free for you to rest or explore at your own pace.",
         "unit_PER_NIGHT": " per night",
         "unit_PER_PERSON": " per person",
@@ -347,8 +574,142 @@ MESSAGES = {
         "cost_UNKNOWN": "I haven't added a single total because the plan includes items without a price yet; "
                         "check the price of each ticketed item in the panel on the right.",
         "narrate_notes": "Prices are for reference only and exclude meals and transport; check them again when booking.",
+        "section_criteria": "How I arranged the plan",
+        "plan_criteria": "I picked the places, grouped the days and chose where to stay so that your total travel is as "
+                         "short as possible; when two arrangements are about as short, I chose the cheaper one.",
+        "plan_criteria_change": "The places sit in two areas far apart, so from night {night} you move from {first} to "
+                                "{second}: much less travel than staying in one place.",
+        "plan_criteria_budget": "I picked the places, grouped the days and chose where to stay so that your total "
+                                "travel is as short as possible while the total cost stays within your budget; when "
+                                "two arrangements are about as short, I chose the cheaper one, and when none fits the "
+                                "budget, I chose the cheapest.",
+        "stay_nights_range": "Nights {first}–{last}",
+        "stay_night_single": "Night {first}",
+        "options_total": "The plan above: ≈{km} km of travel for the whole trip.",
+        "option_closer": "• Option {n}: {money} more — stay at {hotels}: ≈{km} km less travel",
+        "option_cheaper": "• Option {n}: {money} less — stay at {hotels}: ≈{km} km more travel",
+        "option_over_budget": " ({money} over budget)",
+        "options_pick": "Tap a hotel card to switch right away, or reply \"take option 1\".",
+        "options_swap_title": "Itinerary with a new hotel",
+        "swap_done": "Switched to {hotels}: {money}, {km} compared with the previous plan. ≈{total_km} km of travel for the whole trip.",
+        "swap_money_more": "{money} more",
+        "swap_money_less": "{money} less",
+        "swap_money_same": "same total cost",
+        "swap_km_less": "≈{km} km less travel",
+        "swap_km_more": "≈{km} km more travel",
         "narrate_outro": "Tap a product name to see its details in the itinerary panel on the right, or tell me if you "
                          "want to change the date, hotel or activities.",
+        # Exploration and chat turns before planning (FR-AGT-06, agreed 2026-10-10).
+        "not_on_sale_item": "Tickets are not on sale for your date yet ({window}); kept in the plan for reference.",
+        "sale_window": "on sale from {start} to {end}",
+        "sale_window_unknown": "sale dates unknown",
+        "reference_note": "I could not find tickets on sale for {date} (attraction tickets in {destination} are on sale until {end}), but {destination} still has places well worth a visit, so here is a reference plan. Ticketed places can be booked once your date goes on sale.",
+        "reference_nearest": "To book right away, send \"Đi {destination} {days} ngày từ ngày {nearest}\".",
+        "explore_title": "What to see in {destination}",
+        "explore_hotel_title": "Where to stay in {destination}",
+        "explore_intro": "Here are a few places in {destination}, each good for a different reason.",
+        "explore_filtered_pool": "I only counted places listed with a pool.",
+        "explore_filtered_near": "I only counted places right around {place}.",
+        "explore_none": "I could not find any places in {destination} in the current data.",
+        "explore_none_pool": "I could not find a place to stay in {destination} listed with a pool.",
+        "explore_unavailable": "I could not load suggestions for {destination} right now. Please ask again in a few minutes.",
+        "explore_offer": "Would you like me to plan a trip to {destination}?",
+        "explore_continue": "I am keeping your trip details. Tap \"Continue planning\" when you are ready.",
+        "explore_card_line": "{link}: {reason}.",
+        "reason_most_reviewed": "the most reviewed here",
+        "reason_top_rated": "the highest rated",
+        "reason_cheapest": "the lowest price",
+        "reason_free_entry": "free to visit, no ticket needed",
+        "reason_also_popular": "also popular with visitors",
+        "reason_asked": "the place you asked about",
+        "reason_near": "close by",
+        "explore_price_free": "free to visit",
+        "explore_price_unknown": "price being updated",
+        "explore_price_from": "from {money}",
+        "chip_plan": "Plan a {destination} trip for me",
+        "chip_continue": "Continue planning",
+        "chip_hotels": "Hotels in {destination}",
+        "fare_ask_destination": "Where would you like to fly to, so I can check fares?",
+        "fare_ask_origin": "Where are you flying to {destination} from? I have flights from {origins}.",
+        "fare_no_routes": "I have no flights to {destination} in the current data.",
+        "fare_title": "{origin} – {destination} fares",
+        "fare_cheapest": "The cheapest one-way {origin} → {destination} fare I see is {money} per person, on {day} ({flight}).",
+        "fare_dearest": "The most expensive one-way {origin} → {destination} fare I see is {money} per person, on {day} ({flight}).",
+        "fare_on_day_cheapest": "On {day}, the cheapest one-way {origin} → {destination} fare is {money} per person ({flight}).",
+        "fare_on_day_dearest": "On {day}, the most expensive one-way {origin} → {destination} fare is {money} per person ({flight}).",
+        "fare_window_cheapest": "Across all dates on sale (until {end}), the cheapest is {money} per person, on {day} ({flight}).",
+        "fare_window_dearest": "Across all dates on sale (until {end}), the most expensive is {money} per person, on {day} ({flight}).",
+        "fare_is_best_cheapest": "That is also the cheapest fare across all dates on sale (until {end}).",
+        "fare_is_best_dearest": "That is also the most expensive fare across all dates on sale (until {end}).",
+        "fare_ask_kind": "Which prices would you like: flights, hotel rooms or attraction tickets?",
+        "fare_ask_kind_at": "Which prices would you like: flights to {destination}, hotel rooms or attraction tickets in {destination}?",
+        "fare_ask_origin_anywhere": "Where are you flying from? I will compare the routes from there.",
+        "fare_anywhere_title": "Fares from {origin}",
+        "fare_anywhere_none": "I see no available flights from {origin} in the next 30 days.",
+        "fare_anywhere_cheapest": "From {origin}, the cheapest one-way fare I see is to {destination}: {money} per person, on {day} ({flight}).",
+        "fare_anywhere_dearest": "From {origin}, the most expensive one-way fare I see is to {destination}: {money} per person, on {day} ({flight}).",
+        "fare_anywhere_others_cheapest": "Other routes (cheapest fare each): {routes}.",
+        "fare_anywhere_others_dearest": "Other routes (most expensive fare each): {routes}.",
+        "fare_route_item": "{destination} {money}",
+        "chip_kind_flight": "Cheapest flights",
+        "chip_kind_flight_at": "Cheapest flights to {destination}",
+        "chip_kind_hotel": "Cheap hotels",
+        "chip_kind_hotel_at": "Cheap hotels in {destination}",
+        "chip_kind_sights": "Attraction ticket prices",
+        "chip_kind_sights_at": "Attraction ticket prices in {destination}",
+        "chip_fare_cheapest": "What about the cheapest?",
+        "chip_fare_dearest": "What about the most expensive?",
+        "chip_fare_cheapest_anywhere": "Which route is cheapest?",
+        "chip_fare_dearest_anywhere": "Which route is most expensive?",
+        "fare_other_days": "Other days: {days}.",
+        "fare_other_day_cheapest": "{day} from {money}",
+        "fare_other_day_dearest": "{day}: {money}",
+        "fare_departs": "departs {time}",
+        "fare_note": "Prices come from current data and may change at booking.",
+        "fare_none": "I see no available flights from {origin} to {destination} in the next 30 days.",
+        "fare_none_on_day": "There are no available flights from {origin} to {destination} on {day}.",
+        "fare_unavailable": "I couldn't load flight data right now, please try again shortly.",
+        "chip_fare_from": "From {origin}",
+        "chip_fare_to": "How much is a flight to {destination}?",
+        "chip_sights": "What to do in {destination}?",
+        "chip_near": "What else is near {place}?",
+        "explore_ask_old_quarter": "Do you mean the old quarter of {first} or of {second}?",
+        "chip_old_quarter": "{city} old quarter",
+        "chip_more_sights": "What else is worth seeing in {destination}?",
+        "chip_elsewhere": "Suggest somewhere else",
+        "chip_beach": "Find a beach for the weekend",
+        "chip_pick": "Pick a place for me",
+        "chip_cool": "Somewhere cool",
+        "change_stay_title": "Change hotel",
+        "change_stay_intro": "Which one would you like? These are the options already worked out for this plan:",
+        "change_stay_line": "• Option {index}: {hotels} — {money}, {km}.",
+        "chip_stay_option": "Take option {index}: {hotel}",
+        "chip_stay_any": "Pick another hotel for me",
+        "change_flight_title": "Change flight",
+        "change_flight_intro": "Which flight would you like instead?",
+        "change_flight_leg_OUTBOUND": "Outbound on {date}",
+        "change_flight_leg_RETURN": "Return on {date}",
+        "change_flight_leg_ROUND_TRIP": "Round trip from {date}",
+        "change_flight_leg_none": "{leg}: no other flight that day.",
+        "change_flight_line": "• {flight} {airline}, departs {time}, {price}/person ({delta})",
+        "change_flight_line_round": "• {flight} / {back_flight} {airline}, out {time}, back {back_time}, {price}/person ({delta})",
+        "chip_flight_round": "Round trip {flight} / {back_flight}",
+        "change_flight_none": "There is no other flight that day. To change it, change the date, for example \"change to 20/10\".",
+        "change_flight_no_cheaper": "There is no cheaper flight than the current one that day.",
+        "change_flight_no_earlier": "There is no earlier flight than the current one that day.",
+        "change_flight_no_later": "There is no later flight than the current one that day.",
+        "change_flight_no_any": "There is no other flight that day.",
+        "chip_flight": "{way} on {flight} at {time}",
+        "chip_way_OUTBOUND": "Fly out",
+        "chip_way_RETURN": "Fly back",
+        "chip_way_ROUND_TRIP": "Switch to round trip",
+        "chip_change_date": "Change the travel date",
+        "chip_date_this_saturday": "This Saturday ({date})",
+        "chip_date_next_saturday": "Next Saturday ({date})",
+        "flight_price_more": "{money} more",
+        "flight_price_less": "{money} less",
+        "flight_price_same": "same price",
+        "chip_later": "Let me think about it",
     },
 }
 
@@ -362,16 +723,14 @@ CLARIFY_CONSTRAINT = ("**Chưa có sản phẩm đáp ứng yêu cầu bắt bu�
                       "Không tìm thấy sản phẩm đáp ứng điều kiện bắt buộc trong dữ liệu hiện có. "
                       "Bạn có muốn điều chỉnh điều kiện hoặc chọn phương án thay thế không?")
 REFUSAL = ("**Ngoài phạm vi hỗ trợ**\n"
-           "Mình hỗ trợ tư vấn lịch trình du lịch. Bạn muốn lên kế hoạch chuyến đi nào?")
+           "Mình chưa làm thay được việc này, ví dụ đặt vé hay thanh toán. Mình giúp tìm chỗ đi và lên kế hoạch; muốn đặt "
+           "thì bạn bấm \"Đặt ngay\" trên thẻ sản phẩm, còn đơn đã đặt nằm ở \"Lịch sử đặt chỗ\".")
 #: Đầu vào bị guardrail chặn (chèn lệnh, đòi lộ khoá bí mật...): tiêu đề khác với câu hỏi ngoài phạm vi.
 REFUSAL_BLOCKED = ("**Mình chưa thể hỗ trợ yêu cầu này**\n"
                    "Mình hỗ trợ tư vấn lịch trình du lịch. Bạn muốn lên kế hoạch chuyến đi nào?")
 #: Tin nhắn rác (gõ bậy, ký tự lặp, toàn ký hiệu) bị guardrail tầng 1 chặn trước LLM; hỏi lại, không từ chối.
 UNCLEAR_INPUT = ("**Mình chưa hiểu ý bạn**\n"
                  "Bạn nói rõ hơn giúp mình nhé, ví dụ: \"Đi Đà Nẵng 3 ngày, 2 người, ngân sách 10 triệu\".")
-FALLBACK = ("**Chưa dựng được lịch trình hoàn chỉnh**\n"
-            "Chưa thể dựng lịch trình đã kiểm tra. Các sản phẩm dưới đây là ứng viên tham khảo; "
-            "cần kiểm tra lại giá, điều kiện và ngày sử dụng.")
 COMPOSE_UNAVAILABLE = "Chưa thể dựng lịch trình lúc này. Vui lòng thử lại."
 INVALID_CREDENTIALS = "Thông tin đăng nhập không hợp lệ hoặc đã hết hạn."
 PLAN_UNAVAILABLE = "Chưa thể lập kế hoạch truy vấn hợp lệ. Vui lòng thử lại."
@@ -419,6 +778,12 @@ def display_date(iso: str) -> str:
     return f"{day}/{month}/{year}"
 
 
+def distance(value: float, language: str) -> str:
+    """Số km một chữ số thập phân; tiếng Việt dùng dấu phẩy thập phân."""
+    text = f"{value:.1f}"
+    return text.replace(".", ",") if language == "vi" else text
+
+
 def money(value: int, language: str) -> str:
     grouped = f"{int(value):,}"
     return f"{grouped.replace(',', '.')} ₫" if language == "vi" else f"{grouped} VND"
@@ -442,8 +807,56 @@ def failure(state: dict, code: str, text: str, status: int = 503, retryable: boo
             "http_status": status, "decision": "error"}
 
 
+class _LoggedStructured:
+    """Bọc `with_structured_output(X)`: ghi `assistant.llm.call` (schema, thời gian, kết quả), không ghi prompt hay
+    câu trả lời thô (docs/spec/logging-schema.md §4). Mọi thuộc tính khác chuyển thẳng cho runnable gốc."""
+
+    def __init__(self, inner, schema):
+        self._inner, self._schema = inner, getattr(schema, "__name__", str(schema))
+
+    def _log(self, started: float, outcome: str) -> None:
+        log_event(logger, "assistant.llm.call", "INFO" if outcome == "ok" else "WARNING", schema=self._schema,
+                  duration_ms=round((perf_counter() - started) * 1000, 1), outcome=outcome)
+
+    def invoke(self, *args, **kwargs):
+        started = perf_counter()
+        try:
+            result = self._inner.invoke(*args, **kwargs)
+        except BaseException as exc:
+            self._log(started, type(exc).__name__)
+            raise
+        self._log(started, "ok")
+        return result
+
+    async def ainvoke(self, *args, **kwargs):
+        started = perf_counter()
+        try:
+            result = await self._inner.ainvoke(*args, **kwargs)
+        except BaseException as exc:  # gồm CancelledError khi quá hạn `asyncio.wait_for`
+            self._log(started, type(exc).__name__)
+            raise
+        self._log(started, "ok")
+        return result
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+class _LoggedModel:
+    __slots__ = ("_llm",)
+
+    def __init__(self, llm):
+        self._llm = llm
+
+    def with_structured_output(self, schema, *args, **kwargs):
+        return _LoggedStructured(self._llm.with_structured_output(schema, *args, **kwargs), schema)
+
+    def __getattr__(self, name):
+        return getattr(self._llm, name)
+
+
 def chat_model(llm: ChatModelPort | None) -> ChatModelPort:
     """Model do composition root truyền vào; thiếu thì node ghi LLM_UNAVAILABLE như khi provider lỗi."""
     if llm is None:
         raise RuntimeError("LLM chưa được cấu hình cho graph")
-    return llm
+    return _LoggedModel(llm)

@@ -3,6 +3,8 @@
 - Ngày: 2026-09-29 (viết, chốt và triển khai trong cùng ngày)
 - Người viết: mihhquan / Claude Code (vai PO). Phần triển khai và §10–§16: Claude Code.
 - Trạng thái: **Đã chốt và đã triển khai** trên nhánh `feat/booking`. Đề xuất `docs/prd/update-archive/2026-09-29-checkout-nhieu-buoc-hanh-khach.md` được mihhquan chốt ngày 2026-09-29 và đã áp dụng vào PRD (FR-BKG-08, AC-BKG-05…07, §15.1). **Chưa làm:** Phụ lục A (FR-BKG-11, AC-BKG-10) và hai yêu cầu vé máy bay khác đã vào PRD, FR-BKG-10 (hạng vé, khứ hồi, AC-BKG-09) và FR-BKG-12 (xuất vé mô phỏng) (§13.4). **Chưa có nghiệm thu cuối** của người dùng: danh sách kiểm ở §12.4.
+- **Cập nhật 2026-10-08 (FR-BKG-08, đề xuất `docs/prd/update-archive/2026-10-08-gioi-han-khach-theo-phong.md`):** trần 9 khách (D6) giữ cho mọi mục trừ khách sạn; khách sạn tối đa **9 khách mỗi phòng và 9 phòng mỗi mục** (cao nhất 81). Trần của đoàn ở bước ① là trần của mục lớn nhất trong đơn (đơn chỉ có khách sạn: 9 × số phòng; đơn có mục khác: 9). Khách sạn trên 9 khách không gộp được với dịch vụ khác (`PARTY_TOO_LARGE`, trường `itemDetails`). Mã lỗi mới `ROOMS_TOO_MANY` (trường `quantity`). Lịch trình của trợ lý không còn "Thanh toán tất cả". Các dòng dưới đây còn ghi "9" đọc theo ghi chú này; mã nguồn là `domain/booking/party.py` (`item_party_cap`, `order_party_cap`, `room_capacity`) và `components/checkout/checkoutRules.ts`.
+- **Cập nhật 2026-10-08 (FR-BKG-01, AC-BKG-20, đề xuất `docs/prd/update-archive/2026-10-08-canh-bao-roi-trang-thanh-toan.md`):** khách chủ động rời trang khi chưa bấm Thanh toán thì được hỏi lại (§6.2, §10.1).
 - Phục vụ: FR-BKG-01, FR-BKG-02, FR-BKG-06, FR-BKG-08, FR-CAT-02, FR-CAT-03, NFR-SEC-01, NFR-MAINT-02 và AC-BKG-05…07 (`docs/prd/requirements.md`).
 - Giữ nguyên: giữ chỗ 30 phút, Stripe Checkout, webhook, đối soát, huỷ và hoàn tiền (`docs/spec/booking/so-do-luong-dat-cho-thanh-toan.md`). Spec này chỉ đổi phần **trước** khi bấm Thanh toán, cách tính tiền theo loại khách và dữ liệu hành khách lưu kèm đơn.
 - Căn cứ: code nhánh `feat/booking` (commit `5feb987`, trước khi triển khai), snapshot catalog `src/data_collection/snapshots/2026-09-23`, mẫu UX trên Mobbin (§16).
@@ -118,7 +120,7 @@ Các mục tiêu được đo bằng test (§12), không cần số liệu ngư�
 
 | Thuật ngữ | Nghĩa |
 |---|---|
-| Đoàn khách | Những người đi trong đơn, khai một lần ở bước ①. Tối đa 9 người (D6) |
+| Đoàn khách | Những người đi trong đơn, khai một lần ở bước ①. Tối đa 9 người; đơn chỉ có khách sạn: 9 × số phòng của mục lớn nhất (D6, cập nhật 2026-10-08) |
 | Hành khách | Một người trong đoàn, gồm loại khách, họ tên và ngày sinh (bắt buộc với trẻ em). Web gán cho mỗi người một mã tạm `travelerRef` để các dịch vụ tham chiếu |
 | Người liên hệ | Người nhận thông tin đơn (`contact`). Có thể không đi cùng (D10) |
 | Loại khách (`TravelerType`) | `ADULT`: từ 12 tuổi. `CHILD`: dưới 12 tuổi |
@@ -185,7 +187,7 @@ Gia đình 2 người lớn + 1 trẻ em (sinh 12/05/2019, 7 tuổi) đi Nha Tra
 | Mã | Luật | Mức | `reason` (trường) |
 |---|---|---|---|
 | R-TRV-01 | Đoàn có ít nhất 1 người lớn | Chặn | `ADULT_REQUIRED` (`travelers`) |
-| R-TRV-02 | Đoàn có từ 1 đến 9 người | Chặn | `PARTY_TOO_LARGE` (`travelers`) |
+| R-TRV-02 | Đoàn có từ 1 người đến trần của đơn: 9, hoặc 9 × số phòng khi đơn chỉ có khách sạn (`order_party_cap`) | Chặn | `PARTY_TOO_LARGE` (`travelers`) |
 | R-TRV-03 | Mọi hành khách phải có họ và tên đệm và tên, nhập ở hai ô (D5). Sau khi bỏ khoảng trắng thừa, mỗi ô dài 1–50 ký tự, chỉ gồm chữ cái (kể cả tiếng Việt có dấu), khoảng trắng, `'` và `-`. Backend nối "{Họ} {Tên đệm và tên}" thành `full_name` | Chặn | `REQUIRED`, `NAME_INVALID` (`travelers[i].surname`, `travelers[i].givenNames`) |
 | R-TRV-04 | Trẻ em có ngày sinh. Ngày sinh không ở tương lai và không sau ngày sử dụng sớm nhất của đơn | Chặn | `REQUIRED`, `BIRTH_DATE_INVALID` (`travelers[i].birthDate`) |
 | R-TRV-05 | Trẻ em dưới 12 tuổi tại ngày sử dụng sớm nhất của đơn | Chặn | `CHILD_AGE_INVALID` (`travelers[i].birthDate`) |
@@ -205,7 +207,7 @@ Trên Web, bộ đếm khoá nút − và + ở giới hạn, nên R-TRV-01 và 
 | R-FLT-01 | `flight` | Số em bé (dưới 2 tuổi tại ngày bay) không vượt số người lớn trên chuyến | Chặn | `INFANTS_EXCEED_ADULTS` (`itemDetails[j].travelerRefs`) |
 | R-HTL-01 | `hotel` | Số phòng trong `rooms` bằng `quantity` của mục | Chặn | `ROOM_COUNT_MISMATCH` (`itemDetails[j].rooms`) |
 | R-HTL-02 | `hotel` | Mỗi phòng có ít nhất 1 người lớn | Chặn | `ADULT_REQUIRED` (`itemDetails[j].rooms[k]`) |
-| R-HTL-03 | `hotel` | Số khách mỗi phòng, tính cả trẻ em, không vượt `maxOccupancy`. Hạng phòng không có `maxOccupancy` thì bỏ qua luật này (D7) | Chặn | `OCCUPANCY_EXCEEDED` (`itemDetails[j].rooms[k]`) |
+| R-HTL-03 | `hotel` | Số khách mỗi phòng, tính cả trẻ em, không vượt `min(maxOccupancy, 9)`. Hạng phòng không có `maxOccupancy` thì trần là 9 khách mỗi phòng (D7, cập nhật 2026-10-08) | Chặn | `OCCUPANCY_EXCEEDED` (`itemDetails[j].rooms[k]`) |
 | R-HTL-04 | `hotel` | Một người chỉ ở một phòng trong cùng mục | Chặn | `TRAVELER_DUPLICATED` (`itemDetails[j].rooms[k].travelerRefs`) |
 | R-HTL-05 | `hotel` | Người đại diện nhận phòng là người lớn ở trong phòng đó | Chặn | `LEAD_GUEST_INVALID` (`itemDetails[j].rooms[k].leadTravelerRef`) |
 
@@ -223,13 +225,15 @@ Khách sạn và combo không kiểm R-ITM-04, vì số khách không làm đổ
 
 ### 5.5. Luật khi thêm hoặc sửa mục giỏ
 
-Áp dụng cho `POST /cart/items` và `PATCH /cart/items/{cartItemId}`. Lỗi trả `400 VALIDATION_ERROR` với `reason` như bảng.
+Áp dụng cho `POST /cart/items` và `PATCH /cart/items/{cartItemId}`, và **cùng bộ luật** cho từng mục của đơn nháp Đặt ngay (`POST /booking-drafts`, `PATCH /booking-drafts/{draftId}/items/{cartItemId}`). Lỗi trả `400 VALIDATION_ERROR` với `reason` như bảng.
+
+Từ 2026-10-01, giỏ chỉ nhận `attraction`, `golf`, `combo`; `hotel` và `flight` chỉ đi qua đơn nháp (`POST /cart/items` trả `422 DIRECT_BOOKING_ONLY`), nên các dòng nói về `hotel` và `flight` dưới đây áp dụng ở đơn nháp. R-CRT-04 (cộng dồn) chỉ có ở giỏ: đơn nháp có hai mục trùng `productId` + `usingDate` thì bị từ chối (`DUPLICATE_ITEM`). Chi tiết: `docs/spec/booking/dat-truc-tiep-theo-don-nhap.md` §4, §5.
 
 | Mã | Luật | `reason` |
 |---|---|---|
-| R-CRT-01 | `guests.adults ≥ 1`, `guests.children ≥ 0`, tổng không quá 9 | `ADULT_REQUIRED`, `PARTY_TOO_LARGE` |
+| R-CRT-01 | `guests.adults ≥ 1`, `guests.children ≥ 0`, tổng không quá 9 (khách sạn: 9 × số phòng; số phòng tối đa 9, vượt thì `ROOMS_TOO_MANY` ở `quantity`) | `ADULT_REQUIRED`, `PARTY_TOO_LARGE` |
 | R-CRT-02 | `flight`, `attraction`, `golf`: khi gửi `guests`, `quantity` bằng `adults + children` (được phép bỏ `quantity`). Gửi cả hai mà lệch nhau thì bị từ chối | `GUEST_COUNT_MISMATCH` |
-| R-CRT-03 | `hotel`: `adults ≥ quantity` (mỗi phòng một người lớn). `adults + children ≤ maxOccupancy × quantity` khi hạng phòng có `maxOccupancy` | `ADULT_REQUIRED`, `OCCUPANCY_EXCEEDED` |
+| R-CRT-03 | `hotel`: `adults ≥ quantity` (mỗi phòng một người lớn). `adults + children ≤ min(maxOccupancy, 9) × quantity` khi hạng phòng có `maxOccupancy` | `ADULT_REQUIRED`, `OCCUPANCY_EXCEEDED` |
 | R-CRT-04 | Thêm trùng `productId` + `usingDate` thì cộng dồn cả `quantity` lẫn `guests`, riêng combo: `quantity` cộng dồn còn `guests` lấy giá trị lớn hơn theo từng loại, vì khách của combo chỉ để ghi nhận. Kết quả sau khi cộng vẫn phải đạt R-CRT-01…03 | Như trên |
 | R-CRT-05 | Không gửi `guests` (client cũ): `hotel` và dịch vụ tính theo người mặc định `{adults: quantity, children: 0}`; `combo` mặc định `{adults: 1, children: 0}`. `PATCH` chỉ đổi `quantity` của mục đang có trẻ em thì giữ nguyên `children` và đặt `adults = quantity − children`, với điều kiện kết quả ≥ 1. `PATCH` khách sạn chỉ tăng số phòng thì `adults` được nâng lên bằng số phòng | `ADULT_REQUIRED` |
 
@@ -246,7 +250,8 @@ Mọi lỗi trong bảng dưới đều là `400 VALIDATION_ERROR`. `message` d�
 | `BIRTH_DATE_INVALID` | "Ngày sinh không hợp lệ." |
 | `CHILD_AGE_INVALID` | "Bé đã đủ 12 tuổi vào {dd/mm/yyyy}. Vui lòng chọn loại Người lớn." |
 | `ADULT_REQUIRED` | Tuỳ chỗ: "Cần ít nhất 1 người lớn (từ 12 tuổi)."; "Trẻ em cần đi cùng ít nhất 1 người lớn trong dịch vụ này."; "Mỗi phòng cần ít nhất 1 người lớn." |
-| `PARTY_TOO_LARGE` | "Mỗi đơn tối đa 9 khách. Vui lòng tách thành nhiều đơn." |
+| `PARTY_TOO_LARGE` | "Mỗi đơn tối đa 9 khách. Vui lòng tách thành nhiều đơn." Đoàn ở bước ① khi trần lớn hơn 9: "Mỗi đơn tối đa {n} khách. Vui lòng tách thành nhiều đơn." Khách sạn thêm giỏ/đơn nháp: "Mỗi phòng tối đa 9 khách ({n} khách cho {r} phòng). Vui lòng thêm phòng." Khách sạn trên 9 khách trong đơn có dịch vụ khác: "{tên} trên 9 khách phải đặt riêng, không gộp với dịch vụ khác." |
+| `ROOMS_TOO_MANY` | "Mỗi lần đặt tối đa 9 phòng." |
 | `TRAVELER_UNKNOWN` | "Hành khách không có trong đoàn." (lỗi kỹ thuật; Web không để xảy ra) |
 | `TRAVELER_DUPLICATED` | "{Tên} đã được chọn ở chỗ khác trong dịch vụ này." Riêng trường `travelers[i].travelerRef`: "Mã hành khách bị trùng." |
 | `ITEM_DETAIL_MISSING` | "Thiếu thông tin cho {tên dịch vụ}." |
@@ -323,6 +328,14 @@ sequenceDiagram
 - Không giữ chỗ, không tạo đơn, không gọi Stripe trước khi bấm Thanh toán (FR-BKG-06). Cập nhật số khách ở bước ① và ② chỉ sửa giỏ (`PATCH /cart/items`) và không ghi event CDP.
 - Mỗi lần chuyển bước, Web gọi `GET /cart`. Nếu giỏ bị đổi ở tab khác: mục mới nhận phân bổ mặc định, mục đã xoá bị bỏ ra, và Web hiện banner "Giỏ hàng vừa thay đổi". Nếu giỏ rỗng thì về `/cart`.
 - Nếu hết phiên (401) giữa chừng: hiện hộp đăng nhập lại và giữ nguyên dữ liệu đang nhập (như `product.md` §4.5.3).
+- **Rời trang khi chưa thanh toán (FR-BKG-01, AC-BKG-20).** Khi ba bước đang hiển thị và chưa gửi đơn, mọi lối rời trang do khách chủ động đều hỏi lại bằng hộp "Rời trang thanh toán?" (`LeaveCheckoutDialog`), áp dụng cho cả giỏ và đơn nháp, kể cả khi khách chưa nhập gì:
+  - Lối bị chặn: lệnh `navigate()` của `TravelContext` (logo, "Quay lại giỏ hàng", "Sửa giỏ hàng"), mọi thẻ `<a>` sang đường dẫn khác cùng origin (liên kết ở chân trang), và nút Back của trình duyệt khi đang ở bước Hành khách (gồm nút "← Quay lại" của đơn nháp, vì nút này gọi `history.back()`). Back giữa ba bước vẫn chỉ lùi một bước.
+  - Nội dung: mỗi khách sạn, vé máy bay của đơn nháp một dòng "không được giữ lại"; một dòng thông tin hành khách đã nhập sẽ bị xoá; tour, trải nghiệm, tiện ích của đơn nháp đang có trong giỏ thì ghi "vẫn nằm trong giỏ hàng"; với giỏ ghi "n dịch vụ trong giỏ hàng vẫn được giữ nguyên". Đơn nháp kèm đồng hồ "Phiên thanh toán còn mm:ss".
+  - Hai nút: "Ở lại thanh toán" (mặc định, nhận focus; Esc và bấm ra ngoài hộp cũng là ở lại) giữ nguyên bước và dữ liệu; "Rời trang" đưa khách tới đúng nơi họ định mở. Với nút Back là mục lịch sử ngay trước trang thanh toán; không có mục đó (mở thẳng trang) thì về `/cart` (giỏ) hoặc trang chủ (đơn nháp).
+  - Dưới `sm` hộp trượt lên từ đáy màn hình, hai nút xếp dọc; từ `sm` trở lên hộp nằm giữa màn hình.
+  - Đóng tab, tải lại, gõ địa chỉ khác: trang gắn `beforeunload`, trình duyệt hiện hộp mặc định của nó (không đổi được chữ; một số trình duyệt di động không hiện).
+  - Không hỏi: bấm Thanh toán sang Stripe, tiếp tục đơn đang giữ chỗ, giỏ rỗng, màn hình hết hạn và không tìm thấy, đang tải.
+  - Cách chặn nút Back (`useLeaveGuard.ts`): không huỷ được `popstate`, nên ở thao tác đầu tiên của khách (bấm hoặc gõ) trang đánh dấu mục lịch sử hiện tại là mục chặn rồi thêm một mục cùng URL lên trên; các mục của bước `?step=` mang cùng dấu trên `history.state`. Back ở bước đầu rơi vào mục chặn (trang không bị gỡ) và hộp hiện lên. Tải lại trang không đặt thêm mục chặn thứ hai. **Giới hạn:** trình duyệt bỏ qua mục lịch sử do script thêm khi khách chưa thao tác, nên khách vào trang rồi bấm Back ngay thì rời luôn, không hỏi.
 
 ### 6.3. Khung chung của ba bước
 
@@ -379,8 +392,8 @@ Thanh dưới cùng trên mobile:
 
 | Trường | Bắt buộc | Cách nhập | Luật |
 |---|---|---|---|
-| Số người lớn | Có | Bộ đếm 1–9, dòng phụ "Từ 12 tuổi" | R-TRV-01, R-TRV-02 |
-| Số trẻ em | Có | Bộ đếm từ 0 tới (9 − số người lớn), dòng phụ "Dưới 12 tuổi" | R-TRV-02 |
+| Số người lớn | Có | Bộ đếm 1 tới trần của đơn (9, hoặc 9 × số phòng khi chỉ có khách sạn), dòng phụ "Từ 12 tuổi" | R-TRV-01, R-TRV-02 |
+| Số trẻ em | Có | Bộ đếm từ 0 tới (trần của đơn − số người lớn), dòng phụ "Dưới 12 tuổi" | R-TRV-02 |
 | Họ (mỗi hành khách) | Có | Ô chữ, tối đa 50 ký tự | R-TRV-03 |
 | Tên đệm và tên (mỗi hành khách) | Có | Ô chữ, tối đa 50 ký tự | R-TRV-03 |
 | Ngày sinh (trẻ em) | Có | Ô `dd/mm/yyyy`, bàn phím số, tự chèn `/` | R-TRV-04, R-TRV-05 |
@@ -502,12 +515,14 @@ Cách Web xử lý kết quả (bổ sung cho `hop-dong-tich-hop-frontend.md` §
 
 ### 6.9. Trang giỏ, trang chi tiết, trợ lý (P1)
 
+> **Cập nhật 2026-10-01 (FR-BKG-01).** Giỏ chỉ còn tour, trải nghiệm và tiện ích khác. Khách sạn và vé máy bay chỉ có nút "Đặt ngay": cùng bộ đếm, cùng cách tính số lượng và `guests` dưới đây, nhưng gửi vào `POST /booking-drafts` thay cho `POST /cart/items`, rồi mở trang thanh toán của đơn nháp. Trợ lý: `useBookItinerary` (Đặt ngay một mục, "Thanh toán tất cả") dùng cùng `partyCartRequest`; `useAssistantCart` chỉ thêm giỏ các mục `attraction`, `golf`, `combo`. Bộ luật: `docs/spec/booking/dat-truc-tiep-theo-don-nhap.md` §13.
+
 - **Trang giỏ `/cart`:** mỗi mục hiện "2 người lớn · 1 trẻ em" và các dòng giá. Nút [Sửa] mở cùng bộ đếm như ở trang chi tiết (`GuestCounters`) và gọi `PATCH` với `guests` khi bấm Cập nhật. Đơn giá vé trẻ em nằm ở `attributes` của sản phẩm mà `CartResponse` không mang, nên Web tải `GET /products/{id}` khi mở [Sửa]; chưa tải xong hoặc lỗi thì bộ đếm chỉ hiện giới hạn tuổi, không nói "cùng giá người lớn". Mục hết chỗ không có nút [Sửa].
 - **Trang chi tiết, hộp đặt:**
   - Vé tham quan, golf, chuyến bay: thay bộ đếm "số khách" bằng hai bộ đếm Người lớn (≥ 1) và Trẻ em (≥ 0), kèm đơn giá từng loại [M4] [M5]. Tổng trong hộp đặt vẫn là ước tính để hiển thị, tính theo cùng luật §4.4.
   - Khách sạn: số phòng, số người lớn, số trẻ em, kèm gợi ý "Tối đa {C} khách/phòng". Khi vượt sức chứa, gợi ý thêm phòng [M7] [M11].
   - Combo: giữ bộ đếm số gói.
-  - `POST /cart/items` gửi kèm `guests`. Bộ đếm chặn ở nút bấm theo R-CRT-01…03 (tối thiểu 1 người lớn, tối đa 9 khách, mỗi phòng một người lớn); nút "Thêm vào giỏ hàng" và "Đặt ngay" khoá khi lựa chọn chưa hợp lệ, ví dụ vượt sức chứa (kèm nút "Thêm 1 phòng").
+  - `POST /cart/items` gửi kèm `guests`. Bộ đếm chặn ở nút bấm theo R-CRT-01…03 (tối thiểu 1 người lớn, tối đa 9 khách; khách sạn 9 khách mỗi phòng, mỗi phòng một người lớn); nút "Thêm vào giỏ hàng" và "Đặt ngay" khoá khi lựa chọn chưa hợp lệ, ví dụ vượt sức chứa (kèm nút "Thêm 1 phòng").
 - **Trợ lý** (`useAssistantCart`, dùng cho cả widget và `/assistant`): lấy `intent.party` của `ItineraryResponse`.
   - Dịch vụ tính theo người: gửi `guests = party`, `quantity` bằng tổng số khách.
   - Khách sạn: gửi `quantity = min(adults, max(1, ⌈(adults + children) / C⌉))` phòng và `guests = party`. Hạng phòng không có C thì đặt 1 phòng.
@@ -621,7 +636,7 @@ ValidationFieldError:
 | `AddCartItemRequest` | `guests?: GuestCounts` | Theo R-CRT-01…05 |
 | `UpdateCartItemRequest` | `guests?: GuestCounts` | Được tính vào `minProperties: 1` |
 | `CartItem` | `guests?: GuestCounts`, `fares?: FareLine[]` | Backend mới luôn trả hai trường này. `lineTotal` bằng tổng `fares[].amount` |
-| `CheckoutRequest` | `travelers?: CheckoutTraveler[]` (1–9 phần tử) | Có `travelers` thì áp dụng luật mới; không có thì theo §7.6 |
+| `CheckoutRequest` | `travelers?: CheckoutTraveler[]` (1–81 phần tử; trần thực tế theo đơn, xem cập nhật 2026-10-08) | Có `travelers` thì áp dụng luật mới; không có thì theo §7.6 |
 | `CheckoutItemDetail` | `travelerRefs?: string[]` (dịch vụ tính theo người, combo), `rooms?: CheckoutRoom[]` (khách sạn) | Khi request có `travelers`, `guestNames` bị bỏ qua |
 | `BookingItem` | `fares?: FareLine[]`, `travelers?: BookingTraveler[]` | `guestNames` là họ tên các khách của mục, theo thứ tự trong đoàn |
 | Lỗi `VALIDATION_ERROR` | `details.fields[]` (`ValidationFieldError`: `field`, `reason`, `message`, `cartItemId?`) | Mã `reason` ở §5.6. `field` là đường dẫn trong request, ví dụ `travelers[2].birthDate`. `cartItemId` có khi lỗi thuộc một mục giỏ |
@@ -788,7 +803,7 @@ Phần này bổ sung vào `so-do-luong-dat-cho-thanh-toan.md` §6.2.
 | Bảng | Thay đổi | Ghi chú |
 |---|---|---|
 | `app.cart_items` | Thêm `adults integer NOT NULL DEFAULT 1` (≥ 1); `children integer NOT NULL DEFAULT 0` (≥ 0); `CHECK (adults + children <= 9)`; `child_unit_price_snapshot numeric(14,2)` (NULL nghĩa là sản phẩm không có giá trẻ em hợp lệ lúc thêm hoặc sửa) | Nguồn của `guests`, và của việc kiểm `PRICE_CHANGED` cho giá trẻ em. Dòng có sẵn được điền theo R-CRT-05: `adults = quantity` (khách sạn: số phòng; combo: 1); `quantity` của dòng không phải combo quá 9 bị kéo về 9 |
-| `app.booking_travelers` (mới) | `traveler_id uuid` (khoá chính), `booking_id` (FK `app.bookings`, xoá theo đơn), `traveler_ref`, `position` (1–9), `traveler_type` (`adult` hoặc `child`), `surname`, `given_names`, `full_name` (Backend nối từ hai cột trên), `birth_date`. `UNIQUE (booking_id, traveler_ref)`; `UNIQUE (booking_id, position)`; `CHECK (traveler_type = 'adult' OR birth_date IS NOT NULL)` | Đoàn khách của đơn (D8). Khoá chính là `traveler_id` thay vì (`booking_id`, `traveler_ref`) để bảng giống các bảng `app` còn lại; ràng buộc duy nhất giữ đúng ý cũ |
+| `app.booking_travelers` (mới) | `traveler_id uuid` (khoá chính), `booking_id` (FK `app.bookings`, xoá theo đơn), `traveler_ref`, `position` (1–81), `traveler_type` (`adult` hoặc `child`), `surname`, `given_names`, `full_name` (Backend nối từ hai cột trên), `birth_date`. `UNIQUE (booking_id, traveler_ref)`; `UNIQUE (booking_id, position)`; `CHECK (traveler_type = 'adult' OR birth_date IS NOT NULL)` | Đoàn khách của đơn (D8). Khoá chính là `traveler_id` thay vì (`booking_id`, `traveler_ref`) để bảng giống các bảng `app` còn lại; ràng buộc duy nhất giữ đúng ý cũ |
 | `app.booking_items` | Thêm `metadata jsonb NOT NULL DEFAULT '{}'`. `line_total` bỏ biểu thức sinh (`ALTER COLUMN line_total DROP EXPRESSION`, cần Postgres 13 trở lên; compose đang dùng Postgres 16) và từ nay do Backend ghi | `metadata` là trường đã có trong ERD của PRD (`data-model.md` §2.2: "Thông tin vé, phòng, ghi chú đặc biệt"). `line_total` là phần sửa lỗi L8 (D9) |
 
 `guest_names` được giữ lại và ghi bằng họ tên khách của mục, để truy vấn cũ và client cũ không vỡ.
@@ -831,6 +846,8 @@ Thư mục `src/frontend/src/components/checkout/` (mới):
 | `patchQueue.ts` | Hàng đợi `PATCH /cart/items` theo từng mục (§10.3) |
 | `fareEstimate.ts` | Ước tính dòng giá để **hiển thị** ở hộp đặt, trước khi có giỏ. Phản chiếu `domain/booking/fares.py` |
 | `guestCounts.ts` | Luật của bộ đếm (R-CRT chặn ngay ở nút bấm) và `partyCartRequest` cho trợ lý (§6.9) |
+| `useLeaveGuard.ts` | Chặn các lối rời trang khi chưa thanh toán: `navigate()`, thẻ `<a>`, `beforeunload`, nút Back (§6.2) |
+| `LeaveCheckoutDialog.tsx` | Hộp "Rời trang thanh toán?" và `leaveLines` (nội dung theo nguồn) |
 
 Sửa thêm: `services/booking.ts` (kiểu `GuestCounts`, `FareLine`, `CheckoutTraveler`, `BookingTraveler`, `ValidationFieldError`), `context/TravelContext.tsx` (`addToCart` nhận `options.guests`; `updateCartItem` trả `ApiError | null` và có tuỳ chọn `silent`), `cart/CartView.tsx`, `detail/ProductDetailView.tsx`, `confirmation/ConfirmationView.tsx`, `hooks/useAssistantCart.ts`, `assistant/AssistantResultPanel.tsx`, `assistant/AiFloatingWidget.tsx`, và `types/api.gen.ts` (sinh lại).
 
@@ -844,6 +861,8 @@ Sửa thêm: `services/booking.ts` (kiểu `GuestCounts`, `FareLine`, `CheckoutT
 - **Chặn ở nút bấm khi có thể.** Bộ đếm khoá − và + ở giới hạn, nên phần lớn R-TRV-01, R-TRV-02, R-CRT-01…03 không cần báo lỗi.
 
 ### 10.3. Đồng bộ giỏ (`patchQueue.ts`)
+
+> Trang thanh toán có hai nguồn mục (`checkoutSource.ts`): giỏ, hoặc một đơn nháp của Đặt ngay (`?draft=<draftId>`). Hàng đợi dưới đây không đổi; với đơn nháp, "giỏ" là đơn nháp, `PATCH /cart/items/…` là `PATCH /booking-drafts/{draftId}/items/…` và `GET /cart` là `GET /booking-drafts/{draftId}`.
 
 Mỗi thay đổi phân bổ làm đổi `guests` hoặc số phòng của một mục phải ghi vào giỏ để Backend tính lại giá (§6.6). Có ba điểm dễ sai, và hàng đợi xử lý cả ba:
 
@@ -864,9 +883,9 @@ Trạng thái "đang cập nhật giá" của một mục đúng cả lúc chờ
 ### 10.5. Trang giỏ, trang chi tiết, trợ lý, trang đơn
 
 - **Bộ đếm dùng chung `GuestCounters`:** vé tham quan, golf, chuyến bay có Người lớn (≥ 1) và Trẻ em (≥ 0) kèm đơn giá từng loại; khách sạn có Số phòng, Người lớn, Trẻ em, gợi ý sức chứa và nút "Thêm 1 phòng" khi vượt sức chứa; combo chỉ có số gói (1–20). Luật ở `guestCounts.ts` và có test riêng.
-- **Trang chi tiết:** hộp đặt dùng `GuestCounters` và `estimateFares` để hiện các dòng giá ước tính; gửi `guests` khi thêm vào giỏ (combo chỉ gửi `quantity`).
-- **Trang giỏ:** hiện đoàn và dòng giá; [Sửa] mở `GuestCounters` trong một khung, bấm Cập nhật thì `PATCH`.
-- **Trợ lý:** `itineraryCartItems(itinerary, party)` gắn `intent.party` vào từng mục; `useAssistantCart` đổi ra số lượng và `guests` bằng `partyCartRequest` (§6.9).
+- **Trang chi tiết:** hộp đặt dùng `GuestCounters` và `estimateFares` để hiện các dòng giá ước tính; gửi `guests` khi thêm vào giỏ hoặc Đặt ngay (combo chỉ gửi `quantity`). Khách sạn và vé máy bay chỉ có "Đặt ngay" (`startBooking`); tour, golf, combo có cả "Thêm vào giỏ hàng".
+- **Trang giỏ:** hiện đoàn và dòng giá; [Sửa] mở `GuestCounters` trong một khung, bấm Cập nhật thì `PATCH`. Không còn khối "Thường được đặt cùng chuyến"; khách chưa đăng nhập cũng dùng được.
+- **Trợ lý:** `itineraryCartItems(itinerary, party)` gắn `intent.party` vào từng mục; `useAssistantCart` (thêm giỏ) và `useBookItinerary` (Đặt ngay một mục; không còn "Thanh toán tất cả" từ 2026-10-08) đổi ra số lượng và `guests` bằng `partyCartRequest` (§6.9).
 - **Trang đơn:** `ItemTravelers` hiện hành khách theo phòng (đánh dấu người đại diện) hoặc một dòng; `FareLines` hiện dòng giá. Đơn tạo trước thay đổi (`travelers` rỗng) hiện `guestNames`.
 
 ### 10.6. Khả năng truy cập
@@ -887,7 +906,7 @@ Trạng thái "đang cập nhật giá" của một mục đúng cả lúc chờ
 | E6 | Trẻ tròn 12 tuổi giữa chuyến | Cảnh báo W-04; dịch vụ từ ngày đó tính giá người lớn; `guests` theo loại giá tại ngày của từng dịch vụ |
 | E7 | Trẻ tròn 12 tuổi đúng ngày sử dụng sớm nhất | Chặn (R-TRV-05), câu nói rõ ngày tròn 12 tuổi |
 | E8 | Sinh ngày 29/02 | Năm không nhuận coi sinh nhật là 01/03 (§4.2, có trong bộ ca chung) |
-| E9 | Đoàn quá 9 người | Bộ đếm khoá; gọi thẳng API thì `PARTY_TOO_LARGE` |
+| E9 | Đoàn quá trần của đơn (9; khách sạn 9 × số phòng) | Bộ đếm khoá; gọi thẳng API thì `PARTY_TOO_LARGE` |
 | E10 | Dịch vụ hết chỗ giữa chừng | Thẻ báo lỗi; nút Thanh toán khoá khi giỏ còn mục hết chỗ; `409 PRODUCT_UNAVAILABLE` khi vẫn gửi |
 | E11 | Giá vé trẻ em đổi sau khi bỏ vào giỏ | `409 PRICE_CHANGED` kèm `fareType = CHILD`; banner "Giá vé trẻ em của … đã đổi từ … thành …" và nút "Cập nhật và tiếp tục" (`PATCH` giữ `quantity` để ghi lại snapshot mới) |
 | E12 | Đang có đơn giữ chỗ | `409 BOOKING_PENDING_PAYMENT`: hộp thoại tiếp tục thanh toán hoặc huỷ đơn đó và đặt lại đúng dữ liệu đang có |
@@ -1041,7 +1060,7 @@ Cả bảng đã được chốt: các mã có cột "Chốt" là câu hỏi Q1�
 | D3 | Vé máy bay: mọi hành khách trả `unitPrice` (catalog không có giá trẻ em, em bé) | Q4 | §4.3 |
 | D4 | Combo tính theo gói; số khách chỉ để ghi nhận | Q5 | §4.3 |
 | D5 | Họ tên bắt buộc cho mọi hành khách, dùng cho mọi dịch vụ; nhập ở hai ô Họ và Tên đệm và tên | Q7 | §5.2 |
-| D6 | Đoàn 1–9 khách mỗi đơn | Q6 | §5.2, §5.5, §7.6 |
+| D6 | Đoàn 1–9 khách mỗi đơn; khách sạn 9 khách mỗi phòng, 9 phòng (cập nhật 2026-10-08) | Q6 | §5.2, §5.5, §7.6 |
 | D7 | Sức chứa phòng tính cả trẻ em; hạng phòng không công bố `maxOccupancy` thì không kiểm sức chứa và UI nói rõ | — (thiết kế) | R-HTL-03, §11 E15 |
 | D8 | Đoàn khách của đơn lưu ở bảng `app.booking_travelers`; ngày sinh chỉ lưu ở đây | Q8 | §9 |
 | D9 | `app.booking_items.line_total` bỏ biểu thức sinh, Backend ghi bằng tổng các dòng giá | Q9 | §9 |

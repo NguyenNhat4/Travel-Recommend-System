@@ -72,16 +72,12 @@ describe('VerticalLanding', () => {
     expect(screen.getByRole('button', { name: 'Lên lịch trình với trợ lý AI' })).toBeTruthy();
   });
 
-  it('adds ?destination= to the requests and the titles, and links "Xem thêm" to /search with it', async () => {
+  it('adds ?destination= to the requests and the titles and has no "Xem thêm" link', async () => {
     render(<VerticalLanding vertical="flights" destination="Nha Trang" />);
     await waitFor(() => expect(api.listProducts).toHaveBeenCalled());
     expect(paramsOf(api.listProducts.mock.calls[0])).toMatchObject({ taxonomy: 'flight', destination: 'Nha Trang' });
     expect(await screen.findByRole('heading', { name: 'Chặng bay phổ biến đến Nha Trang' })).toBeTruthy();
-    const more = (await screen.findAllByRole('link', { name: /Xem thêm/ }))[0];
-    const url = new URL(more.getAttribute('href')!, 'http://x');
-    expect(url.pathname).toBe('/search');
-    expect(url.searchParams.get('type')).toBe('flight');
-    expect(url.searchParams.get('destination')).toBe('Nha Trang');
+    expect(screen.queryByRole('link', { name: /Xem thêm/ })).toBeNull();
   });
 
   it('shows the empty message with a way out when the destination has no products', async () => {

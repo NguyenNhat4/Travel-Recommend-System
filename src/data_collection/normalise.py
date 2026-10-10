@@ -46,7 +46,7 @@ from collectors import mapexport
 from collectors.common import Paths, default_data_dir, read_jsonl, setup_logging
 from collectors.geo import AIRPORTS, DESTINATION_ALIASES, DESTINATION_CENTERS, clean_coords, destination_in_text, destination_radius_km, km_from_destination, normalise_destination
 from collectors.plan import TARGET_MAX, TARGET_MIN, Budget, budget_with, select_destinations
-from collectors.textutil import clean_text, detect_lang, first_int, fold, iso_date, uniq
+from collectors.textutil import clean_text, detect_lang, first_int, fold, iso_date, trip_combo_dates, uniq
 from collectors.venues import Venue, VenueMatcher, load_venues, ticket_image_slug, ticket_place_name
 
 log = logging.getLogger("normalise")
@@ -1125,6 +1125,9 @@ def trip_combo_product(r: dict) -> dict | None:
     # xỉ, cùng cách trip_route_products() dùng toạ độ sân bay cho flight, để không bị drop_missing_coordinates()
     # loại bỏ vì "thiếu toạ độ". Đánh dấu rõ locationPrecision="destination" (không phải "exact") để phân biệt.
     center = DESTINATION_CENTERS.get(destination or "")
+    # Trang ghi ngày "14/10" không có năm; hợp đồng cần ISO, năm lấy từ dDate/rDate của URL tìm kiếm.
+    dates = trip_combo_dates({"comboKind": "trip_real_flight_hotel", "url": r.get("url"),
+                              "departDate": r.get("departDate"), "returnDate": r.get("returnDate")})
     return make_product(
         meta={"src": "trip_combo"},
         name=title,
@@ -1136,8 +1139,8 @@ def trip_combo_product(r: dict) -> dict | None:
             "priceBasis": "per_person",
             "fromCode": r.get("fromCode"),
             "toCode": r.get("toCode"),
-            "departDate": r.get("departDate"),
-            "returnDate": r.get("returnDate"),
+            "departDate": dates.get("departDate"),
+            "returnDate": dates.get("returnDate"),
             "outboundFlight": out_seg or None,
             "inboundFlight": in_seg or None,
             "latitude": center[0] if center else None,
@@ -2480,6 +2483,13 @@ def merge_member_variants(products: list[dict]) -> tuple[list[dict], int]:
                   for v in variants if v.get("unitPrice") and v["attributes"].get("memberTier")}
         if prices:
             keeper["attributes"]["memberPrices"] = prices
+        # Ref của biến thể bị gộp vào sameAs của vé đại diện: dòng DB của biến thể (nạp riêng ở lượt trước, khi tên chưa có
+        # nhãn hạng hoặc vé đại diện khác) được bước nạp DB đánh dấu mergedInto và tắt bán. Thiếu bước này, production 08/10
+        # còn 12 dòng biến thể cũ đang bán trùng tên (vd. vé thuyền Venice Grand World: VW02818 và VW02833).
+        refs = [v["sourceRef"] for v in variants if v is not keeper]
+        if refs:
+            same = keeper["attributes"].get("sameAs") or []
+            keeper["attributes"]["sameAs"] = same + [ref for ref in refs if ref not in same and ref != keeper["sourceRef"]]
         dropped_ids.update(v["productId"] for v in variants if v is not keeper)
     return [p for p in products if p["productId"] not in dropped_ids], len(dropped_ids)
 
@@ -2520,7 +2530,8 @@ def apply_plan(products: list[dict], plan_names: set[str], budget: Budget, dropp
         level = p["attributes"].get("level")
         if level in ("room", "flight"):
             continue  # đi theo sản phẩm cha
-        if src == "vinpearl" or p["attributes"].get("brand") == "Vinpearl":
+        refreshed = (p["_meta"].get("plan") or {}).get("via") == "refresh"  # khách sạn đang có trong DB, lượt cào lớn mở lại
+        if src == "vinpearl" or p["attributes"].get("brand") == "Vinpearl" or refreshed:
             keep.append(p)
             kept_ids.add(p["productId"])
             continue

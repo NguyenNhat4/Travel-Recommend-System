@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const api = vi.hoisted(() => ({ listRoutesTo: vi.fn(), listRouteFlights: vi.fn() }));
 const travel = vi.hoisted(() => ({
-  addToCart: vi.fn(), navigate: vi.fn(), showToast: vi.fn(), openLoginModal: vi.fn(), currentPersona: { id: 'u1' } as { id: string } | null,
+  addToCart: vi.fn(), startBooking: vi.fn(), navigate: vi.fn(), showToast: vi.fn(), openLoginModal: vi.fn(), currentPersona: { id: 'u1' } as { id: string } | null,
 }));
 vi.mock('../../src/services/flights', () => api);
 vi.mock('../../src/context/TravelContext', () => ({ useTravel: () => travel }));
@@ -97,11 +97,46 @@ describe('FlightResultsView', () => {
     expect(within(cards().find((c) => cardOf(c) === 'VJ100')!).getByText('Giá rẻ nhất')).toBeTruthy();
   });
 
-  it('opens on the nearest day with flights and says so when the wanted day has none', async () => {
+  it('says there is no flight on the searched day instead of listing another day, and offers the nearest days to pick', async () => {
     renderView({ ...SEARCH, trip: { ...SEARCH.trip, checkIn: '2999-10-06' } });
-    await ready();
+    const empty = await screen.findByTestId('no-flights-on-date');
+    expect(empty.textContent).toContain('Không có chuyến bay Hà Nội → TP. Hồ Chí Minh ngày');
+    expect(empty.textContent).toContain('06/10/2999');
+    expect(screen.queryAllByRole('article')).toHaveLength(0);                              // không chuyến của ngày khác nào được hiện
+    // Dải ngày vẫn có, nhưng không ngày nào được chọn sẵn.
+    expect(screen.getByRole('button', { name: /05\/10.*2 chuyến/ }).getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByRole('button', { name: /08\/10.*1 chuyến/ }).getAttribute('aria-pressed')).toBe('false');
+    const offers = within(empty).getAllByRole('button').map((button) => button.textContent);
+    expect(offers).toHaveLength(2);
+    expect(offers[0]).toMatch(/05\/10 · từ 700k/);
+    expect(offers[1]).toMatch(/08\/10 · từ 650k/);
+
+    fireEvent.click(within(empty).getByRole('button', { name: /08\/10/ }));
     expect(cardNumbers()).toEqual(['VJ300']);
-    expect(screen.getByText(/Không có chuyến ngày 06\/10/)).toBeTruthy();
+    expect(screen.queryByTestId('no-flights-on-date')).toBeNull();
+    expect(screen.getByRole('button', { name: /08\/10.*1 chuyến/ }).getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('return leg: a searched return day without flights gets the same notice; no return day opens the first connecting day', async () => {
+    renderView({ ...SEARCH, trip: { ...SEARCH.trip, checkOut: '2999-10-10' } });
+    await ready();
+    fireEvent.click(screen.getByRole('button', { name: 'Chọn chuyến VJ100' }));
+    const empty = await screen.findByTestId('no-flights-on-date');
+    expect(empty.textContent).toContain('Không có chuyến bay TP. Hồ Chí Minh → Hà Nội ngày');
+    expect(empty.textContent).toContain('10/10/2999');
+    expect(empty.textContent).toContain('cất cánh sau chuyến chiều đi đã chọn');
+    expect(screen.queryAllByRole('article')).toHaveLength(0);
+    // VJ901 (04/10) cất cánh trước chiều đi nên không được gợi ý; chỉ còn 12/10.
+    expect(within(empty).getAllByRole('button').map((button) => button.textContent)).toEqual([expect.stringMatching(/12\/10 · từ 632k/)]);
+    cleanup();
+
+    renderView({ ...SEARCH, trip: { ...SEARCH.trip, checkOut: undefined } });
+    await ready();
+    fireEvent.click(screen.getByRole('button', { name: 'Khứ hồi' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Chọn chuyến VJ100' }));
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Chọn vé chiều về' })).toBeTruthy());
+    await waitFor(() => expect(cardNumbers()).toEqual(['VJ900']));
+    expect(screen.queryByTestId('no-flights-on-date')).toBeNull();
   });
 
   it('filters by time of day and by airline, and resets', async () => {
@@ -129,7 +164,7 @@ describe('FlightResultsView', () => {
     expect((screen.getByRole('button', { name: 'Đặt vé' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('totals both legs for the whole party as an estimate and books each leg into the cart', async () => {
+  it('totals both legs for the whole party as an estimate and books both legs in ONE direct booking, never the cart', async () => {
     renderView();
     await ready();
     fireEvent.click(screen.getByRole('button', { name: 'Chọn chuyến VJ100' }));
@@ -142,24 +177,26 @@ describe('FlightResultsView', () => {
     expect(pay.disabled).toBe(false);
     fireEvent.click(pay);
 
-    await waitFor(() => expect(travel.navigate).toHaveBeenCalledWith('/checkout'));
-    expect(travel.addToCart).toHaveBeenCalledTimes(2);
-    const [out, back] = travel.addToCart.mock.calls;
-    expect(out[0]).toMatchObject({ id: 'id-VJ100', taxonomy: 'flight', unitPrice: 700000 });
-    expect(out.slice(1)).toEqual([3, '2999-10-05', undefined, { silent: true, guests: { adults: 2, children: 1 } }]);
-    expect(back[0]).toMatchObject({ id: 'id-VJ900' });
-    expect(back[2]).toBe('2999-10-12');
+    // Một đơn nháp cho cả hai chặng: không thêm giỏ, không tự chuyển trang (startBooking mở trang thanh toán của đơn nháp).
+    await waitFor(() => expect(travel.startBooking).toHaveBeenCalledTimes(1));
+    expect(travel.addToCart).not.toHaveBeenCalled();
+    expect(travel.navigate).not.toHaveBeenCalled();
+    const [[out, back]] = travel.startBooking.mock.calls[0];
+    expect(out.product).toMatchObject({ id: 'id-VJ100', taxonomy: 'flight', unitPrice: 700000 });
+    expect(out).toMatchObject({ quantity: 3, usingDate: '2999-10-05', guests: { adults: 2, children: 1 } });
+    expect(back.product).toMatchObject({ id: 'id-VJ900' });
+    expect(back.usingDate).toBe('2999-10-12');
   });
 
-  it('asks a signed-out visitor to log in instead of adding to the cart', async () => {
+  it('a signed-out visitor can book too: no login prompt here, login comes at the Pay button', async () => {
     travel.currentPersona = null;
     renderView();
     await ready();
     fireEvent.click(screen.getByRole('button', { name: /Một chiều/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Chọn chuyến VJ100' }));
     fireEvent.click(screen.getByRole('button', { name: 'Đặt vé' }));
-    await waitFor(() => expect(travel.openLoginModal).toHaveBeenCalled());
-    expect(travel.addToCart).not.toHaveBeenCalled();
+    await waitFor(() => expect(travel.startBooking).toHaveBeenCalledTimes(1));
+    expect(travel.openLoginModal).not.toHaveBeenCalled();
   });
 
   it('a one-way ticket needs no return leg and books a single item', async () => {
@@ -169,8 +206,8 @@ describe('FlightResultsView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Chọn chuyến VJ100' }));
     expect(screen.getByRole('heading', { name: 'Chọn vé chiều đi' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Đặt vé' }));
-    await waitFor(() => expect(travel.navigate).toHaveBeenCalledWith('/checkout'));
-    expect(travel.addToCart).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(travel.startBooking).toHaveBeenCalledTimes(1));
+    expect(travel.startBooking.mock.calls[0][0]).toHaveLength(1);
     expect(api.listRoutesTo).not.toHaveBeenCalledWith('Hà Nội', expect.anything());
   });
 
@@ -183,14 +220,16 @@ describe('FlightResultsView', () => {
     expect((screen.getByRole('button', { name: 'Đặt vé' }) as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it('a failed cart add keeps the visitor on the page with a message', async () => {
-    travel.addToCart.mockResolvedValue(false);
+  it('a failed booking keeps the visitor on the page and lets them try again', async () => {
+    travel.startBooking.mockResolvedValue(null);                                    // startBooking đã tự báo lỗi bằng toast
     renderView({ ...SEARCH, trip: { checkIn: '2999-10-05', adults: 1 } });
     await ready();
     fireEvent.click(screen.getByRole('button', { name: 'Chọn chuyến VJ100' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Đặt vé' }));
-    await waitFor(() => expect(travel.showToast).toHaveBeenCalledWith(expect.stringContaining('VJ100')));
+    const pay = screen.getByRole('button', { name: 'Đặt vé' }) as HTMLButtonElement;
+    fireEvent.click(pay);
+    await waitFor(() => expect(travel.startBooking).toHaveBeenCalledTimes(1));
     expect(travel.navigate).not.toHaveBeenCalled();
+    await waitFor(() => expect((screen.getByRole('button', { name: 'Đặt vé' }) as HTMLButtonElement).disabled).toBe(false));
   });
 
   it('offers the origins that do fly to the destination when the typed origin has no route', async () => {

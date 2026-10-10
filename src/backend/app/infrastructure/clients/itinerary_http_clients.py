@@ -21,11 +21,17 @@ class ItineraryHttpClients:
         self._http = http
 
     async def search_products(self, request: dict[str, Any]) -> dict[str, Any]:
-        supported = {"taxonomy", "destination", "limit", "offset"}
-        params = {"q": request["query"], **{key: value for key, value in request.items()
-                                             if key in supported and value is not None}}
-        # GET compatibility endpoint có metadata engine riêng; search_tool_payload bỏ phần đó.
-        return search_tool_payload(await self._request("GET", "/search", params=params))
+        # POST /search: chỉ route này nhận số khách (`travelContext.guests`); cùng bộ tham số với adapter inprocess
+        # (`engine_tools.SEARCH_ENGINE_ARGUMENTS`) để mọi mode nhận cùng ứng viên.
+        supported = {"taxonomy", "destination", "limit", "offset", "origin", "priceMin", "priceMax", "starRatingMin",
+                     "availableOnly"}
+        body = {"query": request["query"], **{key: value for key, value in request.items()
+                                              if key in supported and value is not None}}
+        guests = (request.get("travelContext") or {}).get("guests")
+        if guests:
+            body["travelContext"] = {"guests": guests}
+        # Route có metadata engine riêng (cutoff, diagnostics); search_tool_payload bỏ phần đó.
+        return search_tool_payload(await self._request("POST", "/search", json=body))
 
     async def get_recommendations(self, request: dict[str, Any], authorization: str | None = None) -> dict[str, Any]:
         return await self._request("GET", "/recommendations", params=request,
@@ -40,6 +46,11 @@ class ItineraryHttpClients:
 
     async def list_destinations(self) -> dict[str, Any]:
         return await self._request("GET", "/destinations")
+
+    async def list_products(self, params: dict[str, Any]) -> dict[str, Any]:
+        query = {key: str(value).lower() if isinstance(value, bool) else value
+                 for key, value in params.items() if value is not None}
+        return await self._request("GET", "/products", params=query)
 
     async def _request(self, method: str, url: str, **kwargs: Any) -> dict[str, Any]:
         headers = dict(kwargs.pop("headers", {}))

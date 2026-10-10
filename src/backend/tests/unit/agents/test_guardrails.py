@@ -158,11 +158,20 @@ class FinalizeGuardrailTests(unittest.TestCase):
         self.assertTrue(any(issue.startswith("guardrail:secret") for issue in result["validation_issues"]))
 
     def test_a_booking_claim_in_the_refusal_message_is_replaced_and_status_kept(self):
+        # Từ FR-AGT-06 (chốt 2026-10-10) câu ngoài phạm vi là câu trả lời thường 200, không còn là lỗi 400.
+        response = {"status": "NEEDS_CLARIFICATION", "conversationId": "conv-1",
+                    "question": "Mình đã đặt phòng giúp bạn rồi nhé.", "knownIntent": empty_intent()}
+        state = {**self.base_state(response, 200), "refusal": True}
+        result = nodes.finalize_node(state)
+        self.assertEqual(result["http_status"], 200)
+        self.assertEqual(result["response"]["question"], messages.REFUSAL)
+
+    def test_a_booking_claim_in_a_blocked_input_refusal_keeps_the_error(self):
         response = error_response("VALIDATION_ERROR", "Mình đã đặt phòng giúp bạn rồi nhé.", "req-1")
-        state = {**self.base_state(response, 400), "refusal": True}
+        state = {**self.base_state(response, 400), "refusal": True, "blocked_by_guardrail": "prompt_injection"}
         result = nodes.finalize_node(state)
         self.assertEqual(result["http_status"], 400)
-        self.assertEqual(result["response"]["error"]["message"], messages.REFUSAL)
+        self.assertEqual(result["response"]["error"]["message"], messages.REFUSAL_BLOCKED)
         self.assertTrue(any(issue.startswith("guardrail:booking_claim") for issue in result["validation_issues"]))
 
     def test_a_clean_response_is_not_touched(self):
@@ -181,6 +190,9 @@ class InputQualityTests(unittest.TestCase):
             ("aaaaaaa", "repeated_char"), ("?????", "no_content"), ("😀😀😀😀", "no_content"),
             ("!!!!!! a", "low_alnum_ratio"), ("asdfjkl", "gibberish"), ("qwerty", "gibberish"),
             ("sdfgh jkl qwe", "gibberish"), ("ajsdhakjsd", "gibberish"),
+            # Spam có dấu tiếng Việt, nối bằng ";" — token dài, có nguyên âm nhưng không phải từ.
+            ("pưaiegapòigấ;sldááđăsdpưaiegapòigấ;sldááđăsd", "gibberish"),
+            ("pưaiegapòigấ;sldááđăsdpưaiegapòigấ;sldááđăsdpưaiegapòigấ;sldááđăsdpưaiegapòigấ", "gibberish"),
         ):
             with self.subTest(query=query):
                 self.assertEqual(guardrails.input_quality(query), (guardrails.UNCLEAR, rule))
@@ -256,14 +268,14 @@ class ConverseUnclearInputTests(unittest.TestCase):
         self.assertEqual(llm.calls, [])
 
 
-class GoldenQueriesPassTier1Tests(unittest.TestCase):
-    """Không câu nào trong bộ golden của agent bị tầng 1 chặn nhầm (điều kiện merge của NFR-SEC-04)."""
+class AgentTestCaseQueriesPassTier1Tests(unittest.TestCase):
+    """Không câu nào trong bộ test case của agent bị tầng 1 chặn nhầm (điều kiện merge của NFR-SEC-04)."""
 
-    def test_no_golden_query_is_blocked(self):
+    def test_no_agent_test_case_query_is_blocked(self):
         import yaml
         from pathlib import Path
 
-        golden = Path(__file__).resolve().parents[4] / "evaluation" / "datasets" / "itinerary_agent_golden.yaml"
+        golden = Path(__file__).resolve().parents[4] / "evaluation" / "datasets" / "agent_test_cases_nhat.yaml"
         queries: list[str] = []
 
         def walk(node):

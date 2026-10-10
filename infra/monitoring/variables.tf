@@ -21,6 +21,12 @@ variable "zone" {
   default     = "asia-southeast1-a"
 }
 
+variable "db_replica_zone" {
+  description = "Zone of the DB replica VM (a different zone from the primary). Empty = same as zone."
+  type        = string
+  default     = ""
+}
+
 variable "environment" {
   description = "Environment label. This root is intentionally staging-only."
   type        = string
@@ -104,4 +110,32 @@ variable "container_disk_alert_gib" {
     condition     = var.container_disk_alert_gib > 0
     error_message = "container_disk_alert_gib must be greater than zero."
   }
+}
+
+variable "container_cpu_alert_percent" {
+  description = "Alert when one container's CPU exceeds this value (100 = one vCPU). 190 = about 95% of the 2-vCPU App VM."
+  type        = number
+  default     = 190
+
+  validation {
+    condition     = var.container_cpu_alert_percent > 0
+    error_message = "container_cpu_alert_percent must be greater than zero."
+  }
+}
+
+variable "log_retention_days" {
+  description = "Days the _Default Cloud Logging bucket keeps application logs. Older entries are deleted automatically."
+  type        = number
+  default     = 30
+
+  validation {
+    condition     = var.log_retention_days >= 1 && var.log_retention_days <= 3650
+    error_message = "log_retention_days must be between 1 and 3650."
+  }
+}
+
+variable "log_ingest_alert_gib_per_hour" {
+  description = "Alert when the project ingests more than this many GiB of logs in one hour (default is about 6 GiB/day)."
+  type        = number
+  default     = 0.25
 }

@@ -44,7 +44,7 @@ export function DestinationTiles({ title = 'Bạn muốn đi đâu?', route, que
               <Link
                 key={d.destination}
                 href={tileHref(route, query, d.destination)}
-                className="group relative h-64 w-44 shrink-0 overflow-hidden rounded-xl bg-gradient-to-br from-blue-700 to-indigo-900 shadow-md transition-shadow hover:shadow-2xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 sm:w-52 lg:w-[calc((100%-64px)/5)]"
+                className="group relative h-64 w-44 shrink-0 overflow-hidden rounded-xl bg-gradient-to-br from-brand-700 to-brand-900 shadow-md transition-shadow hover:shadow-2xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 sm:w-52 lg:w-[calc((100%-64px)/5)]"
               >
                 {cover && (
                   <img

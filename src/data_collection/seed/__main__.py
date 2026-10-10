@@ -21,10 +21,11 @@ from .config import (
     MAX_EVENTS_PER_USER,
     VINPEARL_BOOST,
     VOTA_URL_ENV,
+    PROFILES,
     ZIPF_S,
     find_products,
 )
-from .database import load_insider, load_vota, upsert_catalog
+from .database import history_backup, history_restore, load_history, load_insider, load_vota, read_jsonl, upsert_catalog
 from .snapshot import materialize_snapshot
 
 
@@ -42,6 +43,21 @@ def _arguments(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--real-flight-dates", action="store_true",
                         help="with --catalog-only: real crawl data (daily.py) — keep fixed-date flight quotes on their real date and "
                              "block expired quotes instead of shifting them into the demo window")
+    parser.add_argument("--profile", choices=sorted(PROFILES), default=None,
+                        help="bộ dữ liệu sinh khác demo (vd eval-v2: 5.000 khách, khách quay lại, bỏ giỏ — config.PROFILES)")
+    parser.add_argument("--history-only", action="store_true",
+                        help="chỉ thay lịch sử seed (cdp.profiles upsert, event sinh cũ của khách VP + 7 số, đơn seed P1) trên database đang "
+                             "dùng; giữ event phát sinh qua web của tài khoản test / khách seed (persona P1–P4 reset về kịch bản), đơn thật, catalog, Insider, tài khoản / giỏ web; "
+                             "tính lại hồ sơ khách có event được giữ; kiểm catalog đích")
+    parser.add_argument("--keep-events-since", type=date.fromisoformat, default=None,
+                        help="--history-only: giữ event của khách seed / persona từ ngày này (giờ VN) — event phát sinh qua web; mặc định "
+                             "as_of của lần seed cũ, suy từ đơn seed P1")
+    parser.add_argument("--drop-missing-products", action="store_true",
+                        help="--history-only: bỏ event trỏ sản phẩm không có trong catalog đích (mặc định: dừng) và tính lại hồ sơ khách đó")
+    parser.add_argument("--history-backup", type=Path, default=None,
+                        help="--history-only: trước khi nạp, lưu phần sẽ bị thay ra file JSON (bắt buộc nên dùng trên staging)")
+    parser.add_argument("--history-restore", type=Path, default=None,
+                        help="khôi phục lịch sử seed từ file của --history-backup (ngay sau một lần nạp hỏng) rồi dừng")
     parser.add_argument("--retire-missing", action="store_true",
                         help="with --catalog-only: set available=false on database rows absent from this catalog (switching data version)")
     return parser.parse_args(argv)
@@ -92,15 +108,40 @@ def main(argv: list[str] | None = None) -> int:
         counts = upsert_catalog(os.environ.get(VOTA_URL_ENV, DEFAULT_VOTA_URL), data_dir, retire_missing=args.retire_missing)
         print("Catalog: " + " · ".join(f"{name}={count}" for name, count in counts.items()))
         return 0
+    if args.history_restore:
+        counts = history_restore(os.environ.get(VOTA_URL_ENV, DEFAULT_VOTA_URL), args.history_restore)
+        print("Restore: " + " · ".join(f"{name}={count}" for name, count in counts.items()))
+        return 0
+    if args.history_only:
+        if args.reset:
+            print("--history-only never truncates; drop --reset", file=sys.stderr)
+            return 2
+        print(f"[1/2] Generate CDP history ({args.profile or 'demo'}) from {products_path}")
+        hist_args = ["--data-dir", str(data_dir), "--out-dir", str(seed_dir), "--as-of", args.as_of.isoformat(), "--seed", str(args.seed)]
+        if seed_histories.main(hist_args + (["--profile", args.profile] if args.profile else [])) != 0:
+            return 1
+        if args.generate_only:
+            print(f"Generated history under {seed_dir}; PostgreSQL was not changed.")
+            return 0
+        print(f"[2/2] Replace seed-customer history in ${VOTA_URL_ENV} (catalog, Insider and web users untouched)")
+        source_ids = {r["productId"] for r in read_jsonl(products_path)}
+        if args.history_backup:
+            saved = history_backup(os.environ.get(VOTA_URL_ENV, DEFAULT_VOTA_URL), args.history_backup)
+            print(f"Backup → {args.history_backup}: " + " · ".join(f"{t}={n}" for t, n in saved.items()))
+        counts = load_history(os.environ.get(VOTA_URL_ENV, DEFAULT_VOTA_URL), data_dir, source_ids, as_of=args.as_of,
+                              keep_events_since=args.keep_events_since, drop_missing_products=args.drop_missing_products)
+        print("History: " + " · ".join(f"{name}={count}" for name, count in counts.items()))
+        print("Insider clone was not regenerated; run the full seed on a fresh database to rebuild it.")
+        return 0
     print(f"[1/5] Parse {products_path}")
     parse_combos.main(["--data-dir", str(data_dir)])
     print("[2/5] Build cdp.products rows")
     load_products.main(["--data-dir", str(data_dir), "--out-dir", str(loader_dir), "--as-of", args.as_of.isoformat()])
     print("[3/5] Generate CDP history and app personas")
+    size = ["--profile", args.profile] if args.profile else ["--profiles", str(args.users), "--max-events", str(MAX_EVENTS_PER_USER)]
     if seed_histories.main([
         "--data-dir", str(data_dir), "--out-dir", str(seed_dir), "--as-of", args.as_of.isoformat(),
-        "--seed", str(args.seed), "--profiles", str(args.users), "--zipf", str(ZIPF_S),
-        "--vinpearl-boost", str(VINPEARL_BOOST), "--max-events", str(MAX_EVENTS_PER_USER),
+        "--seed", str(args.seed), "--zipf", str(ZIPF_S), "--vinpearl-boost", str(VINPEARL_BOOST), *size,
     ]) != 0:
         return 1
     print("[4/5] Generate Insider clone rows")

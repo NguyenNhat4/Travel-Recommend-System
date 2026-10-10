@@ -23,7 +23,7 @@ reason `docs/prd/architecture.md` keeps `cdp.products.attributes` as open JSONB)
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
+from typing import Any, NotRequired, TypedDict
 
 
 class Party(TypedDict, total=False):
@@ -41,6 +41,7 @@ class TripIntent(TypedDict, total=False):
     budget: int | None
     interests: list[str]
     pace: str | None
+    origin: NotRequired[str | None]  # 1.18.0, AC-AGT-02: vắng mặt = chưa biết nơi đi
 
 
 class HotelAttributes(TypedDict, total=False):
@@ -77,6 +78,7 @@ class Constraints(TypedDict, total=False):
     price_strict: bool
     star_rating_min: float
     hotel_attributes: HotelAttributes
+    require_flight: bool  # người dùng hỏi rõ vé máy bay: chuyến 1 ngày vẫn có chặng bay (AC-AGT-02)
 
 
 class Product(TypedDict, total=False):
@@ -134,13 +136,26 @@ class Stay(TypedDict, total=False):
     because: list[dict[str, Any]]
 
 
+class FlightLeg(TypedDict, total=False):
+    """One `ItineraryFlight` in `Plan.flights`, chosen by `flights.choose_flights`."""
+
+    product: Product
+    direction: str  # OUTBOUND | RETURN | ROUND_TRIP
+    date: str
+    returnDate: str | None
+    passengers: int
+    source: str
+
+
 class Plan(TypedDict, total=False):
     """The itinerary proposal built by `render_proposal`, checked by `validate_plan`."""
 
     stay: Stay
+    flights: list[FlightLeg]
     days: list[DayPlan]
     bookableCount: int
     estimatedTotal: int | None
+    costBreakdown: dict[str, int]  # flights, stays, activities; vắng khi estimatedTotal là None
     currency: str
     budgetStatus: str
     priceAsOf: str | None
@@ -157,11 +172,39 @@ class ProposedSlot(TypedDict, total=False):
     time: str
 
 
+class ProposedStay(TypedDict):
+    """Một khách sạn theo đêm trong proposal (AC-AGT-04): ở các đêm from_night .. from_night + nights − 1."""
+
+    stay_id: str
+    from_night: int
+    nights: int
+
+
+class ProposedOption(TypedDict):
+    """Một phương án khác (chốt 2026-10-08): khách sạn theo đêm, chênh km/tiền so với lịch được chọn (dương = nhiều
+    hơn) và số tiền vượt ngân sách (None khi không vượt)."""
+
+    stays: list[ProposedStay]
+    km_delta: float
+    money_delta: int
+    over_budget: int | None
+    #: Lịch đầy đủ của phương án (cùng hình dạng `Proposal`, không có `options`), để render và xem trước (chốt
+    #: 2026-10-08, hàng thẻ chọn phương án).
+    proposal: "Proposal"
+
+
 class Proposal(TypedDict, total=False):
     """Return value of `compose_plan`; input to `render_proposal`."""
 
     stay_id: str | None
     slots: list[ProposedSlot]
+    #: Khách sạn theo đêm; `stay_id` là khách sạn đầu tiên. Vắng mặt thì `render_proposal` coi là một khách sạn.
+    stays: list[ProposedStay]
+    #: "DISTANCE" khi lịch được xếp theo khoảng cách (AC-AGT-04); không có khoá khi không sản phẩm nào rõ vị trí.
+    criteria: str
+    #: Quãng đường cả chuyến (km, đường chim bay) và phương án khác; chỉ có khi lịch xếp theo khoảng cách và có khách sạn.
+    distance_km: float
+    options: list[ProposedOption]
 
 
 class ToolErrorPayload(TypedDict):
@@ -171,6 +214,7 @@ class ToolErrorPayload(TypedDict):
     code: str
     retryable: bool
     httpStatus: int | None
+    reason: NotRequired[str]  # kiểm tra nào hỏng; chỉ có khi nơi raise biết lý do
 
 
 class ToolCall(TypedDict, total=False):

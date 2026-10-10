@@ -19,6 +19,8 @@ import math
 import os
 import threading
 import time
+
+import log
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -191,7 +193,7 @@ class Reader:
             if entry != self._seen.get(key, {}):
                 self._seen[key] = entry
                 shown = " ".join(f"{k}={v}" for k, v in sorted(entry.items())) or "về cấu hình của lượt"
-                print(f"live.control key={key} {shown}", flush=True)
+                log.say(f"live.control key={key} {shown}")
             return entry
 
 
@@ -221,6 +223,6 @@ async def hold_while_paused(key: str | None = None) -> dict:
         while control.get("paused"):
             await asyncio.sleep(PAUSE_POLL)
             control = current(key)
-        print(f"live.control key={key or os.environ.get('CRAWL_LIVE_KEY')} resumed after "
-              f"{round(time.monotonic() - started)}s", flush=True)
+        log.say(f"live.control key={key or os.environ.get('CRAWL_LIVE_KEY')} resumed after "
+                f"{round(time.monotonic() - started)}s")
     return control

@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Literal, Optional
 
 import yaml
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from evaluation.vector_bench.config import read_env_file
 
@@ -19,6 +19,20 @@ from . import paths
 # Khoá được nạp từ .env gốc repo (file đó còn chứa DATABASE_URL, WEAVIATE_URL của app — không được lẫn vào bench).
 ENV_ALLOW = ("COHERE_API_KEY", "AWS_PROFILE", "LLM_PROVIDER")
 ENV_ALLOW_PREFIX = "SBENCH_"
+
+#: Phase A (05/10): tên trường gold v4 mà `metrics.load_gold` đọc → tên nội bộ của `GoldQuery`. Tên cuối của máy gán nhãn chưa
+#: chốt nên ánh xạ nằm trong config (`metrics.gold_fields`); thiếu khoá nào thì dùng tên mặc định ở đây.
+DEFAULT_GOLD_FIELDS: dict[str, str] = {
+    "forbidden_filter": "forbidden_filter",   # AST filter: kết quả KHÔNG được xuất hiện
+    "forbidden": "forbidden",                 # danh sách product_id cấm
+    "origin": "origin",                       # chặng bay kỳ vọng (attributes.originCity)
+    "destination_city": "destination_city",   # (attributes.destinationCity)
+    "expected_parse": "expected_parse",       # {taxonomy, destination, origin, destination_city, must_not, must_not_brands,
+                                              #  must_not_taxonomies, price_max, price_min, star_min, party_total,
+                                              #  duration_days, duration_nights, entity, entity_role, location_entity}
+                                              #  (metrics.PARSE_FIELDS; năm trường cuối từ 07/10, contract 1.18.0)
+    "family": "family",                       # họ câu: biến thể không dấu / gõ sai của cùng một ý định (gộp theo họ)
+}
 
 
 class _M(BaseModel):
@@ -71,6 +85,7 @@ class ModelConfig(_M):
     trust_remote_code: Optional[bool] = None
     query_prefix: Optional[str] = None        # e5: "query: " / "passage: " — ghép trước text theo input_type (embed/local_hf.py)
     passage_prefix: Optional[str] = None
+    input_type_mode: Literal["asymmetric", "symmetric"] = "asymmetric"  # symmetric local model dùng cùng encoder cho query/document
     pooling: Optional[Literal["mean", "cls"]] = None   # model local: mean (e5) | cls (bge-m3, gte); mặc định mean
 
 
@@ -132,6 +147,29 @@ class Guards(_M):
     zero_result_in_catalog_max: float
     hub_score_max: float
     p95_cache_miss_ms_max: float
+    # Phase A (05/10) — đề xuất, chờ chốt Sprint 2 (xem chú thích trong sbench.yaml); None = chưa có ngưỡng. Chưa có `select()`
+    # nên chưa nơi nào ép các ngưỡng này — chỉ đọc và báo.
+    forbidden_at_10_max: Optional[float] = None
+    direction_accuracy_min: Optional[float] = None
+    filter_pass_min: Optional[float] = None
+    parse_accuracy_min: Optional[float] = None
+
+
+class GuardsProposed(_M):
+    """`sb guards` (06/10): ngưỡng guard Phase A ĐỀ XUẤT, chưa chốt — lệnh chỉ in PASS/FAIL để đọc, không chặn gì (kiến trúc
+    search OTA §15 "Hard fail khi forbidden …"). Mọi giá trị nằm ở sbench.yaml `metrics.guards_proposed`."""
+    forbidden_at_10_max: float
+    direction_accuracy_min: float
+    filter_pass_min: float
+    parse_accuracy_min: float          # áp cho từng trường của parse_accuracy
+    constraint_precision_min: float
+    zero_result_in_catalog_max: float
+
+
+class WeakResultsConfig(_M):
+    """`sb weak-results` (06/10): lưới ngưỡng phân tích quy tắc "kết quả yếu" (hợp đồng search §3.4, S2 của §10)."""
+    top_score_grid: list[float]        # WEAK_RESULT_TOP_SCORE thử
+    margin_grid: list[float]           # WEAK_RESULT_MARGIN thử
 
 
 class MetricsConfig(_M):
@@ -145,6 +183,27 @@ class MetricsConfig(_M):
     guards: Guards
     rerank_keep_if_delta_ndcg: float
     hub_random_queries: int
+    # Phase A (05/10): tên trường gold v4 (xem DEFAULT_GOLD_FIELDS) và file forbidden chẩn đoán cho gold_v3 (đường dẫn tương đối
+    # theo thư mục gói search_bench; None = không gắn). Gold có `forbidden_filter` thì gold thắng.
+    gold_fields: dict[str, str] = Field(default_factory=lambda: dict(DEFAULT_GOLD_FIELDS))
+    # 06/10: `forbidden_overrides` (chỉ forbidden_filter) được thay bằng `annotations` (forbidden_filter, origin,
+    # destination_city, expected_parse, family theo qid — `metrics.load_annotations`). Cả hai cùng cấu hình thì annotations
+    # thắng phần forbidden_filter; gold có trường nào thì gold thắng trường đó.
+    forbidden_overrides: Optional[str] = None
+    annotations: Optional[str] = "config/query_annotations.yaml"
+    # 06/10 (người dùng chốt phương án b, gold-guide "Rubric v4"): lúc chấm, nhãn ≥ 1 của sản phẩm có variant ngoài
+    # `allowed_variants` của câu (annotations) tính là 0 — áp cả nhãn cũ v1–v3 mà không sửa gold.jsonl.
+    rubric_v4_projection: bool = True
+    guards_proposed: Optional[GuardsProposed] = None
+    weak_results: Optional[WeakResultsConfig] = None
+
+    @field_validator("gold_fields")
+    @classmethod
+    def _gold_fields_known(cls, v: dict[str, str]) -> dict[str, str]:
+        unknown = sorted(set(v) - set(DEFAULT_GOLD_FIELDS))
+        if unknown:
+            raise ValueError(f"metrics.gold_fields: khoá lạ {unknown} (có: {', '.join(DEFAULT_GOLD_FIELDS)})")
+        return {**DEFAULT_GOLD_FIELDS, **v}
 
 
 class DoctorConfig(_M):

@@ -1,0 +1,87 @@
+{
+  "draftId": "5f0c1c2e-6b1f-4a57-9d0a-2f4d6c1a9b02",
+  "cdpUserId": "VP0092381",
+  "expiresAt": "2026-10-01T03:35:00Z",
+  "items": [
+    {
+      "cartItemId": "ci-hotel",
+      "product": {
+        "productId": "nt-h-luckysun-d3",
+        "name": "Lucky Sun Hotel Nha Trang Beach – Phòng Deluxe 3 Người",
+        "taxonomy": "hotel",
+        "destination": "Nha Trang",
+        "unitPrice": 777192,
+        "currency": "VND",
+        "priceUnit": "PER_NIGHT",
+        "available": true,
+        "availableFrom": "2026-10-01",
+        "availableTo": "2026-10-30",
+        "imageUrl": "https://cdn.example.vn/nt-h-luckysun-d3.jpg",
+        "attributes": {
+          "maxOccupancy": 3
+        }
+      },
+      "usingDate": "2026-10-17",
+      "quantity": 1,
+      "nights": 2,
+      "guests": {
+        "adults": 2,
+        "children": 1
+      },
+      "fares": [
+        {
+          "fareType": "ROOM",
+          "unitPrice": 777192,
+          "count": 1,
+          "nights": 2,
+          "amount": 1554384
+        }
+      ],
+      "lineTotal": 1554384
+    },
+    {
+      "cartItemId": "ci-vinwonders",
+      "product": {
+        "productId": "nt-a-vinwonders-buggy",
+        "name": "[Wonder Ngon] Vé VinWonders Nha Trang + Buggy + Fastpass 3 game hot",
+        "taxonomy": "attraction",
+        "destination": "Nha Trang",
+        "unitPrice": 1500000,
+        "currency": "VND",
+        "priceUnit": "PER_PERSON",
+        "available": true,
+        "availableFrom": "2026-10-01",
+        "availableTo": "2026-10-30",
+        "imageUrl": "https://cdn.example.vn/nt-a-vinwonders-buggy.jpg"
+      },
+      "usingDate": "2026-10-18",
+      "quantity": 3,
+      "nights": null,
+      "guests": {
+        "adults": 2,
+        "children": 1
+      },
+      "fares": [
+        {
+          "fareType": "ADULT",
+          "unitPrice": 1500000,
+          "count": 2,
+          "nights": null,
+          "amount": 3000000
+        },
+        {
+          "fareType": "CHILD",
+          "unitPrice": 504000,
+          "count": 1,
+          "nights": null,
+          "amount": 504000
+        }
+      ],
+      "lineTotal": 3504000
+    }
+  ],
+  "itemCount": 2,
+  "subtotal": 5058384,
+  "total": 5058384,
+  "currency": "VND"
+}

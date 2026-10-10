@@ -13,7 +13,11 @@ vi.mock('../../src/context/TravelContext', () => ({ useTravel: () => travel }));
 vi.mock('next/link', () => ({ default: ({ href, children, ...rest }: any) => <a href={href} {...rest}>{children}</a> }));
 
 import { FlightsPage, missingFlightInput } from '../../src/features/flights/FlightsPage';
+import { addDaysIso, todayVN } from '../../src/features/search/tripContext';
 import { clearSectionCache } from '../../src/hooks/useLazySection';
+
+// Tấm tìm kiếm luôn gửi ngày đi (mặc định là ngày mai), và trang chỉ hiện chuyến của đúng ngày đó: chuyến mẫu bay ngày mai.
+const FLIGHT_DAY = addDaysIso(todayVN(), 1);
 
 const route = {
   productId: 'r1', name: 'Vé máy bay Hà Nội - Đà Nẵng', taxonomy: 'flight', destination: 'Đà Nẵng', unitPrice: 600000, currency: 'VND', priceUnit: 'PER_PERSON', available: true,
@@ -21,10 +25,10 @@ const route = {
 };
 const flight = {
   productId: 'f1', name: 'VietJet Air VJ100', taxonomy: 'flight', destination: 'Đà Nẵng', unitPrice: 700000, currency: 'VND', priceUnit: 'PER_PERSON', available: true,
-  availableFrom: '2999-10-05', availableTo: '2999-10-05',
+  availableFrom: FLIGHT_DAY, availableTo: FLIGHT_DAY,
   attributes: {
     level: 'flight', airline: 'VietJet Air', airlineCode: 'VJ', flightNumber: 'VJ100', originAirport: 'HAN', destinationAirport: 'DAD', originCity: 'Hà Nội',
-    destinationCity: 'Đà Nẵng', departureAt: '2999-10-05T10:00:00+07:00', arrivalAt: '2999-10-05T11:20:00+07:00', durationMinutes: 80, nonstop: true, tripType: 'oneWay',
+    destinationCity: 'Đà Nẵng', departureAt: `${FLIGHT_DAY}T10:00:00+07:00`, arrivalAt: `${FLIGHT_DAY}T11:20:00+07:00`, durationMinutes: 80, nonstop: true, tripType: 'oneWay',
   },
 };
 
@@ -76,7 +80,7 @@ describe('FlightsPage', () => {
   it('searching shows the flights right below on the same page and keeps the URL shareable', async () => {
     render(<FlightsPage initial={null}><Shelves /></FlightsPage>);
     fireEvent.change(screen.getByLabelText('Điểm đi'), { target: { value: 'Hà Nội' } });
-    fireEvent.focus(screen.getByRole('combobox'));
+    fireEvent.focus(screen.getByRole('combobox', { name: /Điểm đến/ }));
     fireEvent.click(await screen.findByRole('option', { name: 'Đà Nẵng' }));
     fireEvent.click(screen.getByRole('button', { name: 'Tìm kiếm' }));
 

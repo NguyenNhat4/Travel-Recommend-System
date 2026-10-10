@@ -11,8 +11,17 @@
 #   docker compose up -d --wait postgres redis
 #
 # db/init/*.sql chỉ chạy khi volume pgdata còn trống. Tạo lại từ đầu: docker compose down -v && docker compose up -d --wait postgres
+# Giới hạn log container (json-file): mỗi container tối đa 5 x 50 MB. Không đặt thì Docker giữ log vô hạn và làm đầy đĩa VM;
+# Ops Agent đã đẩy log lên Cloud Logging nên đĩa chỉ cần giữ đệm.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
 services:
   postgres:
+    logging: *default-logging
     # Không còn cần pgvector: vector đã chuyển sang Weaviate (db/migrations/0002_drop_product_vectors.sql).
     image: postgres:16
     environment:
@@ -33,6 +42,7 @@ services:
       retries: 20
       start_period: 10s
   backend:
+    logging: *default-logging
     build:
       context: .
       dockerfile: Dockerfile.backend
@@ -49,7 +59,8 @@ services:
       APP_PORT: 8000
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      MODEL_NAME: ${MODEL_NAME:-gpt-4o-mini}
+      ITINERARY_LLM_MODEL: ${ITINERARY_LLM_MODEL:-}
+      ITINERARY_LLM_REASONING_EFFORT: ${ITINERARY_LLM_REASONING_EFFORT:-}
       # fixture | inprocess | http | disabled (xem .env.example). Compose giữ fixture để chạy được khi RecSys chưa nạp.
       ITINERARY_DATA_MODE: ${ITINERARY_DATA_MODE:-fixture}
       ITINERARY_TOOL_TIMEOUT_SECONDS: ${ITINERARY_TOOL_TIMEOUT_SECONDS:-1}
@@ -71,12 +82,11 @@ services:
       AUTH_SERVICE_TOKEN: ${AUTH_SERVICE_TOKEN:-}
       # BFF gọi từ máy host qua cổng publish: peer là gateway của mạng Docker.
       TRUSTED_PROXIES: ${BACKEND_TRUSTED_PROXIES:-127.0.0.1/32,172.16.0.0/12}
-      COHERE_API_KEY: ${COHERE_API_KEY:-}
       # Dev dùng Weaviate local của compose (deployment-plan.md §1), không lấy WEAVIATE_URL/khoá của máy host.
       # Môi trường dùng cluster chung thì đặt BACKEND_WEAVIATE_URL và BACKEND_WEAVIATE_API_KEY.
       WEAVIATE_URL: ${BACKEND_WEAVIATE_URL:-http://weaviate:8080}
       WEAVIATE_API_KEY: ${BACKEND_WEAVIATE_API_KEY:-}
-      WEAVIATE_COLLECTION: ${WEAVIATE_COLLECTION:-Product}
+      VECTOR_COLLECTION: ${VECTOR_COLLECTION:-ProductE5Small}
       WEAVIATE_GRPC_PORT: ${BACKEND_WEAVIATE_GRPC_PORT:-50051}
       CATALOG_REFRESH_SECONDS: ${CATALOG_REFRESH_SECONDS:-900}
       # Stripe test mode (docs/prd/deployment-plan.md §2). Webhook: `stripe listen --forward-to
@@ -85,14 +95,24 @@ services:
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-stripe}
       BOOKING_HOLD_MINUTES: ${BOOKING_HOLD_MINUTES:-30}
+      BOOKING_DRAFT_TTL_MINUTES: ${BOOKING_DRAFT_TTL_MINUTES:-30}
+      GUEST_BOOKING_TTL_DAYS: ${GUEST_BOOKING_TTL_DAYS:-3}
+      BOOKING_REDIS_URL: ${BACKEND_BOOKING_REDIS_URL:-redis://:devpass@redis:6379/3}
       PAYMENT_MAX_FAILED_ATTEMPTS: ${PAYMENT_MAX_FAILED_ATTEMPTS:-3}
       PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:-http://localhost:3000}
+      # Số process uvicorn. Mặc định 1 để dev nhẹ; đo RAM rồi mới tăng (mỗi worker giữ cache catalog riêng).
+      UVICORN_WORKERS: ${UVICORN_WORKERS:-1}
+    # Trần tài nguyên: một container không được ăn hết RAM/CPU của host (docs/plan/2026-10-05-ha-load-balancing.md).
+    mem_limit: ${BACKEND_MEM_LIMIT:-2g}
+    cpus: ${BACKEND_CPUS:-1.5}
+    stop_grace_period: 40s
     volumes:
       - ./secrets:/app/secrets:ro
     ports:
       - "${BACKEND_PORT:-8000}:8000"
 
   frontend:
+    logging: *default-logging
     build:
       context: .
       dockerfile: src/frontend/Dockerfile.web
@@ -108,6 +128,8 @@ services:
       ALLOWED_ORIGINS: "http://localhost:${FRONTEND_HOST_PORT:-3000},http://127.0.0.1:${FRONTEND_HOST_PORT:-3000}"
       SESSION_IDLE_TTL_SECONDS: ${SESSION_IDLE_TTL_SECONDS:-1800}
       SESSION_ABSOLUTE_TTL_SECONDS: ${SESSION_ABSOLUTE_TTL_SECONDS:-43200}
+    mem_limit: ${FRONTEND_MEM_LIMIT:-768m}
+    cpus: ${FRONTEND_CPUS:-0.5}
     depends_on:
       backend:
         condition: service_started
@@ -119,6 +141,7 @@ services:
   # Redis — session, rate-limit counter, OAuth state (auth §16.1). Chỉ phần PHÙ DU:
   # mất khi restart thì người dùng chỉ phải đăng nhập lại. Refresh token và login attempts nằm ở Postgres.
   redis:
+    logging: *default-logging
     image: redis:7-alpine
     # noeviction, KHÔNG allkeys-lru: eviction theo LRU sẽ ngẫu nhiên đá người dùng ra khi bộ nhớ đầy.
     command: >-
@@ -126,6 +149,7 @@ services:
                    --maxmemory 256mb
                    --maxmemory-policy noeviction
                    --appendonly no
+    mem_limit: 384m   # maxmemory 256mb + overhead
     ports: ["127.0.0.1:${REDIS_HOST_PORT:-6379}:6379"]   # chỉ loopback, không mở ra mạng ngoài
     healthcheck:
       test: ["CMD-SHELL", "redis-cli -a devpass ping | grep -q PONG"]
@@ -135,10 +159,11 @@ services:
       start_period: 3s
 
   # Weaviate — vector sản phẩm (collection `Product`, 1024 chiều, HNSW cosine).
-  # vectorizer: none — backend tự gọi Cohere rồi tự ghi vector, nên Weaviate KHÔNG giữ COHERE_API_KEY
+  # vectorizer: none — backend tự embed bằng e5-small rồi tự ghi vector, Weaviate không tự vector hoá
   # và không có module text2vec nào được bật (docs/prd/architecture.md §5).
   # Volume weaviate_data tách khỏi pgdata: `make demo-db` dựng lại Postgres không đụng tới vector.
   weaviate:
+    logging: *default-logging
     image: cr.weaviate.io/semitechnologies/weaviate:1.27.0
     command: ["--host", "0.0.0.0", "--port", "8080", "--scheme", "http"]
     environment:
@@ -153,6 +178,7 @@ services:
       - "127.0.0.1:${WEAVIATE_GRPC_PORT:-50051}:50051" # gRPC, client Python v4 dùng cổng này
     volumes:
       - weaviate_data:/var/lib/weaviate
+    mem_limit: ${WEAVIATE_MEM_LIMIT:-2g}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/v1/.well-known/ready || exit 1"]
       interval: 5s

@@ -135,6 +135,32 @@ describe('search groups', () => {
     expect(page.hasMore).toBe(true);
   });
 
+  it('narrows a group to one taxonomy (Sân golf tab at /experiences) with one request', async () => {
+    global.fetch = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ results: [item('golf-1', 'golf', 100, 0.9)], total: 3 }), { status: 200 }));
+    const page = await searchGroupApi('sân golf', 'exp', { limit: 20, taxonomy: 'golf' });
+    expect(bodies().map((b) => b.taxonomy)).toEqual(['golf']);
+    expect(page.total).toBe(3);
+    // Loại không thuộc nhóm thì bỏ qua và chạy cả nhóm.
+    await searchGroupApi('x', 'stay', { limit: 20, taxonomy: 'golf' });
+    expect(bodies().slice(1).map((b) => b.taxonomy)).toEqual(['hotel']);
+  });
+
+  it('sends guests as travelContext.guests, and only when given', async () => {
+    global.fetch = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ results: [item('h', 'hotel', 1, 0.9)], total: 1 }), { status: 200 }));
+    await searchGroupApi('x', 'stay', { limit: 20, guests: { adults: 2, children: 1 } });
+    expect(bodies()[0]).toMatchObject({ travelContext: { guests: { adults: 2, children: 1 } } });
+    await searchGroupApi('x', 'stay', { limit: 20 });
+    expect(bodies()[1]).not.toHaveProperty('travelContext');
+  });
+
+  it('sends the stay as travelContext dates, with or without guests, omitting an absent checkOut', async () => {
+    global.fetch = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ results: [item('h', 'hotel', 1, 0.9)], total: 1 }), { status: 200 }));
+    await searchGroupApi('x', 'stay', { limit: 20, stay: { checkIn: '2026-10-10', checkOut: '2026-10-12' }, guests: { adults: 2, children: 0 } });
+    expect(bodies()[0]).toMatchObject({ travelContext: { checkIn: '2026-10-10', checkOut: '2026-10-12', guests: { adults: 2, children: 0 } } });
+    await searchGroupApi('x', 'exp', { limit: 20, taxonomy: 'golf', stay: { checkIn: '2026-10-10' } });
+    expect((bodies()[1] as { travelContext: Record<string, unknown> }).travelContext).toEqual({ checkIn: '2026-10-10' });
+  });
+
   it('reports hasMore false once the offset reaches the total', async () => {
     global.fetch = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ results: [item('h', 'hotel', 1, 0.9)], total: 7 }), { status: 200 }));
     expect((await searchGroupApi('x', 'stay', { limit: 6, offset: 0 })).hasMore).toBe(true);
@@ -169,5 +195,14 @@ describe('search groups', () => {
     expect(a).toBe(searchCacheKey('group', 'nha trang', undefined, 'stay', 6, 0));
     expect(a).not.toBe(searchCacheKey('group', 'nha trang', null, 'stay', 20, 0));
     expect(a).not.toBe(searchCacheKey('group', 'nha trang', 'Phú Quốc', 'stay', 6, 0));
+    const golf = searchCacheKey('group', 'nha trang', null, 'exp', 20, 0, 'golf');
+    expect(golf).not.toBe(searchCacheKey('group', 'nha trang', null, 'exp', 20, 0, 'attraction'));
+    expect(golf).not.toBe(searchCacheKey('group', 'nha trang', null, 'exp', 20, 0));
+    const dated = searchCacheKey('group', 'x', null, 'stay', 20, 0, 'hotel', undefined, { checkIn: '2026-10-10', checkOut: '2026-10-12' });
+    expect(dated).not.toBe(searchCacheKey('group', 'x', null, 'stay', 20, 0, 'hotel', undefined, { checkIn: '2026-10-11', checkOut: '2026-10-12' }));
+    expect(dated).not.toBe(searchCacheKey('group', 'x', null, 'stay', 20, 0, 'hotel'));
+    const two = searchCacheKey('group', 'x', null, 'stay', 20, 0, 'hotel', { adults: 2, children: 0 });
+    expect(two).not.toBe(searchCacheKey('group', 'x', null, 'stay', 20, 0, 'hotel', { adults: 3, children: 0 }));
+    expect(two).not.toBe(searchCacheKey('group', 'x', null, 'stay', 20, 0, 'hotel'));
   });
 });

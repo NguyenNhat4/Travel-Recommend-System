@@ -265,7 +265,7 @@ ProductSummary:
       description: >-
         Chỉ có ở vé máy bay tầng con (taxonomy flight, level flight): các hạng vé của CÙNG một hành trình (cùng chuyến,
         cùng ngày đi; khứ hồi thì cùng chuyến và ngày về), kể cả chính sản phẩm này. Mỗi hạng là một productId riêng;
-        đặt vé bằng productId của hạng đã chọn (AddCartItemRequest không đổi). Các sản phẩm cùng hành trình có cùng
+        đặt vé bằng productId của hạng đã chọn qua POST /booking-drafts (vé máy bay không vào giỏ). Các sản phẩm cùng hành trình có cùng
         fareClasses, nên Web hiển thị một thẻ cho mỗi hành trình. Chỉ liệt kê hạng có báo giá thật — thiếu hạng nào là
         chưa có dữ liệu, không phải hết chỗ. Vắng mặt ở loại sản phẩm khác.
 
@@ -424,6 +424,17 @@ ScoredProduct:
         description: >-
           Cosine đã clamp về [0,1]. Chỉ hiển thị cho khách ở chế độ debug —
           0.81 KHÔNG phải "81% phù hợp".
+      matchedChildren:
+        type: array
+        maxItems: 5
+        items:
+          type: string
+        description: >-
+          (1.16.0, chỉ /search) productId các hạng phòng / chuyến bay con ĐANG BÁN của kết quả thoả ĐỒNG THỜI các điều kiện giá
+          (priceMin/priceMax), số khách (minOccupancy) và (từ 1.19.0, chỉ khách sạn) ngày (checkIn/checkOut) đang áp, giá tăng
+          dần (giá null cuối), tối đa 5 — để UI hiển thị đúng phòng hợp truy vấn thay vì giá thấp nhất của property. Chỉ có khi
+          lọc giá, số khách hoặc ngày đang áp và kết quả có ít nhất một con thoả; con không biết sức chứa hoặc không có lịch
+          được tính là thoả.
 
 ProductListResponse:
   type: object

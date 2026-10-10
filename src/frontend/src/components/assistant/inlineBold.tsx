@@ -52,15 +52,20 @@ export function parseAssistantText(text: string): AssistantTextPart[] {
  * Như `InlineBold`, thêm link sản phẩm: có `onProduct` thì tên sản phẩm là nút focus thẻ đó ở khung lịch trình,
  * không có thì chỉ hiện tên. Chỉ tạo React node, không chèn HTML thô.
  */
-export function AssistantText({ text, onProduct }: { text: string; onProduct?: (productId: string) => void }) {
+export function AssistantText({ text, onProduct, plainIds }: {
+  text: string;
+  onProduct?: (productId: string) => void;
+  /** Sản phẩm đã có thẻ ngay dưới lời diễn giải: tên chỉ in đậm, không làm link (thẻ là chỗ bấm). */
+  plainIds?: ReadonlySet<string>;
+}) {
   return (
     <>
       {parseAssistantText(text).map((part, index) => {
         if (part.kind === 'bold') return <strong key={index} className="font-bold">{part.text}</strong>;
         if (part.kind === 'text') return <React.Fragment key={index}>{part.text}</React.Fragment>;
-        return onProduct ? (
+        return onProduct && !plainIds?.has(part.productId) ? (
           <button key={index} type="button" onClick={() => onProduct(part.productId)}
-            className="inline text-left font-semibold text-blue-700 underline decoration-blue-300 underline-offset-2 hover:text-blue-900">
+            className="inline text-left font-semibold text-brand-700 underline decoration-brand-300 underline-offset-2 hover:text-brand-900">
             {part.text}
           </button>
         ) : <span key={index} className="font-semibold">{part.text}</span>;

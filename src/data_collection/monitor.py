@@ -8,12 +8,13 @@ Chỉ nghe 127.0.0.1 và từ chối Host khác localhost (chống DNS rebinding
   ssh -L 8765:127.0.0.1:8765 <user>@<vm>
 Monitor đọc file của các lượt (không đọc DB), ghi đúng bốn thứ: settings.json (Cấu hình), stop.request (Dừng),
 live_control.json (tạm dừng / đổi delay từng nguồn khi lượt đang chạy) và tiến trình fresh_catalog.py khi bấm Chạy. Hai chỗ
-gọi ra ngoài, chỉ khi người vận hành bấm: đọc vector từ Weaviate và ô thử truy vấn (gọi Cohere một lần, xếp hạng cosine trên
+gọi ra ngoài, chỉ khi người vận hành bấm: đọc vector từ Weaviate và ô thử truy vấn (embed bằng e5-small, xếp hạng cosine trên
 vector của collection đích). Không bao giờ trả giá trị secret: biến kết nối chỉ báo đã đặt hay chưa.
 """
 from __future__ import annotations
 
 import argparse
+import ast
 import csv
 import fcntl
 import gzip
@@ -33,12 +34,13 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import alerts as run_alerts
+import catalog_run_lock
 import fresh_settings
 import pipeline_graph as graph
 from collectors import live_control
 from collectors.geo import normalise_destination
 from normalise import STAGES as STAGE_LABELS
-from fresh_run_log import HISTORY_FILE, LOG_FILE, RUN_FILE, RUNNING_FILE, STOP_FILE, run_dirs, write_json
+from fresh_run_log import HISTORY_FILE, LOG_FILE, RUN_FILE, RUNNING_FILE, STOP_FILE, prune_runs, run_dirs, write_json
 
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "monitor_ui"
@@ -49,6 +51,11 @@ MAX_TEXT = 2_000_000          # ký tự tối đa trả về cho một file raw
 MAX_READ = 30_000_000         # byte tối đa giải nén một file
 HEARTBEAT_STALE = 90          # giây không có nhịp sống thì coi lượt đã chết
 PROGRESS_RE = re.compile(r"(\d+)/(\d+) xong · (\d+) lỗi · (\d+) bỏ qua · ([\d.]+) trang/phút · còn ~(\S+)")
+AGODA_PROGRESS_RE = re.compile(r"Agoda giá: (\d+)/(\d+) \(.*?ok (\d+), lỗi (\d+)\)")  # collectors/agoda_api.py, mỗi 50 lượt
+AGODA_PLAN_RE = re.compile(r"Agoda: \d+ khách sạn có hotel_id, (\d+) lượt hỏi giá cần làm")
+AGODA_FINAL_RE = re.compile(r"Agoda API: \{.*'priceOk': (\d+), 'priceNone': (\d+), 'failed': (\d+).*'tasks': (\d+)")
+STATE_RE = re.compile(r"\] Trạng thái: (\{.*\})\s*$")  # dòng cuối của crawl.py: {'done': 120, 'gone': 7, ...}
+VINPEARL_PROGRESS_RE = re.compile(r"Vinpearl (tour: )?(\d+)/(\d+)\b")  # khách sạn rồi vé/tour (collectors/vinpearl.py)
 LOG_LINE_RE = re.compile(r"^(?P<at>\d{2}:\d{2}:\d{2}) (?:\[(?P<group>[a-z]+)\] )?(?P<rest>.*)$")
 LEVEL_RE = re.compile(r"^\d{2}:\d{2}:\d{2} (WARNING|ERROR|CRITICAL)\b")
 INNER_RE = re.compile(r"\[([a-z][a-z_]+)\]")
@@ -215,7 +222,7 @@ def dir_size(path: Path, limit_files: int = 200_000) -> tuple[int, int]:
 
 
 def lock_busy(state_dir: Path) -> bool:
-    path = state_dir / "fresh_catalog.lock"
+    path = catalog_run_lock.lock_file(state_dir)
     if not path.exists():
         return False
     try:
@@ -358,7 +365,7 @@ class FileCache:
 
 def _new_stat() -> dict:
     return {"lines": 0, "warnings": 0, "errors": 0, "blocks": 0, "http": Counter(), "lastAt": None, "lastLine": None,
-            "progress": None, "live": None, "tripPrices": Counter(), "tripMeta": Counter()}
+            "progress": None, "result": None, "live": None, "tripPrices": Counter(), "tripMeta": Counter()}
 
 
 def _age_of_clock(clock: str | None) -> float | None:
@@ -459,7 +466,34 @@ class LogScan:
         if progress:
             done, total, failed, skipped, rate, eta = progress.groups()
             stat["progress"] = {"done": int(done), "total": int(total), "failed": int(failed), "skipped": int(skipped),
-                                "perMinute": float(rate), "eta": eta}
+                                "perMinute": float(rate), "eta": eta,
+                                "processed": int(done) + int(failed) + int(skipped)}
+        plan = AGODA_PLAN_RE.search(rest)
+        if plan:  # tổng lượt hỏi giá biết trước; dòng tiến độ chỉ ghi mỗi 50 lượt
+            stat["progress"] = {"done": 0, "total": int(plan.group(1)), "failed": 0, "skipped": 0, "processed": 0}
+        agoda = AGODA_PROGRESS_RE.search(rest)
+        if agoda:
+            processed, total, ok, failed = map(int, agoda.groups())
+            stat["progress"] = {"done": ok, "total": total, "failed": failed, "skipped": max(processed - ok - failed, 0),
+                                "processed": processed}
+        state = STATE_RE.search(rest)
+        if state:  # tổng theo URL duy nhất (dòng tiến độ cộng cả lượt thử lại vào tổng)
+            try:
+                counts = {k: v for k, v in ast.literal_eval(state.group(1)).items() if isinstance(v, int)}
+            except (ValueError, SyntaxError):
+                counts = {}
+            if sum(counts.values()):
+                stat["result"] = {"ok": counts.get("done", 0), "total": sum(counts.values()),
+                                  "failed": counts.get("failed", 0) + counts.get("blocked", 0)}
+        final = AGODA_FINAL_RE.search(rest)
+        if final:  # hết hàng (priceNone) là kết quả hợp lệ, không phải lỗi
+            ok, none, failed, tasks = map(int, final.groups())
+            stat["result"] = {"ok": ok + none, "total": tasks, "failed": failed}
+        vinpearl = VINPEARL_PROGRESS_RE.search(rest) if owner == "vinpearl" else None
+        if vinpearl:
+            done, total = int(vinpearl.group(2)), int(vinpearl.group(3))
+            stat["progress"] = {"done": done, "total": total, "failed": 0, "skipped": 0, "processed": done,
+                                "phase": "vé/tour" if vinpearl.group(1) else "khách sạn"}
         if "live.control" in rest:
             stat["live"] = rest[rest.index("live.control"):][:200]
         price = TRIP_PRICE_RE.search(rest)
@@ -555,6 +589,42 @@ def graph_strip_detail(nodes: list[dict]) -> dict[str, list[list[str]]]:
         if node["col"] != "other" and node["status"] not in ("notInMode", "disabled"):
             out.setdefault(node["col"], []).append([node["label"], node["status"]])
     return out
+
+
+# Số bước con của các bước lớn khi đang chạy (để tô tiến độ = số bước con đã xong / tổng): fresh_catalog_db.maintain_catalog,
+# load_into_db, fresh_catalog.validate_step; chuẩn hoá / gộp theo normalise.StepClock (SUBSTEP_INFO, phần bước Gộp). Vé
+# thương gia mô phỏng là dữ liệu demo, không phải bước xử lý nên không có bước con.
+EXPECTED_SUBSTEPS = {"maintain": 6, "validate": 6, "db": 7, "normalise": 11}
+GOOD_STATUSES = ("ok", "partial", "skipped")
+
+
+def percent(ok, total) -> float | None:
+    return round(100 * ok / total, 1) if isinstance(ok, (int, float)) and isinstance(total, (int, float)) and total > 0 \
+        else None
+
+
+def substep_view(entry: dict) -> dict:
+    """Một bước con cho sơ đồ: vào → ra, đạt/tổng và % tô màu. Bước có đạt/tổng (vd. dòng ghép được với DB) tô theo tỉ lệ đó;
+    bước biến đổi (lọc, gộp trùng: ra ít hơn vào là bình thường) xong thì tô đủ; đang chạy thì chưa có %."""
+    status = entry.get("status") or "unknown"
+    pct = percent(entry.get("ok"), entry.get("total"))
+    if pct is None and status in GOOD_STATUSES:
+        pct = 100.0
+    # normalise.StepClock ghi rowsIn/rowsOut/peakRssMb; stage_log.Stages ghi in/out
+    return {"name": entry.get("name"), "status": status, "seconds": entry.get("seconds"),
+            "in": entry.get("in", entry.get("rowsIn")), "out": entry.get("out", entry.get("rowsOut")),
+            "changed": entry.get("changed"),
+            "ok": entry.get("ok"), "total": entry.get("total"), "note": entry.get("note"), "error": entry.get("error"),
+            "ramMb": entry.get("peakRssMb"), "percent": pct, "description": SUBSTEP_INFO.get(entry.get("name"))}
+
+
+def node_progress(node: dict, *, done=None, total=None, running: bool = False) -> None:
+    """`node.progress`: đang chạy → đã làm / tổng (kind progress); xong → phần thành công / tổng (kind result). Không có số
+    thì ô xong tô đủ, ô lỗi không tô; ô đang chạy không biết tổng thì để trống (giao diện hiện sọc chạy)."""
+    pct = percent(done, total)
+    if pct is None and not running:
+        pct = 100.0 if node["status"] in GOOD_STATUSES else (0.0 if node["status"] in ("error", "dead", "failed") else None)
+    node["progress"] = {"done": done, "total": total, "percent": pct, "kind": "progress" if running else "result"}
 
 
 def running_substep(steps_file: Path) -> str | None:
@@ -711,7 +781,7 @@ class FreshMonitor:
                "db": _where(url) if url else None, "weaviate": None, "collection": None, "error": None}
         try:
             settings = self._index_settings()
-            out.update(weaviate=_where(settings.weaviate_url), collection=settings.weaviate_collection)
+            out.update(weaviate=_where(settings.weaviate_url), collection=settings.vector_collection)
         except Exception as exc:  # thiếu env, backend chưa cài…: vẫn hiện phần còn lại
             out["error"] = str(exc)[:300]
         return out
@@ -990,11 +1060,90 @@ class FreshMonitor:
                 # nạp theo phần kiểm từng dòng trước mỗi lô; kiểm cả catalog vẫn chạy ở cuối lượt
                 by_id["validate"].update(status="running", note="kiểm từng dòng theo lô nạp DB; kiểm cả catalog ở cuối lượt")
 
+        if counts:
+            self._progress(nodes, steps, data, path)
         known = set(GRAPH_SINGLE) | set(STEP_OWNER) | set(STREAM_STEPS)
         for name, st in steps.items():
             if name not in known and not name.startswith(NORMALISE_SOURCE):
                 add(name, "other", None, st.get("label") or name, st, pending)
         return nodes, edges
+
+    def _progress(self, nodes: list[dict], steps: dict[str, dict], data: dict, path: Path) -> None:
+        """% hoàn thành của từng ô (tô màu trên sơ đồ) và bước con của các ô lớn (bấm để bung)."""
+        scan = self._scan(path / LOG_FILE)
+        refresh = ((data.get("counts") or {}).get("refresh")) or {}
+        settings = data.get("settings") or {}
+        for node in nodes:
+            st = steps.get(node["id"]) or {}
+            info = st.get("detail") or {}
+            running = node["status"] == "running"
+            if node["col"] == "crawl":
+                stat = scan.stats.get(node["lane"]) or {}
+                if node["id"] == "trip-hotels.prices":
+                    if running:
+                        targets = (read_json(path / "trip_targets.run.json") or {}).get("hotels") or []
+                        dates = len(settings.get("tripHotels.priceOffsets") or (14, 30, 60))
+                        node_progress(node, done=sum((stat.get("tripPrices") or {}).values()),
+                                      total=len(targets) * dates or None, running=True)
+                    else:
+                        node_progress(node, done=info.get("completed"), total=info.get("requested"))
+                elif node["id"] == "trip-hotels.discover":
+                    node_progress(node, running=running)
+                else:
+                    progress, result = stat.get("progress") or {}, stat.get("result") or {}
+                    if running:
+                        node_progress(node, done=progress.get("processed"), total=progress.get("total"), running=True)
+                        if progress.get("phase"):
+                            node["substep"] = progress["phase"]
+                    elif result:
+                        node_progress(node, done=result["ok"], total=result["total"])
+                    elif progress and progress.get("phase") is None:
+                        node_progress(node, done=progress.get("done"), total=progress.get("total"))
+                    else:
+                        node_progress(node)
+                item = refresh.get(node["id"])
+                if isinstance(item, dict) and item.get("requested"):
+                    node["refresh"] = {k: item.get(k) for k in ("requested", "refreshed", "percent")}
+            elif node["id"].startswith(NORMALISE_SOURCE):
+                records, errors = node.get("in"), node.get("errors") or 0
+                node_progress(node, done=(records - errors) if records else None, total=records, running=running)
+                stem = node["id"][len(NORMALISE_SOURCE):]
+                sub = (read_json(path / "normalised" / "steps" / stem / "steps.json") or {}).get("steps") or []
+                if sub:
+                    node["substeps"] = [substep_view(e) for e in sub]
+            elif node["id"] == "normalise":
+                sub = (read_json(path / "normalise_stages" / "steps.json") or {}).get("steps") or []
+                if not sub and node["status"] in ("running", "draft"):
+                    folder = "preview.next" if (path / "preview.next").is_dir() else "preview"
+                    sub = (read_json(path / folder / "normalise_stages" / "steps.json") or {}).get("steps") or []
+                self._big(node, sub, running)
+            elif node["id"] in ("maintain", "validate", "db", "index"):
+                self._big(node, info.get("substeps") or [], running)
+            else:
+                node_progress(node, running=running)
+
+    @staticmethod
+    def _big(node: dict, sub: list[dict], running: bool) -> None:
+        """Ô lớn có bước con: đang chạy tô theo số bước con đã xong; xong thì tô theo luật/tỉ lệ của bước con chính."""
+        views = [substep_view(e) for e in sub]
+        if views:
+            node["substeps"] = views
+        finished = [v for v in views if v["status"] != "running"]
+        if running:
+            expected = max(EXPECTED_SUBSTEPS.get(node["id"], len(views) or 1), len(views))
+            node_progress(node, done=len(finished), total=expected if views else None, running=True)
+            return
+        if node["id"] == "validate" and views:
+            checked = [v for v in views if v["status"] != "skipped"]
+            node_progress(node, done=sum(v["status"] == "ok" for v in checked), total=len(checked))
+        elif node["id"] == "db":
+            main = next((v for v in views if v["name"] == "ghép với DB"), None)
+            node_progress(node, done=(main or {}).get("ok"), total=(main or {}).get("total"))
+        elif node["id"] == "index":
+            main = next((v for v in views if (v["name"] or "").startswith("embed")), None)
+            node_progress(node, done=(main or {}).get("ok"), total=(main or {}).get("total") or None)
+        else:
+            node_progress(node)
 
     def sources(self, path: Path) -> list[dict]:
         names = set()
@@ -1018,6 +1167,59 @@ class FreshMonitor:
             if p.is_file() and p.name not in skip and not p.name.startswith("."):
                 out.append({"name": str(p.relative_to(path)), "bytes": p.stat().st_size})
         return out
+
+    # -- dung lượng: theo dõi đĩa VM và dọn lượt cào cũ (người dùng yêu cầu 06/10)
+    def _storage_root(self) -> Path:
+        """Thư mục dữ liệu gắn vào container (`/data` trên VM): cha chung của state và các lượt cào."""
+        return self.run_root.parent if self.run_root.parent == self.state_dir.parent else self.run_root
+
+    def _running_dir(self) -> Path | None:
+        info = read_json(self.state_dir / RUNNING_FILE) or {}
+        if lock_busy(self.state_dir) and info.get("runId"):
+            return self.run_root / str(info["runId"])
+        return None
+
+    def storage(self) -> dict:
+        """Đĩa của VM (filesystem chứa thư mục dữ liệu), từng thư mục con và từng lượt cào còn giữ."""
+        root = self._storage_root()
+        usage = shutil.disk_usage(root if root.exists() else Path("/"))
+        dirs = []
+        if root.is_dir():
+            for entry in sorted(root.iterdir()):
+                if entry.is_symlink():
+                    continue
+                files, size = dir_size(entry) if entry.is_dir() else (1, entry.stat().st_size)
+                dirs.append({"name": entry.name, "bytes": size, "files": files})
+        dirs.sort(key=lambda d: d["bytes"], reverse=True)
+        running = self._running_dir()
+        keep = None
+        described = fresh_settings.describe(self.state_dir)
+        if not described["error"]:
+            keep = next((f["value"] for f in described["fields"] if f["key"] == "runs.keep"), None)
+        runs = []
+        for index, path in enumerate(run_dirs(self.run_root)):
+            files, size = dir_size(path)
+            runs.append({"runId": path.name, "bytes": size, "files": files,
+                         "modifiedAt": datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat(),
+                         "running": running is not None and path.resolve() == running.resolve()})
+        return {"path": str(root), "disk": {"total": usage.total, "used": usage.used, "free": usage.free},
+                "dirs": dirs, "runs": runs, "runsKeep": keep,
+                "note": "Image Docker cũ không xoá được từ monitor (container không có quyền Docker); "
+                        "bước deploy job cào tự xoá image cũ, giữ bản đang chạy và một bản trước."}
+
+    def storage_cleanup(self, keep_runs) -> dict:
+        """Xoá các lượt cào cũ, giữ `keep_runs` lượt mới nhất; lượt đang chạy luôn được giữ."""
+        if isinstance(keep_runs, bool) or not isinstance(keep_runs, int) or not 1 <= keep_runs <= 100:
+            raise ValueError("Số lượt giữ lại phải là số nguyên 1–100")
+        root = self._storage_root()
+        before = shutil.disk_usage(root if root.exists() else Path("/")).free
+        attempted = prune_runs(self.run_root, keep_runs, protect=self._running_dir())
+        # prune_runs bỏ qua lỗi filesystem (thiếu quyền, file đang mở): chỉ báo "đã xoá" khi thư mục thật sự đã mất.
+        removed = [name for name in attempted if not (self.run_root / name).exists()]
+        failed = [name for name in attempted if (self.run_root / name).exists()]
+        self._disk = (0.0, None)
+        after = shutil.disk_usage(root if root.exists() else Path("/")).free
+        return {"removed": removed, "failed": failed, "freedBytes": max(0, after - before), "kept": keep_runs}
 
     # -- log
     def runner_logs(self) -> list[dict]:
@@ -1818,25 +2020,25 @@ class FreshMonitor:
         from src.backend.jobs.embed_products import vector_preview
         settings = self._index_settings()
         with self._weaviate_http(settings) as client:
-            response = client.get(f"/v1/objects/{settings.weaviate_collection}/{WeaviateClient.object_uuid(product_id)}",
+            response = client.get(f"/v1/objects/{settings.vector_collection}/{WeaviateClient.object_uuid(product_id)}",
                                   params={"include": "vector"})
             if response.status_code == 404:
-                raise ValueError(f"Collection {settings.weaviate_collection} không có vector của sản phẩm này")
+                raise ValueError(f"Collection {settings.vector_collection} không có vector của sản phẩm này")
             response.raise_for_status()
             obj = response.json()
-        return {"productId": product_id, "collection": settings.weaviate_collection,
+        return {"productId": product_id, "collection": settings.vector_collection,
                 "properties": obj.get("properties"), "vector": vector_preview(obj.get("vector") or [])}
 
     def _collection_vectors(self, settings, refresh: bool):
         ensure_backend_path()
         from src.backend.app.infrastructure.vectors.weaviate_store import WeaviateClient
         import numpy as np
-        key = (settings.weaviate_url, settings.weaviate_collection)
+        key = (settings.weaviate_url, settings.vector_collection)
         with self._vector_lock:
             cached = self._vectors.get(key)
             if cached and not refresh and time.monotonic() - cached["at"] < VECTOR_CACHE_SECONDS:
                 return cached
-            client = WeaviateClient(settings.weaviate_url, collection=settings.weaviate_collection,
+            client = WeaviateClient(settings.weaviate_url, collection=settings.vector_collection,
                                     vector_index_type=settings.weaviate_vector_index_type,
                                     api_key=settings.weaviate_api_key, timeout_seconds=settings.weaviate_timeout_seconds)
             try:
@@ -1852,10 +2054,11 @@ class FreshMonitor:
             return cached
 
     def embed_query(self, run_id: str, query: str, k: int = 10, refresh: bool = False) -> dict:
-        """Thử truy vấn: Cohere `search_query` → xếp hạng cosine trên mọi vector của collection đích (đọc qua REST)."""
+        """Thử truy vấn: e5-small (tiền tố `query: `) → xếp hạng cosine trên mọi vector của collection đích (đọc qua REST).
+        Model nạp một lần ở lần bấm đầu (vài giây), giữ cho các lần sau."""
         ensure_backend_path()
         import numpy as np
-        from src.backend.app.infrastructure.embeddings.cohere_embedder import CohereEmbedder
+        from src.backend.app.infrastructure.embeddings.factory import build_embedder
         from src.backend.jobs.embed_products import vector_preview
         query = (query or "").strip()
         if not query or len(query) > EMBED_QUERY_MAX:
@@ -1863,16 +2066,13 @@ class FreshMonitor:
         k = max(1, min(int(k), 50))
         settings = self._index_settings()
         started = time.monotonic()
-        embedder = CohereEmbedder(settings.cohere_api_key, settings.embed_model, base_url=settings.cohere_base_url,
-                                  dimension=settings.embed_dimension, timeout_seconds=settings.cohere_timeout_seconds)
-        try:
-            vector = np.asarray(embedder.embed_query(query), dtype=np.float32).reshape(-1)
-        finally:
-            embedder.close()
-        cohere_ms = round((time.monotonic() - started) * 1000)
+        if getattr(self, "_query_embedder", None) is None:
+            self._query_embedder = build_embedder(settings)
+        vector = np.asarray(self._query_embedder.embed_query(query), dtype=np.float32).reshape(-1)
+        embed_ms = round((time.monotonic() - started) * 1000)
         data = self._collection_vectors(settings, refresh)
         if not data["ids"]:
-            raise ValueError(f"Collection {settings.weaviate_collection} chưa có vector nào")
+            raise ValueError(f"Collection {settings.vector_collection} chưa có vector nào")
         scores = data["matrix"] @ vector / np.maximum(data["norms"] * float(np.linalg.norm(vector)), 1e-12)
         order = np.argsort(-scores)[:k]
         names: dict[str, dict] = {}
@@ -1892,8 +2092,8 @@ class FreshMonitor:
             hits.append({"rank": rank, "productId": pid, "cosine": round(float(scores[i]), 5),
                          "name": info.get("name"), "taxonomy": info.get("taxonomy"), "destination": info.get("destination"),
                          "text": (info.get("text") or info.get("description") or "")[:300], "inRun": pid in names})
-        return {"query": query, "k": k, "collection": settings.weaviate_collection, "vectors": len(data["ids"]),
-                "models": dict(data["models"]), "cohereMs": cohere_ms, "queryVector": vector_preview(vector),
+        return {"query": query, "k": k, "collection": settings.vector_collection, "vectors": len(data["ids"]),
+                "models": dict(data["models"]), "embedMs": embed_ms, "queryVector": vector_preview(vector),
                 "hits": hits}
 
 
@@ -2033,6 +2233,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._stream_log(q.get("run", ""), num("lines", 300))
             routes = {
                 "/api/overview": lambda: m.overview(),
+                "/api/storage": lambda: m.storage(),
                 "/api/runs": lambda: m.runs(limit=num("limit", 60)),
                 "/api/run": lambda: m.run(q.get("id", "")),
                 "/api/graph": lambda: m.graph(q.get("run", "")),
@@ -2083,7 +2284,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(routes[url.path]())
         except (ValueError, KeyError, fresh_settings.SettingsError) as e:
             return self._json({"error": str(e)}, 400)
-        except Exception as e:  # lỗi gọi Weaviate/Cohere…: báo gọn thay vì đóng kết nối
+        except Exception as e:  # lỗi gọi Weaviate/model…: báo gọn thay vì đóng kết nối
             return self._json({"error": f"{type(e).__name__}: {str(e)[:300]}"}, 502)
         return self._json({"error": "không tìm thấy"}, 404)
 
@@ -2159,12 +2360,14 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/live":
                 code, out = self.monitor.set_live(str(body.get("key") or ""), body.get("changes") or {})
                 return self._json(out, code)
+            if path == "/api/storage/cleanup":
+                return self._json(self.monitor.storage_cleanup(body.get("keepRuns")))
             if path == "/api/embed/query":
                 return self._json(self.monitor.embed_query(str(body.get("run") or ""), str(body.get("q") or ""),
                                                            int(body.get("k") or 10), bool(body.get("refresh"))))
         except (ValueError, UnicodeDecodeError, fresh_settings.SettingsError) as e:
             return self._json({"error": str(e)}, 400)
-        except Exception as e:  # lỗi gọi Cohere/Weaviate: báo gọn
+        except Exception as e:  # lỗi model/Weaviate: báo gọn
             return self._json({"error": f"{type(e).__name__}: {str(e)[:300]}"}, 502)
         return self._json({"error": "không tìm thấy"}, 404)
 

@@ -59,6 +59,8 @@ def test_read_query_file_skips_comments_and_blank_lines(tmp_path):
 
 def test_frozen_prewarm_list_is_well_formed():
     lines = FROZEN.read_text(encoding="utf-8").splitlines()
-    assert re.match(r"^# gold_v1 [0-9a-f]{64} \d{4}-\d{2}-\d{2} ", lines[0])
+    m = re.match(r"^# gold_v\d+ [0-9a-f]{64} \d{4}-\d{2}-\d{2} — (\d+) câu ", lines[0])   # sinh lại mỗi khi gold đổi tag
+    assert m, lines[0]
+    n = int(m.group(1))
     queries = read_query_file(FROZEN)
-    assert len(queries) == 131 and len(set(queries)) == 131 and all(q == " ".join(q.split()) for q in queries)
+    assert len(queries) == n and len(set(queries)) == n and all(q == " ".join(q.split()) for q in queries)

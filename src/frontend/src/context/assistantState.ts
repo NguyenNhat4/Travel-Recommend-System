@@ -64,6 +64,8 @@ type Action =
   | { type: 'topology-received'; topology: Record<string, unknown> }
   | { type: 'node-completed'; progress: AssistantProgress }
   | { type: 'response-received'; response: AssistantResponse }
+  /** Bấm thẻ khách sạn (AC-AGT-04): lịch của câu trả lời gần nhất đổi theo server, không thêm tin nhắn, chữ giữ nguyên. */
+  | { type: 'stay-option-applied'; response: AssistantResponse }
   | { type: 'request-failed'; error: AssistantError }
   | { type: 'request-refused'; text: string }
   | { type: 'conversation-restarted' }
@@ -141,7 +143,7 @@ export function assistantReducer(state: AssistantState, action: Action): Assista
     case 'topology-received':
       return { ...state, phase: 'streaming', topology: action.topology };
     case 'node-completed':
-      return { ...state, phase: 'streaming', progress: [...state.progress, action.progress] };
+      return { ...state, phase: 'streaming', progress: [...state.progress, action.progress], isSlow: false };
     case 'response-received':
       return {
         ...state,
@@ -158,6 +160,15 @@ export function assistantReducer(state: AssistantState, action: Action): Assista
         error: null,
         isSlow: false,
       };
+    case 'stay-option-applied': {
+      const last = [...state.transcript].reverse().find((item) => item.sender === 'assistant' && item.response);
+      if (!last) return state;
+      return {
+        ...state,
+        response: action.response,
+        transcript: state.transcript.map((item) => (item === last ? { ...item, response: action.response } : item)),
+      };
+    }
     case 'request-failed': {
       const details = action.error.details as { conversationId?: unknown } | undefined;
       const conversationId = action.error.code === 'CONVERSATION_NOT_FOUND'

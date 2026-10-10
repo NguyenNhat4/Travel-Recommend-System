@@ -12,18 +12,18 @@ export function PromoBanner({ promo, destination }: { promo: VerticalConfig['pro
 
   return (
     <section aria-label={promo.title} className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <div className="relative flex min-h-64 items-center justify-between gap-6 overflow-hidden rounded-3xl bg-gradient-to-r from-blue-900 via-blue-800 to-indigo-800 p-8 text-white sm:p-10">
+      <div className="relative flex min-h-64 items-center justify-between gap-6 overflow-hidden rounded-3xl bg-gradient-to-r from-brand-900 via-brand-800 to-brand-800 p-8 text-white sm:p-10">
         <div className="relative z-10 max-w-xl space-y-3">
           <p className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-bold uppercase tracking-wider">
             <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
             Trợ lý AI
           </p>
           <h2 className="type-title">{promo.title}</h2>
-          <p className="text-sm leading-relaxed text-blue-100">{promo.body}</p>
+          <p className="text-sm leading-relaxed text-brand-100">{promo.body}</p>
           <button
             type="button"
             onClick={() => openFloatingWidget(message)}
-            className="inline-flex h-11 items-center rounded-full bg-white px-5 text-sm font-bold text-blue-900 transition hover:bg-blue-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+            className="inline-flex h-11 items-center rounded-full bg-white px-5 text-sm font-bold text-brand-900 transition hover:bg-brand-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
           >
             {promo.cta}
           </button>

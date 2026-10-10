@@ -2,7 +2,7 @@ import React from 'react';
 
 /** Màu ô hãng: chọn theo tên hãng nên một hãng luôn cùng màu; không dùng logo hay màu thương hiệu của hãng. */
 const TINTS = [
-  'bg-blue-700 text-blue-50',
+  'bg-brand-700 text-brand-50',
   'bg-rose-700 text-rose-50',
   'bg-emerald-700 text-emerald-50',
   'bg-amber-600 text-amber-50',

@@ -16,7 +16,37 @@ LOCAL_SEED_DATABASE_URL = postgresql://postgres:postgres@localhost:$(POSTGRES_HO
 MIGRATE_PYTHON = $(shell test -x src/backend/.venv/bin/python && echo src/backend/.venv/bin/python || echo $(PYTHON))
 LOCAL_INSIDER_DATABASE_URL = postgresql://postgres:postgres@localhost:$(POSTGRES_HOST_PORT)/insider
 
-.PHONY: chat web demo-db demo-db-reset verify-db index-vectors db-migrate db-migrate-status update backend backend-logs backend-stop backend-local jwt-keys
+.PHONY: tunnel tunnel-down tunnel-status chat agent-eval web demo-db demo-db-reset verify-db index-vectors db-migrate db-migrate-status update backend backend-logs backend-stop backend-local jwt-keys
+
+# SSH tunnel tới DB staging: primary (ghi) :15432, replica (đọc) :15433. Mật khẩu đọc từ .env.tunnel (gitignore),
+# nạp qua SSH_ASKPASS nên không cần sshpass. Chạy nền; dừng bằng `make tunnel-down`.
+TUNNEL_PRIMARY = 127.0.0.1:15432:10.148.0.2:5432 vota-dev@35.197.148.180
+TUNNEL_REPLICA = 127.0.0.1:15433:10.148.0.4:5432 vota-dev@34.126.70.1
+tunnel:
+	if [[ ! -f .env.tunnel ]]; then echo "Thiếu .env.tunnel (SSH_PRIMARY_PASSWORD, SSH_REPLICA_PASSWORD)"; exit 1; fi
+	ASKPASS="$$(mktemp)"; trap 'rm -f "$$ASKPASS"' EXIT
+	printf '#!/bin/sh\nprintf %%s "$$TUNNEL_PW"\n' > "$$ASKPASS"; chmod 700 "$$ASKPASS"
+	open_tunnel() { # $$1=tên $$2=cổng local $$3=biến mật khẩu $$4=spec "-L ... user@host"
+		if (exec 3<>/dev/tcp/127.0.0.1/$$2) 2>/dev/null; then echo "$$1: cổng $$2 đã mở, bỏ qua"; return; fi
+		PW="$$(sed -n "s/^$$3=//p" .env.tunnel | tail -n 1)"
+		if [[ -z "$$PW" ]]; then echo "$$1: thiếu $$3 trong .env.tunnel"; exit 1; fi
+		TUNNEL_PW="$$PW" SSH_ASKPASS="$$ASKPASS" SSH_ASKPASS_REQUIRE=force setsid ssh -C -f -N \
+			-o PreferredAuthentications=password -o PubkeyAuthentication=no \
+			-o ExitOnForwardFailure=yes -o StrictHostKeyChecking=accept-new \
+			-o ServerAliveInterval=30 -L $$4
+		echo "$$1: tunnel mở trên :$$2"
+	}
+	open_tunnel primary 15432 SSH_PRIMARY_PASSWORD "$(TUNNEL_PRIMARY)"
+	open_tunnel replica 15433 SSH_REPLICA_PASSWORD "$(TUNNEL_REPLICA)"
+
+tunnel-down:
+	pkill -f "ssh -f -N .*-L 127.0.0.1:1543[23]:" && echo "Đã tắt tunnel" || echo "Không có tunnel đang chạy"
+
+tunnel-status:
+	for p in 15432 15433; do
+		if (exec 3<>/dev/tcp/127.0.0.1/$$p) 2>/dev/null; then echo ":$$p mở"; else echo ":$$p đóng"; fi
+	done
+.PHONY: recsys-test recsys-gate-run recsys-regress recsys-baseline
 
 # Chạy trọn bộ FastAPI + Streamlit; Ctrl+C sẽ dừng cả hai.
 # Agent mặc định gọi engine trong tiến trình (inprocess); ITINERARY_DATA_MODE=http để gọi qua ITINERARY_SERVICE_BASE_URL.
@@ -75,6 +105,59 @@ chat:
 	"$${PYTHON_BIN}" -m streamlit run src/evaluation/agent/streamlit_app.py \
 		--server.port "$${STREAMLIT_PORT}" \
 		> >(tee -a "$${LOG_FILE}") 2>&1
+
+# Giao diện chạy bộ test case của Itinerary Agent (src/evaluation/agent/eval_app.py, docs/spec/agent/golden-run.md).
+# Backend đã chạy ở BACKEND_PORT thì dùng lại; chưa thì bật như target chat và tắt cùng lúc Ctrl+C.
+agent-eval:
+	@PROJECT_DIR="$$(pwd)"
+	PYTHON_BIN="$${PROJECT_DIR}/.venv/bin/python"
+	BACKEND_PORT="$${BACKEND_PORT:-8000}"
+	EVAL_PORT="$${EVAL_PORT:-8503}"
+	LOG_FILE="$${AGENT_EVAL_LOG_FILE:-$${PROJECT_DIR}/.logs/agent-eval.log}"
+	STATUS_URL="http://127.0.0.1:$${BACKEND_PORT}/api/v1/assistant/status"
+	if [[ ! -x "$${PYTHON_BIN}" ]]; then
+		echo "Không tìm thấy .venv. Hãy chạy:"
+		echo "  python3 -m venv .venv"
+		echo "  .venv/bin/pip install -r src/backend/requirements.txt -r src/evaluation/requirements.txt"
+		exit 1
+	fi
+	cleanup() {
+		if [[ -n "$${BACKEND_PID:-}" ]]; then
+			kill "$${BACKEND_PID}" 2>/dev/null || true
+			wait "$${BACKEND_PID}" 2>/dev/null || true
+		fi
+	}
+	trap cleanup EXIT INT TERM
+	mkdir -p "$$(dirname "$${LOG_FILE}")"
+	touch "$${LOG_FILE}"
+	if curl --silent --fail --max-time 2 "$${STATUS_URL}" >/dev/null; then
+		echo "Dùng backend đang chạy tại :$${BACKEND_PORT}"
+	else
+		export ITINERARY_DATA_MODE="$${ITINERARY_DATA_MODE:-inprocess}"
+		export ITINERARY_SERVICE_BASE_URL="$${ITINERARY_SERVICE_BASE_URL:-http://127.0.0.1:$${BACKEND_PORT}}"
+		export ITINERARY_LLM_TIMEOUT_SECONDS="$${ITINERARY_LLM_TIMEOUT_SECONDS:-30}"
+		export ITINERARY_REQUEST_TIMEOUT_SECONDS="$${ITINERARY_REQUEST_TIMEOUT_SECONDS:-90}"
+		echo "Khởi động FastAPI tại http://127.0.0.1:$${BACKEND_PORT} (log: $${LOG_FILE})"
+		"$${PYTHON_BIN}" -m uvicorn src.backend.app.main:app \
+			--host 127.0.0.1 --port "$${BACKEND_PORT}" \
+			> >(tee -a "$${LOG_FILE}") 2>&1 &
+		BACKEND_PID=$$!
+		echo "Đang chờ backend báo ready (nạp recsys mất 1–2 phút)..."
+		for _ in $$(seq 1 300); do
+			if ! kill -0 "$${BACKEND_PID}" 2>/dev/null; then
+				echo "FastAPI đã dừng khi khởi động. Xem log tại $${LOG_FILE}."
+				exit 1
+			fi
+			if curl --silent --max-time 1 "$${STATUS_URL}" 2>/dev/null | grep -q '"status":"ready"'; then
+				break
+			fi
+			sleep 1
+		done
+	fi
+	export EVAL_API_BASE_URL="http://127.0.0.1:$${BACKEND_PORT}"
+	echo "Mở giao diện tại http://127.0.0.1:$${EVAL_PORT}"
+	"$${PYTHON_BIN}" -m streamlit run src/evaluation/agent/eval_app.py \
+		--server.port "$${EVAL_PORT}" --server.headless true
 
 # Chạy web chính (Next :3000 + BFF :3001) cùng FastAPI :8000; Ctrl+C dừng cả hai.
 # Lưu ý: chat trong web hiện gọi /api/assistant/chat của BFF (Gemini), CHƯA gọi
@@ -181,7 +264,7 @@ update:
 	npm --prefix src/frontend install
 	echo "Đã cập nhật dependency."
 
-# Job tốn quota Cohere nên không tự chạy trong demo-db. Cần COHERE_API_KEY trong .env.
+# Embed toàn catalog bằng e5-small trên CPU (vài phút) nên không tự chạy trong demo-db.
 index-vectors:
 	docker compose up -d --wait postgres weaviate
 	$(PYTHON) -m src.backend.jobs.embed_products
@@ -219,3 +302,48 @@ jwt-keys:
 	openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out secrets/jwt-private.pem
 	openssl rsa -pubout -in secrets/jwt-private.pem -out secrets/jwt-public.pem
 	chmod 600 secrets/jwt-private.pem
+
+# --- RecSys offline bench: regression tự động so với baseline_v1 (docs/spec/bench/recsys-offline-eval.md §1, §3.1) ---
+# Cần Postgres local đã seed và biến môi trường của harness: DATABASE_URL, EVAL_DATABASE_URL (.env.example) và WEAVIATE_URL
+# (khoá cache vector numpy). `.env` gốc có thể trỏ VM / cloud, nên đặt RECSYS_ENV=<file export …> để nạp môi trường local
+# trước khi chạy; Makefile không ghi DSN. Ví dụ:
+#   make recsys-test
+#   make recsys-regress RECSYS_SPLIT=llbo RECSYS_ENV=~/.vota-local.env      # mã 0 PASS/WARN · 1 FAIL · 2 không so được · 3 INCONCLUSIVE
+#   make recsys-baseline RECSYS_SPLIT=temporal NOTE="lý do; history/<entry>.md" [FORCE=1]
+RECSYS_PYTHON ?= $(shell if [ -x .venv/bin/python ]; then echo .venv/bin/python; elif [ -x .venv/Scripts/python.exe ]; then echo .venv/Scripts/python.exe; else echo $(PYTHON); fi)
+RECSYS_ASOF ?= 20260924
+RECSYS_SPLIT ?= llbo
+RECSYS_VECTORS ?= numpy
+RECSYS_BASELINE ?= auto
+RECSYS_ENV ?=
+# gán một lần (:=) để recsys-gate-run và regress dùng cùng run id
+ifeq ($(origin RECSYS_RUN), undefined)
+RECSYS_RUN := $(shell date +%Y%m%d-%H%M%S)-$(RECSYS_SPLIT)-regress
+endif
+RECSYS = PYTHONUTF8=1 $(RECSYS_PYTHON) -m src.evaluation.recsys_bench
+# nạp env và chạy lệnh trên cùng một dòng logic: make cũ (không .ONESHELL) chạy mỗi dòng recipe trong một shell riêng
+RECSYS_LOAD_ENV = if [ -n "$(RECSYS_ENV)" ]; then set -a; . "$(RECSYS_ENV)"; set +a; fi;
+ifneq ($(filter recsys-baseline,$(MAKECMDGOALS)),)
+ifeq ($(strip $(NOTE)),)
+$(error recsys-baseline cần NOTE="…" (vì sao ghi baseline; trỏ entry history))
+endif
+endif
+
+recsys-test:
+	PYTHONUTF8=1 $(RECSYS_PYTHON) -m pytest -q src/evaluation/recsys_bench/tests
+
+# Run gate (pool engine, numpy): engine / engine_nommr / mpd + content_profile, star_blend_a1 — đúng bộ arm của baseline_v1.
+recsys-gate-run:
+	$(RECSYS_LOAD_ENV) $(RECSYS) run --arm engine --arm engine_nommr --arm most_popular_in_destination \
+		--algos src/evaluation/recsys_bench/algos_v1.yaml --only content_profile --only star_blend_a1 --funnel-pool engine --mode funnel \
+		--split $(RECSYS_SPLIT) --vectors $(RECSYS_VECTORS) \
+		--split-file src/evaluation/recsys_bench/frozen/split-$(RECSYS_SPLIT)-asof$(RECSYS_ASOF).json --run-id $(RECSYS_RUN)
+
+# regress chỉ đọc bench_out/ và frozen/: không cần DB
+recsys-regress: recsys-gate-run
+	$(RECSYS) regress --run-id $(RECSYS_RUN) --baseline $(RECSYS_BASELINE)
+
+# Ghi lại baseline chỉ khi engine đổi đã chốt / modelVersion đổi / split mới (chính sách: spec §3.1); kèm entry history + report.
+recsys-baseline: recsys-gate-run
+	$(RECSYS_LOAD_ENV) $(RECSYS) analyze --run-id $(RECSYS_RUN)
+	$(RECSYS) baseline --run-id $(RECSYS_RUN) --note "$(NOTE)" $(if $(FORCE),--force,)

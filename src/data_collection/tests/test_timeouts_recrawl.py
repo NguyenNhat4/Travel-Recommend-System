@@ -155,7 +155,7 @@ class CrawlSitesTimeoutTests(unittest.TestCase):
     def crawl(self, groups, codes, deadline=None, delays=None):
         recorder = Recorder()
 
-        def fake(run_dir, source, destinations, group, deadline=None):
+        def fake(run_dir, source, destinations, group, deadline=None, on_start=None):
             self.calls.append(source)
             self.deadlines[source] = deadline
             time.sleep((delays or {}).get(source, 0))
@@ -177,9 +177,9 @@ class CrawlSitesTimeoutTests(unittest.TestCase):
     def test_each_step_gets_its_own_deadline_capped_by_the_crawl_deadline(self):
         crawl_deadline = time.monotonic() + 30
         self.crawl([('booking', ('booking-hotels',))], {}, deadline=crawl_deadline)
-        self.assertLessEqual(self.deadlines['booking-hotels'], crawl_deadline)  # timeout.booking 60 phút > 30 s
+        self.assertLessEqual(self.deadlines['booking-hotels'], crawl_deadline)  # timeout.booking 480 phút > 30 s
         self.crawl([('agoda', ('agoda-hotels',))], {})
-        self.assertAlmostEqual(self.deadlines['agoda-hotels'] - time.monotonic(), 3600, delta=5)
+        self.assertAlmostEqual(self.deadlines['agoda-hotels'] - time.monotonic(), 180 * 60, delta=5)  # timeout.agoda
 
     def test_expired_crawl_deadline_skips_steps_not_started(self):
         statuses, recorder, log = self.crawl([('trip', ('trip-flights', 'trip-attractions')), ('agoda', ('agoda-hotels',))],
@@ -222,7 +222,7 @@ class JobTimeoutTests(unittest.TestCase):
         (root / 'state').mkdir()
         (root / 'state' / 'settings.json').write_text(json.dumps({'values': {'normalise.preview': False, **(settings or {})}}),
                                                       encoding='utf-8')
-        env = {'CATALOG_STATE_DIR': f'{tmp.name}/state', 'CATALOG_RUN_ROOT': f'{tmp.name}/runs', 'DB_TARGET': 'local',
+        env = {'CATALOG_STATE_DIR': f'{tmp.name}/state', 'CATALOG_RUN_ROOT': f'{tmp.name}/runs', 'CATALOG_DB_RUN_LOCK': 'off', 'DB_TARGET': 'local',
                'SEED_DATABASE_URL': 'postgresql://seed', 'CATALOG_DESTINATIONS': 'Nha Trang', 'CRAWL_PARALLEL': '4'}
         calls = []
         fake = lambda name, value=None: (lambda *a, **k: calls.append(name) or value)
@@ -233,7 +233,7 @@ class JobTimeoutTests(unittest.TestCase):
         with patch.dict(os.environ, env, clear=True), \
                 patch.object(fresh_catalog, 'index_settings', lambda *a: 'S'), \
                 patch.object(fresh_catalog, 'check_local_only', lambda *a: None), \
-                patch.object(fresh_catalog, 'maintain_catalog', lambda *a: {}), \
+                patch.object(fresh_catalog, 'maintain_catalog', lambda *a, **k: {}), \
                 patch.object(fresh_catalog, 'discover', AsyncMock(return_value=([target], []))), \
                 patch.object(fresh_catalog, 'crawl', crawl), \
                 patch.object(fresh_catalog, 'run_source', lambda run_dir, source, *a, **k: codes.get(source, 0)), \
@@ -395,3 +395,23 @@ class MonitorRecrawlTests(unittest.TestCase):
         for bad in (('crawl', None), ('crawl', 'nope'), ('db', 'booking')):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 self.monitor.resume(self.RUN, *bad)
+
+
+class TripPriceOutcomeTests(unittest.TestCase):
+    def test_step_status_uses_coverage_not_just_function_completion(self):
+        from fresh_run_log import RunRecorder
+        values = {f.key: f.default for f in fresh_catalog.fresh_settings.FIELDS}
+        for records, missing, expected in (([], ['1@date'], 'error'),
+                                            ([{'hotelId': '1'}], ['2@date'], 'partial'),
+                                            ([{'hotelId': '1'}, {'hotelId': '2'}], [], 'ok')):
+            with self.subTest(expected=expected), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                rec = RunRecorder(root, root, run_id='test', mode='full', trigger='test', settings={})
+                with patch.object(fresh_catalog, 'REC', rec), patch.object(
+                        fresh_catalog, 'crawl', AsyncMock(return_value=(records, {'unpricedHotelDates': missing}))):
+                    if expected == 'error':
+                        with self.assertRaisesRegex(RuntimeError, 'đủ dữ liệu giá'):
+                            fresh_catalog.crawl_trip_prices(root, [{}, {}], values, None)
+                    else:
+                        fresh_catalog.crawl_trip_prices(root, [{}, {}], values, None)
+                self.assertEqual(rec.data['steps'][-1]['status'], expected)
