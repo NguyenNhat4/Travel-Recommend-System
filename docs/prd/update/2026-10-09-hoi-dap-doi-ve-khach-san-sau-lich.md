@@ -2,8 +2,12 @@
 
 - Ngày: 2026-10-09
 - Người đề xuất: Nguyễn Minh Nhật / Claude Code
-- Trạng thái: chờ chốt
-- Chốt bởi / ngày:
+- Trạng thái: chờ chốt (riêng câu **hỏi giá vé** sau khi có lịch: đã chốt và áp dụng, xem dưới)
+- Chốt bởi / ngày: phần hỏi giá vé — agent chốt theo uỷ quyền của Nguyễn Minh Nhật ("cho bạn quyền tự chốt"), 2026-10-10;
+  phần còn lại chưa chốt
+- Đã áp dụng một phần (`history/2026-10-10-cau-hoi-ve-hoi-lai-va-nho-ngu-canh.md`): câu hỏi giá vé sau khi có lịch đi nhánh
+  giá vé bằng luật (tra lại chuyến theo tuyến của chuyến, không dùng dữ liệu đã lưu), trả `NEEDS_CLARIFICATION`, lịch giữ
+  nguyên; không có node `follow_up`, không lưu thêm dữ liệu đã tra. Câu đổi vé, khách sạn vẫn theo luồng hiện có.
 - PRD bị ảnh hưởng: `docs/prd/requirements.md` §1.4 (FR-AGT-05), §3 (AC-AGT-02, thêm AC-AGT-05); `docs/prd/architecture.md` §3
 - Mã FR/NFR: FR-AGT-01, FR-AGT-05, FR-AGT-04, NFR-PERF-02; AC mới AC-AGT-05
 

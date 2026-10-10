@@ -25,8 +25,9 @@ class AskedTests(unittest.TestCase):
         self.assertFalse(fares.asked({**pending, 'query': 'thôi'}))
         self.assertFalse(fares.asked({'query': 'Sài Gòn'}))
 
-    def test_an_existing_itinerary_keeps_fare_talk_out_of_this_branch(self):
-        self.assertIsNone(fares.detected({'query': 'vé máy bay bao nhiêu?', 'previous_plan': {'days': []}}))
+    def test_a_fare_question_after_an_itinerary_is_still_answered_here_not_replanned(self):
+        # Chat thử 10/10: "giá máy bay đó rẻ nhất chưa" sau khi có lịch từng lập lại cả lịch (25 giây).
+        self.assertIsNotNone(fares.detected({'query': 'vé máy bay bao nhiêu?', 'previous_plan': {'days': []}}))
 
 
 class FareFlowTests(unittest.IsolatedAsyncioTestCase):
@@ -53,7 +54,7 @@ class FareFlowTests(unittest.IsolatedAsyncioTestCase):
         day = f'{START[8:10]}/{START[5:7]}'
         self.assertIn(f'Vé một chiều Hà Nội → Nha Trang rẻ nhất mình thấy là 1.000.000 ₫/khách, bay ngày {day}', answer)
         self.assertIn('VietJet Air VJ1 cất cánh 08:00', answer)
-        self.assertIsNone(second['pending_fare'])
+        self.assertEqual(second['pending_fare'], {'origin': 'Hà Nội', 'destination': 'Nha Trang', 'answered': True})
         self.assertEqual(second['intent']['origin'], 'Hà Nội')
         self.assertTrue(any('Nha Trang' in chip for chip in second['response']['suggestions']))
 
