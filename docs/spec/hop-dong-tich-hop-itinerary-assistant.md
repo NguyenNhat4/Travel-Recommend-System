@@ -542,6 +542,29 @@ câu**, các dòng sau là phần chi tiết. Không có field mới: tiêu đ�
 thông tin, cho ví dụ cách trả lời khi cần, không nêu tên sản phẩm. `ConversationalAnswer.message` tối đa 1.000 ký tự. Câu của
 `compose` (COMPLETED/NO_RESULTS/FALLBACK) không đổi; lời diễn giải của `COMPLETED` do `narrate` viết (xem §4.2), giọng ấm áp như một người lập kế hoạch du lịch, mỗi lựa chọn có lý do cụ thể.
 
+**Lượt trò chuyện và khám phá (contract 1.24.0, FR-AGT-06, chốt 2026-10-10).** Trước khi người dùng đồng ý lập lịch, trợ lý
+không hỏi thông tin chuyến và không gửi `clarificationForm`:
+
+- Câu hỏi về một nơi ("Hà Nội có gì?", "khách sạn nào có hồ bơi?") trả `NEEDS_CLARIFICATION` có `searchResults`: tối đa 4 sản
+  phẩm thật từ Search của lượt đó (hỏi chung thì 2 điểm tham quan và 2 khách sạn, hỏi riêng chỗ ở thì 4 khách sạn), mỗi thẻ
+  một lý do đúng trên toàn bộ kết quả (nhiều đánh giá nhất, điểm cao nhất, giá thấp nhất, tham quan tự do). `question` nhắc từng
+  sản phẩm bằng `[Tên](product:<productId>)`; client đặt thẻ ngay sau dòng đầu tiên nhắc nó. Số trong câu do backend điền.
+  Lần đầu khám phá một điểm đến, câu cuối hỏi "Bạn có muốn mình lên lịch … không?".
+- Lượt trò chuyện, khám phá và việc ngoài phạm vi có `suggestions` (tối đa 3 nút, khác mẫu câu, không lặp lượt trước, luôn có
+  một nút đi tiếp). Việc ngoài phạm vi (đặt vé hộ, huỷ đơn, chuyện ngoài du lịch) là câu trả lời 200, không còn là lỗi 400; chỉ
+  đầu vào bị guardrail chặn (chèn lệnh, đòi secret, chỉ có tục tĩu) mới trả `VALIDATION_ERROR` 400.
+- Đồng ý lập lịch: câu xin lập lịch, nút lập lịch, sửa form/chip, "ok" sau lời mời, hoặc câu có thông tin chuyến ngoài điểm
+  đến ("Hà Nội 3 ngày"). Sau đó đi luồng hỏi gộp và form như trên. Đổi sang nơi khác ngay sau lời mời ("Thôi, Hà Nội thì
+  sao?") không phải đồng ý: trợ lý khám phá nơi mới.
+- Form có ô `interests` (sở thích khách sạn, chọn nhiều, không bắt buộc) với lựa chọn trong `clarificationForm.interestOptions`;
+  Web ghép lựa chọn vào câu xác nhận "ưu tiên khách sạn có …". Sở thích là ưu tiên khi tìm khách sạn, không loại khách sạn
+  thiếu dữ liệu tiện ích.
+- Nơi người dùng chê ("chán, Đà Nẵng đi rồi") không được gợi ý lại trong hội thoại, kể cả trong `suggestions`.
+- Sau khi có lịch, "đổi khách sạn" chưa nói hướng thì trả `NEEDS_CLARIFICATION` liệt kê các phương án khách sạn đã tính, kèm
+  `suggestions` "Lấy phương án N: …" (gửi lại câu này là đổi ngay như `selectStayOption`). "Đổi chuyến bay" thì liệt kê chuyến
+  khác cùng ngày của từng chặng, mỗi chuyến một nút ("Về chuyến VJ167 lúc 21:45"); gửi nút đó, hoặc "chuyến về muộn hơn/sớm
+  hơn/rẻ hơn", thì trả `COMPLETED` với chuyến đã chọn. Không còn chuyến nào khác trong ngày thì gợi ý đổi ngày.
+
 ### 4.4. Response không có kết quả
 
 ```json
@@ -665,6 +688,9 @@ Lỗi thực sự không nằm trong `ItineraryResponse` và không dùng `statu
 - Mỗi conversation lưu trip intent đã chuẩn hóa gần nhất và lịch sử chat user/assistant gần đây.
 - Lịch sử chat chỉ nhận role `user`/`assistant`, tối đa 20 message, 1.000 ký tự/message và 8.000 ký tự tổng; khi vượt giới hạn thì bỏ message cũ nhất trước.
 - **Mọi** lượt gọi LLM (`classify`, `extract`, chọn tên điểm đến và lập tool plan ở `tool`, `converse`, `clarify`) nhận cùng ngữ cảnh hội thoại: lịch sử chat trong giới hạn trên, chuyến đi đã chốt (intent, ràng buộc), sản phẩm đã cho xem và câu hỏi gần nhất của trợ lý. Nhờ phần tóm tắt, thông tin của lượt cũ vẫn còn khi message cũ bị cắt. Ngữ cảnh là dữ liệu không tin cậy, không phải instruction, và message mới nhất vẫn có quyền cao hơn. Ngữ cảnh được diễn giải sẵn: chuyến đi đã chốt là một dòng tóm tắt, tin trợ lý cũ là ghi chú ngắn theo nghĩa ("gửi lịch trình Hà Nội 3 ngày: …") thay vì cả bài kèm giá; câu hỏi gần nhất giữ nguyên văn khi ngắn (`docs/spec/agent/langgraph-nodes.md`, mục "Ngữ cảnh cho LLM").
+- Hội thoại lưu thêm giai đoạn trò chuyện/khám phá (FR-AGT-06): đã đồng ý lập lịch chưa, lời mời đang chờ, điểm đến đã mời,
+  số lần "không biết" liên tiếp và nút gợi ý lượt trước (`docs/spec/agent/state-fields.md`). Hội thoại lưu trước 2026-10-10
+  đã hỏi gộp hoặc đã có lịch thì coi như đã đồng ý.
 - Tin nhắn mới chỉ cập nhật các trường người dùng thay đổi rõ ràng.
 - “Đổi thành Đà Nẵng” chỉ thay `destination`.
 - “Tăng ngân sách lên 20 triệu” chỉ thay `budget`.

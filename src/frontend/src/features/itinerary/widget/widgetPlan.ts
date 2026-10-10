@@ -24,11 +24,15 @@ function adaptProductSummaryToProduct(summary: components['schemas']['ProductSum
 }
 
 /**
- * productId → sản phẩm của response `COMPLETED`/`FALLBACK` (chỗ ở, các slot, `searchResults`): nguồn duy nhất
- * của thẻ trong lời diễn giải (PRD user-flow.md §4.2). Id không có ở đây thì không dựng thẻ.
+ * productId → sản phẩm của response `COMPLETED`/`FALLBACK` (chỗ ở, các slot, `searchResults`), hoặc của lượt khám phá
+ * `NEEDS_CLARIFICATION` có `searchResults` (contract 1.24.0, FR-AGT-06): nguồn duy nhất của thẻ trong lời diễn giải
+ * (PRD user-flow.md §4.2). Id không có ở đây thì không dựng thẻ.
  */
 export function narrationProducts(
-  response: components['schemas']['ItineraryCompleted'] | components['schemas']['ItineraryFallback'],
+  response:
+    | components['schemas']['ItineraryCompleted']
+    | components['schemas']['ItineraryFallback']
+    | components['schemas']['ItineraryNeedsClarification'],
 ): Record<string, Product> {
   const itinerary = 'itinerary' in response ? response.itinerary : null;
   const summaries = [
