@@ -534,7 +534,11 @@ def render_proposal(proposal: Proposal, candidates: Candidates,
         if parent in parent_keys or product_id in parent_keys:
             raise ValueError("duplicate parent selection")
         duration = product.get("attributes", {}).get("durationMinutes")
-        if day_number in occupied_full_days or (isinstance(duration, (int, float)) and duration >= 360 and days[day_number - 1]["slots"]):
+        # Hoạt động cả ngày không chung ngày với hoạt động khác. Dòng di chuyển (đến nơi, ra sân bay, đổi khách sạn) không
+        # phải hoạt động: chuyến bay đêm hạ cánh rạng sáng vẫn để lại trọn ngày (`day_windows` ghi `full_day`), nên tour cả
+        # ngày được xếp sau dòng đến nơi (FALLBACK "full-day overlap", chat thử 10/10).
+        booked = [slot for slot in days[day_number - 1]["slots"] if slot.get("product")]
+        if day_number in occupied_full_days or (isinstance(duration, (int, float)) and duration >= 360 and booked):
             raise ValueError("full-day overlap")
         if isinstance(duration, (int, float)) and duration >= 360:
             occupied_full_days.add(day_number)
