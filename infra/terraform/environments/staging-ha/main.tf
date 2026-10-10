@@ -220,7 +220,7 @@ resource "google_compute_url_map" "app" {
   name            = "${var.name_prefix}-app"
   default_service = google_compute_backend_service.app.id
 
-  # Dashboard job cào (chỉ đọc) theo host riêng; xem crawler_monitor.tf. Host khác vẫn vào app như trước.
+  # Dashboard job cào theo host riêng; xem crawler_monitor.tf. Host khác vẫn vào app như trước.
   dynamic "host_rule" {
     for_each = local.monitor_enabled ? [1] : []
     content {

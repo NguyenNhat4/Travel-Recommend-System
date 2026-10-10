@@ -22,6 +22,7 @@ from src.backend.app.domain.booking import (
 from src.backend.app.domain.booking.party import TravelerDocuments
 from src.backend.app.domain.booking.status import BookingStatus, PaymentStatus
 from src.backend.app.domain.catalog.models import Product
+from src.backend.app.infrastructure.persistence.db_connection import connect_async
 
 
 def _uuid_or_none(value: str) -> str | None:
@@ -43,7 +44,7 @@ class PostgresProductCatalog:
         ids = [i for i in (_uuid_or_none(p) for p in product_ids) if i]
         if not ids:
             return {}
-        async with await psycopg.AsyncConnection.connect(self._database_url, row_factory=dict_row) as conn:
+        async with await connect_async(self._database_url, row_factory=dict_row) as conn:
             rows = await (await conn.execute(
                 """
                 SELECT product_id::text AS product_id, name, taxonomy, destination, description, attributes,
@@ -84,7 +85,7 @@ class PostgresCartRepository:
         )).fetchone()
 
     async def get(self, cdp_user_id: str) -> Cart:
-        async with await psycopg.AsyncConnection.connect(self._database_url, row_factory=dict_row) as conn:
+        async with await connect_async(self._database_url, row_factory=dict_row) as conn:
             cart = await self._cart_row(conn, cdp_user_id)
             rows = await (await conn.execute(
                 """
@@ -100,7 +101,7 @@ class PostgresCartRepository:
         unit_price: int, adults: int, children: int, child_unit_price: int | None,
     ) -> None:
         end = using_date + timedelta(days=nights) if nights else None
-        async with await psycopg.AsyncConnection.connect(self._database_url, row_factory=dict_row) as conn:
+        async with await connect_async(self._database_url, row_factory=dict_row) as conn:
             cart = await self._cart_row(conn, cdp_user_id)
             await conn.execute(
                 """
@@ -128,7 +129,7 @@ class PostgresCartRepository:
         if item_id is None:
             return False
         try:
-            async with await psycopg.AsyncConnection.connect(self._database_url, row_factory=dict_row) as conn:
+            async with await connect_async(self._database_url, row_factory=dict_row) as conn:
                 cart = await self._cart_row(conn, cdp_user_id)
                 row = await (await conn.execute(
                     """
@@ -158,7 +159,7 @@ class PostgresCartRepository:
         item_id = _uuid_or_none(cart_item_id)
         if item_id is None:
             return False
-        async with await psycopg.AsyncConnection.connect(self._database_url, row_factory=dict_row) as conn:
+        async with await connect_async(self._database_url, row_factory=dict_row) as conn:
             cart = await self._cart_row(conn, cdp_user_id)
             row = await (await conn.execute(
                 "DELETE FROM app.cart_items WHERE cart_item_id = %s::uuid AND cart_id = %s::uuid RETURNING 1",
@@ -590,7 +591,7 @@ class PostgresBookingStore:
     @asynccontextmanager
     async def transaction(self) -> AsyncIterator[_Tx]:
         # `async with connection` commit khi thoát bình thường và rollback khi có exception.
-        async with await psycopg.AsyncConnection.connect(self._database_url, row_factory=dict_row) as conn:
+        async with await connect_async(self._database_url, row_factory=dict_row) as conn:
             yield _Tx(conn)
 
     @asynccontextmanager

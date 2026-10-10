@@ -21,7 +21,6 @@ resource "google_monitoring_notification_channel" "email" {
     # Kênh này bị tắt/bật theo khung mute ban đêm (alert_mute.tf). Terraform không đưa enabled về true khi plan.
     ignore_changes = [enabled]
   }
-
 }
 
 # 1. Nhóm có ít VM đang chạy hơn mức tối thiểu (mất VM mà autohealing chưa bù kịp, hoặc template không khởi động được).

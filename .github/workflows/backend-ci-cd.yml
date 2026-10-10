@@ -109,8 +109,8 @@ jobs:
           file: ./Dockerfile.backend
           push: false
           tags: vota-backend-ci:${{ github.sha }}
+          # Chỉ đọc cache: không ghi GHA cache từ PR, vì cache repo sát giới hạn 10 GB và bị evict.
           cache-from: type=gha,scope=backend
-          cache-to: type=gha,mode=max,scope=backend
 
   publish:
     name: Publish SHA image

@@ -1,12 +1,12 @@
-# Dashboard job cào (monitor, cổng 8765 của VM crawler) công khai ĐỌC-ONLY qua load balancer HTTPS đang có.
+# Dashboard job cào (monitor, cổng 8765 của VM crawler) công khai qua load balancer HTTPS đang có, đủ chức năng (không read-only).
 # - Host công khai: var.monitor_host (Cloudflare proxy → LB, cùng cert *.praxis.io.vn với origin).
-# - Monitor chạy với --read-only (src/data_collection/monitor.py): mọi POST trả 405, nên không điều khiển được job.
+# - Monitor chạy đủ chức năng (không --read-only): mọi API điều khiển job, cấu hình, xoá lượt đều dùng được.
 # - VM crawler không có IP public. Firewall chỉ cho dải health check và LB của Google vào cổng 8765.
-# - Không có xác thực: người vận hành chấp nhận dashboard công khai chỉ đọc (xem history/2026-10-09-staging-ha-cd-tu-dong.md).
+# - Không có xác thực: người vận hành chấp nhận dashboard công khai không có xác thực (xem history/2026-10-09-staging-ha-cd-tu-dong.md).
 # Bật bằng crawler_monitor_public = true trong staging-ha.tfvars, sau khi bản ghi DNS monitor.<domain> đã trỏ về LB.
 
 variable "crawler_monitor_public" {
-  description = "Công khai dashboard job cào (chỉ đọc) qua monitor_host trên LB staging-ha."
+  description = "Công khai dashboard job cào qua monitor_host trên LB staging-ha."
   type        = bool
   default     = false
 }
