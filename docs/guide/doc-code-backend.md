@@ -77,8 +77,8 @@ Cách làm chung: **đi từ route vào trong, rồi tìm adapter ở `main.py`.
 | 4. Use case | `app/application/search/use_cases.py` → `SearchProducts` | Embed câu hỏi, lọc id, hỏi Weaviate top-K, cắt cutoff, phân trang, dựng `diagnostics` |
 | 5. Rule thuần | `app/domain/search/scoring.py` → `candidate_filter_score` | CUTOFF → FACETS → SORT trên tập ứng viên top-K |
 | 6. Port | `application/ports/embedder.py`, `unit_index.py`, `vector_search.py`, `vector_store.py` | Hợp đồng mà use case dựa vào |
-| 7. Adapter | `main.py` → `build_recsys()`, `RecsysRefresher` | `CohereEmbedder` + `WeaviateVectorStore`; chỉ metadata nạp lúc khởi động và nạp lại theo chu kỳ |
-| 8. Adapter chi tiết | `infrastructure/embeddings/cohere_embedder.py`, `infrastructure/vectors/weaviate_store.py` | Gọi Cohere; `WeaviateVectorSearch` truy vấn `nearVector` qua gRPC; tên/giá lấy từ Postgres |
+| 7. Adapter | `main.py` → `build_recsys()`, `build_query_embedder()`, `RecsysRefresher` | Embedder từ `infrastructure/embeddings/factory.py` → `build_embedder(settings)` (`LocalE5Embedder` — `intfloat/multilingual-e5-small`, 384 chiều — mặc định; `CohereEmbedder` khi `EMBED_PROVIDER=cohere`) + `WeaviateVectorStore` (collection `ProductE5`); chỉ metadata nạp lúc khởi động và nạp lại theo chu kỳ |
+| 8. Adapter chi tiết | `infrastructure/embeddings/local_e5_embedder.py` (đường lui: `cohere_embedder.py`), `infrastructure/vectors/weaviate_store.py` | Chạy model e5 trong tiến trình (tiền tố `query: ` cho câu hỏi, `passage: ` cho text catalog); `WeaviateVectorSearch` truy vấn `nearVector` qua gRPC; tên/giá lấy từ Postgres |
 
 Điều rút ra từ ví dụ: vector không nằm trong bộ nhớ backend. `UnitIndex` chỉ giữ metadata (taxonomy, destination,
 available…) để tính filter; mỗi request gửi danh sách id hợp lệ cùng vector truy vấn sang Weaviate và nhận top-K

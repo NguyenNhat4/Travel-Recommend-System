@@ -96,6 +96,17 @@ jobs:
         working-directory: src/frontend
         run: npm run build
 
+  docker_test:
+    name: Frontend Docker build test
+    # Chỉ kiểm Dockerfile.web trên PR. Trên push, image được build một lần ở staging-ha-frontend-build.yml (CD); job này
+    # không build lại. Chạy song song với quality, không đợi lint/test.
+    if: ${{ github.event_name == 'pull_request' && github.event.action != 'closed' }}
+    runs-on: [self-hosted, vota-staging-ha]
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Set up Buildx for Docker build test
         uses: docker/setup-buildx-action@v3
 
@@ -131,18 +142,25 @@ jobs:
 
       - name: Install Chromium
         working-directory: src/frontend
-        run: npx playwright install --with-deps chromium
+        env:
+          # Runner tự host: PLAYWRIGHT_BROWSERS_PATH mặc định trỏ tới /opt/ms-playwright (thuộc root, user runner không ghi được,
+          # lỗi EACCES mkdir __dirlock). Dùng tool_cache của runner: ghi được và giữ qua các job, không tải lại mỗi lần.
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.tool_cache }}/ms-playwright
+        # Runner tự host đã có sẵn thư viện hệ thống của Chromium và không có sudo không mật khẩu; --with-deps chỉ dùng trên runner GitHub-hosted.
+        run: npx playwright install ${{ runner.environment == 'github-hosted' && '--with-deps' || '' }} chromium
 
       - name: Run Playwright smoke tests
         working-directory: src/frontend
         env:
           CI: 'true'
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.tool_cache }}/ms-playwright
         run: npm run test:e2e
 
   build_vm:
     name: Build Frontend VM image
-    if: ${{ (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true) || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') }}
-    needs: e2e
+    # Tắt: build trùng. Image frontend staging-ha do staging-ha-frontend-build.yml build một lần mỗi push.
+    if: ${{ false }}
+    needs: [e2e, docker_test]
     runs-on: [self-hosted, vota-staging-ha]
     steps:
       - name: Checkout
@@ -162,8 +180,10 @@ jobs:
           cache-to: type=gha,mode=max,scope=frontend-vm
 
   publish_vm:
-    name: Publish Frontend SHA and latest images
-    if: ${{ (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true) || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') }}
+    name: Publish Frontend SHA image
+    # Tắt: VM staging cũ đã ngừng nhận deploy; job này build lại và chỉ phục vụ VM cũ. Không đẩy tag latest. Giữ job vì
+    # scripts/tests/test-backend-vm-cd-sync.sh kiểm needs.publish_vm.outputs.frontend_digest trong file này.
+    if: ${{ false }}
     needs: build_vm
     runs-on: [self-hosted, vota-staging-ha]
     environment: staging
@@ -222,9 +242,7 @@ jobs:
           context: .
           file: ./src/frontend/Dockerfile.web
           push: true
-          tags: |
-            ${{ steps.image.outputs.ref }}:${{ github.sha }}
-            ${{ steps.image.outputs.ref }}:latest
+          tags: ${{ steps.image.outputs.ref }}:${{ github.sha }}
           cache-from: type=gha,scope=frontend-vm-publish
           cache-to: type=gha,mode=max,scope=frontend-vm-publish
 

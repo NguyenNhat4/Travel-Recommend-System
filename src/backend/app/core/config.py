@@ -15,7 +15,8 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 # "copy .env.example sang .env" đều vấp. Coi rỗng là "không đặt".
 # Chỉ các trường thực sự Optional: trường `str` thường (cdp_service_token, openai_api_key) coi ""
 # là "chưa cấu hình" và vẫn hợp lệ, không được đổi thành None.
-_OPTIONAL_BLANK_IS_NONE = ("itinerary_service_base_url", "itinerary_data_mode", "itinerary_llm_reasoning_effort")
+_OPTIONAL_BLANK_IS_NONE = ("itinerary_service_base_url", "itinerary_data_mode", "itinerary_llm_reasoning_effort",
+                           "search_no_diacritics_cutoff")
 
 
 class Settings(BaseSettings):
@@ -140,29 +141,38 @@ class Settings(BaseSettings):
     # FR-SRC-03 (05/10): lọc cứng theo địa danh suy ra từ câu (domain/search/destination.py; contract 1.14.0
     # `diagnostics.destinationFilter`, `appliedFilters`). Mặc định tắt cho tới khi bench xác nhận trên slice dest_type và các slice
     # guard. `SEARCH_DEST_FILTER_FALLBACK`: F rỗng sau khi lọc → chạy lại không lọc (FR-SRC-04).
-    search_dest_filter: bool = False
+    # Mặc định production 06/10 (người dùng chốt; bench gold_v5 `APP.e5s.prod_f12356`): F1, F2 (relax), F3, F5, F6 BẬT — F4 TẮT
+    # (đổi số đếm tab của Web). Tắt từng họ bằng biến môi trường tương ứng. (Khôi phục 07/10 sau merge 21d72ae làm mất.)
+    search_dest_filter: bool = True
     search_dest_filter_fallback: bool = True
     # Câu gõ không dấu (slice no_diacritics; contract 1.14.0 `diagnostics.queryProfile`): `relax` nới cổng vớt BM25 và (tuỳ chọn)
     # cutoff dense cho riêng câu phát hiện không dấu (≥ min_tokens token); `off` = như cũ. Giá trị nới là tạm, chưa qua dev/test.
-    search_no_diacritics_mode: Literal["off", "relax"] = "off"
+    search_no_diacritics_mode: Literal["off", "relax"] = "relax"
     search_no_diacritics_lexical_k: int = Field(default=20, ge=0)
     search_no_diacritics_lexical_cutoff: float = 0.0
     search_no_diacritics_min_coverage: float = Field(default=0.4, ge=0, le=1)
-    search_no_diacritics_cutoff: float | None = None   # None = dùng SEARCH_CUTOFF
+    search_no_diacritics_cutoff: float | None = 0.80   # chỉ áp khi MODE=relax; None = dùng SEARCH_CUTOFF
     search_no_diacritics_min_tokens: int = Field(default=3, ge=1)
     # Query plan — kiến trúc Phase A (docs/spec/bench/kien_truc_search_ota_so_do_va_giai_doan.md; FR-SRC-01/03; contract 1.15.0
     # `diagnostics.queryPlan`): hard constraint suy từ câu, mỗi họ một cờ, mặc định tắt cho tới khi gold v4 xác nhận. Tắt vẫn
     # parse và khai ở `queryPlan` (bench đo độ chính xác parse). Tham số request tường minh (origin, priceMin/priceMax,
     # starRatingMin, availableOnly) luôn được áp theo contract, không phụ thuộc cờ.
-    search_negation_filter: bool = False   # F3: "không có / không ghi nhận X" → loại unit CÓ GHI NHẬN tiện ích X ([C2])
+    search_negation_filter: bool = True    # F3: "không có / không ghi nhận X" → loại unit CÓ GHI NHẬN tiện ích X ([C2])
     search_taxonomy_filter: bool = False   # F4: câu nêu đúng một loại sản phẩm → lọc taxonomy (≥ 2 loại thì không)
-    search_route_filter: bool = False      # F5: câu vé máy bay "từ A đến B" → lọc originCity / destinationCity của tuyến
-    search_numeric_filter: bool = False    # F6: giá ("dưới 2 triệu") hard, sao ("4 sao") soft — suy từ câu
+    search_route_filter: bool = True       # F5: câu vé máy bay "từ A đến B" → lọc originCity / destinationCity của tuyến
+    search_numeric_filter: bool = True     # F6: giá ("dưới 2 triệu") hard, sao ("4 sao") soft — suy từ câu
     # 06/10 (kiến trúc search §3, §4, §6, §7 5C, §8, §11; contract 1.16.0): mặc định tắt / trung tính — mọi giá trị mặc định cho
     # đúng kết quả 1.15.0. travelContext.guests của POST /search luôn áp (tham số request), không phụ thuộc cờ.
     search_tone_normalize: bool = False        # dời dấu thanh của câu về kiểu đa số của catalog (hoà ↔ hòa) trước embed/BM25
     search_taxonomy_strong_only: bool = False  # F4 chỉ lọc taxonomy khi cue loại MẠNH ("khách sạn"); cue yếu ("phòng") chỉ khai
     search_party_filter: bool = False          # số khách suy từ câu ("3 người") → loại unit có sức chứa ĐÃ BIẾT nhỏ hơn
+    # 07/10 (contract 1.18.0; spec docs/spec/bench/tong-hop-chinh-sua-luong-search-ota.md; plan docs/plan/2026-10-07-search-duration-
+    # entity-poi.md): ba họ mới, mặc định tắt — TẮT thì không parse, không khai (response y như 1.17.0); bật mới parse + khai ở
+    # queryPlan. Bật ở production chỉ sau khi bench WIN/TIE + Forbidden@10 = 0 (plan §Bước 9).
+    search_duration_filter: bool = False       # F7: "3 ngày 2 đêm" / "3N2Đ" → queryPlan.duration; bỏ cụm khỏi câu BM25 (không lọc)
+    search_poi_resolve: bool = False           # địa danh gazetteer repo ("Hồ Hoàn Kiếm" → Hà Nội) vào F1; hard.destinationSource = poi
+    search_entity_filter: bool = False         # entity gate CỨNG: câu nêu điểm vui chơi (VinWonders…) → chỉ attraction/combo có tên
+    #                                            chứa entity; đổi số đếm tab của Web khi bật — cần Web xác nhận (như F4)
     # Kênh fuzzy tên gần đúng (trigram cửa sổ, domain/search/fuzzy.py): 0 = tắt. Bật thì unit có rank fuzzy ≤ K, độ giống
     # ≥ MIN_SIM (0.6 vớt cả tên chung chung — đo 06/10) và cosine ≥ SEARCH_LEXICAL_CUTOFF được vớt vào R. Chỉ ở hybrid.
     search_fuzzy_k: int = Field(default=0, ge=0)
@@ -175,6 +185,15 @@ class Settings(BaseSettings):
     # Ghi một dòng app.search_logs mỗi lượt /search trang đầu (câu gốc, appliedFilters.hard + confidence, productId trang trả
     # về, total, modelVersion, latencyMs, cdp_user_id khi có Bearer hợp lệ). Ghi nền qua hàng đợi có trần; lỗi không tới response.
     search_log_queries: bool = False
+    # LLM fallback của query plan /search (đề xuất 2026-10-06 đã áp dụng, contract 1.17.0): off | shadow | on; chỉ gọi khi
+    # queryPlan.confidence < ngưỡng; giả thuyết JSON kiểm với catalog, chỉ điền chỗ luật để trống, cache theo câu chuẩn hoá.
+    search_llm_fallback: Literal["off", "shadow", "on"] = "off"
+    search_llm_fallback_min_confidence: float = Field(default=0.75, ge=0.0, le=1.0)
+    search_llm_fallback_timeout_ms: int = Field(default=1500, ge=1)
+    search_llm_fallback_model: str = "gpt-4o-mini"
+    search_llm_fallback_cache_size: int = Field(default=10_000, ge=1)
+    search_llm_fallback_cache_path: str = ""      # JSONL, tương đối theo src/backend; trống = chỉ cache trong tiến trình
+    search_llm_fallback_cache_only: bool = False  # chỉ đọc cache (bench / replay), không gọi model
     # Cache vector truy vấn /search (NFR-PERF-03; contract 1.12.0 `diagnostics.embedCache`): LRU trong tiến trình, khoá =
     # câu sau chuẩn hoá + gộp khoảng trắng; sống qua các lần nạp lại catalog vì bọc quanh embedder dùng chung.
     search_embed_cache: bool = True

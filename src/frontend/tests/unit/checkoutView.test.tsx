@@ -56,6 +56,10 @@ vi.mock('../../src/context/TravelContext', async () => {
 import { CheckoutView } from '../../src/components/checkout/CheckoutView';
 import { ApiError } from '../../src/services/http';
 
+// File nặng (47 test, form ba bước): chạy riêng test chậm nhất ~3 s, nhưng khi CI chạy song song mọi file thì vài test vượt
+// ngưỡng mặc định 5 s (cũng xảy ra trên release). Nâng riêng cho file này, không đổi ngưỡng chung.
+vi.setConfig({ testTimeout: 15_000 });
+
 const CHILD_PRICES: Record<string, number> = { 'nt-a-vinwonders-buggy': 504000 };
 
 /** Giả lập `PATCH` một mục của đơn nháp hoặc giỏ: ghi số khách và tính lại dòng giá như Backend (chỉ để test giao diện, không phải nguồn giá thật). */
@@ -135,6 +139,9 @@ async function open(draft: any, accountName?: string, signedIn = true) {
   store.draft = draft;
   const view = render(<Harness accountName={accountName} signedIn={signedIn} />);
   await screen.findByRole('heading', { level: 2 });
+  // Heading hiện ngay khi đơn nháp tải xong, còn đoàn mặc định được dựng trong effect sau đó: chờ thẻ Người lớn 1,
+  // không thì trên máy chậm (CI) test có thể bấm Tiếp tục với đoàn rỗng.
+  if (screen.queryByRole('heading', { level: 2, name: 'Hành khách' })) await screen.findByLabelText('Họ (Người lớn 1)');
   return view;
 }
 
@@ -805,9 +812,12 @@ describe('CheckoutView — hỏi lại trước khi rời trang (AC-BKG-20)', ()
 
   it('đóng tab hoặc tải lại: yêu cầu trình duyệt hỏi lại; sau khi bấm Thanh toán sang Stripe thì không', async () => {
     await open(clone(familyDraft));
-    const before = new Event('beforeunload', { cancelable: true });
-    window.dispatchEvent(before);
-    expect(before.defaultPrevented).toBe(true);
+    // Guard chỉ bật khi đoàn khách đã dựng xong (effect chờ phiên đăng nhập) — có thể muộn hơn lúc tiêu đề hiện trên CI chậm.
+    await waitFor(() => {
+      const before = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(before);
+      expect(before.defaultPrevented).toBe(true);
+    });
     await goToReview();
     fireEvent.click(screen.getByLabelText(/Tôi đã kiểm tra họ tên hành khách/));
     fireEvent.click(payButton());

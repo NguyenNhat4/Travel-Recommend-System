@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import logging
 import re
 import sys
@@ -91,6 +92,15 @@ def _plan(a: argparse.Namespace):
     return select_destinations(getattr(a, "destinations", None)), budget
 
 
+def _refresh_list(a: argparse.Namespace) -> tuple[dict, ...]:
+    """--refresh-list: JSONL khách sạn đang có trong DB cần mở lại (fresh_catalog.py ghi từ fresh_catalog_db.refresh_targets)."""
+    path = getattr(a, "refresh_list", None)
+    if not path:
+        return ()
+    with open(path, encoding="utf-8") as fh:
+        return tuple(json.loads(line) for line in fh if line.strip())
+
+
 def _crawl_opts(a: argparse.Namespace, default_delay: float) -> booking_base.CrawlOptions:
     destinations, budget = _plan(a)
     if getattr(a, "brand_only", False):
@@ -111,6 +121,7 @@ def _crawl_opts(a: argparse.Namespace, default_delay: float) -> booking_base.Cra
         brand_sitemap=not getattr(a, "no_brand_sitemap", False),
         destinations=destinations,
         budget=budget,
+        refresh=_refresh_list(a),
     )
 
 
@@ -435,6 +446,7 @@ def build_parser() -> argparse.ArgumentParser:
     aa.add_argument("--export-only", action="store_true", help="không gọi mạng, chỉ xuất lại interim/agoda_api.jsonl từ trạng thái đã lưu")
     aa.add_argument("--max-blocks", type=int, default=3, help="bị chặn liên tiếp bấy nhiêu lần thì dừng")
     aa.add_argument("--max-hours", type=float, default=None, help="hết giờ thì dừng êm và xuất interim (lượt sau làm tiếp)")
+    aa.add_argument("--refresh-list", default=None, help="JSONL khách sạn đang có trong DB cần hỏi lại giá (ngoài --per-city)")
 
     TRIP_LABEL = {"trip-flights": "vé máy bay", "trip-attractions": "điểm tham quan", "trip-experiences": "tour/hoạt động (things-to-do)"}
     for s in TRIP_SOURCES:
@@ -457,6 +469,7 @@ def build_parser() -> argparse.ArgumentParser:
     bh.add_argument("--full-sitemap-scan", action="store_true", help="với --all-vietnam: quét mọi file sitemap")
     bh.add_argument("--no-brand-sitemap", action="store_true", help="không quét sitemap khách sạn thương hiệu Vinpearl (batch theo thành phố dùng cờ này)")
     bh.add_argument("--brand-only", action="store_true", help="chỉ khách sạn thương hiệu Vinpearl từ sitemap, bỏ tìm theo điểm đến")
+    bh.add_argument("--refresh-list", default=None, help="JSONL khách sạn đang có trong DB cần mở lại (ngoài ngân sách mỗi điểm đến)")
     sub.add_parser("agoda-hotels", parents=[browser, plan, crawl, dates], help="agoda.com – khách sạn theo điểm đến")
     sub.add_parser("trip-hotels", parents=[browser, plan, crawl, dates],
                     help="trip.com – khách sạn (nguồn mới, robots.txt cấm — chỉ dùng nội bộ, xem collectors/trip_hotels.py)")
@@ -525,7 +538,8 @@ def main(argv: list[str] | None = None) -> int:
             opts = agoda_api.AgodaOptions(
                 destinations=select_destinations(a.destinations), per_city=a.per_city, days=a.days,
                 delay=a.delay if a.delay is not None else 4.0, max_requests=a.max_requests, max_blocks=a.max_blocks,
-                discover=a.discover, limit_hotels=a.limit_hotels, export_only=a.export_only, max_hours=a.max_hours)
+                discover=a.discover, limit_hotels=a.limit_hotels, export_only=a.export_only, max_hours=a.max_hours,
+                refresh=_refresh_list(a))
             with RunLock(paths, "agoda_api"):
                 result = asyncio.run(agoda_api.run(paths, opts))
         elif a.cmd == "vinpearl-bundles":

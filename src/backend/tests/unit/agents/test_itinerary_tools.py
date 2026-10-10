@@ -78,9 +78,9 @@ class HttpTests(unittest.IsolatedAsyncioTestCase):
                 self.assertNotIn('authorization', requests[0].headers)
                 self.assertEqual(requests[1].headers['authorization'], 'Bearer request-jwt')
                 self.assertEqual(requests[1].url.params['k'], '5')
-                self.assertEqual(requests[0].method, 'GET')
+                self.assertEqual(requests[0].method, 'POST')
                 self.assertEqual(requests[0].url.path, '/api/v1/search')
-                self.assertEqual(requests[0].url.params['q'], 'hotel')
+                self.assertEqual(json.loads(requests[0].content)['query'], 'hotel')
                 for request in requests:
                     self.assertNotIn('cookie', request.headers)
                     self.assertEqual(request.headers['X-Request-ID'], 'tools-test')
@@ -168,7 +168,7 @@ class HttpTests(unittest.IsolatedAsyncioTestCase):
         for leaked in ('secret-query-text', 'Nha Trang', 'request-jwt', 'forged'):
             self.assertNotIn(leaked, '\n'.join(logs.output))
 
-    async def test_search_maps_only_supported_legacy_query_parameters(self):
+    async def test_search_posts_the_engine_filters_and_guests_like_inprocess(self):
         requests = []
 
         async def handler(request):
@@ -180,12 +180,18 @@ class HttpTests(unittest.IsolatedAsyncioTestCase):
             clients = ItineraryHttpClients(http)
             result = await ItineraryToolGateway(clients, clients).execute({
                 'id': 'a', 'name': 'search_products',
-                'args': {'query': 'hotel gia đình', 'destination': 'Nha Trang',
-                         'priceMax': 2_000_000, 'starRatingMin': 4},
+                'args': {'query': 'hotel gia đình', 'destination': 'Nha Trang', 'taxonomy': 'hotel',
+                         'priceMax': 2_000_000, 'starRatingMin': 4, 'sort': 'relevance',
+                         'travelContext': {'checkIn': '2026-10-15', 'guests': {'adults': 2, 'children': 1}}},
             })
         self.assertNotIn('error', result)
-        self.assertEqual(dict(requests[0].url.params), {
-            'q': 'hotel gia đình', 'destination': 'Nha Trang', 'limit': '20', 'offset': '0'
+        # POST /search là route duy nhất nhận số khách; cùng bộ tham số với adapter inprocess. `sort` và ngày engine
+        # chưa dùng nên không gửi.
+        self.assertEqual(requests[0].method, 'POST')
+        self.assertEqual(json.loads(requests[0].content), {
+            'query': 'hotel gia đình', 'destination': 'Nha Trang', 'taxonomy': 'hotel', 'limit': 20, 'offset': 0,
+            'priceMax': 2_000_000, 'starRatingMin': 4, 'availableOnly': True,
+            'travelContext': {'guests': {'adults': 2, 'children': 1}},
         })
         self.assertNotIn('authorization', requests[0].headers)
 
@@ -372,8 +378,8 @@ class NodeTests(unittest.IsolatedAsyncioTestCase):
         state = {'query': 'rút ngắn còn 2 ngày', 'intent': {'destination': 'Đà Lạt', 'days': 2},
                  'constraints': {'exclude_products': ['p-1']}}
         result = await nodes.tool_node(state, tools=tools, llm=llm)
-        # 1 lời gọi của planner (attraction) + 2 lời gọi lấp category mặc định (golf, hotel).
-        self.assertEqual(len(result['tool_plan']), 3)
+        # 1 lời gọi của planner (attraction) + 1 lời gọi lấp category mặc định (hotel); golf chỉ khi người dùng nhắc.
+        self.assertEqual(len(result['tool_plan']), 2)
         self.assertNotIn('excludeProducts', result['tool_plan'][0]['args'])
         self.assertNotIn('excludeProducts', tools.seen[0])
         self.assertNotIn('error', result.get('response', {}))
@@ -410,8 +416,10 @@ REC = {'name': 'get_recommendations', 'args': {}}
 
 
 def swap_state(**updates):
-    """State của lượt đổi món: previous_selection do server lưu từ lịch trình lượt trước."""
+    """State của lượt đổi món: previous_selection do server lưu từ lịch trình lượt trước. Lượt đầu người dùng có nhắc
+    golf, nên golf vẫn là category mặc định ở đây (`tool_planning.wants_golf`)."""
     return {'request_id': 'swap-test', 'query': 'đổi khách sạn khác giống cái này',
+            'conversation_history': [{'role': 'user', 'content': 'Nha Trang 2 ngày, có chơi golf'}],
             'previous_selection': copy.deepcopy(SELECTION), 'intent': {'destination': 'Nha Trang', 'days': 2},
             'constraints': {}, **updates}
 
@@ -680,23 +688,43 @@ class SimilarPlanTests(unittest.IsolatedAsyncioTestCase):
 
 
 class DefaultCategoryFillTests(unittest.TestCase):
-    """`tool` search mặc định cả hotel/attraction/golf, chỉ loại khi user yêu cầu (constraints.exclude_taxonomies)."""
+    """`tool` search mặc định hotel/attraction, golf khi người dùng nhắc tới; chỉ loại khi user yêu cầu
+    (constraints.exclude_taxonomies)."""
 
-    def _state(self, **constraints):
-        return {'request_id': 'default-fill-test', 'intent': {'destination': 'Nha Trang', 'days': 2},
+    def _state(self, query='Nha Trang 2 ngày', **constraints):
+        return {'request_id': 'default-fill-test', 'query': query, 'intent': {'destination': 'Nha Trang', 'days': 2},
                 'constraints': constraints}
 
-    def test_a_single_category_call_is_filled_up_to_all_three_defaults(self):
+    def test_a_single_category_call_is_filled_up_to_hotel_and_attraction(self):
         plan = tool_planning.validated_plan(self._state(), [search(taxonomy='hotel')])
-        self.assertEqual(names(plan), ['search_products', 'search_products', 'search_products'])
-        self.assertEqual({call['args']['taxonomy'] for call in plan}, {'hotel', 'attraction', 'golf'})
+        self.assertEqual(names(plan), ['search_products', 'search_products'])
+        self.assertEqual({call['args']['taxonomy'] for call in plan}, {'hotel', 'attraction'})
+
+    def test_golf_is_searched_only_when_the_user_mentions_it(self):
+        # Trace 2026-10-08: gia đình có bé đi TP.HCM, planner tự thêm search golf; không ai nhắc thì bỏ.
+        plan = tool_planning.validated_plan(self._state(), [search(taxonomy='hotel'), search(taxonomy='golf')])
+        self.assertEqual({call['args']['taxonomy'] for call in plan}, {'hotel', 'attraction'})
+        self.assertEqual([call['id'] for call in plan], ['call-0', 'call-1'])
+        self.assertEqual(tool_planning.validated_plan(self._state(), copy.deepcopy(plan)), plan)
+        # Plan chỉ có golf: thành một search theo điểm đến (không lọc loại, đã phủ mọi loại) thay vì plan rỗng.
+        only_golf = tool_planning.validated_plan(self._state(), [search(taxonomy='golf')])
+        self.assertEqual([(call['name'], call['args'].get('taxonomy')) for call in only_golf],
+                         [('search_products', None)])
+        for query in ('Nha Trang 2 ngày, chơi golf', 'đi đánh gôn ở Nha Trang', 'tìm sân gôn'):
+            with self.subTest(query=query):
+                plan = tool_planning.validated_plan(self._state(query), [search(taxonomy='hotel')])
+                self.assertEqual({call['args']['taxonomy'] for call in plan}, {'hotel', 'attraction', 'golf'})
+        # "gọn" không phải golf.
+        tidy = tool_planning.validated_plan(self._state('lịch gọn gàng thôi'), [search(taxonomy='hotel')])
+        self.assertNotIn('golf', {call['args']['taxonomy'] for call in tidy})
 
     def test_an_untyped_search_already_covers_every_default_category(self):
         plan = tool_planning.validated_plan(self._state(), [search()])
         self.assertEqual(names(plan), ['search_products'])
 
     def test_an_explicitly_excluded_category_is_never_filled_in(self):
-        plan = tool_planning.validated_plan(self._state(exclude_taxonomies=['golf']), [search(taxonomy='hotel')])
+        plan = tool_planning.validated_plan(self._state('Nha Trang có golf', exclude_taxonomies=['golf']),
+                                            [search(taxonomy='hotel')])
         self.assertEqual({call['args'].get('taxonomy') for call in plan}, {'hotel', 'attraction'})
 
     def test_missing_destination_does_not_crash_the_fill(self):
@@ -707,6 +735,59 @@ class DefaultCategoryFillTests(unittest.TestCase):
         plan = tool_planning.validated_plan(self._state(), [search(taxonomy='hotel')] + [REC] * 4)
         self.assertEqual(len(plan), 5)
         self.assertEqual({call['args'].get('taxonomy') for call in plan if call['name'] == 'search_products'}, {'hotel'})
+
+
+class HotelSearchArgsTests(unittest.TestCase):
+    """Search khách sạn: số khách lấy từ intent (filter sức chứa), nhiều vị trí để luật ít di chuyển chọn."""
+
+    def _state(self, party):
+        return {'request_id': 'hotel-args-test', 'query': 'đi Sài Gòn',
+                'intent': {'destination': 'TP. Hồ Chí Minh', 'days': 3, 'party': party}, 'constraints': {}}
+
+    def test_hotel_search_carries_the_party_from_intent_and_the_contract_maximum_limit(self):
+        family = {'type': 'FAMILY_WITH_KIDS', 'adults': 2, 'children': 1}
+        raw = [search(taxonomy='hotel', travelContext={'checkIn': '2026-10-15', 'guests': {'adults': 9}}),
+               search(query='điểm tham quan', taxonomy='attraction',
+                      travelContext={'guests': {'adults': 2, 'children': 1}})]
+        plan = tool_planning.validated_plan(self._state(family), raw)
+        hotel, attraction = plan
+        # Số khách của LLM (9 người lớn) bị thay bằng intent; ngày trong travelContext engine chưa dùng nên bỏ.
+        # Lọc theo một phòng (chốt 2026-10-09): đoàn 3 người ở vừa 9 phòng thì mỗi phòng chỉ cần chứa 1.
+        self.assertEqual(hotel['args']['travelContext'], {'guests': {'adults': 1, 'children': 0}})
+        self.assertEqual(hotel['args']['limit'], tool_planning.HOTEL_SEARCH_LIMIT)
+        self.assertEqual(tool_planning.HOTEL_SEARCH_LIMIT,
+                         contracts()['search_products']['arguments']['properties']['limit']['maximum'])
+        self.assertNotIn('travelContext', attraction['args'])
+        self.assertEqual(attraction['args']['limit'], tool_planning.SEARCH_LIMIT)
+        self.assertEqual(tool_planning.validated_plan(self._state(family), copy.deepcopy(plan)), plan)
+
+    def test_a_large_group_is_filtered_by_the_guests_of_one_room(self):
+        # 10 người lớn không cần một phòng 10 chỗ: ở vừa tối đa 9 phòng (FR-BKG-08) khi mỗi phòng chứa 2.
+        group = {'type': 'FRIENDS', 'adults': 10, 'children': 0}
+        plan = tool_planning.validated_plan(self._state(group), [search(taxonomy='hotel')])
+        self.assertEqual(plan[0]['args']['travelContext'], {'guests': {'adults': 2, 'children': 0}})
+        mixed = {'type': 'FAMILY_WITH_KIDS', 'adults': 9, 'children': 9}
+        plan = tool_planning.validated_plan(self._state(mixed), [search(taxonomy='hotel')])
+        self.assertEqual(plan[0]['args']['travelContext'], {'guests': {'adults': 1, 'children': 1}})
+
+    def test_unknown_party_sends_no_guests(self):
+        plan = tool_planning.validated_plan(self._state(None), [search(taxonomy='hotel',
+                                                                       travelContext={'guests': {'adults': 4}})])
+        self.assertNotIn('travelContext', plan[0]['args'])
+
+
+class TraceSummaryTests(unittest.TestCase):
+    def test_summary_lists_each_product_with_price_and_coordinates(self):
+        from src.backend.app.agents.tools.itinerary_gateway import trace_summary
+        data = {'total': 79, 'results': [{'productId': 'p1', 'name': 'LOTTE', 'taxonomy': 'hotel',
+                                          'unitPrice': 4252000, 'description': 'dài',
+                                          'attributes': {'latitude': 10.78, 'longitude': 106.70}}]}
+        self.assertEqual(trace_summary(data), {'total': 79, 'returned': 1, 'items': [
+            {'productId': 'p1', 'name': 'LOTTE', 'taxonomy': 'hotel', 'unitPrice': 4252000,
+             'lat': 10.78, 'lon': 106.70}]})
+        rec = {'strategy': 'popular', 'recommendations': [{'product': {'productId': 'r1', 'name': 'R'}}]}
+        self.assertEqual(trace_summary(rec)['items'][0]['productId'], 'r1')
+        self.assertEqual(trace_summary(None), {})
 
 
 class SimilarEvaluationTests(unittest.TestCase):
@@ -737,7 +818,7 @@ class SimilarEvaluationTests(unittest.TestCase):
             with self.subTest(code=error.code):
                 evaluated = self.evaluate(error)
                 self.assertEqual(evaluated['decision'], 'compose')
-                self.assertEqual(routing.route_after_evaluate(evaluated), 'compose')
+                self.assertEqual(routing.route_after_evaluate(evaluated), 'filter')
                 self.assertEqual(evaluated['warnings'], [])
 
     def test_http_mode_similar_server_failure_is_soft_like_inprocess(self):

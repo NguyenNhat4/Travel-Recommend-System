@@ -42,15 +42,21 @@ Tổng tối đa 5 lời gọi một lượt. Quá trần thì Similar bị bỏ
 
 ## Business rule của tool plan
 
-- **Phủ đủ loại xếp được lịch.** Code tự thêm search cho `hotel`, `attraction`, `golf` còn thiếu, trừ loại người dùng loại
-  trừ. Một search không lọc loại được coi là đã phủ mọi loại.
+- **Phủ đủ loại xếp được lịch.** Code tự thêm search cho `hotel`, `attraction` còn thiếu, trừ loại người dùng loại trừ.
+  `golf` chỉ được tìm khi người dùng nhắc tới golf; không ai nhắc thì search golf planner tự thêm bị bỏ. Một search không
+  lọc loại được coi là đã phủ mọi loại.
+- **Khách sạn: nhiều vị trí, đủ chỗ.** Mọi search lấy 50 kết quả (tối đa contract): khách sạn để luật ít di chuyển có
+  khách sạn gần các điểm đã xếp, loại khác để chuyến dài đủ hoạt động cho cả sáng lẫn chiều. Search `hotel` kèm filter
+  sức chứa của **một phòng** (`planning.room_guests`, chốt 2026-10-09): số khách mỗi phòng để cả đoàn ở vừa tối đa
+  9 phòng, tức `ceil(tổng / 9)` — 10 người lớn gửi 2, đoàn đến 9 người gửi 1. Không gửi cả đoàn: contract hiểu `guests`
+  là sức chứa một phòng, nên gửi 10 làm mọi khách sạn có phòng đôi bị loại (trace 09/10, `total: 0`).
 - **Điểm đến luôn là tên catalog,** không theo cách planner viết.
 - **Query chỉ mang phần ngữ nghĩa.** Code cắt giá, ngân sách, ngày, số ngày, số người, số sao, phủ định và tên điểm đến khỏi
   query. Lý do: `/search` đọc các cụm đó thành filter **từng sản phẩm** ("ngân sách 5 triệu" thành trần giá mỗi sản phẩm),
   còn text đem embed thì không có chúng.
 - **[Gợi ý truy xuất](glossary.md#goi-y-truy-xuat) luôn được thêm vào query:** tiện ích khách sạn bắt buộc, "phù hợp gia đình
-  có trẻ nhỏ", sở thích, tên hoạt động bắt buộc. Lý do: các yêu cầu này chỉ được hậu kiểm trên top-10, nên phải kéo được
-  sản phẩm đúng vào top-10. Giá trị `false` không thêm, vì vector không hiểu phủ định.
+  có trẻ nhỏ", sở thích, tên hoạt động bắt buộc. Lý do: các yêu cầu này chỉ được hậu kiểm trên top-N (10; khách sạn 50), nên phải kéo được
+  sản phẩm đúng vào top-N. Giá trị `false` không thêm, vì vector không hiểu phủ định.
 - **Ngân sách cả chuyến không thành filter giá.** Chỉ `hotel_price_max` và `star_rating_min` (người dùng nói về khách sạn)
   mới thành `priceMax`/`starRatingMin` của search khách sạn.
 - **Lỗi của Similar là mềm:** không có phương án, hoặc hỏng khi search đã có dữ liệu, thì không làm lượt phải thử lại.

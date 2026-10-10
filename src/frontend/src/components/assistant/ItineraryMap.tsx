@@ -6,6 +6,7 @@ import { MapPin, Navigation, Layers, ShoppingBag, Plus, Info, Home, Sun, CloudSu
 import {
   buildRouteRequests,
   defaultRouteProvider,
+  getAirportPoints,
   resolveRouteRequests,
   RouteResult,
 } from '../../services/routeGeometry';
@@ -18,6 +19,11 @@ interface ItineraryMapProps {
   itemActions?: (product: Product) => { canAddToCart: boolean; bookNow: () => void; addToCart: () => void } | null;
   focusedCoordinate?: { lat: number; lng: number } | null;
   focusedPointId?: string | null;
+  /**
+   * Xem cả chuyến (AC-AGT-04, chốt 2026-10-09): đang xem trước một thẻ khách sạn thì bản đồ chuyển sang "Tất cả", vẽ
+   * đường mọi ngày gồm sân bay.
+   */
+  overview?: boolean;
   className?: string;
 }
 
@@ -26,8 +32,10 @@ interface MapPoint {
   lat: number;
   lng: number;
   title: string;
-  type: 'stay' | 'slot';
+  type: 'stay' | 'slot' | 'airport';
   day?: number;
+  /** Sân bay: các ngày có chặng sân bay (ngày đầu, ngày cuối). */
+  airportDays?: number[];
   timeSlot?: string;
   product?: Product;
   address?: string;
@@ -103,6 +111,21 @@ function getTransitVisual(mode: TransitMode): TransitVisual {
   }
 }
 
+/** Điểm hiện ở bộ lọc ngày: khách sạn luôn hiện, sân bay ở ngày có chặng sân bay, điểm tham quan ở ngày của nó. */
+function visibleOn(point: MapPoint, filterDay: number): boolean {
+  if (filterDay === 0 || point.type === 'stay') return true;
+  if (point.type === 'airport') return point.airportDays?.includes(filterDay) ?? false;
+  return point.day === filterDay;
+}
+
+/** Thời gian vẽ một đoạn đường; người dùng bật giảm chuyển động thì vẽ ngay. */
+const SEGMENT_DRAW_MS = 450;
+
+function prefersReducedMotion(): boolean {
+  return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
 const DAY_COLORS: Record<number, { bg: string; text: string; hex: string; border: string }> = {
   1: { bg: 'bg-brand-600', text: 'text-white', hex: '#2563eb', border: '#1d4ed8' },
   2: { bg: 'bg-emerald-600', text: 'text-white', hex: '#059669', border: '#047857' },
@@ -118,6 +141,7 @@ export const ItineraryMap: React.FC<ItineraryMapProps> = ({
   itemActions,
   focusedCoordinate,
   focusedPointId,
+  overview = false,
   className = ''
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -129,11 +153,25 @@ export const ItineraryMap: React.FC<ItineraryMapProps> = ({
   const [filterDay, setFilterDay] = useState<number>(activeDay);
   const [routeResults, setRouteResults] = useState<RouteResult[]>([]);
   const [routeStatus, setRouteStatus] = useState<'idle' | 'loading' | 'ready' | 'partial'>('idle');
+  // Vẽ dần (AC-AGT-04, chốt 2026-10-09): các đoạn vẽ lần lượt theo thứ tự đi; đoạn chưa có kết quả thì chờ, đoạn không
+  // có đường (OSRM lỗi) thì bỏ qua. `drawGeneration` đổi mỗi lần đổi lịch/ngày để huỷ lượt vẽ cũ.
+  const routeOrderRef = useRef<string[]>([]);
+  const routeResultsRef = useRef<RouteResult[]>([]);
+  const drawnCountRef = useRef(0);
+  const drawingRef = useRef(false);
+  const drawGenerationRef = useRef(0);
+  const frameRef = useRef<number | null>(null);
 
   // Sync internal filterDay with parent activeDay
   useEffect(() => {
     setFilterDay(activeDay);
   }, [activeDay]);
+
+  // Xem trước một thẻ khách sạn: xem cả chuyến; thôi xem trước thì về ngày đang chọn.
+  useEffect(() => {
+    setFilterDay(overview ? 0 : activeDay);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ chạy khi vào/ra xem trước hoặc đổi lịch
+  }, [overview, plan]);
 
   // Extract all geocoded points from the plan
   const getAllPoints = (): MapPoint[] => {
@@ -167,6 +205,31 @@ export const ItineraryMap: React.FC<ItineraryMapProps> = ({
         note: plan.stay.note
       });
     }
+
+    // Sân bay của chặng bay (ngày đầu và ngày cuối); cùng một sân bay thì một ghim.
+    const { arrival, departure } = getAirportPoints(plan);
+    const firstDay = plan.days[0]?.day ?? 1;
+    const lastDay = plan.days[plan.days.length - 1]?.day ?? firstDay;
+    const airports = [
+      arrival && { point: arrival, day: firstDay },
+      departure && plan.days.length > 1 && { point: departure, day: lastDay },
+    ].filter((item): item is { point: NonNullable<typeof arrival>; day: number } => Boolean(item));
+    airports.forEach(({ point, day }) => {
+      const same = points.find((other) => other.type === 'airport'
+        && Math.abs(other.lat - point.coordinates.lat) < 0.00001 && Math.abs(other.lng - point.coordinates.lng) < 0.00001);
+      if (same) {
+        same.airportDays = [...(same.airportDays ?? []), day];
+        return;
+      }
+      points.push({
+        id: point.id,
+        lat: point.coordinates.lat,
+        lng: point.coordinates.lng,
+        title: point.title,
+        type: 'airport',
+        airportDays: [day],
+      });
+    });
 
     // Days slots points
     let order = 1;
@@ -277,13 +340,17 @@ export const ItineraryMap: React.FC<ItineraryMapProps> = ({
     let cancelled = false;
     markersGroup.clearLayers();
     linesGroup.clearLayers();
+    drawGenerationRef.current += 1;
+    if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+    frameRef.current = null;
+    drawingRef.current = false;
+    drawnCountRef.current = 0;
+    routeOrderRef.current = [];
     setRouteResults([]);
     setRouteStatus('idle');
 
     const allPoints = getAllPoints();
-    const visiblePoints = filterDay === 0
-      ? allPoints
-      : allPoints.filter((point) => point.type === 'stay' || point.day === filterDay);
+    const visiblePoints = allPoints.filter((point) => visibleOn(point, filterDay));
 
     if (visiblePoints.length === 0) return () => {
       cancelled = true;
@@ -303,6 +370,21 @@ export const ItineraryMap: React.FC<ItineraryMapProps> = ({
     const stayIcon = L.divIcon({
       className: 'custom-stay-pin',
       html: stayHtml,
+      iconSize: [36, 36],
+      iconAnchor: [18, 18],
+    });
+    const airportIcon = L.divIcon({
+      className: 'custom-airport-pin',
+      html: `
+        <div class="relative group cursor-pointer transform -translate-x-1/2 -translate-y-1/2">
+          <div class="w-9 h-9 rounded-full bg-slate-800 text-white flex items-center justify-center shadow-lg border-2 border-white ring-2 ring-slate-300 transition-transform hover:scale-110">
+            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z"/></svg>
+          </div>
+          <span class="absolute -bottom-5 left-1/2 -translate-x-1/2 bg-slate-900/90 text-white text-[10px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap shadow-sm pointer-events-none">
+            Sân bay
+          </span>
+        </div>
+      `,
       iconSize: [36, 36],
       iconAnchor: [18, 18],
     });
@@ -340,8 +422,8 @@ export const ItineraryMap: React.FC<ItineraryMapProps> = ({
           renderLng += (radius * Math.cos(angle)) / Math.cos((point.lat * Math.PI) / 180);
         }
 
-        if (point.type === 'stay') {
-          L.marker([renderLat, renderLng], { icon: stayIcon })
+        if (point.type === 'stay' || point.type === 'airport') {
+          L.marker([renderLat, renderLng], { icon: point.type === 'stay' ? stayIcon : airportIcon })
             .addTo(markersGroup)
             .on('click', () => {
               setSelectedPoint(point);
@@ -379,6 +461,7 @@ export const ItineraryMap: React.FC<ItineraryMapProps> = ({
     }
 
     const requests = buildRouteRequests(plan, filterDay);
+    routeOrderRef.current = requests.map((request) => request.id);
     if (requests.length > 0) {
       setRouteStatus('loading');
       const onRouteResult = (result: RouteResult) => {
@@ -404,25 +487,17 @@ export const ItineraryMap: React.FC<ItineraryMapProps> = ({
   }, [plan, filterDay]);
 
   // Render only provider-returned geometry. There is deliberately no straight-line fallback.
+  // Đoạn đường vẽ lần lượt theo thứ tự đi (`routeOrderRef`), mỗi đoạn kéo dài dần trong `SEGMENT_DRAW_MS`; kết quả về
+  // không theo thứ tự (cache, hàng đợi OSRM) thì đoạn sau chờ đoạn trước.
   useEffect(() => {
+    routeResultsRef.current = routeResults;
     const linesGroup = linesLayerRef.current;
     if (!linesGroup) return;
-    linesGroup.clearLayers();
+    const generation = drawGenerationRef.current;
+    const reduced = prefersReducedMotion();
 
-    routeResults.filter((result) => result.status === 'routed').forEach((result) => {
+    const finishSegment = (result: RouteResult, segmentLine: L.Polyline) => {
       const transit = getTransitVisual(result.mode);
-      const path = result.geometry.map((coordinate) => [coordinate.lat, coordinate.lng] as [number, number]);
-      if (path.length < 2) return;
-
-      const segmentLine = L.polyline(path, {
-        color: transit.color,
-        weight: transit.weight,
-        opacity: 0.85,
-        dashArray: transit.dashArray,
-        lineCap: 'round',
-        lineJoin: 'round',
-      }).addTo(linesGroup);
-
       const tooltip = `<div class="text-xs font-sans p-0.5">
         <div class="font-bold text-slate-800 flex items-center gap-1.5">
           <span>${transit.emoji}</span>
@@ -447,8 +522,58 @@ export const ItineraryMap: React.FC<ItineraryMapProps> = ({
       L.marker([midCoord.lat, midCoord.lng], { icon: transitBadgeIcon })
         .addTo(linesGroup)
         .bindTooltip(tooltip, { direction: 'top', offset: [0, -10], opacity: 0.95 });
-    });
+    };
+
+    const drawNext = () => {
+      if (generation !== drawGenerationRef.current || drawingRef.current) return;
+      const order = routeOrderRef.current;
+      while (drawnCountRef.current < order.length) {
+        const result = routeResultsRef.current.find((item) => item.id === order[drawnCountRef.current]);
+        if (!result) return;
+        drawnCountRef.current += 1;
+        if (result.status !== 'routed') continue;
+        const path = result.geometry.map((coordinate) => [coordinate.lat, coordinate.lng] as [number, number]);
+        if (path.length < 2) continue;
+
+        const transit = getTransitVisual(result.mode);
+        const segmentLine = L.polyline(reduced ? path : path.slice(0, 1), {
+          color: transit.color,
+          weight: transit.weight,
+          opacity: 0.85,
+          dashArray: transit.dashArray,
+          lineCap: 'round',
+          lineJoin: 'round',
+        }).addTo(linesGroup);
+        if (reduced) {
+          finishSegment(result, segmentLine);
+          continue;
+        }
+
+        drawingRef.current = true;
+        const startedAt = performance.now();
+        const step = (now: number) => {
+          if (generation !== drawGenerationRef.current) return;
+          const progress = Math.min(1, (now - startedAt) / SEGMENT_DRAW_MS);
+          segmentLine.setLatLngs(path.slice(0, Math.max(2, Math.ceil(progress * path.length))));
+          if (progress < 1) {
+            frameRef.current = requestAnimationFrame(step);
+            return;
+          }
+          frameRef.current = null;
+          drawingRef.current = false;
+          finishSegment(result, segmentLine);
+          drawNext();
+        };
+        frameRef.current = requestAnimationFrame(step);
+        return;
+      }
+    };
+    drawNext();
   }, [routeResults]);
+
+  useEffect(() => () => {
+    if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+  }, []);
 
   // Handle FlyTo & Highlight Marker when hovering over itinerary cards
   useEffect(() => {
@@ -499,10 +624,7 @@ export const ItineraryMap: React.FC<ItineraryMapProps> = ({
   const handleFitAll = () => {
     const map = mapInstanceRef.current;
     if (!map) return;
-    const allPoints = getAllPoints();
-    const visiblePoints = filterDay === 0
-      ? allPoints
-      : allPoints.filter((point) => point.type === 'stay' || point.day === filterDay);
+    const visiblePoints = getAllPoints().filter((point) => visibleOn(point, filterDay));
     const bounds = L.latLngBounds(visiblePoints.map(p => [p.lat, p.lng]));
     if (bounds.isValid()) {
       map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
@@ -611,6 +733,10 @@ export const ItineraryMap: React.FC<ItineraryMapProps> = ({
           <span className="w-2.5 h-2.5 rounded-full bg-brand-600 inline-block shrink-0"></span>
           <span>Chỗ nghỉ cố định</span>
         </div>
+        <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
+          <span className="w-2.5 h-2.5 rounded-full bg-slate-800 inline-block shrink-0"></span>
+          <span>Sân bay</span>
+        </div>
       </div>
 
       {/* Active Selected Point Detail Card (Bottom or Floating) */}
@@ -619,9 +745,11 @@ export const ItineraryMap: React.FC<ItineraryMapProps> = ({
           <div className="flex items-start justify-between gap-2">
             <div className="flex items-center gap-2">
               <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                selectedPoint.type === 'stay' ? 'bg-brand-100 text-brand-800' : 'bg-brand-100 text-brand-800'
+                selectedPoint.type === 'stay' ? 'bg-brand-100 text-brand-800'
+                  : selectedPoint.type === 'airport' ? 'bg-slate-100 text-slate-800' : 'bg-brand-100 text-brand-800'
               }`}>
-                {selectedPoint.type === 'stay' ? 'Chỗ nghỉ cả chuyến' : `Ngày ${selectedPoint.day} · ${getTimeLabel(selectedPoint.timeSlot)}`}
+                {selectedPoint.type === 'stay' ? 'Chỗ nghỉ cả chuyến'
+                  : selectedPoint.type === 'airport' ? 'Sân bay' : `Ngày ${selectedPoint.day} · ${getTimeLabel(selectedPoint.timeSlot)}`}
               </span>
               {selectedPoint.product?.unitPrice && (
                 <span className="text-[11px] font-bold text-emerald-700">

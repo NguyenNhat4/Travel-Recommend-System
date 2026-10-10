@@ -46,8 +46,19 @@ logger = logging.getLogger("uvicorn.error")
 
 Provider = Callable[[], Any]
 
-#: Tham số search mà adapter HTTP gửi xuống GET /search; search không bao giờ nhận danh tính.
-SEARCH_ENGINE_ARGUMENTS = ("taxonomy", "destination", "limit", "offset")
+#: Tham số `SearchRequest` → tham số engine, giống route POST /search (adapter HTTP gửi đúng body đó). Search không bao giờ
+#: nhận danh tính. `sort`, `includeVariants`, `availabilityMode`, ngày của `travelContext` engine chưa nhận nên không chuyển.
+SEARCH_ENGINE_ARGUMENTS = {"taxonomy": "taxonomy", "destination": "destination", "limit": "limit", "offset": "offset",
+                           "origin": "origin", "priceMin": "price_min", "priceMax": "price_max",
+                           "starRatingMin": "star_min", "availableOnly": "available_only"}
+
+
+def search_engine_kwargs(request: dict[str, Any]) -> dict[str, Any]:
+    """kwargs của engine Search cho một `SearchRequest`; số khách (`travelContext.guests`) là filter sức chứa (1.16.0)."""
+    kwargs = {target: request[key] for key, target in SEARCH_ENGINE_ARGUMENTS.items() if request.get(key) is not None}
+    guests = (request.get("travelContext") or {}).get("guests") or {}
+    kwargs.update({key: guests[key] for key in ("adults", "children") if guests.get(key) is not None})
+    return kwargs
 
 
 def _unavailable() -> ToolError:
@@ -99,8 +110,7 @@ class InProcessItineraryTools:
 
     async def _search_products(self, request: dict[str, Any]) -> dict[str, Any]:
         engine = self._require("search_products", self._search)
-        kwargs = {key: request[key] for key in SEARCH_ENGINE_ARGUMENTS if request.get(key) is not None}
-        return search_tool_payload(await self._run(engine, request["query"].strip(), **kwargs))
+        return search_tool_payload(await self._run(engine, request["query"].strip(), **search_engine_kwargs(request)))
 
     async def _get_recommendations(self, request: dict[str, Any], authorization: str | None) -> dict[str, Any]:
         principal = await self._principal(authorization)  # kiểm token trước engine: 401 thắng 503

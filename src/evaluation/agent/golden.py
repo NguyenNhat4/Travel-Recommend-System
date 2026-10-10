@@ -51,6 +51,7 @@ from src.backend.app.agents.steps.classification import vietnam_today
 from src.backend.app.agents.tools.itinerary_gateway import ItineraryToolGateway
 from src.backend.app.application.itinerary.contracts import valid
 from src.backend.app.core.config import get_settings
+from src.backend.app.domain.itinerary.normalization import fold
 from src.backend.app.domain.itinerary.planning import (
     MAX_ACTIVITIES_PER_DAY, SLOT_TAXONOMIES, STAY_TAXONOMY, _stay_order,
 )
@@ -317,6 +318,7 @@ def schedule_findings(response: dict[str, Any], candidates: dict[str, dict[str, 
         failures.append(f"itinerary.days có {len(days)} ngày, khác intent.days={intent_days}")
 
     seen_ids: set[str] = set()
+    seen_names: set[str] = set()  # node `filter` bỏ điểm cùng tên trước khi xếp (AC-AGT-04, chốt 2026-10-08)
     stay = (itinerary.get("stay") or {}).get("product")
     if stay:
         if stay.get("taxonomy") != STAY_TAXONOMY:
@@ -345,6 +347,10 @@ def schedule_findings(response: dict[str, Any], candidates: dict[str, dict[str, 
             if product["productId"] in seen_ids:
                 failures.append(f"productId {product['productId']} lặp lại trong itinerary")
             seen_ids.add(product["productId"])
+            name = fold(product.get("name"))
+            if name and name in seen_names:
+                failures.append(f"tên {product.get('name')!r} lặp lại trong itinerary (khác productId)")
+            seen_names.add(name)
         times = [s.get("time") for s in slots if s.get("product")]
         if times and times[0] != "MORNING":
             failures.append(f"ngày {day.get('day')} hoạt động đầu ở {times[0]!r}, phải là MORNING")
@@ -565,6 +571,9 @@ class TurnResult:
     tool_called: bool
     tool_expected: bool | None
     findings: list[str]
+    # Điểm tham quan node `filter` bỏ vì trùng (`state["dropped_duplicates"]`): productId, name, duplicateOf,
+    # duplicateOfName, by (rule/llm). Chỉ để đọc, không phải finding (AC-AGT-04, chốt 2026-10-08).
+    dropped: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def passed(self) -> bool:
@@ -640,14 +649,14 @@ async def run_case(
         results.append(TurnResult(
             case.id, index, message, http_status, response.get("status") or
             (response.get("error") or {}).get("code"), latency_ms, grounding_checked,
-            tool_called, tool_expected, findings,
+            tool_called, tool_expected, findings, list(state.get("dropped_duplicates") or []),
         ))
         if on_event:
             on_event({"event": "turn_done", **position, "message": message, "httpStatus": http_status,
                       "status": results[-1].status, "latencyMs": latency_ms, "passed": not findings,
                       "findings": findings, "reply": answer_text(response),
                       "intent": response.get("intent") or response.get("knownIntent"),
-                      "missingFields": response.get("missingFields"),
+                      "missingFields": response.get("missingFields"), "dropped": results[-1].dropped,
                       "traceName": trace["run_name"], "requestId": request_id})
         # Lượt đầu sai vẫn chạy tiếp các lượt sau (không dừng sớm): silent-skip che mất lỗi ở
         # những lượt kế, và excludeProductsFromTurn cần previous_products của mọi lượt đã chạy.
@@ -712,7 +721,8 @@ def build_report(results: list[TurnResult], settings: Any, mode: str, product_co
         },
         "turns": [
             {"caseId": r.case_id, "turn": r.turn_index, "message": r.message, "httpStatus": r.http_status,
-             "status": r.status, "latencyMs": r.latency_ms, "passed": r.passed, "findings": r.findings}
+             "status": r.status, "latencyMs": r.latency_ms, "passed": r.passed, "findings": r.findings,
+             "dropped": r.dropped}
             for r in results
         ],
     }
@@ -762,7 +772,22 @@ def render_markdown(report: dict[str, Any], commit_sha: str) -> str:
             for finding in turn["findings"]:
                 lines.append(f"- {finding}")
             lines.append("")
+    lines += ["## Đã loại", "", "Điểm tham quan node `filter` bỏ vì trùng trước khi xếp lịch (AC-AGT-04).", ""]
+    dropped = [(turn, item) for turn in report["turns"] for item in turn.get("dropped") or []]
+    if not dropped:
+        lines.append("Không có.")
+    else:
+        lines += ["| Case | Lượt | Bỏ | Trùng với | Do |", "|---|---|---|---|---|"]
+        lines += [f"| {turn['caseId']} | {turn['turn']} | {dropped_label(item, 'productId', 'name')} | "
+                  f"{dropped_label(item, 'duplicateOf', 'duplicateOfName')} | {item.get('by')} |"
+                  for turn, item in dropped]
     return "\n".join(lines)
+
+
+def dropped_label(item: dict[str, Any], id_key: str, name_key: str) -> str:
+    """`Tên` (`8 ký tự đầu của mã`) cho một ô của bảng "Đã loại"; `|` trong tên bị thay để không vỡ bảng."""
+    name = str(item.get(name_key) or "").replace("|", "/")
+    return f"{name} (`{str(item.get(id_key) or '')[:8]}`)"
 
 
 # -------------------------------------------------------------------------------------------- cli

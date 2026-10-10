@@ -2,8 +2,8 @@
 
 - Ngày: 2026-10-06
 - Người đề xuất: nhóm Search / Claude (agent soạn)
-- Trạng thái: chờ chốt
-- Chốt bởi / ngày:
+- Trạng thái: đã áp dụng
+- Chốt bởi / ngày: tqanh123 (người dùng), 2026-10-06 — PRD cập nhật cùng ngày (requirements, architecture, data-model, deployment-plan, implementation-plan, project-brief)
 - PRD bị ảnh hưởng: `docs/prd/architecture.md` §1 (sơ đồ: `HybridSearch` chỉ nối Weaviate/Embedding, không nối LLM), §4 (bảng công
   nghệ — LLM chỉ ghi cho Trợ lý), §5 mục 5 (luồng truy vấn search: embed → Weaviate); `docs/prd/requirements.md` NFR-PERF-01 (p95 ≤ 250 ms
   cho API tìm kiếm); `docs/prd/deployment-plan.md` §2 (biến môi trường của search)

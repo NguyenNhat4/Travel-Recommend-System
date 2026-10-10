@@ -37,8 +37,9 @@ class Alerts(unittest.TestCase):
 
     def test_at_max_uses_the_autoscaler_ceiling(self):
         body = policy("group_at_max")
-        self.assertIn("COMPARISON_GE", body)
-        self.assertIn("var.max_replicas", body)
+        self.assertNotIn("COMPARISON_GE", body)          # Cloud Monitoring chỉ nhận GT/LT
+        self.assertIn("COMPARISON_GT", body)
+        self.assertIn("var.max_replicas - 0.5", body)    # số VM nguyên: > max-0,5 tương đương >= max
 
     def test_5xx_alert_is_a_ratio_not_a_count(self):
         body = policy("lb_5xx_ratio")

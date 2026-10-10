@@ -161,7 +161,11 @@ export interface ItineraryStayItem {
   productId: string;
   product: Product;
   nights: number;
-  dayRange?: string; // e.g. "Đêm 1 - 2 (Ngày 1 - 2)"
+  /** Đêm đầu tiên ở khách sạn này, đếm từ 1 (contract 1.19.0); vắng mặt coi là 1. */
+  fromNight?: number;
+  /** Số phòng cho cả đoàn (contract 1.23.0, AC-AGT-04); vắng mặt coi là 1. */
+  rooms?: number;
+  dayRange?: string; // e.g. "Đêm 1–2"
   note?: string;
   source?: 'recommendation' | 'search';
   because?: BecauseItem[];
@@ -190,6 +194,8 @@ export interface GroundedPlan {
   stay?: {
     productId: string;
     product: Product;
+    /** Số phòng cho cả đoàn (contract 1.23.0); vắng mặt coi là 1. */
+    rooms?: number;
     note: string;
     source: 'recommendation' | 'search';
     because?: BecauseItem[];

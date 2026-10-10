@@ -40,7 +40,7 @@ import log
 import pipeline_errors as perr
 import pipeline_graph as graph
 from collectors import live_control
-from collectors.common import Paths
+from collectors.common import Paths, read_jsonl
 from collectors.plan import select_destinations
 from collectors.trip_live import LiveOptions, crawl, discover
 from fresh_catalog_db import checked_trip_hotels, load_into_db, maintain_catalog, validate_catalog
@@ -48,6 +48,7 @@ from fresh_catalog_schedule import read_state, read_targets, record_batch, selec
 from fresh_run_log import RunRecorder, StopRequested, prune_runs, read_json, run_dirs, terminate_tree, write_json
 from normalise import PRODUCT_FIELDS, main as normalise_main
 from normalise_stream import StreamNormaliser
+from stage_log import Stages, substep_line
 from stream_feed import DbFeeder, DraftMerger, IndexFeeder, Ticker
 
 ROOT = Path(__file__).resolve().parent
@@ -145,7 +146,10 @@ def source_command(run_dir: Path, source: str, destinations: str, values: dict) 
             command += ['--fares-minutes', str(values['tripFlights.fareMinutes'])]
             if values['timeout.tripFlights']:
                 command += ['--source-deadline-minutes', str(values['timeout.tripFlights'])]
-    elif source == 'booking-hotels':
+    refresh = run_dir / REFRESH_DIR / f'{source}.jsonl'
+    if source in REFRESH_STEPS.values() and refresh.is_file():
+        command += ['--refresh-list', str(refresh)]
+    if source == 'booking-hotels':
         command += ['--delay', _num(values['booking.delay']), '--concurrency', str(values['booking.tabs']),
                     '--checkin-offset-days', str(values['booking.checkinOffsetDays']),
                     '--budget', f"booking_hotels={values['booking.hotelsPerDestination']}"]
@@ -163,10 +167,68 @@ def source_command(run_dir: Path, source: str, destinations: str, values: dict) 
 
 SOURCE_TAIL: dict[str, deque] = {}  # nguồn → các dòng log cuối của lần chạy gần nhất, để phân loại lỗi
 
+# Làm mới khách sạn đang có trong DB ở lượt cào lớn (setting `refresh.existing`): danh sách đọc từ DB đầu lượt, ghi vào
+# <lượt>/refresh/<bước>.jsonl để cào lại riêng một nguồn (resume) dùng đúng danh sách của lượt.
+REFRESH_DIR = 'refresh'
+REFRESH_STEPS = {'booking': 'booking-hotels', 'agoda': 'agoda-hotels'}
+REFRESH_INTERIM = {'booking-hotels': 'booking_hotels', 'agoda-hotels': 'agoda_api'}
 
-def run_source(run_dir: Path, source: str, destinations: str, group: str, deadline: float | None = None) -> int:
+
+def write_refresh_lists(run_dir: Path, targets: dict[str, list[dict]] | None) -> dict[str, int]:
+    """Ghi danh sách khách sạn Booking/Agoda đang có (bước bảo trì đọc từ DB, cũ nhất trước) cho crawl.py. Bảo trì lỗi thì
+    không có danh sách: lượt vẫn cào khách sạn mới tìm và báo trong log, không làm hỏng lượt."""
+    if not targets:
+        say('catalog.refresh.skipped: bước bảo trì không đọc được catalog; lượt này chỉ cào khách sạn mới tìm',
+            severity='ERROR')
+        return {}
+    folder = run_dir / REFRESH_DIR
+    folder.mkdir(parents=True, exist_ok=True)
+    counts = {}
+    for key, name in REFRESH_STEPS.items():
+        rows = targets.get(key) or []
+        (folder / f'{name}.jsonl').write_text(''.join(json.dumps(row, ensure_ascii=False) + '\n' for row in rows),
+                                              encoding='utf-8')
+        counts[name] = len(rows)
+    say('catalog.refresh.plan ' + ' '.join(f'{name}={count}' for name, count in counts.items()))
+    return counts
+
+
+def refresh_coverage(run_dir: Path, trip_targets: list[dict], trip_records: list[dict],
+                     minimum: int) -> tuple[dict, dict[str, str]]:
+    """Đã làm mới bao nhiêu khách sạn đang có (theo interim của lượt) và nguồn nào chưa đủ `minimum` %. Tìm theo điểm đến
+    của Booking mà mọi điểm đến 0 khách sạn cũng là chưa đủ (lượt 08/10/2026 báo "Xong" dù không có khách sạn mới nào)."""
+    report: dict[str, dict] = {}
+    for name, stem in REFRESH_INTERIM.items():
+        path = run_dir / REFRESH_DIR / f'{name}.jsonl'
+        if not path.is_file():
+            continue
+        wanted = {row['url'] for row in read_jsonl(path)}
+        interim = run_dir / 'interim' / f'{stem}.jsonl'
+        got = {row.get('url') for row in read_jsonl(interim)} if interim.is_file() else set()
+        report[name] = {'requested': len(wanted), 'refreshed': len(wanted & got)}
+    wanted_trip = {str(row['trip_hotel_id']) for row in trip_targets if row.get('refresh')}
+    if wanted_trip:
+        got_trip = {str(row.get('hotelId')) for row in trip_records}
+        report['trip-hotels.prices'] = {'requested': len(wanted_trip), 'refreshed': len(wanted_trip & got_trip)}
+    problems: dict[str, str] = {}
+    for name, item in report.items():
+        item['percent'] = round(100 * item['refreshed'] / item['requested'], 1) if item['requested'] else 100.0
+        if minimum and item['requested'] and item['percent'] < minimum:
+            problems[name] = f"làm mới {item['refreshed']}/{item['requested']} khách sạn đang có ({item['percent']:g}% < {minimum}%)"
+    search = read_json(run_dir / 'interim' / 'booking_hotels.search.json', {}) or {}
+    per_destination = search.get('destinations') or {}
+    if per_destination:
+        report['booking-hotels.search'] = per_destination
+        if not any(per_destination.values()):
+            problems['booking-hotels.search'] = f'tìm theo điểm đến trả 0 khách sạn ở cả {len(per_destination)} điểm đến'
+    return report, problems
+
+
+def run_source(run_dir: Path, source: str, destinations: str, group: str, deadline: float | None = None,
+               on_start=None) -> int:
     """Chạy `crawl.py <source>`. `deadline` (time.monotonic): quá hạn thì dừng cả cây tiến trình của nguồn này (crawl.py,
-    Chromium) và trả perr.EXIT_TIMEOUT (P4); các nguồn khác không bị đụng."""
+    Chromium) và trả perr.EXIT_TIMEOUT (P4); các nguồn khác không bị đụng. `on_start(pid)`: ghi pid vào chi tiết bước để
+    supervisor (pipeline_runtime.supervise) dừng riêng nguồn này nếu chính nó không tự dừng kịp."""
     command = source_command(run_dir, source, destinations, settings_values())
     say(f'[{group}] $ ' + ' '.join(command), source=source)
     env = dict(os.environ, CRAWL_LIVE_KEY=LIVE_KEYS.get(source, ''), PYTHONUNBUFFERED='1', CRAWL_LOG_PLAIN='1')
@@ -174,6 +236,8 @@ def run_source(run_dir: Path, source: str, destinations: str, group: str, deadli
     timed_out = threading.Event()
     with subprocess.Popen(command, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                           text=True, errors='replace', env=env) as proc:
+        if on_start is not None:
+            on_start(proc.pid)
         if deadline is not None:
             def watch() -> None:
                 while proc.poll() is None:
@@ -308,6 +372,13 @@ def save_run() -> None:
     if REC is not None:
         with REC.lock:
             REC.save()
+
+
+def substeps(detail: dict, name: str) -> Stages:
+    """Bước con của bước `name` đang chạy (stage_log), ghi vào `detail.substeps` và một dòng log mỗi bước con. Mỗi lần thử
+    lại bắt đầu danh sách mới."""
+    detail['substeps'] = []
+    return Stages(detail['substeps'], save_run, step=name, emit=say)
 
 
 def step(name: str, group: str | None = None, label: str | None = None):
@@ -653,8 +724,14 @@ def crawl_sites(run_dir: Path, destinations: str, groups, parallel: int,
                             with browser_slot(key):
                                 if attempt == 0:  # ngân sách giờ tính từ lúc có slot trình duyệt, không tính lúc chờ
                                     limit = step_deadline(key, deadline)
+                                def record_pid(pid: int, detail=detail) -> None:
+                                    detail['pid'] = pid
+                                    save_run()
                                 code = (perr.EXIT_TIMEOUT if limit is not None and time.monotonic() >= limit else
-                                        run_source(run_dir, key, destinations, name, deadline=limit))
+                                        run_source(run_dir, key, destinations, name, deadline=limit, on_start=record_pid))
+                                detail.pop('pid', None)
+                                if limit is not None and time.monotonic() >= limit and code != 0:
+                                    code = perr.EXIT_TIMEOUT  # supervisor đã dừng riêng tiến trình nguồn quá hạn
                             kind = perr.classify_exit(code, list(SOURCE_TAIL.get(key, ())))
                             statuses[key] = code
                             detail['exitCode'] = code
@@ -776,19 +853,35 @@ def required_variants(values: dict) -> set:
 
 
 def validate_run(products_path: Path, coverage_path: Path | None, *, full: bool,
-                 required: set | None = None, trip: bool = True) -> dict:
-    checked = checked_trip_hotels(coverage_path) if trip else set()
-    if trip and not checked:
-        raise ValueError('Chưa có khách sạn Trip hoàn tất mọi mốc ngày')
-    with products_path.open(encoding='utf-8') as stream:
-        rows = [json.loads(line) for line in stream if line.strip()]
-    if not rows or any(tuple(row) != PRODUCT_FIELDS for row in rows):
-        raise ValueError('Catalog thiếu 13 trường đúng thứ tự')
-    validate_catalog(rows)
-    variants = {(row['taxonomy'], row['attributes'].get('level')) for row in rows}
-    need = REQUIRED if required is None else required
-    if full and not need <= variants:
-        raise ValueError(f'Thiếu nhóm sản phẩm: {need - variants}')
+                 required: set | None = None, trip: bool = True, stages: Stages | None = None) -> dict:
+    """Các luật trước khi nạp DB, mỗi luật một bước con (`stages`) với số dòng đạt / tổng. Luật hỏng thì ném ValueError."""
+    stages = stages or Stages()
+    with stages.stage('khách sạn Trip đủ mốc ngày giá') as stage:
+        checked = checked_trip_hotels(coverage_path) if trip else set()
+        if trip and not checked:
+            raise ValueError('Chưa có khách sạn Trip hoàn tất mọi mốc ngày')
+        stage['out'] = len(checked)
+        if not trip:
+            stage.update(status='skipped', note='lượt này không nạp khách sạn Trip')
+    with stages.stage('13 trường đúng thứ tự') as stage:
+        with products_path.open(encoding='utf-8') as stream:
+            rows = [json.loads(line) for line in stream if line.strip()]
+        good = sum(tuple(row) == PRODUCT_FIELDS for row in rows)
+        stage.update({'in': len(rows), 'out': good, 'ok': good, 'total': len(rows)})
+        if not rows or good < len(rows):
+            raise ValueError('Catalog thiếu 13 trường đúng thứ tự')
+    with stages.stage('id, sourceRef, thông tin hiển thị', inp=len(rows)) as stage:
+        validate_catalog(rows)
+        stage.update(out=len(rows), ok=len(rows), total=len(rows))
+    with stages.stage('đủ nhóm sản phẩm') as stage:
+        variants = {(row['taxonomy'], row['attributes'].get('level')) for row in rows}
+        need = REQUIRED if required is None else required
+        missing = sorted(f'{a}/{b or "-"}' for a, b in need - variants)
+        stage.update(ok=len(need) - len(missing), total=len(need), note='thiếu ' + ', '.join(missing) if missing else None)
+        if not full:
+            stage.update(status='skipped', note='chỉ kiểm ở lượt cào lớn')
+        elif not need <= variants:
+            raise ValueError(f'Thiếu nhóm sản phẩm: {need - variants}')
     return {'products': len(rows), 'completedHotels': len(checked),
             'variants': sorted(f'{a}/{b or "-"}' for a, b in variants)}
 
@@ -1052,10 +1145,12 @@ def run_job(mode: str, trigger: str | None = None, run_id: str | None = None, fr
 def execute(selected: str, rec: RunRecorder, values: dict, state_dir: Path, run_dir: Path,
             db_url: str, index_config) -> int:
     maintenance_error = False
+    refresh: dict = {}  # khách sạn đang có trong DB, bảo trì đọc cùng lần với catalog (lượt cào lớn làm mới)
     try:
         with step('maintain', label=graph.BY_ID['maintain'].title) as detail:
             maintenance = with_retry('maintain', lambda: maintain_catalog(
-                db_url, trip_max_age_days=values['tripHotels.priceMaxAgeDays']), detail)
+                db_url, trip_max_age_days=values['tripHotels.priceMaxAgeDays'], refresh_out=refresh,
+                stages=substeps(detail, 'maintain')), detail)
             detail.update(maintenance)
         rec.set_counts(maintain=maintenance)
     except StopRequested:
@@ -1067,7 +1162,7 @@ def execute(selected: str, rec: RunRecorder, values: dict, state_dir: Path, run_
         run_index(rec, index_config)
         return EXIT_PARTIAL if maintenance_error else 0
     try:
-        result = crawl_and_load(selected, rec, values, state_dir, run_dir, db_url, index_config)
+        result = crawl_and_load(selected, rec, values, state_dir, run_dir, db_url, index_config, refresh=refresh)
         return EXIT_PARTIAL if maintenance_error else result
     finally:
         failed = sys.exc_info()[0] is not None
@@ -1094,9 +1189,28 @@ def run_index(rec: RunRecorder, index_config) -> None:
             detail['_status'] = 'partial'
             say(f"catalog.index.deferred reason={report['reason']} retryAfter={report['retryAfter']}; DB retained")
         detail.update(report or {})
+        index_substeps(substeps(detail, 'index'), report or {})
     rec.set_counts(index=report)
     (rec.run_dir / 'index_report.json').write_text(json.dumps(report or {}, ensure_ascii=False, indent=1),
                                                    encoding='utf-8')
+
+
+def index_substeps(stages: Stages, report: dict) -> None:
+    """Bước con của bước index suy từ báo cáo embed_products (job đó không báo theo từng giai đoạn)."""
+    if report.get('deferred'):
+        stages.add('embed + ghi Weaviate', status='partial', note=f"hoãn: {report.get('reason')}")
+        return
+    units = report.get('searchUnits')
+    unchanged, embedded = report.get('unchanged') or 0, report.get('embedded') or 0
+    stages.add('đọc search unit từ DB', out=units)
+    stages.add('giữ vector không đổi text', **{'in': units, 'out': unchanged})
+    todo = (units or 0) - unchanged
+    stages.add('embed mới / đổi text + ghi Weaviate', **{'in': todo, 'out': embedded},
+               **({'ok': embedded, 'total': todo} if todo else {}), note=report.get('modelVersion'))
+    stages.add('xoá vector mồ côi', out=report.get('deletedOrphans'))
+    missing = report.get('missingLexical') or 0
+    stages.add('chỉ mục từ khoá (lexical)', status='partial' if missing else 'ok', ok=(units or 0) - missing, total=units,
+               note=f"bổ sung {report.get('backfilledLexical') or 0}" + (f' · còn thiếu {missing}' if missing else ''))
 
 
 RUN_TARGETS = 'trip_targets.run.json'  # ID khách sạn Trip của lượt: cào lại riêng bước giá phòng cần danh sách này (P4)
@@ -1126,7 +1240,7 @@ def crawl_trip_prices(run_dir: Path, targets: list[dict], values: dict, deadline
 
 
 def crawl_and_load(selected: str, rec: RunRecorder, values: dict, state_dir: Path, run_dir: Path, db_url: str,
-                   index_config=None) -> int:
+                   index_config=None, refresh: dict | None = None) -> int:
     targets_file = state_dir / 'trip_targets.json'
     schedule_file = state_dir / 'trip_schedule.json'
     coverage_path = run_dir / 'trip_price_coverage.json'
@@ -1160,14 +1274,24 @@ def crawl_and_load(selected: str, rec: RunRecorder, values: dict, state_dir: Pat
                 except perr.StepTimeout:
                     statuses['trip-hotels.discover'] = perr.EXIT_TIMEOUT
                     raise
+                found = len(trip['targets'])
+                if values['refresh.existing']:
+                    # Lượt cào lớn hỏi giá mọi ID đã biết (cũ nhất trước), không chỉ ID mới tìm: lượt hằng ngày xoay vòng
+                    # không chạy khi ngày nào cũng cào lớn (schedule.fullEveryDays = 1).
+                    fresh_ids = {row['trip_hotel_id'] for row in trip['targets']}
+                    known_rows = [row for row in saved_targets(targets_file) if row['trip_hotel_id'] not in fresh_ids]
+                    ordered = select_batch(known_rows, read_state(schedule_file), len(known_rows)) if known_rows else []
+                    trip['targets'] = trip['targets'] + [dict(row, refresh=True) for row in ordered]
                 save_run_targets(run_dir, trip['targets'])
-                detail.update(cities=[c.name for c in cities], selected=len(trip['targets']),
+                detail.update(cities=[c.name for c in cities], selected=found, refresh=len(trip['targets']) - found,
                               perCity=trip['discovery'])
                 if not trip['targets']:
                     statuses['trip-hotels.discover'] = perr.EXIT_BLOCKED
                     raise perr.BlockedError('Trip không trả ID khách sạn nào (trang danh sách hiện 0 nơi lưu trú; '
                                             'nghi bị chặn) — bỏ bước hỏi giá khách sạn Trip')
 
+        if values['refresh.existing'] and (values['sources.booking'] or values['sources.agoda']):
+            rec.set_counts(refreshPlan=write_refresh_lists(run_dir, refresh))
         groups = []
         for name, sources in SITE_GROUPS:
             steps = [s for s in sources if values[SOURCE_SWITCH[s]]]
@@ -1178,6 +1302,13 @@ def crawl_and_load(selected: str, rec: RunRecorder, values: dict, state_dir: Pat
         statuses.update(crawl_sites(run_dir, destinations, groups, values['crawl.parallelSites'], previewer,
                                     crawl_deadline))
         rec.check_stop()
+        coverage_report, refresh_problems = refresh_coverage(run_dir, trip['targets'], trip['records'],
+                                                             values['quality.minRefreshPercent'])
+        if coverage_report:
+            rec.set_counts(refresh=coverage_report)
+        rec.set_counts(refreshProblems=refresh_problems)  # incomplete_sources đọc lại, kể cả khi chạy tiếp lượt (resume)
+        for name, problem in refresh_problems.items():
+            say(f'catalog.refresh.incomplete name={name}: {problem}', severity='ERROR')
         # tìm ID bị chặn / quá giờ, hoặc hỏi giá quá giờ: lượt này không có khách sạn Trip
         trip_used = trip_on and bool(cities) and bool(trip['targets']) and not trip['timedOut']
     else:
@@ -1236,7 +1367,11 @@ def crawl_and_load(selected: str, rec: RunRecorder, values: dict, state_dir: Pat
 
 def normalise_step(run_dir: Path, destinations: str | None, merge_only: bool = False) -> Path:
     with step('normalise', label=graph.BY_ID['normalise'].title + (' (chỉ gộp từ checkpoint)' if merge_only else '')) as detail:
-        products = normalize(run_dir, destinations, merge_only)
+        try:
+            products = normalize(run_dir, destinations, merge_only)
+        finally:  # bước con của normalise.StepClock vào log theo cùng dạng các bước lớn khác (lỗi giữa chừng vẫn ghi)
+            for entry in (read_json(run_dir / 'normalise_stages' / 'steps.json', {}) or {}).get('steps') or []:
+                say(substep_line('normalise', entry))
         detail.update(read_json(run_dir / 'normalise_report.json', {}) or {})
     return products
 
@@ -1250,6 +1385,7 @@ def incomplete_sources(rec: RunRecorder, run_dir: Path) -> dict[str, object]:
                 bad[name] = entry['status']
     report = read_json(run_dir / 'normalise_report.json', {}) or {}
     bad.update(report.get('excludedSources') or {})
+    bad.update((rec.data.get('counts') or {}).get('refreshProblems') or {})  # làm mới khách sạn đang có chưa đủ
     return bad
 
 
@@ -1264,17 +1400,33 @@ def available_requirements(values: dict, failures: dict) -> set:
 def validate_step(rec: RunRecorder, values: dict, selected: str, run_dir: Path, products: Path,
                   coverage: Path | None) -> dict:
     with step('validate', label=graph.BY_ID['validate'].title) as detail:
+        stages = substeps(detail, 'validate')
         try:
             summary = validate_run(products, coverage, full=selected == 'full', required=available_requirements(values, incomplete_sources(rec, run_dir)),
-                                   trip=coverage is not None)
+                                   trip=coverage is not None, stages=stages)
         except ValueError as exc:
             raise perr.QualityGateError(f'Không nạp DB: {exc}') from exc
         detail.update(summary)
         failures = incomplete_sources(rec, run_dir)
         detail['incompleteSources'] = failures
         # Different source sets have different totals; per-source gates still apply in normalize.
-        if summary.get('products') is not None and not failures:
-            detail.update(quality_drop_check(summary['products'], selected, values, run_dir))
+        with stages.stage('catalog không giảm quá ngưỡng', inp=summary.get('products')) as stage:
+            if summary.get('products') is not None and not failures:
+                drop = quality_drop_check(summary['products'], selected, values, run_dir)
+                detail.update(drop)
+                stage.update(out=summary.get('products'), note=(f"so với {drop['comparedWith']}: {drop['previousProducts']} dòng, "
+                                                                f"giảm {drop['dropPercent']}%") if drop else 'chưa có lượt cùng phạm vi để so')
+            else:
+                stage.update(status='skipped', note='có nguồn chưa đủ: không so với lượt trước')
+        coverage_report = {k: v for k, v in ((rec.data.get('counts') or {}).get('refresh') or {}).items()
+                           if isinstance(v, dict) and 'requested' in v}
+        if coverage_report:
+            # Không chặn nạp DB (phần đã cào vẫn nạp); dưới ngưỡng thì lượt báo partial + cảnh báo "Cào chưa đủ".
+            problems = (rec.data.get('counts') or {}).get('refreshProblems') or {}
+            stages.add('độ phủ làm mới khách sạn đang có', status='partial' if problems else 'ok',
+                       ok=sum(v['refreshed'] for v in coverage_report.values()),
+                       total=sum(v['requested'] for v in coverage_report.values()),
+                       note=' · '.join(f"{k} {v['refreshed']}/{v['requested']}" for k, v in coverage_report.items()))
     rec.set_counts(catalog=summary)
     return summary
 
@@ -1283,7 +1435,7 @@ def db_step(rec: RunRecorder, run_dir: Path, products: Path, coverage: Path | No
     with step('db', label=graph.BY_ID['db'].title) as detail:
         counts = with_retry('db', lambda: load_into_db(
             products, coverage, db_url, ROOT, report_path=run_dir / 'db_load.jsonl',
-            trip_max_age_days=settings_values()['tripHotels.priceMaxAgeDays']), detail)
+            trip_max_age_days=settings_values()['tripHotels.priceMaxAgeDays'], stages=substeps(detail, 'db')), detail)
         detail.update(counts or {})
     rec.set_counts(database=counts)
     return counts
@@ -1347,6 +1499,11 @@ def resume_run(rec: RunRecorder, values: dict, state_dir: Path, run_dir: Path, f
         coverage = run_dir / 'trip_price_coverage.json'  # cào lại khách sạn Trip ghi lại file này
         coverage = coverage if coverage.is_file() else None
         if 'normalise' in plan:
+            # Lượt bị dừng cưỡng bức giữa lúc cào: dòng ghi dở ở cuối interim (và file .tmp của Vinpearl) phải được chốt
+            # trước khi chuẩn hoá, như khi một nguồn quá giờ (crawl_sites).
+            sealed = seal_interim(run_dir, sorted({stem for stems in graph.SITE_INTERIM.values() for stem in stems}))
+            if sealed:
+                say(f'catalog.resume.sealed {",".join(sealed)}')
             destinations = values['scope.destinations'] if selected == 'full' else None
             products = normalise_step(run_dir, destinations, merge_only=from_step == 'merge')
         elif 'db' in plan and not products.is_file():
@@ -1403,7 +1560,20 @@ def main(argv=None) -> int:
                        'normalise.preview', 'validate', 'db', 'index', 'stream.db.batch', 'stream.index.batch',
                        'stream.normalise.batch', 'stream.merge.batch')}
             limits.update({name: values[key] * 60 + 15 for name, key in graph.STEP_TIMEOUT.items() if values[key]})
-            return supervise(command, state, runs, max_seconds=values['run.maxHours'] * 3600, step_seconds=limits)
+            killed: dict = {}
+            code = supervise(command, state, runs, max_seconds=values['run.maxHours'] * 3600, step_seconds=limits,
+                             on_killed=lambda run_id, stopped: killed.update(id=run_id, stopped=stopped))
+            if (values['run.autoResume'] and killed.get('id', '').startswith('full-') and not killed.get('stopped')
+                    and args.mode != 'resume'):
+                # Lượt cào lớn bị dừng cưỡng bức (một bước treo, hết RAM): chạy tiếp một lần từ bước chuẩn hoá để phần đã cào
+                # vào DB thay vì mất cả đêm. Không lặp lại: lần chạy tiếp lỗi nữa thì để người vận hành xem.
+                log.emit('catalog.autoresume', f"catalog.autoresume run={killed['id']} from=normalise", 'WARNING',
+                         run_id=killed['id'])
+                resume = [sys.executable, str(Path(__file__).resolve()), 'resume', killed['id'], '--from', 'normalise',
+                          *(['--trigger', args.trigger] if args.trigger else []), '--worker']
+                return supervise(resume, state, runs, max_seconds=max(1.0, values['timeout.processing'] * 6 / 60) * 3600,
+                                 step_seconds=limits)
+            return code
         if args.mode == 'resume':
             return run_job('resume', args.trigger, run_id=args.run_id, from_step=args.from_step, source=args.source)
         return run_job(args.mode, args.trigger)

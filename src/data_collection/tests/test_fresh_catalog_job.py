@@ -143,6 +143,15 @@ class ApplyWindowTests(unittest.TestCase):
         self.assertEqual((rolled['available_from'], rolled['available_to']),
                          (AS_OF + timedelta(days=1), HI + timedelta(days=1)))
 
+    def test_trip_combo_dates_in_old_db_rows_become_iso_once(self):
+        url = 'https://vn.trip.com/packages/list?dDate=2026-10-14&rDate=2026-10-15'
+        old = row('combo', taxonomy='combo', start=AS_OF.isoformat(), end=HI.isoformat(), attributes={
+            'comboKind': 'trip_real_flight_hotel', 'url': url, 'departDate': '14/10', 'returnDate': '15/10'})
+        fixed = apply_window([old], AS_OF)['combo']
+        self.assertEqual((fixed['attributes']['departDate'], fixed['attributes']['returnDate']),
+                         ('2026-10-14', '2026-10-15'))
+        self.assertEqual(apply_window([fixed], AS_OF), {})
+
     def test_flight_takes_a_seen_date_or_moves_into_the_window_and_route_spans_its_flights(self):
         seen = {'level': 'flight', 'parentProductId': 'route', 'datesSeen': ['2026-09-20', '2026-10-02'],
                 'departureAt': '2026-09-20T08:30:00+07:00', 'arrivalAt': '2026-09-20T09:45:00+07:00'}
@@ -643,7 +652,7 @@ class CrawlSitesTests(unittest.TestCase):
 
     def run_sites(self, groups, parallel, codes=None):
         codes = codes or {}
-        def fake_source(run_dir, source, destinations, group, deadline=None):
+        def fake_source(run_dir, source, destinations, group, deadline=None, on_start=None):
             return self.step(source, codes.get(source, 0))()
         with patch.object(fresh_catalog, 'run_source', fake_source), \
                 contextlib.redirect_stdout(io.StringIO()) as out:

@@ -12,10 +12,14 @@ PyJWT>=2.9,<3
 langgraph>=1,<2
 langchain-core>=1,<2
 langchain-openai>=1,<2
+# span riêng cho từng lời gọi tool của agent (agents/tools/itinerary_gateway.py); langchain-core đã kéo theo
+langsmith>=0.3,<1
 # recsys: vector persist ở Weaviate; Cohere (đường lui) gọi qua httpx ở trên
 numpy>=1.26
 # embedding e5-small chạy trong tiến trình (PRD FR-SRC-02). Image cài torch bản CPU từ download.pytorch.org trước file này.
-transformers>=4.44,<5
+# transformers ghim theo bản đã đo parity với bench (xem requirements-embed.txt). Trước đây ghi >=4.44,<5 trong khi
+# requirements-embed ghim 5.18.0 nên image phải cài hai lần; giờ chỉ còn một nguồn.
+transformers==5.18.0
 torch>=2.3
 # truy vấn top-K mỗi request qua gRPC (Weaviate Cloud tắt GraphQL). Bản 4.23 ghim grpcio<1.80;
 # nếu venv có langgraph-api (cần grpcio>=1.81) thì pip báo xung đột nhưng client vẫn chạy với 1.81.

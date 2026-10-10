@@ -1,30 +1,55 @@
 import React from 'react';
 import { AssistantText, parseAssistantText } from '../../../components/assistant/inlineBold';
 import { ProductCard } from '../../../components/common/ProductCard';
-import type { Product } from '../../../types/travel';
+import type { ItineraryFlightItem, Product } from '../../../types/travel';
 import { isFreeToVisit } from './widgetPlan';
+import { WidgetFlightCard } from './WidgetFlightCard';
 import type { CartAddState } from './useWidgetCart';
 
-export type NarrationBlock = { kind: 'text'; text: string } | { kind: 'card'; productId: string };
+export type NarrationBlock =
+  | { kind: 'text'; text: string }
+  | { kind: 'card'; productId: string }
+  | { kind: 'slot' };
+
+const HEADING = /^\*\*[^*]+\*\*$/;
 
 /**
  * Tách lời diễn giải thành đoạn chữ và thẻ (PRD user-flow.md §4.2): mỗi sản phẩm `isKnown` có một thẻ ngay sau dòng
  * đầu tiên nhắc `[Tên](product:id)`, các lần nhắc sau chỉ còn link. Dòng trống ngay sau thẻ bỏ đi vì thẻ đã tách đoạn.
+ *
+ * `slotIds` (khách sạn của hàng thẻ "Phương án khác", AC-AGT-04 chốt 2026-10-08): mục chứa dòng đầu tiên nhắc một trong
+ * các khách sạn này là mục "Nơi nghỉ"; mọi dòng nhắc chúng trong mục đó bỏ đi, thay bằng đúng một khối `slot` ở chỗ dòng
+ * đầu. Các mục khác (ngày) giữ nguyên chữ, và các khách sạn này không có thẻ gọn.
  */
-export function narrationBlocks(text: string, isKnown: (productId: string) => boolean): NarrationBlock[] {
+export function narrationBlocks(
+  text: string,
+  isKnown: (productId: string) => boolean,
+  slotIds: ReadonlySet<string> = new Set(),
+): NarrationBlock[] {
   const blocks: NarrationBlock[] = [];
   const shown = new Set<string>();
   let buffer: string[] = [];
+  let slot: 'before' | 'inside' | 'after' = 'before';
   const flush = () => {
     if (buffer.length) blocks.push({ kind: 'text', text: buffer.join('\n') });
     buffer = [];
   };
   for (const line of text.split('\n')) {
-    if (!buffer.length && blocks[blocks.length - 1]?.kind === 'card' && !line.trim()) continue;
+    const parts = parseAssistantText(line);
+    if (slot === 'inside' && HEADING.test(line.trim())) slot = 'after';
+    if (slot !== 'after' && parts.some((part) => part.kind === 'product' && slotIds.has(part.productId))) {
+      if (slot === 'before') {
+        flush();
+        blocks.push({ kind: 'slot' });
+        slot = 'inside';
+      }
+      continue;
+    }
+    if (!buffer.length && blocks[blocks.length - 1]?.kind !== 'text' && blocks.length && !line.trim()) continue;
     buffer.push(line);
     const fresh: string[] = [];
-    for (const part of parseAssistantText(line)) {
-      if (part.kind !== 'product' || shown.has(part.productId) || !isKnown(part.productId)) continue;
+    for (const part of parts) {
+      if (part.kind !== 'product' || shown.has(part.productId) || slotIds.has(part.productId) || !isKnown(part.productId)) continue;
       shown.add(part.productId);
       fresh.push(part.productId);
     }
@@ -46,28 +71,51 @@ interface WidgetNarrationProps {
   quickAddIds?: ReadonlySet<string>;
   onQuickAdd?: (productId: string) => void;
   cartAddStates?: Record<string, CartAddState>;
+  /**
+   * Hàng thẻ "Phương án khác" (AC-AGT-04, chốt 2026-10-08): là nội dung của mục "Nơi nghỉ", thay dòng chữ và thẻ gọn của
+   * các khách sạn `ids`. Lời diễn giải không nhắc khách sạn nào trong `ids` thì hàng thẻ nằm cuối bong bóng.
+   */
+  stays?: { ids: ReadonlySet<string>; node: React.ReactNode };
+  /** Vé máy bay của lịch: sản phẩm là vé thì dùng thẻ vé (giờ đi/đến, chặng, giá × số khách) thay thẻ gọn. */
+  flights?: ItineraryFlightItem[];
+  /** "Đặt ngay" của vé; chỉ vé có trong `cartItems` của lịch mới có nút. */
+  onBookNow?: (productId: string) => void;
+  bookableIds?: ReadonlySet<string>;
 }
 
 /** Lời diễn giải lịch trình trong bong bóng chat, kèm thẻ gọn của từng sản phẩm. */
-export function WidgetNarration({ text, products, onOpen, quickAddIds, onQuickAdd, cartAddStates }: WidgetNarrationProps) {
+export function WidgetNarration({ text, products, onOpen, quickAddIds, onQuickAdd, cartAddStates, stays, flights, onBookNow,
+  bookableIds }: WidgetNarrationProps) {
   const known = (productId: string) => Object.prototype.hasOwnProperty.call(products, productId);
-  // Mọi sản phẩm có trong `products` đều có thẻ, nên tên của chúng không cần link nữa; id lạ vẫn là link.
-  const carded = new Set(Object.keys(products));
+  const slotIds = stays?.ids ?? new Set<string>();
+  // Sản phẩm có thẻ thì tên không cần link nữa; id lạ và khách sạn của hàng thẻ (không có thẻ gọn) vẫn là link.
+  const carded = new Set(Object.keys(products).filter((productId) => !slotIds.has(productId)));
   // Sản phẩm của response mà lời diễn giải không nhắc (ví dụ ứng viên của FALLBACK) có thẻ ở cuối bong bóng.
-  const blocks = narrationBlocks(text, known);
+  const blocks = narrationBlocks(text, known, slotIds);
   const cited = new Set(blocks.flatMap((block) => (block.kind === 'card' ? [block.productId] : [])));
   for (const productId of Object.keys(products)) {
-    if (!cited.has(productId)) blocks.push({ kind: 'card', productId });
+    if (!cited.has(productId) && !slotIds.has(productId)) blocks.push({ kind: 'card', productId });
   }
+  if (stays && !blocks.some((block) => block.kind === 'slot')) blocks.push({ kind: 'slot' });
   return (
     <>
       {blocks.map((block, index) => {
+        if (block.kind === 'slot') return <React.Fragment key={index}>{stays?.node}</React.Fragment>;
         if (block.kind === 'text') {
           return (
             <NarrationText key={index} text={block.text} onOpen={onOpen} carded={carded} />
           );
         }
         const product = products[block.productId];
+        const flight = flights?.find((item) => item.productId === block.productId);
+        if (flight) {
+          return (
+            <div key={index} className="my-4 whitespace-normal">
+              <WidgetFlightCard flight={flight} onOpen={() => onOpen(flight.productId)}
+                onBookNow={onBookNow && bookableIds?.has(flight.productId) ? () => onBookNow(flight.productId) : undefined} />
+            </div>
+          );
+        }
         return (
           <div key={index} className="my-4 whitespace-normal">
             <ProductCard

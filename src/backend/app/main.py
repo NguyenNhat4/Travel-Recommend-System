@@ -138,6 +138,40 @@ def build_catalog(settings, state) -> dict:
     }
 
 
+_SEARCH_HYPOTHESIZERS: dict = {}
+
+
+def search_hypothesizer(settings):
+    """LLM fallback query plan (contract 1.17.0): dựng MỘT lần, sống qua các lần nạp catalog (cache + thread pool).
+
+    (Khôi phục 07/10: merge 21d72ae đã làm mất hàm này cùng các setting SEARCH_LLM_FALLBACK*.)"""
+    if settings.search_llm_fallback == "off":
+        return None
+    key = (settings.search_llm_fallback_model, settings.search_llm_fallback_cache_path,
+           settings.search_llm_fallback_cache_only, settings.search_llm_fallback_cache_size)
+    if key not in _SEARCH_HYPOTHESIZERS:
+        from src.backend.app.application.search.query_plan_llm import CachedQueryHypothesizer, HypothesisCache
+        from src.backend.app.infrastructure.llm.query_hypothesis import query_hypothesizer_from_settings
+        inner = None
+        if not settings.search_llm_fallback_cache_only:
+            try:
+                inner = query_hypothesizer_from_settings(settings)
+            except RuntimeError as exc:   # thiếu key / SDK → queryPlan.llm.status = unavailable
+                logger.warning("startup.search.llm_fallback.unavailable error=%s", exc)
+        path = settings.search_llm_fallback_cache_path or None
+        if path and not Path(path).is_absolute():
+            path = Path(__file__).resolve().parents[1] / path
+        _SEARCH_HYPOTHESIZERS[key] = CachedQueryHypothesizer(
+            inner, cache=HypothesisCache(settings.search_llm_fallback_cache_size, path=path,
+                                         tag=getattr(inner, "version", None)),
+            cache_only=settings.search_llm_fallback_cache_only)
+        logger.info("startup.recsys.search.llm_fallback mode=%s min_conf=%s timeout_ms=%s model=%s cache_only=%s",
+                    settings.search_llm_fallback, settings.search_llm_fallback_min_confidence,
+                    settings.search_llm_fallback_timeout_ms, settings.search_llm_fallback_model,
+                    settings.search_llm_fallback_cache_only)
+    return _SEARCH_HYPOTHESIZERS[key]
+
+
 def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) -> dict:
     """Dựng engine recsys trên database đã seed.
 
@@ -230,9 +264,10 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
     logger.info("startup.recsys.search.dest_filter=%s no_diacritics=%s", settings.search_dest_filter,
                 settings.search_no_diacritics_mode)
     logger.info("startup.recsys.search.query_plan negation=%s taxonomy=%s strong_only=%s route=%s numeric=%s party=%s "
-                "tone=%s", settings.search_negation_filter, settings.search_taxonomy_filter,
+                "tone=%s duration=%s poi=%s entity=%s", settings.search_negation_filter, settings.search_taxonomy_filter,
                 settings.search_taxonomy_strong_only, settings.search_route_filter, settings.search_numeric_filter,
-                settings.search_party_filter, settings.search_tone_normalize)
+                settings.search_party_filter, settings.search_tone_normalize, settings.search_duration_filter,
+                settings.search_poi_resolve, settings.search_entity_filter)
     logger.info("startup.recsys.search.fusion fuzzy_k=%s weights=%s/%s/%s", settings.search_fuzzy_k if hybrid else 0,
                 settings.search_rrf_dense_weight, settings.search_rrf_lexical_weight, settings.search_rrf_fuzzy_weight)
     product_popularity = {index.units[u].product_id: s for u, s in popularity.unit_scores().items()}
@@ -264,6 +299,13 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
             tone_normalize=settings.search_tone_normalize,
             taxonomy_strong_only=settings.search_taxonomy_strong_only,
             party_filter=settings.search_party_filter,
+            duration_filter=settings.search_duration_filter,
+            poi_resolve=settings.search_poi_resolve,
+            entity_filter=settings.search_entity_filter,
+            llm_fallback=settings.search_llm_fallback,
+            llm_min_confidence=settings.search_llm_fallback_min_confidence,
+            llm_timeout_ms=settings.search_llm_fallback_timeout_ms,
+            hypothesizer=search_hypothesizer(settings),
         ),
         "similar": SimilarProducts(index, vector_search),
         # GET /search/suggestions (FR-SRC-05): khớp chữ trên chính index này, không gọi embed hay kho vector.
@@ -746,7 +788,7 @@ settings = get_settings()
 app = FastAPI(
     title=settings.app_name,
     description="Travel recommendation and itinerary API",
-    version="1.19.0",
+    version="1.23.0",
     lifespan=lifespan,
 )
 

@@ -73,6 +73,8 @@ resource "google_compute_instance" "patroni" {
   zone         = each.value.zone
   tags         = [local.patroni_tag]
   labels       = { component = "database", role = each.value.role == "db" ? "patroni" : "etcd-witness" }
+  # Chỉ replica (pg-b) có lịch tắt ban đêm; primary và witness giữ 24/7. Xem alert_mute.tf.
+  resource_policies = each.key == "b" ? [google_compute_resource_policy.patroni_replica_schedule[0].self_link] : []
 
   # Đổi startup script (ví dụ đổi image Patroni) chỉ chạy lại khi VM khởi động lại; làm có chủ đích theo runbook,
   # từng node một, replica trước. Terraform không tự dừng VM để cập nhật.
@@ -126,9 +128,14 @@ resource "google_compute_instance" "patroni" {
       node_ip              = local.patroni_ips[each.key]
       scope                = "${var.name_prefix}-pg"
       env_secret           = var.patroni_env_secret
-      clone_from_host      = var.patroni_clone_from_host
-      probe_script         = file("${path.module}/../../../../ops/patroni/cluster_probe.py")
-      ops_agent_config     = file("${path.module}/patroni_ops_agent.yaml")
+      # Chỉ node a clone một lần từ primary cũ. Node b phải gia nhập cụm Patroni
+      # sau khi DCS đã có leader; truyền clone host cho cả hai node sẽ tạo hai
+      # bootstrap cạnh tranh và có thể biến node b thành bản sao lệch thời điểm.
+      clone_from_host           = each.key == "a" ? var.patroni_clone_from_host : ""
+      bootstrap_leader_ip       = local.patroni_ips["a"]
+      wait_for_bootstrap_leader = each.key == "b"
+      probe_script              = file("${path.module}/../../../../ops/patroni/cluster_probe.py")
+      ops_agent_config          = file("${path.module}/patroni_ops_agent.yaml")
     })
   }
 

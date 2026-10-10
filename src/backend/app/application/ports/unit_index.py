@@ -68,6 +68,7 @@ class UnitIndex:
              star_min: float | None = None, exclude_amenities: Iterable[str] = (),
              exclude_brands: Iterable[str] = (), exclude_taxonomies: Iterable[str] = (),
              exclude_flags: Iterable[str] = (), min_occupancy: int | None = None,
+             require_entities: Iterable[str] = (),
              stay: StayDates | None = None) -> np.ndarray:
         """Mask bool theo index unit; mọi tham số mới mặc định tắt nên không đổi hành vi cũ.
 
@@ -81,6 +82,9 @@ class UnitIndex:
         - đơn vị có phòng/chuyến con (`_rooms_ok`): khi có lọc giá, số khách hoặc ngày, phải có ÍT NHẤT MỘT con đang bán được thoả
           ĐỒNG THỜI các điều kiện đó (cùng một phòng, như trang chi tiết chọn hạng phòng); không con nào → loại.
         `exclude_taxonomies`: loại unit có taxonomy nằm trong tập (kiến trúc §6 — chặn cross-vertical).
+        `require_entities` (contract 1.18.0, entity gate CỨNG): chỉ giữ unit có ít nhất một khoá entity trong tập
+        (`UnitAttributes.entities` — dựng từ TÊN unit, chỉ attraction/combo có khoá); unit không có khoá bị loại — đây là gate,
+        không phải quy ước "không biết → giữ". Rỗng = không gate.
         """
         m = np.ones(len(self.units), dtype=bool)
         if only_available:
@@ -118,6 +122,9 @@ class UnitIndex:
             m &= np.array([not (f & drop_flags) for f in a.flags], dtype=bool)
         if min_occupancy is not None:
             m &= np.isnan(a.max_occupancy) | (a.max_occupancy >= min_occupancy)
+        req = frozenset(k for k in require_entities if k)
+        if req:
+            m &= np.array([bool(e & req) for e in a.entities], dtype=bool)
         if stay is not None:
             m &= self._stay_mask(stay)
         if price_min is not None or price_max is not None or min_occupancy is not None or stay is not None:

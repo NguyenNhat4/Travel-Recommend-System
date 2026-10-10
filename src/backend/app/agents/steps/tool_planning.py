@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from time import perf_counter
 
 from src.backend.app.application.itinerary.contracts import valid
@@ -11,8 +12,8 @@ from src.backend.app.application.itinerary.tool_contracts import (
 )
 from src.backend.app.application.ports.itinerary_tools import ToolError, ToolExecutorPort
 from src.backend.app.core.logging_config import log_event
-from src.backend.app.domain.itinerary.normalization import match_destination
-from src.backend.app.domain.itinerary.planning import SCHEDULABLE_TAXONOMIES
+from src.backend.app.domain.itinerary.normalization import fold, match_destination
+from src.backend.app.domain.itinerary.planning import SCHEDULABLE_TAXONOMIES, room_guests
 from src.backend.app.domain.itinerary.search_hints import retrieval_hints, search_query_text
 
 from ..models import DestinationChoice
@@ -25,9 +26,15 @@ logger = logging.getLogger("uvicorn.error")
 MAX_CALLS = 5
 MAX_SIMILAR_CALLS = 2  # mỗi lượt, mỗi anchor một lần; vẫn nằm trong MAX_CALLS
 # Số sản phẩm mỗi lời gọi do server cố định, không lấy từ LLM, để mọi mode (inprocess/http/fixture) nhận cùng số
-# ứng viên. Phải nằm trong `maximum` của contract (search ≤ 50, recommendations ≤ 20).
-SEARCH_LIMIT = 10
+# ứng viên. Phải nằm trong `maximum` của contract (search ≤ 50, recommendations ≤ 20). Search lấy tối đa contract: chuyến
+# dài cần đủ hoạt động cho cả sáng lẫn chiều, mà vé nhiều ngày và bản trùng còn bị loại khỏi slot sau retrieval.
+SEARCH_LIMIT = 50
+# Khách sạn lấy tối đa contract: luật ít di chuyển (AC-AGT-04) chọn khách sạn gần các điểm đã xếp, nên cần nhiều vị trí
+# để chọn; top 10 theo câu query thường dồn về một khu.
+HOTEL_SEARCH_LIMIT = 50
 RECOMMENDATION_K = 10
+#: Golf chỉ được tìm khi người dùng nhắc tới (so trên chuỗi đã `fold`); "gôn" đứng riêng dễ trùng "gọn" nên cần đi kèm.
+_GOLF = re.compile(r"\b(?:golf|danh gon|san gon)\b")
 
 
 async def catalog_destinations(tools: ToolExecutorPort, timeout_seconds: float) -> list[str] | None:
@@ -125,12 +132,21 @@ def _similar_limit() -> int:
     return contracts()[SIMILAR_PRODUCTS]["arguments"]["properties"]["limit"]["maximum"]
 
 
-def _result_size(name: str) -> dict:
+def wants_golf(state: dict) -> bool:
+    """Người dùng có nhắc tới golf không: câu chat lượt này, các lượt trước của người dùng, sở thích hoặc hoạt động
+    bắt buộc đã trích."""
+    intent, constraints = state.get("intent") or {}, state.get("constraints") or {}
+    texts = [state.get("query", ""), constraints.get("specific_activity") or "", *(intent.get("interests") or [])]
+    texts += [turn.get("content", "") for turn in state.get("conversation_history", []) if turn.get("role") == "user"]
+    return any(_GOLF.search(fold(text)) for text in texts if isinstance(text, str))
+
+
+def _result_size(name: str, taxonomy: str | None = None) -> dict:
     """Tham số số lượng kết quả server ép cho tool `name`; tool không có tham số này thì rỗng."""
     if name == SIMILAR_PRODUCTS:
         return {"limit": _similar_limit()}
     if name == "search_products":
-        return {"limit": SEARCH_LIMIT}
+        return {"limit": HOTEL_SEARCH_LIMIT if taxonomy == "hotel" else SEARCH_LIMIT}
     if name == "get_recommendations":
         return {"k": RECOMMENDATION_K}
     return {}
@@ -232,7 +248,7 @@ def _validated_args(state: dict, call: dict) -> dict:
     # truy xuất ở `retrieval.collect`, nên không mất hành vi nào.
     known = argument_names(call["name"])
     args = {key: value for key, value in args.items() if key in known}
-    args.update(_result_size(call["name"]))
+    args.update(_result_size(call["name"], args.get("taxonomy")))
     args = normalize_arguments(call["name"], args)
     if intent.get("destination") and "destination" in known:
         # Tên catalog đã chuẩn hóa mới là nguồn sự thật; planner viết "Hồ Chí Minh" thay vì
@@ -248,6 +264,13 @@ def _validated_args(state: dict, call: dict) -> dict:
         if removed:
             logger.info("itinerary.tool_plan.query_sanitized requestId=%s taxonomy=%s removed=%d",
                         state.get("request_id", "unknown"), args.get("taxonomy"), removed)
+        # Số khách là filter sức chứa của MỘT phòng (contract 1.16.0): lấy từ intent đã chốt, không từ LLM, và chỉ cho
+        # khách sạn; gửi số khách mỗi phòng khi cả đoàn chia tối đa 9 phòng (FR-AGT-01, chốt 2026-10-09), không gửi cả
+        # đoàn. Loại khác không có sức chứa nên bỏ cả `travelContext` (ngày trong đó engine chưa dùng).
+        args.pop("travelContext", None)
+        guests = room_guests(intent.get("party"))
+        if args.get("taxonomy") == "hotel" and guests is not None:
+            args["travelContext"] = {"guests": guests}
         if args.get("taxonomy") == "hotel":
             for source, target in (("hotel_price_max", "priceMax"), ("star_rating_min", "starRatingMin")):
                 if constraints.get(source) is not None:
@@ -278,6 +301,12 @@ def validated_plan(state: dict, plan: list, *, require_recommendations: bool = F
     if not 1 <= len(calls) <= MAX_CALLS:
         raise ToolError("INVALID_TOOL_PLAN")
     validated = [{"name": call["name"], "args": _validated_args(state, call)} for call in calls]
+    if not wants_golf(state):
+        # Planner hay tự thêm search golf (trace 2026-10-08: gia đình có bé ở TP.HCM); không ai nhắc thì bỏ.
+        validated = [call for call in validated
+                     if not (call["name"] == "search_products" and call["args"].get("taxonomy") == "golf")]
+        if not validated:
+            validated = [{"name": "search_products", "args": _validated_args(state, _destination_search(state))}]
     if require_recommendations and not any(call["name"] == "get_recommendations" for call in validated):
         if not _has_room(state, validated):
             raise ToolError("INVALID_TOOL_PLAN")
@@ -298,13 +327,15 @@ def validated_plan(state: dict, plan: list, *, require_recommendations: bool = F
             if not _has_room(state, validated):
                 raise ToolError("INVALID_TOOL_PLAN")
             _append_search(state, validated, None)
-    # Mặc định tìm cả hotel/attraction/golf, trừ loại người dùng đã loại trừ; một search không lọc taxonomy
-    # (None) coi như đã phủ mọi loại vì nó trả kết quả hỗn hợp. Best-effort giống Similar: hết trần MAX_CALLS
-    # thì bỏ qua phần còn thiếu, không huỷ lượt — planner có thể đã tự phủ đủ qua TOOL_PLAN_PROMPT.
-    exclude_taxonomies = state.get("constraints", {}).get("exclude_taxonomies", [])
+    # Mặc định tìm cả hotel/attraction (golf khi người dùng nhắc tới), trừ loại người dùng đã loại trừ; một search
+    # không lọc taxonomy (None) coi như đã phủ mọi loại vì nó trả kết quả hỗn hợp. Best-effort giống Similar: hết trần
+    # MAX_CALLS thì bỏ qua phần còn thiếu, không huỷ lượt — planner có thể đã tự phủ đủ qua TOOL_PLAN_PROMPT.
+    exclude_taxonomies = set(state.get("constraints", {}).get("exclude_taxonomies", []))
+    if not wants_golf(state):
+        exclude_taxonomies.add("golf")
     covered = {call["args"].get("taxonomy") for call in validated if call["name"] == "search_products"}
     if state.get("intent", {}).get("destination") and None not in covered:
-        for taxonomy in sorted(SCHEDULABLE_TAXONOMIES - set(exclude_taxonomies)):
+        for taxonomy in sorted(SCHEDULABLE_TAXONOMIES - exclude_taxonomies):
             if taxonomy not in covered and _has_room(state, validated):
                 _append_search(state, validated, taxonomy)
                 covered.add(taxonomy)

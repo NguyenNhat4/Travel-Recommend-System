@@ -174,6 +174,21 @@ describe('AssistantResultPanel', () => {
       ]);
     });
 
+    it('books each hotel of a hotel change from the day of its first night (AC-AGT-04, contract 1.19.0)', () => {
+      const south = { ...hotel, productId: 'hotel-2', name: 'Khách sạn Nam đảo' };
+      const day = (n: number) => ({ day: n, date: `2026-10-0${n}`, slots: [] });
+      const itinerary = {
+        ...(completed.status === 'COMPLETED' ? completed.itinerary : (undefined as never)),
+        stay: { product: hotel, nights: 2, fromNight: 1 },
+        stays: [{ product: hotel, nights: 2, fromNight: 1 }, { product: south, nights: 2, fromNight: 3 }],
+        days: [1, 2, 3, 4, 5].map(day),
+      };
+      expect(itineraryCartItems(itinerary)).toEqual([
+        { product: hotel, usingDate: '2026-10-01', checkOutDate: '2026-10-03' },
+        { product: south, usingDate: '2026-10-03', checkOutDate: '2026-10-05' },
+      ]);
+    });
+
     it('attaches the itinerary party to every cart item so the cart gets adults and children', () => {
       const party = { adults: 2, children: 1 };
       expect(itineraryCartItems(completed.status === 'COMPLETED' ? completed.itinerary : (undefined as never), party)).toEqual([

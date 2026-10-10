@@ -30,6 +30,10 @@ def search_log_entry(query: str, response: Mapping[str, Any], *, request_filters
     confidence = (diagnostics.get("queryPlan") or {}).get("confidence")
     if confidence is not None:
         filters["confidence"] = confidence
+    from .query_plan_llm import llm_log_fields   # contract 1.17.0: so sánh luật ↔ LLM (shadow/on) vào log
+    llm = llm_log_fields(response)
+    if llm:
+        filters.update(llm)
     latency = diagnostics.get("latencyMs")
     return SearchLogEntry(
         query=query,
