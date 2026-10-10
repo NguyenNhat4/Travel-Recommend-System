@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import unicodedata
 
 from src.backend.app.application.ports.itinerary_tools import ToolError, ToolExecutorPort
 from src.backend.app.domain.itinerary import exploration as rules
@@ -39,8 +40,14 @@ MAX_SUGGESTIONS = 3
 CATALOG_HINT = 12
 NAMED_CALL_ID = "explore-named"
 PLACE_CALL_ID = "explore-place"
-#: Mô tả catalog đưa cho LLM, đủ để nói điểm đó có gì hay mà không làm prompt dài.
-ABOUT_CHARS = 360
+#: Mô tả catalog đưa cho LLM, đủ để kể nơi đó có gì hay trong 2–3 câu (chat thử 10/10: 360 ký tự cho câu quá cụt).
+ABOUT_CHARS = 700
+#: Số tiện ích, nhãn đưa cho LLM mỗi thẻ.
+HIGHLIGHTS = 8
+#: Cụm khen dễ bị lặp ở mọi dòng ("nhiều người ghé", "được khen nhiều"): mỗi câu trả lời giữ lần đầu, bỏ các lần sau
+#: (so trên chuỗi đã `fold`, kèm dấu nối đứng trước).
+_PRAISE = re.compile(r"(?:\s*[,;–-]\s*|\s+)(?:va |lai |cung )?(?:duoc (?:du khach |nhieu nguoi )?khen nhieu|"
+                     r"(?:cung )?(?:duoc )?nhieu nguoi ghe(?: nhat(?: o day)?)?|ngay gan do|gia mem)")
 #: Câu trong mô tả catalog chỉ chứa số liệu (giờ, địa chỉ, thời lượng): thẻ bên phải đã hiện, câu chat không nhắc lại.
 _DATA_SENTENCE = re.compile(r"^\s*(?:gio mo cua|dia chi|thoi gian tham quan|loai hinh|dia diem|toi da|\d)")
 #: Người dùng hỏi về giá: chỉ khi đó câu chat mới nêu giá; còn lại giá chỉ nằm trên thẻ.
@@ -288,6 +295,8 @@ def _unlink_unknown(text: str, products: dict[str, dict]) -> str:
 
 #: Câu mô tả trong dòng dự phòng: một câu, cắt ở dấu phẩy nếu dài.
 SHORT_ABOUT_CHARS = 160
+#: Câu mô tả bắt đầu bằng tên mà phần còn lại ngắn hơn chừng này ký tự thì không dùng làm dòng dẫn.
+MIN_ABOUT_EXTRA = 30
 
 
 def _short_about(product: dict) -> str:
@@ -296,6 +305,10 @@ def _short_about(product: dict) -> str:
     if product.get("taxonomy") == "hotel":
         return ""
     first = re.split(r"(?<=[.!?])\s+", about(product), maxsplit=1)[0].rstrip(".!? ")
+    name = fold(product.get("name") or "")
+    if name and fold(first).startswith(name) and len(fold(first)) - len(name) < MIN_ABOUT_EXTRA:
+        # "Bảo tàng Gấu Teddy tại An Giang": chỉ nhắc lại tên và nơi, không nói được nơi đó có gì (chat thử 10/10).
+        return ""
     if len(first) > SHORT_ABOUT_CHARS:
         cut = first[:SHORT_ABOUT_CHARS]
         first = cut.rsplit(",", 1)[0] if "," in cut else cut.rsplit(" ", 1)[0]
@@ -366,13 +379,42 @@ def _card_input(card: dict) -> dict:
     product = card["product"]
     attributes = product.get("attributes") or {}
     tags = attributes.get("tags")
-    item = {"productId": product["productId"], "name": product.get("name"), "taxonomy": product.get("taxonomy"),
+    amenities = attributes.get("amenities")
+    item = {"productId": product["productId"], "name": (product.get("name") or "").strip(),
+            "taxonomy": product.get("taxonomy"),
             "reasons": card["reasons"], "free_to_visit": rules.free_entry(product), "about": about(product),
-            "tags": [tag for tag in tags if isinstance(tag, str)][:6] if isinstance(tags, list) else []}
+            "tags": [tag for tag in tags if isinstance(tag, str)][:HIGHLIGHTS] if isinstance(tags, list) else []}
+    if isinstance(amenities, list):
+        # Khách sạn: tiện ích có thật để kể về kỳ nghỉ (hồ bơi, spa, bữa sáng), không chỉ "giá mềm".
+        item["highlights"] = [text for text in amenities if isinstance(text, str)][:HIGHLIGHTS]
     # Giờ mở cửa chỉ đưa cho nơi người dùng hỏi tới, để trả lời đúng câu hỏi; nơi khác giờ nằm trên thẻ.
     if rules.ASKED in card["reasons"] and attributes.get("openingHours"):
         item["facts"] = {"openingHours": attributes["openingHours"]}
     return item
+
+
+def _plain(text: str) -> str:
+    """Chữ thường, bỏ dấu từng ký tự, đ → d; giữ nguyên độ dài (khác `fold`, vốn gộp dấu cách và ký hiệu)."""
+    return "".join((unicodedata.normalize("NFD", char)[0] if char not in "đĐ" else "d").lower() for char in text)
+
+
+def once_praise(text: str) -> str:
+    """Mỗi cụm khen chung chỉ giữ lần xuất hiện đầu tiên trong câu trả lời (chat thử 10/10: "nhiều người ghé" ở mọi
+    dòng). So trên chuỗi bỏ dấu từng ký tự (giữ độ dài, nên vị trí khớp chuỗi gốc)."""
+    folded = _plain(text)
+    seen: set[str] = set()
+    cuts = []
+    for match in _PRAISE.finditer(folded):
+        phrase = match.group(0)
+        key = "khen" if "khen" in phrase else "ghe" if "ghe" in phrase else "gan" if "gan do" in phrase else "gia"
+        if key in seen:
+            cuts.append(match.span())
+        seen.add(key)
+    for start, end in reversed(cuts):
+        text = text[:start] + text[end:]
+    # Bỏ cụm ở cuối câu có thể để lại "…:." hoặc ", ."
+    text = re.sub(r"\s*[,;:–-]\s*([.!?])", r"\1", text)
+    return "\n".join(line.rstrip() for line in text.split("\n"))
 
 
 def _ensure_cards(state: dict, body: str, cards: list[dict]) -> str:
@@ -461,11 +503,14 @@ def explored(state: dict, destination: str, cards: list[dict], filtered_by: str 
         body = message(state, "explore_none_pool" if filtered_by == "pool" else "explore_none", destination=destination)
         title = message(state, "explore_hotel_title" if hotel_focus(state) else "explore_title", destination=destination)
     elif narration is not None:
-        body = _ensure_cards(state, _fill(state, _unlink_unknown(_relinked(narration.message.strip(), products),
-                                                                  products), products), cards)
+        # Dòng trống giữa các đoạn (LLM thật 10/10) làm thẻ tách khỏi câu dẫn: gộp về một dòng mỗi đoạn.
+        narration = narration.model_copy(update={"message": re.sub(r"\n\s*\n+", "\n", narration.message)})
+        body = once_praise(_ensure_cards(state, _fill(state, _unlink_unknown(_relinked(narration.message.strip(),
+                                                                                    products), products), products),
+                                         cards))
         title = narration.title or message(state, "explore_title", destination=destination)
     else:
-        body = fallback_body(state, destination, cards, filtered_by)
+        body = once_praise(fallback_body(state, destination, cards, filtered_by))
         title = message(state, "explore_hotel_title" if hotel_only else "explore_title", destination=destination)
     closing, offer_update = _closing(state, destination)
     if closing:
