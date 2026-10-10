@@ -32,6 +32,8 @@ resource "google_compute_instance" "bastion" {
   zone         = var.bastion_zone
   machine_type = var.bastion_machine_type
   tags         = [local.bastion_tag]
+  # Lịch tắt 23:59 / bật 08:30 chung với các VM khác (scheduler.tf, 2026-10-10).
+  resource_policies = [google_compute_resource_policy.bastion_schedule[0].self_link]
 
   boot_disk {
     initialize_params {

@@ -1,12 +1,15 @@
-# Lịch bật/tắt ban đêm của staging-ha (múi giờ Asia/Ho_Chi_Minh). Chốt bởi người vận hành:
-# - App (MIG) và runner: tắt sau 23:57, bật lại trước 08:30.
-# - Crawler: thêm khung 01:45–04:00 để cào; khung 08:30–23:59 do resource policy trong crawler.tf đảm nhiệm.
-# - Patroni (DB), Redis, Cloud NAT, Load Balancer: giữ 24/7. Crawler cần DB để ghi cdp.products trong khung cào đêm.
+# Lịch bật/tắt ban đêm của staging-ha (múi giờ Asia/Ho_Chi_Minh). Chốt bởi người vận hành ngày 2026-10-10:
+# - Toàn bộ VM tắt đúng 23:59 và bật lại đúng 08:30: app (MIG), crawler, Patroni (pg-a, pg-b, pg-w), weaviate, bastion.
+# - Runner `vota-ci-runner` nằm ngoài Terraform, lịch gắn bằng gcloud (xem history/2026-10-10-lich-tat-mo-vm-2359-0830.md).
+# - Crawler: khung thêm 01:45–04:00 vẫn còn trong file này và CHƯA xử lý. Khung này bật VM giữa đêm, mâu thuẫn với
+#   lịch tắt toàn bộ; sẽ xử lý riêng theo yêu cầu người vận hành.
+# - Cloud NAT, Load Balancer không phải VM: giữ 24/7.
 #
 # Cơ chế:
-# - VM đơn (crawler): instance schedule (resource policy). Mỗi VM chỉ gắn được một policy.
+# - VM đơn (crawler, Patroni, weaviate, bastion): instance schedule (resource policy). Mỗi VM chỉ gắn được một policy.
 # - MIG app: instance schedule không áp dụng được. Autoscaler dùng CPU không scale về 0, nên Cloud Scheduler
 #   tắt autoscaler (mode OFF) rồi resize MIG về 0; buổi sáng bật lại autoscaler (mode ON) để MIG lên min_replicas.
+#   MIG chỉ sẵn sàng sau khoảng boot_to_ready_seconds, nên app nhận traffic sau 08:30 vài phút.
 # - Crawler, khung thêm 01:45–04:00: Cloud Scheduler gọi Compute API start/stop.
 #
 # Lưu ý: runner `vota-ci-runner` không nằm trong Terraform. Lịch của nó được gắn bằng gcloud (xem history).
@@ -30,9 +33,21 @@ variable "app_resize_zero_schedule" {
 }
 
 variable "app_autoscaler_on_schedule" {
-  description = "Lúc bật lại autoscaler MIG app, để MIG lên min_replicas trước 08:30."
+  description = "Lúc bật lại autoscaler MIG app (08:30 theo yêu cầu 2026-10-10). MIG lên min_replicas sau khoảng boot_to_ready_seconds."
   type        = string
-  default     = "20 8 * * *"
+  default     = "30 8 * * *"
+}
+
+variable "vm_night_stop_schedule" {
+  description = "Lúc tắt các VM staging-ha có instance schedule: Patroni, weaviate, bastion. Crawler dùng crawler_stop_schedule."
+  type        = string
+  default     = "59 23 * * *"
+}
+
+variable "vm_night_start_schedule" {
+  description = "Lúc bật các VM staging-ha có instance schedule: Patroni, weaviate, bastion. Crawler dùng crawler_start_schedule."
+  type        = string
+  default     = "30 8 * * *"
 }
 
 variable "crawler_extra_start_schedule" {
@@ -86,6 +101,58 @@ locals {
       target            = "projects/${var.project_id}/regions/${var.region}/instanceGroupManagers/${local.app_mig_name}"
       autoscalingPolicy = merge(local.app_autoscaler_policy, { mode = "OFF" })
     })
+  }
+}
+
+# --- Lịch VM (instance schedule) cho VM không thuộc MIG: Patroni (cả ba node), weaviate, bastion ---
+# Crawler có policy riêng trong crawler.tf. Policy chỉ đặt giờ bật/tắt, không dừng VM đang chạy khi apply.
+# Mỗi VM chỉ gắn được một policy; các VM này gắn policy trong patroni.tf, weaviate.tf, bastion.tf.
+
+resource "google_compute_resource_policy" "patroni_schedule" {
+  count  = local.patroni_enabled ? 1 : 0
+  name   = "${var.name_prefix}-patroni-schedule"
+  region = var.region
+
+  instance_schedule_policy {
+    vm_start_schedule {
+      schedule = var.vm_night_start_schedule
+    }
+    vm_stop_schedule {
+      schedule = var.vm_night_stop_schedule
+    }
+    time_zone = var.ops_schedule_timezone
+  }
+}
+
+resource "google_compute_resource_policy" "weaviate_schedule" {
+  count  = var.create_weaviate ? 1 : 0
+  name   = "${var.name_prefix}-weaviate-schedule"
+  region = var.region
+
+  instance_schedule_policy {
+    vm_start_schedule {
+      schedule = var.vm_night_start_schedule
+    }
+    vm_stop_schedule {
+      schedule = var.vm_night_stop_schedule
+    }
+    time_zone = var.ops_schedule_timezone
+  }
+}
+
+resource "google_compute_resource_policy" "bastion_schedule" {
+  count  = local.bastion_enabled ? 1 : 0
+  name   = "${var.name_prefix}-bastion-schedule"
+  region = var.region
+
+  instance_schedule_policy {
+    vm_start_schedule {
+      schedule = var.vm_night_start_schedule
+    }
+    vm_stop_schedule {
+      schedule = var.vm_night_stop_schedule
+    }
+    time_zone = var.ops_schedule_timezone
   }
 }
 
