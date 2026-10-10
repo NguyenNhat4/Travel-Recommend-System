@@ -321,7 +321,8 @@ named in `about` is the wider area, so never doubt or question where a card is. 
 characters.
 Mention a product ONLY as [name](product:<productId>) copied from cards; never name any other hotel, place or tour.
 Never write a number yourself, except opening hours copied exactly from facts. If filtered_by is set, say once that you
-only counted places with it. Never claim distances, crowds, food or anything else not in the payload; if the user asked
+only counted places with it. If near_place is set, the system kept only places right around it: say so once in the
+opening ("quanh phố cổ"), without any distance number. Never claim distances, crowds, food or anything else not in the payload; if the user asked
 about such a thing, say plainly you cannot check it from the data, then give what you can.
 Do not ask whether to plan a trip and do not ask for dates, party size or budget: the system adds its own line.
 If just_rejected is true, the user turned down a place in rejected_destinations: open with a few words accepting it

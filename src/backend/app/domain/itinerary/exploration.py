@@ -192,5 +192,14 @@ def near_cards(products: list[Product], anchor: Product, limit: int) -> list[dic
     return [{"product": product, "reasons": [NEAR]} for _, product in scored[:limit]]
 
 
+def within_km(products: list[Product], anchor: Product, km: float) -> list[Product]:
+    """Sản phẩm có toạ độ trong bán kính `km` quanh `anchor`, gần trước; anchor thiếu toạ độ thì rỗng."""
+    origin = coords(anchor)
+    if origin is None:
+        return []
+    scored = [(haversine_km(origin, point), product) for product in products if (point := coords(product)) is not None]
+    return [product for distance, product in sorted(scored, key=lambda item: item[0]) if distance <= km]
+
+
 def with_amenity(products: list[Product], key: str) -> list[Product]:
     return [item for item in products if has_amenity(item, key)]

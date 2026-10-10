@@ -100,6 +100,10 @@ class AgentState(TypedDict, total=False):
     # - `pending_fare`: lần hỏi lại của câu hỏi giá vé (`{"origin"|"destination": ...}`), để câu trả lời ngắn lượt sau
     #   ("Sài Gòn") điền đúng chỗ còn thiếu (kịch bản bản 5 cảnh 6).
     pending_fare: dict[str, Any] | None
+    # - `open_question`: câu hỏi của người dùng còn dở vì trợ lý phải hỏi lại điểm đến ("có khách sạn nào có hồ bơi gần
+    #   phố cổ không?" → "phố cổ Hà Nội hay Hội An?"); lượt sau chỉ nêu điểm đến ("hà nội cha ơi") thì `explore` trả lời câu
+    #   hỏi gốc ở điểm đến đó (chat thử 10/10).
+    open_question: str | None
     fare_question: bool
     # Đổi vé khi chưa nói đổi thế nào (kịch bản bản 5): chặng đã chọn kèm chuyến khác cùng ngày. `flight_choices` là của lịch
     # lượt này (`composition.composed`, None khi lượt này không dựng lịch), `previous_flights` là của lịch đang hiện.

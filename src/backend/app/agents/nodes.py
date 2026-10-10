@@ -50,7 +50,7 @@ MAX_ATTEMPTS = 2
 #: Trường của giai đoạn trò chuyện/khám phá (FR-AGT-06) lưu qua các lượt cùng intent; giá trị khi chưa có gì.
 CONVERSATION_PHASE = {"plan_consent": False, "pending_offer": None, "offered_destinations": [],
                       "dont_know_count": 0, "last_suggestions": [], "rejected_destinations": [],
-                      "pending_fare": None}
+                      "pending_fare": None, "open_question": None}
 
 
 def _phase(source: dict) -> dict:
@@ -239,9 +239,16 @@ def classify_node(state: AgentState, *, llm=None) -> dict:
 
 
 def _fare_settled(state: AgentState, update: dict) -> dict:
-    """Lượt không phải câu hỏi giá vé thì bỏ lần hỏi lại giá vé còn treo, để câu ngắn sau này không bị coi là nơi đi."""
+    """Lượt không phải câu hỏi giá vé thì bỏ lần hỏi lại giá vé còn treo, để câu ngắn sau này không bị coi là nơi đi.
+
+    Tương tự, câu hỏi còn dở (`open_question`) chỉ giữ khi lượt này còn đi khám phá hoặc trích ý định (người dùng
+    trả lời điểm đến); lượt đi nhánh khác thì bỏ.
+    """
     if state.get("pending_fare") and not update.get("fare_question"):
-        return {**update, "pending_fare": None}
+        update = {**update, "pending_fare": None}
+    if state.get("open_question") and (update.get("fare_question")
+                                          or update.get("decision") not in ("explore", "travel")):
+        update = {**update, "open_question": None}
     return update
 
 

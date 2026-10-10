@@ -31,6 +31,13 @@ MAX_CARDS = 4
 #: Hỏi về chỗ ở (so trên chuỗi đã `fold`).
 _HOTEL_FOCUS = re.compile(r"\b(?:khach san|ks|resort|homestay|hostel|cho o|cho nghi|noi o|o dau|villa|nha nghi|hotel)\b")
 _POOL = re.compile(r"\b(?:ho boi|be boi|pool)\b")
+#: "phố cổ" không kèm thành phố: catalog có hai nơi gọi như vậy, phải hỏi lại (chat thử 10/10).
+_OLD_QUARTER = re.compile(r"\bpho co\b")
+OLD_QUARTER_CITIES = ("Hà Nội", "Hội An")
+#: "gần <nơi>" trong câu gốc (giữ dấu, để câu tìm khách sạn đúng nghĩa): "gần phố cổ không?" → "phố cổ".
+_NEAR_PHRASE = re.compile(r"\bgần\s+(.{2,40}?)(?=\s+(?:không|ko|hông|nhé|nha|vậy|ạ|ha)\b|[?.!,]|$)", re.IGNORECASE)
+#: Câu trả lời ngắn nêu điểm đến cho câu hỏi còn dở ("hà nội cha ơi", "Phố cổ Hà Nội").
+MAX_ANSWER_WORDS = 6
 #: Hỏi quanh một nơi ("gần Văn Miếu có gì?"): khác với hỏi về chính nơi đó.
 _AROUND = re.compile(r"\b(?:gan|quanh|canh|xung quanh|lan can|near|around)\b")
 _PLACEHOLDER = re.compile(r"\[\[(price|rating|reviews):([^\]\s]{1,200})\]\]")
@@ -39,6 +46,9 @@ MAX_SUGGESTIONS = 3
 #: Số điểm đến của catalog đưa cho LLM để gợi ý nút (nhiều sản phẩm nhất trước).
 CATALOG_HINT = 12
 NAMED_CALL_ID = "explore-named"
+NEAR_CALL_ID = "explore-near"
+#: Khách sạn "gần <nơi>": trong bán kính này (đường chim bay) quanh nơi đó; kịch bản cảnh 5 dùng 1 km quanh phố cổ.
+NEAR_HOTEL_KM = 1.5
 PLACE_CALL_ID = "explore-place"
 #: Mô tả catalog đưa cho LLM, đủ để kể nơi đó có gì hay trong 2–3 câu (chat thử 10/10: 360 ký tự cho câu quá cụt).
 ABOUT_CHARS = 700
@@ -174,6 +184,17 @@ def _asked(state: dict, destination: str, results: list[dict]) -> dict | None:
     return rules.named_in(products, state.get("query", ""), exclude=[destination])
 
 
+def _landmark(state: dict, destination: str, results: list[dict]) -> dict | None:
+    """Nơi người dùng muốn ở gần ("phố cổ" → "Khu Phố Cổ Hà Nội"): sản phẩm của lượt tìm mốc có tên chứa cụm đó."""
+    near = near_phrase(state.get("query", ""))
+    if not near:
+        return None
+    found = [result for result in results if result.get("tool_call_id") == NEAR_CALL_ID]
+    key = f" {fold(near)} "
+    matches = [product for product in _products(found, destination, "attraction") if key in f" {fold(product.get('name'))} "]
+    return max(matches, key=lambda product: product.get("reviewCount") or 0) if matches else None
+
+
 def asked_only(state: dict, cards: list[dict]) -> bool:
     """Lượt chỉ trả lời về một nơi người dùng nêu tên ("Văn Miếu buổi tối có mở không?"): một thẻ, lý do `asked`."""
     return len(cards) == 1 and rules.ASKED in cards[0]["reasons"]
@@ -205,6 +226,15 @@ def pick(state: dict, destination: str, results: list[dict]) -> tuple[list[dict]
     skip = {asked["productId"]} if asked else set()
     if hotel_focus(state):
         hotels = [item for item in hotels if item["productId"] not in skip]
+        landmark = _landmark(state, destination, results)
+        if landmark is not None:
+            close = rules.within_km(hotels, landmark, NEAR_HOTEL_KM)
+            if close:
+                # "Gần phố cổ": chỉ tính khách sạn trong bán kính quanh mốc; lý do rẻ nhất, điểm cao nhất tính trên nhóm này.
+                cards = rules.pick_cards(close, MAX_CARDS - len(first), "hotel")
+                for card in cards:
+                    card["reasons"].append(rules.NEAR)
+                return first + cards, filtered_by
         return first + rules.pick_cards(hotels, MAX_CARDS - len(first), "hotel"), filtered_by
     attractions = [item for item in _products(general, destination, "attraction") if item["productId"] not in skip]
     hotels = [item for item in hotels if item["productId"] not in skip]
@@ -238,11 +268,25 @@ async def place_destination(state: dict, supported: list[str] | None, tools: Too
     return next((name for name in allowed if fold(name) == fold(destination)), None) if destination else None
 
 
+def near_phrase(text: str) -> str | None:
+    """Nơi người dùng muốn ở gần ("có khách sạn nào gần phố cổ không?" → "phố cổ")."""
+    match = _NEAR_PHRASE.search(text or "")
+    return " ".join(match.group(1).split()) if match else None
+
+
 async def search(state: dict, destination: str, tools: ToolExecutorPort, timeout_seconds: float) -> list[dict]:
     """Search điểm tham quan và khách sạn của điểm đến song song; hỏi riêng chỗ ở thì chỉ khách sạn."""
     query = fold(state.get("query", ""))
     hotel_query = "khách sạn có hồ bơi" if _POOL.search(query) else "khách sạn được đánh giá tốt"
+    near = near_phrase(state.get("query", "")) if hotel_focus(state) else None
+    if near:
+        hotel_query = f"{hotel_query} gần {near}"
     calls = [_search_call(state, destination, "hotel", hotel_query, 0)]
+    if near:
+        # Tìm chính nơi đó để làm mốc đo khoảng cách ("Khu Phố Cổ Hà Nội").
+        landmark = _search_call(state, destination, "attraction", near, 3)
+        if landmark is not None:
+            calls.append({**landmark, "id": NEAR_CALL_ID})
     if not hotel_focus(state):
         calls.append(_search_call(state, destination, "attraction", "điểm tham quan nổi tiếng", 1))
     # Thêm một lượt bằng nguyên câu hỏi, để câu nêu tên một nơi ("Văn Miếu buổi tối có mở không?") ra đúng nơi đó.
@@ -358,6 +402,8 @@ def _relinked(text: str, products: dict[str, dict]) -> str:
         return f"[{match.group(1)}](product:{product_id})"
 
     # LLM có lúc viết "(product: <id>)" có dấu cách: không gỡ thì link không nhận ra và thẻ bị coi là chưa nhắc.
+    # Tên trong link có lúc bị in đậm ("[**Tên**](product:…)"): bỏ dấu in đậm để chữ link đúng tên thẻ.
+    text = re.sub(r"\[(?:\*\*)?\s*([^\]]+?)\s*(?:\*\*)?\]\(product:", r"[\1](product:", text)
     return PRODUCT_LINK.sub(fix, re.sub(r"\(product:\s+", "(product:", text))
 
 
@@ -439,10 +485,19 @@ def _ensure_cards(state: dict, body: str, cards: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _near_place(state: dict, cards: list[dict]) -> str | None:
+    """Cụm "gần <nơi>" của câu hỏi khi thẻ đã được lọc theo khoảng cách tới nơi đó (lý do `near`)."""
+    if cards and all(rules.NEAR in card["reasons"] for card in cards):
+        return near_phrase(state.get("query", ""))
+    return None
+
+
 def fallback_body(state: dict, destination: str, cards: list[dict], filtered_by: str | None) -> str:
     lines = [message(state, "explore_intro", destination=destination)]
     if filtered_by == "pool":
         lines.append(message(state, "explore_filtered_pool"))
+    if (place := _near_place(state, cards)):
+        lines.append(message(state, "explore_filtered_near", place=place))
     lines += [card_line(state, card) for card in cards]
     return "\n".join(lines)
 
@@ -454,6 +509,7 @@ def explore_input(state: dict, destination: str, cards: list[dict], filtered_by:
                "filtered_by": filtered_by,
                "price_asked": price_asked(state),
                "asked_only": asked_only(state, cards),
+               "near_place": _near_place(state, cards),
                "cards": [_card_input(card) for card in cards],
                "catalog_destinations": (supported or [])[:CATALOG_HINT],
                "previous_suggestions": state.get("last_suggestions", []),
@@ -538,7 +594,7 @@ def explored(state: dict, destination: str, cards: list[dict], filtered_by: str 
     if suggestions:
         response["suggestions"] = suggestions
     return {"response": response, "candidates": products, "sources": {}, "final_answer": response["question"],
-            "supported_destinations": supported, "intent": state["intent"], **offer_update,
+            "supported_destinations": supported, "intent": state["intent"], **offer_update, "open_question": None,
             "events": [event("explore", "explored", destination=destination, cards=len(cards),
                              narrated=narration is not None, filtered_by=filtered_by)]}
 
@@ -550,6 +606,37 @@ def _recorded(state: dict, destination: str) -> dict:
     if state.get("plan_consent") or state.get("explore_pick") or intent.get("destination") == destination:
         return state
     return {**state, "intent": {**intent, "destination": destination}}
+
+
+def resumed(state: dict, supported: list[str] | None) -> tuple[dict, str | None]:
+    """Lượt trả lời điểm đến cho câu hỏi còn dở: (state với câu hỏi gốc làm `query`, điểm đến) hoặc (state, None).
+
+    "có khách sạn nào có hồ bơi gần phố cổ không?" → trợ lý hỏi lại nơi → "hà nội cha ơi": khám phá khách sạn có hồ bơi
+    gần phố cổ ở Hà Nội, không phải "Hà Nội có gì" chung chung (chat thử 10/10).
+    """
+    pending = state.get("open_question")
+    reply = state.get("query", "")
+    if not pending or not 0 < len(reply.split()) <= MAX_ANSWER_WORDS:
+        return state, None
+    rejected = {fold(name) for name in state.get("rejected_destinations") or []}
+    named = _named_destination(reply, [name for name in supported or [] if fold(name) not in rejected])
+    if named is None:
+        return state, None
+    intent = state.get("intent") or {}
+    return {**state, "query": pending, "intent": {**intent, "destination": named}}, named
+
+
+def ask_old_quarter(state: dict, supported: list[str] | None) -> dict | None:
+    """"phố cổ" mà không nói thành phố: hỏi Hà Nội hay Hội An kèm hai nút, giữ câu hỏi để lượt sau trả lời tiếp."""
+    cities = [name for name in OLD_QUARTER_CITIES if name in (supported or [])]
+    if len(cities) < 2 or not _OLD_QUARTER.search(fold(state.get("query", ""))):
+        return None
+    response = {"status": "NEEDS_CLARIFICATION", "conversationId": state["conversation_id"],
+                "question": message(state, "explore_ask_old_quarter", first=cities[0], second=cities[1]),
+                "knownIntent": state["intent"], "missingFields": ["destination"],
+                "suggestions": [message(state, "chip_old_quarter", city=city) for city in cities]}
+    return {"response": response, "final_answer": response["question"], "supported_destinations": supported,
+            "open_question": state.get("query"), "events": [event("explore", "old quarter, asked which city")]}
 
 
 def no_destination(state: dict, supported: list[str] | None) -> dict:
@@ -571,12 +658,17 @@ async def explore(state: dict, *, tools: ToolExecutorPort | None, llm_call, tool
     supported = state.get("supported_destinations")
     if supported is None and tools is not None and getattr(tools, "supports_catalog", False):
         supported = await tool_planning.catalog_destinations(tools, tool_timeout_seconds)
-    destination = destination_for(state, supported)
+    state, answered = resumed(state, supported)
+    destination = answered or destination_for(state, supported)
+    if destination is None and (asked := ask_old_quarter(state, supported)) is not None:
+        return asked
     if destination is None and state.get("explore_direct") and tools is not None:
         destination = await place_destination(state, supported, tools, tool_timeout_seconds)
     if destination is None and state.get("explore_direct"):
         # Đi thẳng từ `classify` mà không tra được tên nơi: để `extract` đọc câu (tên lạ, nơi ngoài catalog) rồi quay lại.
+        # Câu hỏi được giữ (`open_question`): trợ lý hỏi lại nơi thì lượt sau trả lời tiếp câu này.
         return {"decision": "needs_extract", "explore_direct": False, "supported_destinations": supported,
+                "open_question": state.get("query"),
                 "events": [event("explore", "destination not found, extracting")]}
     if destination is None or tools is None:
         return no_destination(state, supported)
