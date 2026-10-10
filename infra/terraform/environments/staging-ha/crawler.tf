@@ -75,7 +75,8 @@ resource "google_compute_instance" "crawler" {
   boot_disk {
     initialize_params {
       image = var.boot_image
-      size  = 30
+      # 15 GB khớp đĩa boot của VM đang chạy (vota-ha-crawler). Đổi kích thước đĩa boot buộc tạo lại VM.
+      size = 15
     }
   }
 
