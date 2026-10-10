@@ -114,6 +114,8 @@ def reply_title(state: dict) -> str | None:
     missing = state.get("missing_fields", [])
     if missing and set(missing) <= set(TRIP_DETAILS):
         return message(state, "title_trip_details")
+    if _days_and_details(missing):
+        return message(state, "title_days_and_details")
     if {"destination", "days"} <= set(missing):
         return message(state, "title_missing_both")
     if "destination" in missing:
@@ -231,6 +233,11 @@ def _invalid_input_question(state: dict) -> str:
     return "\n".join(lines)
 
 
+def _days_and_details(missing: list[str]) -> bool:
+    """Hỏi gộp số ngày cùng chi tiết chuyến (ngày đi, số người…) trong một câu (AC-AGT-01, kịch bản cảnh 7)."""
+    return "days" in missing and len(missing) > 1 and set(missing) - {"days"} <= set(TRIP_DETAILS)
+
+
 def clarification_fallback(state: dict) -> dict:
     """Fixed-wording question used when the model is unavailable, and for checks the model must not phrase."""
     missing = state.get("missing_fields", [])
@@ -252,6 +259,10 @@ def clarification_fallback(state: dict) -> dict:
     elif missing and set(missing) <= set(TRIP_DETAILS):
         details = message(state, "detail_joiner").join(message(state, f"detail_{key}") for key in missing)
         question = message(state, "missing_trip_details", details=details)
+    elif _days_and_details(missing):
+        details = message(state, "detail_joiner").join(message(state, f"detail_{key}") for key in missing
+                                                       if key != "days")
+        question = message(state, "missing_days_and_details", details=details)
     elif len(missing) == 2:
         question = message(state, "missing_both")
     elif "destination" in missing:

@@ -24,6 +24,8 @@ MESSAGES = {
         "missing_days": "Bạn dự định đi trong mấy ngày, hoặc từ ngày nào đến ngày nào?",
         "suggest_form": "Mình đã điền sẵn một vài gợi ý cho chuyến đi bên dưới. "
                         "Bạn chỉnh lại theo nhu cầu rồi bấm xác nhận giúp mình nhé.",
+        "missing_days_and_details": "Bạn cho mình biết đi mấy ngày, {details} nhé. Mục nào chưa rõ thì cứ nói, "
+                                    "ví dụ: \"3 ngày, đi 17/10, 2 người lớn, 6 triệu\".",
         "missing_trip_details": "Để lên lịch sát hơn, bạn cho mình biết thêm {details} nhé. "
                                 "Có sở thích nơi ở (hồ bơi, phù hợp trẻ nhỏ…) thì nói luôn. "
                                 "Mục nào chưa rõ thì cứ nói, mình vẫn lên lịch được.",
@@ -32,6 +34,7 @@ MESSAGES = {
         "title_missing_destination": "Bạn muốn đi đâu?",
         "title_missing_days": "Chuyến đi kéo dài mấy ngày?",
         "title_trip_details": "Thêm vài chi tiết cho chuyến đi",
+        "title_days_and_details": "Thêm vài thông tin để lập lịch",
         "title_form": "Điền nhanh thông tin chuyến đi",
         "title_conflict": "Thông tin chuyến đi chưa khớp nhau",
         "title_unverified": "Chưa xác minh được yêu cầu của bạn",
@@ -375,6 +378,8 @@ MESSAGES = {
         "missing_days": "How many days will your trip last, or what are your start and end dates?",
         "suggest_form": "I have filled in a few suggestions for your trip below. "
                         "Adjust anything you like, then confirm.",
+        "missing_days_and_details": "How many days will you go, and {details}? Anything not settled yet is fine, "
+                                    "for example: \"3 days, from 17/10, 2 adults, 6 million\".",
         "missing_trip_details": "To plan this better, could you tell me {details}? "
                                 "Any hotel preference (a pool, kid-friendly…) is welcome too. "
                                 "If any of it is not decided yet, just say so and I will still plan the trip.",
@@ -382,6 +387,7 @@ MESSAGES = {
         "title_missing_destination": "Where would you like to go?",
         "title_missing_days": "How many days is the trip?",
         "title_trip_details": "A few more trip details",
+        "title_days_and_details": "A few details to plan your trip",
         "title_form": "Quick trip details form",
         "title_conflict": "Your trip details do not match",
         "title_unverified": "I could not verify your requirement",

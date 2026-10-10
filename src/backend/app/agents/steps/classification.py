@@ -506,6 +506,11 @@ def _extract_update(state: dict, result: Extraction) -> dict:
     if conflict or constraints.get("unverified_requirements"):
         return {**update, "decision": "missing_info",
                 "clarification_reason": "conflict" if conflict else "unverified"}
+    if missing == ["days"] and not rounds and not asked and not state.get("intent_override"):
+        # Đã có điểm đến (vừa đồng ý lập lịch: "Ok, lên lịch Hà Nội luôn"): hỏi gộp số ngày cùng ngày đi, số người, ngân
+        # sách, nơi đi trong một câu (AC-AGT-01, kịch bản bản 5 cảnh 7); trước đây chỉ hỏi số ngày rồi lượt sau hỏi tiếp.
+        return {**update, "decision": "missing_info", "missing_fields": ["days", *trip_details_missing(intent)],
+                "start_date_asked": True, "clarification_reason": None, "clarification_rounds": rounds + 1}
     if missing:
         # Hỏi bằng câu chữ một lượt; từ lượt sau `clarify` gửi kèm form đã điền sẵn thay vì hỏi lại y hệt.
         asked_once = rounds + 1 >= 2
