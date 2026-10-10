@@ -167,6 +167,12 @@ resource "google_compute_region_autoscaler" "app" {
       }
     }
   }
+
+  lifecycle {
+    # Lịch ban đêm (scheduler.tf) tạm tắt autoscaler bằng mode OFF. Terraform không đưa mode về ON khi plan.
+    ignore_changes = [autoscaling_policy[0].mode]
+  }
+
 }
 
 # Google front ends and health checkers reach port 3000 (traffic + probe) only.
@@ -277,4 +283,32 @@ resource "google_redis_instance" "shared" {
   redis_configs = {
     maxmemory-policy = "noeviction"
   }
+}
+
+# HTTPS origin cho Cloudflare (Full strict): chứng chỉ Origin CA tự quản, cùng backend vota-ha-app và URL map với HTTP.
+resource "google_compute_ssl_certificate" "origin" {
+  count       = var.origin_tls_enabled ? 1 : 0
+  name_prefix = "${var.name_prefix}-origin-"
+  certificate = data.google_secret_manager_secret_version.origin_cert[0].secret_data
+  private_key = data.google_secret_manager_secret_version.origin_key[0].secret_data
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "google_compute_target_https_proxy" "origin" {
+  count            = var.origin_tls_enabled ? 1 : 0
+  name             = "${var.name_prefix}-origin-https"
+  url_map          = google_compute_url_map.app.id
+  ssl_certificates = [google_compute_ssl_certificate.origin[0].id]
+}
+
+resource "google_compute_global_forwarding_rule" "origin_https" {
+  count                 = var.origin_tls_enabled ? 1 : 0
+  name                  = "${var.name_prefix}-origin-fr"
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+  ip_address            = google_compute_global_address.lb.id
+  port_range            = "443"
+  target                = google_compute_target_https_proxy.origin[0].id
 }

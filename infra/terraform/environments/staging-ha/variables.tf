@@ -52,7 +52,7 @@ variable "frontend_image" {
 variable "boot_image" {
   description = "Boot image for the instance template."
   type        = string
-  default     = "projects/cos-cloud/global/images/family/cos-stable"
+  default     = "projects/debian-cloud/global/images/family/debian-12"
 }
 
 variable "backend_env_secret" {
@@ -112,13 +112,13 @@ variable "memory_target_percent" {
 }
 
 variable "boot_to_ready_seconds" {
-  description = "Thời gian từ lúc VM tạo đến lúc /health/ready = 200 (kéo image, nạp RecSys). Dùng cho cooldown autoscaler và initial_delay autohealing (không còn là min_ready_sec của rolling update từ 2026-10-09). CHƯA đo trên GCP: đo lại sau lần apply đầu (log startup.recsys.ready so với thời điểm tạo VM) rồi chỉnh."
+  description = "Thời gian từ lúc VM tạo đến lúc /health/ready = 200 (kéo image, nạp RecSys). Dùng cho cooldown autoscaler và initial_delay autohealing (không còn là min_ready_sec của rolling update từ 2026-10-09). Đã đo 2026-10-09 trên Debian 12: tạo VM -> startup.recsys.ready ~230 giây (2 lần, VM thử và VM MIG gsc1). Đặt 300 để có dự phòng ~25%."
   type        = number
   default     = 360
 
   validation {
-    condition     = var.boot_to_ready_seconds >= 360
-    error_message = "boot_to_ready_seconds < 360 thấp hơn thời gian boot-to-ready ước tính (4-6 phút)."
+    condition     = var.boot_to_ready_seconds >= 240
+    error_message = "boot_to_ready_seconds < 240 thấp hơn thời gian boot-to-ready đã đo (~230 giây, Debian 12, 2026-10-09)."
   }
 }
 
@@ -337,4 +337,22 @@ variable "crawler_alerts_enabled" {
   description = "Bật cảnh báo catalog không đổi / job không chạy / lượt thất bại (cron trên VM phát catalog.freshness từ bản crawler mới). Chỉ bật SAU KHI crawler bản có catalog.freshness đã deploy, nếu không cảnh báo vắng mặt kêu giả."
   type        = bool
   default     = false
+}
+
+variable "origin_tls_enabled" {
+  description = "Thêm listener HTTPS :443 trên LB bằng chứng chỉ Cloudflare Origin CA (Secret Manager). Dùng khi Cloudflare proxy với SSL mode Full (strict)."
+  type        = bool
+  default     = false
+}
+
+variable "origin_cert_secret" {
+  description = "Secret Manager secret id chứa PEM chứng chỉ Origin CA."
+  type        = string
+  default     = "praxis-origin-cert"
+}
+
+variable "origin_key_secret" {
+  description = "Secret Manager secret id chứa PEM private key của chứng chỉ Origin CA."
+  type        = string
+  default     = "praxis-origin-key"
 }

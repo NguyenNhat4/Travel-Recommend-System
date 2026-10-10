@@ -86,6 +86,21 @@ class FilterNodeTests(unittest.TestCase):
         self.assertEqual(list(update), ['events'])
         self.assertEqual(llm.prompts, [])
 
+    def test_a_pass_sold_twice_with_words_swapped_is_dropped_by_the_rule(self):
+        # Trace 09/10/2026 `01a11f41-9b75-76a3-b2f9-e8ba675d9d0c`: mục "Gói nhiều ngày" hiện cùng một gói hai lần.
+        current = state()
+        for item in (product('baa6', '[02 ngày không giới hạn] - Vinpearl Safari + VinWonders + Bảo Tàng Gấu Teddy', 2040000),
+                     product('0759', '[02 ngày không giới hạn] - VinWonders + Vinpearl Safari + Bảo Tàng Gấu Teddy', 2040000)):
+            current['candidates'][item['productId']] = item
+        llm = FakeLLM()
+        update = nodes.filter_node(current, llm=llm)
+        self.assertIn('0759', update['candidates'])
+        self.assertNotIn('baa6', update['candidates'])
+        self.assertIn({'productId': 'baa6', 'by': 'rule'},
+                      [{'productId': item['productId'], 'by': item['by']} for item in update['dropped_duplicates']])
+        self.assertIn(('PRODUCT_DROPPED_DUPLICATE', 'baa6'), [(w['code'], w.get('productId')) for w in update['warnings']])
+        self.assertNotIn('0759', llm.prompts[0][1][1])  # gói nhiều ngày không gửi cho LLM
+
     def test_a_single_attraction_needs_no_llm(self):
         llm = FakeLLM()
         current = state()

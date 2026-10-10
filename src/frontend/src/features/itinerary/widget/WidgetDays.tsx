@@ -1,7 +1,7 @@
 import React from 'react';
 import { Hotel, ExternalLink, MapPin, Clock, Utensils, BedDouble, Footprints, Bus, Camera, Plane, type LucideIcon } from 'lucide-react';
 import { hotelTags, placeholderOnError } from './widgetVisuals';
-import { isFreeToVisit } from './widgetPlan';
+import { isFreeToVisit, roomsSuffix } from './widgetPlan';
 import type { FloatingWidgetController } from './useFloatingWidget';
 import type { ItineraryFlightItem, ItinerarySlot } from '../../../types/travel';
 import { taxonomyLabel } from '../../../components/assistant/assistantLabels';
@@ -184,7 +184,7 @@ export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
                       Khách sạn lưu trú {'dayRange' in stayForThisDay && stayForThisDay.dayRange ? `(${stayForThisDay.dayRange})` : ''}
                     </span>
                     <span className="text-sm font-semibold text-slate-900 tabular-nums">
-                      {stayForThisDay.product.unitPrice != null ? `${stayForThisDay.product.unitPrice.toLocaleString('vi-VN')} ₫/đêm` : 'Chưa có giá'}
+                      {stayForThisDay.product.unitPrice != null ? `${stayForThisDay.product.unitPrice.toLocaleString('vi-VN')} ₫/đêm${roomsSuffix(stayForThisDay.rooms)}` : 'Chưa có giá'}
                     </span>
                   </div>
 

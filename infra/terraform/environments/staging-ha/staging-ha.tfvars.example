@@ -21,5 +21,8 @@ db_primary_ip             = "10.148.0.2"
 # --- Cảnh báo job cào ---
 # crawler_alerts_enabled = true   # sau khi crawler bản có catalog.freshness đã deploy
 
+# VM job cào (crawler.tf): false = chưa tạo
+create_crawler_vm = false
+
 # Dashboard job cào công khai (crawler_monitor.tf): false = không mở
 crawler_monitor_public = false

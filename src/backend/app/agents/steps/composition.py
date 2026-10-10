@@ -7,7 +7,7 @@ import logging
 
 from src.backend.app.domain.itinerary import flights as flight_rules
 from src.backend.app.domain.itinerary.planning import (SCHEDULABLE_TAXONOMIES, compose_plan, day_windows, free_to_visit, multi_day_offers,
-                                                        price_plan, render_proposal, summary, validate_plan)
+                                                        price_plan, render_proposal, stay_rooms, summary, validate_plan)
 
 from . import messages
 from .explanations import missing_stay_note
@@ -25,6 +25,8 @@ WARNINGS = {
     "PRODUCT_COST_ONLY": "Tổng chỉ gồm các sản phẩm được chọn; chưa bao gồm chi phí phát sinh ngoài lịch trình.",
     "BUDGET_ON_PRODUCT_COST": "Đối chiếu ngân sách chỉ dựa trên chi phí các sản phẩm trong lịch trình; "
                               "chưa gồm ăn uống, đi lại và phát sinh ngoài lịch trình.",
+    "STAY_ROOMS_UNKNOWN": "Khách sạn chưa ghi giá gồm bao nhiêu người lớn, nên giá chưa tính đủ số phòng cho cả đoàn; "
+                          "tổng đang tính 1 phòng.",
     "RECOMMENDATION_FALLBACK": "Một số mục trong lịch trình là gợi ý (Recommendation), không phải kết quả "
                                "tìm kiếm, vì không có sản phẩm tìm kiếm phù hợp cho mục đó; xem `because` ở "
                                "từng mục để biết lý do gợi ý.",
@@ -234,6 +236,11 @@ def _planned(state: dict, proposal: dict, legs: list, flight_reason: str | None,
         warnings.append({"code": "PLAN_CRITERIA", "message": criteria})
     if _uses_recommendation(plan):
         warnings.append({"code": "RECOMMENDATION_FALLBACK", "message": WARNINGS["RECOMMENDATION_FALLBACK"]})
+    for stay in plan.get("stays") or []:
+        # Thiếu `priceAdults` thì tiền khách sạn tính 1 phòng (AC-AGT-04, chốt 2026-10-09): báo để không hiểu nhầm là đủ.
+        if stay_rooms(state["candidates"][stay["product"]["productId"]], state["intent"].get("party")) is None:
+            warnings.append({"code": "STAY_ROOMS_UNKNOWN", "message": WARNINGS["STAY_ROOMS_UNKNOWN"],
+                             "productId": stay["product"]["productId"]})
     _budget_warnings(plan, state["intent"], warnings)
     no_stay = missing_stay_note(state, plan)
     if no_stay:

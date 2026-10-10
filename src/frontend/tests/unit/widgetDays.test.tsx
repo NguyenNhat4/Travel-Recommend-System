@@ -53,6 +53,22 @@ describe('WidgetDays', () => {
     expect(screen.queryByText(/5★|5 sao|cao cấp/)).toBeNull();
   });
 
+  it('shows the room count next to the nightly price when the group needs several rooms', () => {
+    const rooms = { ...response, itinerary: { ...response.itinerary,
+      stay: { ...response.itinerary.stay!, product: { ...response.itinerary.stay!.product, priceUnit: 'PER_NIGHT' }, rooms: 5 } } };
+    const widget = {
+      activePlan: convertItineraryCompletedToGroundedPlan(rooms as typeof response), activeDayTab: 0,
+      setHoveredCoordinate: vi.fn(), setHoveredPointId: vi.fn(), focusedProductId: null, itemActions: () => null,
+    } as unknown as FloatingWidgetController;
+    render(<WidgetDays widget={widget} />);
+    expect(screen.getByText('200.000 ₫/đêm × 5 phòng')).toBeTruthy();
+  });
+
+  it('does not mention rooms for one room', () => {
+    renderDays();
+    expect(screen.getByText('200.000 ₫/đêm')).toBeTruthy();
+  });
+
   it('labels an activity note by its type, without an image', () => {
     renderDays();
     expect(screen.getAllByText('Ăn uống').length).toBeGreaterThan(0);

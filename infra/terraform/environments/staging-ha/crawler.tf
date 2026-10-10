@@ -22,10 +22,45 @@ variable "crawler_machine_type" {
   default     = "e2-medium"
 }
 
+variable "crawler_stop_schedule" {
+  description = "Lịch tắt VM job cào (cron, theo crawler_schedule_timezone). Mặc định 23:59 hằng ngày."
+  type        = string
+  default     = "59 23 * * *"
+}
+
+variable "crawler_start_schedule" {
+  description = "Lịch bật VM job cào (cron, theo crawler_schedule_timezone). Mặc định 08:30 hằng ngày."
+  type        = string
+  default     = "30 8 * * *"
+}
+
+variable "crawler_schedule_timezone" {
+  description = "Múi giờ áp dụng cho crawler_stop_schedule và crawler_start_schedule."
+  type        = string
+  default     = "Asia/Ho_Chi_Minh"
+}
+
 locals {
   crawler_enabled = var.create_crawler_vm
   crawler_name    = "${var.name_prefix}-crawler"
   crawler_tag     = "vota-crawler"
+}
+
+# Lịch bật/tắt riêng cho VM job cào. Chỉ áp dụng cho VM đơn này, không dùng cho MIG app.
+resource "google_compute_resource_policy" "crawler_schedule" {
+  count  = local.crawler_enabled ? 1 : 0
+  name   = "${var.name_prefix}-crawler-schedule"
+  region = var.region
+
+  instance_schedule_policy {
+    vm_start_schedule {
+      schedule = var.crawler_start_schedule
+    }
+    vm_stop_schedule {
+      schedule = var.crawler_stop_schedule
+    }
+    time_zone = var.crawler_schedule_timezone
+  }
 }
 
 resource "google_compute_instance" "crawler" {
@@ -35,11 +70,12 @@ resource "google_compute_instance" "crawler" {
   machine_type              = var.crawler_machine_type
   tags                      = [local.crawler_tag]
   allow_stopping_for_update = true
+  resource_policies         = [google_compute_resource_policy.crawler_schedule[0].self_link]
 
   boot_disk {
     initialize_params {
       image = var.boot_image
-      # 15 GB: image crawler ~3 GB, dữ liệu lượt giữ 2 lượt ~1 GB; xem history/2026-10-09-crawler-disk-15gb.md
+      # 15 GB khớp đĩa boot của VM đang chạy (vota-ha-crawler). Đổi kích thước đĩa boot buộc tạo lại VM.
       size = 15
     }
   }
@@ -66,6 +102,11 @@ resource "google_compute_instance" "crawler" {
   }
 
   depends_on = [google_compute_router_nat.egress]
+
+  # Key SSH của runner CD được thêm vào metadata ngoài Terraform (cài cron qua IAP SSH). Không để plan xóa nó.
+  lifecycle {
+    ignore_changes = [metadata["ssh-keys"]]
+  }
 }
 
 output "crawler_instance_name" {

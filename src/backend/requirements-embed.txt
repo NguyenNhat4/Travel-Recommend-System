@@ -1,12 +1,13 @@
 # Embedding local cho Search / RecSys (FR-SRC-02, chốt 06/10/2026): EMBED_PROVIDER=local (mặc định) chạy
 # intfloat/multilingual-e5-small bằng transformers + torch CPU trong tiến trình backend và job index.
 # Không dùng sentence-transformers (kéo scipy; DLL scipy bị Application Control chặn trên máy dev).
+# File này chỉ ghim torch. transformers được ghim trong requirements.txt, để chỉ có một nguồn cho phiên bản.
 # Phiên bản ghim = bản đã đo parity với bench (src/evaluation/search_bench, .venv-sbench) — Python 3.11 (Docker) và 3.13.
 #
-# Cài (từ repo root), SAU requirements.txt:
+# Cài (từ repo root):
 #   Linux / Docker: pip install --index-url https://download.pytorch.org/whl/cpu torch==2.14.1   # bản CPU, không kéo CUDA
-#                   pip install -r src/backend/requirements-embed.txt
-#   Windows / macOS: pip install -r src/backend/requirements-embed.txt                            # torch trên PyPI đã là CPU
-# Test (pytest) không cần hai gói này: adapter nạp lười, test tiêm tokenizer/model giả.
+#                   pip install -r src/backend/requirements.txt
+#   Windows / macOS: pip install -r src/backend/requirements-embed.txt && pip install -r src/backend/requirements.txt
+#                    # torch trên PyPI đã là CPU
+# Test (pytest) không cần torch: adapter nạp lười, test tiêm tokenizer/model giả.
 torch==2.14.1
-transformers==5.18.0

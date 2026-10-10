@@ -1,11 +1,23 @@
 #!/bin/bash
-# Boots one app VM: pull images, fetch env from Secret Manager, run compose.
-# Boot image là Container-Optimized OS: KHÔNG có gcloud và KHÔNG có `docker compose`; có curl, jq, python3, docker và
-# docker-credential-gcr. Secret đọc bằng REST + token của metadata server; compose chạy trong image docker:27-cli
-# (đã kiểm trên VM thật: compose v2.33). KHÔNG dùng $-mở-ngoặc-nhọn trong file này (templatefile của Terraform).
+# Boots one app VM: install Docker and Ops Agent, pull images, fetch env from Secret Manager, run compose.
+# Boot image là Debian 12 (xem variables.tf boot_image). Ops Agent ghi metric agent.googleapis.com/memory/percent_used
+# mà autoscaler đọc; Container-Optimized OS không hỗ trợ Ops Agent nên không dùng được cho MIG này (2026-10-08).
+# Chạy compose trong image docker:27-cli (đã kiểm trên VM thật: compose v2.33).
+# KHÔNG dùng $-mở-ngoặc-nhọn trong file này (templatefile của Terraform).
 set -euo pipefail
-export HOME=/var/lib/vota   # COS: / chỉ đọc; docker-credential-gcr ghi cấu hình docker vào $HOME/.docker
+export HOME=/var/lib/vota
+export DEBIAN_FRONTEND=noninteractive
 mkdir -p "$HOME" /etc/vota
+
+apt-get update -qq
+apt-get install -y -qq docker.io jq curl iptables python3 ca-certificates
+systemctl enable --now docker
+
+# Ops Agent: cài từ repo chính thức. Lần sau khởi động lại VM script chạy lại, bước này idempotent.
+if ! systemctl is-active --quiet google-cloud-ops-agent; then
+  curl -sSo /tmp/add-ops-agent-repo.sh https://dl.google.com/cloudagents/add-google-cloud-ops-agent-repo.sh
+  bash /tmp/add-ops-agent-repo.sh --also-install
+fi
 
 iptables -A INPUT -p tcp --dport 3000 -j ACCEPT
 
@@ -33,7 +45,8 @@ fi
 } > /etc/vota/frontend.env
 chmod 600 /etc/vota/frontend.env
 
-docker-credential-gcr configure-docker --registries='${registry_host}'
+# Đăng nhập Artifact Registry bằng access token của service account (thay docker-credential-gcr của COS).
+echo "$TOKEN" | docker login -u oauth2accesstoken --password-stdin '${registry_host}'
 cat > /etc/vota/pgbouncer.ini.tmpl <<'PGBINI'
 ${pgbouncer_ini}
 PGBINI
@@ -48,7 +61,7 @@ COMPOSE
 
 export BACKEND_IMAGE='${backend_image}' FRONTEND_IMAGE='${frontend_image}' UVICORN_WORKERS='${uvicorn_workers}' \
   UVICORN_GRACEFUL_SECONDS='${graceful_seconds}' BACKEND_STOP_GRACE='${stop_grace_seconds}'
-# Image riêng kéo bằng docker của host (có credential helper); compose trong container không có helper nên dùng bản đã có.
+# Image riêng kéo bằng docker của host (đã đăng nhập ở trên); compose trong container dùng ảnh đã có sẵn.
 docker pull "$BACKEND_IMAGE"
 docker pull "$FRONTEND_IMAGE"
 docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v /etc/vota:/etc/vota -w /etc/vota \

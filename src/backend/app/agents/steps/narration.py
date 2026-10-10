@@ -102,6 +102,15 @@ def _price(state: dict, product: dict) -> str:
     return _money(product["unitPrice"], state.get("language", "vi")) + suffix
 
 
+def _stay_price(state: dict, stay: dict) -> str:
+    """Giá một đêm của khách sạn, kèm số phòng khi đoàn ở từ 2 phòng (AC-AGT-04, chốt 2026-10-09)."""
+    price = _price(state, stay["product"])
+    rooms = stay.get("rooms") or 1
+    if rooms > 1 and stay["product"].get("unitPrice") is not None:
+        price += message(state, "stay_rooms", rooms=rooms)
+    return price
+
+
 def _time_label(state: dict, slot: dict) -> str:
     duration = (slot.get("product") or {}).get("attributes", {}).get("durationMinutes")
     if isinstance(duration, (int, float)) and duration >= FULL_DAY_MINUTES:
@@ -245,11 +254,11 @@ def fallback_message(state: dict, response: dict) -> str:
     if len(stays) == 1:
         stay = stays[0]
         blocks.append(f"**{message(state, 'section_stay')}**\n• {product_link(stay['product'])} — "
-                      f"{message(state, 'stay_nights', nights=stay.get('nights', 1))} · {_price(state, stay['product'])}")
+                      f"{message(state, 'stay_nights', nights=stay.get('nights', 1))} · {_stay_price(state, stay)}")
     elif stays:
         # Đổi khách sạn giữa chuyến (AC-AGT-04): mỗi khách sạn một dòng, kèm các đêm ở đó.
         blocks.append(f"**{message(state, 'section_stay')}**\n" + "\n".join(
-            f"• {_nights_label(state, stay)} — {product_link(stay['product'])} · {_price(state, stay['product'])}"
+            f"• {_nights_label(state, stay)} — {product_link(stay['product'])} · {_stay_price(state, stay)}"
             for stay in stays))
     for day in itinerary.get("days", []):
         # Slot đã theo thứ tự buổi; dòng di chuyển ngày đến/ngày về (AC-AGT-02) in bằng ghi chú của nó.
@@ -327,9 +336,12 @@ def render(state: dict, response: dict, narration: ItineraryNarration) -> tuple[
     if any(product_id not in products for product_id in linked + priced):
         return None, None, "unknown_product"
 
+    stays = {stay["product"]["productId"]: stay for stay in _stays(response["itinerary"])}
+
     def fill(match: re.Match) -> str:
         if match.group(1):
-            return _price(state, products[match.group(1)])
+            stay = stays.get(match.group(1))
+            return _stay_price(state, stay) if stay else _price(state, products[match.group(1)])
         itinerary, language = response["itinerary"], state.get("language", "vi")
         if match.group(2):
             total = itinerary.get("estimatedTotal")

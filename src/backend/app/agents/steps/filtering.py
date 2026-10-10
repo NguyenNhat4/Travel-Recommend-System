@@ -17,13 +17,20 @@ from .prompts import FILTER_PROMPT
 
 
 def ruled(state: dict) -> dict | None:
-    """Kết quả bước luật: `candidates`, `dropped_duplicates`. None khi lượt không đi tới lịch (không có gì để lọc)."""
+    """Kết quả bước luật: `candidates`, `dropped_duplicates`. None khi lượt không đi tới lịch (không có gì để lọc).
+
+    Điểm tham quan: cùng tên. Gói nhiều ngày: cùng các từ, không kể thứ tự, chỉ so giữa các gói với nhau.
+    """
     if state.get("decision") != "compose" or not state.get("candidates"):
         return None
-    candidates, dropped = dedupe.apply_pairs(state["candidates"], state.get("sources", {}),
+    sources = state.get("sources", {})
+    candidates, dropped = dedupe.apply_pairs(state["candidates"], sources,
                                              dedupe.same_name_pairs(dedupe.filterable(state["candidates"])),
                                              dedupe.RULE)
-    return {"candidates": candidates, "dropped_duplicates": dropped}
+    candidates, passes = dedupe.apply_pairs(candidates, sources,
+                                            dedupe.same_name_pairs(dedupe.multi_day(candidates), any_order=True),
+                                            dedupe.RULE, pool=dedupe.multi_day)
+    return {"candidates": candidates, "dropped_duplicates": [*dropped, *passes]}
 
 
 def needs_llm(update: dict | None) -> bool:

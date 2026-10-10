@@ -1,8 +1,8 @@
 """The itinerary layout is decided by rules alone, so the rules themselves need coverage."""
 import unittest
 
-from src.backend.app.domain.itinerary.planning import (compose_plan, free_to_visit, render_proposal, summary, totals,
-                                                       validate_plan)
+from src.backend.app.domain.itinerary.planning import (compose_plan, free_to_visit, render_proposal, room_guests,
+                                                       stay_rooms, summary, totals, validate_plan)
 
 
 def product(pid, **updates):
@@ -357,6 +357,66 @@ class TotalsTests(unittest.TestCase):
         self.assertFalse(free_to_visit(product('h', taxonomy='hotel', unitPrice=None)))
         self.assertFalse(free_to_visit(product('c', taxonomy='combo', unitPrice=None)))
         self.assertFalse(free_to_visit(product('priced')))
+
+
+class StayRoomsTests(unittest.TestCase):
+    """Đoàn đông ở nhiều phòng (AC-AGT-04, chốt 2026-10-09): số phòng = ceil(người lớn / priceAdults), tiền × số phòng."""
+
+    def hotel(self, pid='h', price=1_000_000, **attributes):
+        return product(pid, taxonomy='hotel', unitPrice=price, priceUnit='PER_NIGHT', attributes=attributes)
+
+    def party(self, adults, children=0):
+        return {'type': 'FRIENDS', 'adults': adults, 'children': children}
+
+    def render(self, candidates, trip):
+        sources = sources_for(candidates)
+        return render_proposal(compose_plan(candidates, sources, trip), candidates, sources, trip), sources
+
+    def test_rooms_come_from_the_adults_the_price_already_covers(self):
+        self.assertEqual(stay_rooms(self.hotel(priceAdults=2), self.party(10)), 5)
+        self.assertEqual(stay_rooms(self.hotel(priceAdults=2), self.party(3)), 2)
+        self.assertEqual(stay_rooms(self.hotel(priceAdults=3), self.party(3)), 1)
+
+    def test_children_share_a_room_with_the_adults(self):
+        self.assertEqual(stay_rooms(self.hotel(priceAdults=2), self.party(2, children=2)), 1)
+
+    def test_a_hotel_without_price_adults_has_unknown_rooms(self):
+        self.assertIsNone(stay_rooms(self.hotel(), self.party(10)))
+
+    def test_the_stay_cost_is_price_times_nights_times_rooms(self):
+        trip = intent(days=3, party=self.party(10))
+        plan, _ = self.render(catalog(self.hotel(priceAdults=2)), trip)
+        self.assertEqual(plan['stays'][0]['rooms'], 5)
+        self.assertEqual(plan['costBreakdown']['stays'], 1_000_000 * 2 * 5)
+        self.assertEqual(plan['estimatedTotal'], 10_000_000)
+
+    def test_a_hotel_without_price_adults_counts_one_room(self):
+        trip = intent(days=3, party=self.party(10))
+        plan, _ = self.render(catalog(self.hotel()), trip)
+        self.assertEqual(plan['stays'][0]['rooms'], 1)
+        self.assertEqual(plan['costBreakdown']['stays'], 2_000_000)
+
+    def test_a_hotel_needing_more_than_nine_rooms_is_not_chosen(self):
+        trip = intent(days=2, party=self.party(20))
+        candidates = catalog(self.hotel('pairs', price=500_000, priceAdults=2),
+                             self.hotel('quads', price=3_000_000, priceAdults=4))
+        self.assertEqual(compose_plan(candidates, sources_for(candidates), trip)['stay_id'], 'quads')
+        only_pairs = catalog(self.hotel('pairs', price=500_000, priceAdults=2))
+        self.assertIsNone(compose_plan(only_pairs, sources_for(only_pairs), trip)['stay_id'])
+
+    def test_the_validator_rejects_a_tampered_room_count(self):
+        trip = intent(days=3, party=self.party(10))
+        candidates = catalog(self.hotel(priceAdults=2))
+        plan, sources = self.render(candidates, trip)
+        self.assertEqual(validate_plan(plan, candidates, sources, trip, {}), [])
+        plan['stays'][0]['rooms'] = plan['stay']['rooms'] = 1
+        self.assertIn('stays', validate_plan(plan, candidates, sources, trip, {}))
+
+    def test_search_guests_are_the_fewest_per_room_that_fit_nine_rooms(self):
+        self.assertEqual(room_guests(self.party(10)), {'adults': 2, 'children': 0})
+        self.assertEqual(room_guests(self.party(2, children=1)), {'adults': 1, 'children': 0})
+        self.assertEqual(room_guests(self.party(9, children=9)), {'adults': 1, 'children': 1})
+        self.assertIsNone(room_guests(None))
 
 
 if __name__ == '__main__':

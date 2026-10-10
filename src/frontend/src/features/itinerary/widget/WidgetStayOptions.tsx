@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Check, Loader2, Star } from 'lucide-react';
 import { getAirportPoints } from '../../../services/routeGeometry';
 import { placeholderOnError } from './widgetVisuals';
-import { stayCardKey } from './widgetPlan';
+import { roomsSuffix, stayCardKey } from './widgetPlan';
 import type { StayOptionCard } from './widgetTypes';
 
 const vnd = new Intl.NumberFormat('vi-VN');
@@ -118,7 +118,7 @@ export function WidgetStayOptions({ cards, interactive, selectingKey, previewKey
                     // Đổi khách sạn giữa chuyến: ghi đêm của từng khách sạn, vì hai phương án có thể cùng hai khách sạn
                     // mà chia đêm khác nhau.
                     <p key={`${stay.productId}:${stay.fromNight}`} className="line-clamp-2 text-sm font-semibold leading-snug text-slate-900">
-                      {`${stay.dayRange} · ${stay.product.name}`}
+                      {`${stay.dayRange} · ${stay.product.name}${stay.rooms != null && stay.rooms > 1 ? ` · ${stay.rooms} phòng` : ''}`}
                     </p>
                   )) : <p className="line-clamp-2 text-sm font-semibold leading-snug text-slate-900">{hotel?.name}</p>}
                   <p className="mt-1 flex items-center gap-1 text-xs text-slate-500">
@@ -127,7 +127,7 @@ export function WidgetStayOptions({ cards, interactive, selectingKey, previewKey
                         <Star className="h-3 w-3 fill-current" aria-hidden="true" />{stars}
                       </span>
                     )}
-                    {hotel?.priceString && <span className="tabular-nums">{hotel.priceString}/đêm</span>}
+                    {hotel?.priceString && <span className="tabular-nums">{`${hotel.priceString}/đêm${stays.length > 1 ? '' : roomsSuffix(stays[0]?.rooms)}`}</span>}
                   </p>
                 </div>
                 <div className="mt-auto flex flex-wrap gap-1.5">
