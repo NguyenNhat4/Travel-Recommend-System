@@ -111,6 +111,8 @@ EXPECT_KEYS = {
     "httpStatus", "status", "errorCode", "intent", "missingFieldsInclude", "toolCalled", "nodesInclude",
     "nodesExclude", "forbiddenText", "excludeProductsFromTurn", "minActivities", "hasStay", "warningsExclude",
     "toolsInclude", "titleFirstLine", "formMatchesAnswer", "judge",
+    # Kịch bản bản 5 và chat thử 10/10 (agent_scenarios_v5.yaml): lượt khám phá, giá vé, lịch tham khảo.
+    "textIncludes", "phraseMaxCount", "cardsMin", "cardsMax", "cardTaxonomies", "suggestionsMin", "warningsInclude",
 }
 
 
@@ -455,6 +457,44 @@ def dataset_findings(
     for code in expect.get("warningsExclude", []):
         if any(w.get("code") == code for w in response.get("warnings") or []):
             failures.append(f"response có warning {code!r} không được phép")
+    failures += scenario_findings(response, expect)
+    return failures
+
+
+def _cards(response: dict[str, Any]) -> list[dict[str, Any]]:
+    """Thẻ sản phẩm của lượt khám phá (`searchResults` theo taxonomy) hoặc của lượt dự phòng."""
+    results = response.get("searchResults") or {}
+    if isinstance(results, dict):
+        return [item for items in results.values() if isinstance(items, list) for item in items]
+    return []
+
+
+def scenario_findings(response: dict[str, Any], expect: dict[str, Any]) -> list[str]:
+    """Các khoá của bộ kịch bản: chữ phải có (không phân biệt hoa thường), cụm không được lặp quá n lần, số thẻ, loại
+    thẻ được phép, số nút gợi ý tối thiểu, cảnh báo phải có."""
+    failures: list[str] = []
+    text = answer_text(response).casefold()
+    for phrase in expect.get("textIncludes", []):
+        if str(phrase).casefold() not in text:
+            failures.append(f"câu trả lời thiếu {phrase!r}")
+    for phrase, limit in (expect.get("phraseMaxCount") or {}).items():
+        count = text.count(str(phrase).casefold())
+        if count > limit:
+            failures.append(f"cụm {phrase!r} xuất hiện {count} lần, tối đa {limit}")
+    cards = _cards(response)
+    if "cardsMin" in expect and len(cards) < expect["cardsMin"]:
+        failures.append(f"có {len(cards)} thẻ, kỳ vọng ít nhất {expect['cardsMin']}")
+    if "cardsMax" in expect and len(cards) > expect["cardsMax"]:
+        failures.append(f"có {len(cards)} thẻ, kỳ vọng tối đa {expect['cardsMax']}")
+    if "cardTaxonomies" in expect:
+        extra = {card.get("taxonomy") for card in cards} - set(expect["cardTaxonomies"])
+        if extra:
+            failures.append(f"thẻ loại {sorted(map(str, extra))} không được phép (chỉ {expect['cardTaxonomies']})")
+    if "suggestionsMin" in expect and len(response.get("suggestions") or []) < expect["suggestionsMin"]:
+        failures.append(f"có {len(response.get('suggestions') or [])} nút gợi ý, kỳ vọng ít nhất {expect['suggestionsMin']}")
+    for code in expect.get("warningsInclude", []):
+        if not any(w.get("code") == code for w in response.get("warnings") or []):
+            failures.append(f"thiếu warning {code!r}")
     return failures
 
 

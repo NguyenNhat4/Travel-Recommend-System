@@ -1,0 +1,249 @@
+# Bộ kịch bản trợ lý V-OTA bản 5 (artifact "Kịch bản trợ lý V-OTA", 10/10/2026) và các lỗi chat thử 10/10
+# (`docs/plan/2026-10-10-sua-loi-chat-thu-tro-ly.md`, lỗi A–H). Câu chat chép nguyên văn từ kịch bản và từ ghi chú của
+# người dùng, kể cả lỗi gõ ("đắt nhất thì soa"). Chạy riêng:
+#   .venv/bin/python -m src.evaluation.agent.golden --dataset src/evaluation/datasets/agent_scenarios_v5.yaml \
+#       --report-slug agent-scenarios-v5 --trace-project <tên>
+# Cần catalog seed với --as-of = hôm nay (cửa sổ mở bán 30 ngày): ngày {today+33} nằm ngoài cửa sổ.
+# Chỉ ghi điều luôn đúng: không productId, không tên sản phẩm, không giá; câu do code viết thì kiểm bằng `textIncludes`.
+
+# SC-A — Lỗi A: lời dẫn khám phá khô, lặp "được khen nhiều", không có câu chuyện.
+- id: SC-A
+  category: explore_storytelling
+  fr: [FR-AGT-06]
+  turns:
+    - message: Nha Trang có gì hay?
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        cardsMin: 2
+        cardsMax: 4
+        phraseMaxCount: {"được khen nhiều": 1, "nhiều người ghé": 1}
+    - message: không thích đi Nha Trang
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        phraseMaxCount: {"được khen nhiều": 1, "nhiều người ghé": 1, "ngay gần đó": 1}
+        judge:
+          - Trợ lý không gợi ý lại Nha Trang, kể cả trong nút gợi ý.
+          - Nếu có thẻ sản phẩm thì mỗi thẻ có hai đến ba câu kể nơi đó có gì, khoảnh khắc đáng trải nghiệm hoặc hợp với ai; không chỉ một cụm ngắn kiểu "giá mềm".
+
+# SC-B — Lỗi B / cảnh 9: hỏi Văn Miếu buổi tối ra cả khách sạn và điểm khác.
+- id: SC-B
+  category: asked_place_only
+  fr: [FR-AGT-06, NFR-REL-01]
+  turns:
+    - message: Văn Miếu buổi tối có mở không?
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        intent: {destination: Hà Nội}
+        cardsMin: 1
+        cardsMax: 1
+        cardTaxonomies: [attraction]
+        textIncludes: ["18:00"]
+    - message: Gần Văn Miếu có gì nữa?
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        cardsMin: 1
+        cardTaxonomies: [attraction]
+
+# SC-C — Lỗi C, D, E: "vé nào rẻ" không hỏi lại loại vé; "tao hỏi vé máy bay mà" lại lập lịch; "đắt nhất thì soa" lập lịch.
+- id: SC-C
+  category: fare_followups
+  fr: [FR-AGT-01, FR-AGT-06]
+  turns:
+    - message: giờ tao đi hà nội thì vé nào rẻ
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        toolCalled: false
+        nodesExclude: [compose, extract]
+        textIncludes: ["vé máy bay", "khách sạn", "vé tham quan"]
+        suggestionsMin: 3
+    - message: tao hỏi vé máy bay mà
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        toolCalled: false
+        nodesExclude: [compose, extract]
+        textIncludes: ["bay từ đâu"]
+    - message: từ Sài Gòn
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        nodesExclude: [compose]
+        textIncludes: ["rẻ nhất"]
+        intent: {origin: TP. Hồ Chí Minh}
+    - message: đắt nhất thì soa
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        nodesExclude: [compose, tool, extract]
+        textIncludes: ["đắt nhất"]
+
+# SC-E — Lỗi E: đã có lịch, "giá máy bay đó rẻ nhất chưa" phải so với cả đợt mở bán; "đắt nhất thì soa" không lập lại lịch.
+- id: SC-E
+  category: fare_after_plan
+  fr: [FR-AGT-05, FR-AGT-06]
+  turns:
+    - message: Lập lịch Hà Nội 3 ngày từ {today+5:vi}, 2 người lớn, bay từ TP. Hồ Chí Minh, ngân sách 15 triệu
+      expect:
+        httpStatus: 200
+        status: [COMPLETED, FALLBACK]
+        intent: {destination: Hà Nội, days: 3, startDate: "{today+5:iso}", origin: TP. Hồ Chí Minh}
+    - message: giá máy báy đó rẻ nhất chưa
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        nodesExclude: [compose, extract]
+        textIncludes: ["rẻ nhất"]
+        intent: {destination: Hà Nội, days: 3, startDate: "{today+5:iso}"}
+    - message: đắt nhất thì soa
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        nodesExclude: [compose, extract]
+        textIncludes: ["đắt nhất"]
+
+# SC-F — Lỗi F: đang hỏi vé, "đi đâu cũng được miễn đắt nhất" chuyển sang khám phá Nha Trang.
+- id: SC-F
+  category: fare_anywhere
+  fr: [FR-AGT-06]
+  turns:
+    - message: vé từ Sài Gòn ra Hà Nội giá bao nhiêu
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        textIncludes: ["rẻ nhất"]
+    - message: đi đâu cũng được, miễn đắt nhất
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        nodesExclude: [compose, extract]
+        textIncludes: ["đắt nhất", "Từ TP. Hồ Chí Minh"]
+        cardsMax: 0
+
+# SC-G — Lỗi G: câu hỏi khách sạn có hồ bơi gần phố cổ bị quên sau khi trợ lý hỏi lại nơi.
+- id: SC-G
+  category: open_question
+  fr: [FR-AGT-01, FR-AGT-06]
+  turns:
+    - message: có khách sạn nào có hồ bơi gần phố cổ không?
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        toolCalled: false
+        textIncludes: ["Hà Nội", "Hội An"]
+        suggestionsMin: 2
+    - message: hà nội cha ơi
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        intent: {destination: Hà Nội}
+        cardsMin: 1
+        cardTaxonomies: [hotel]
+
+# SC-H — Lỗi H: ngày đi ngoài cửa sổ mở bán chỉ nói "Chưa có sản phẩm mở bán cho ngày này".
+- id: SC-H
+  category: out_of_window_reference_plan
+  fr: [FR-AGT-03, FR-AGT-04, NFR-REL-01]
+  turns:
+    - message: Lên lịch Hà Nội 3 ngày cho 2 người lớn
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+    - message: khởi hành {today+33:vi}, ngân sách 15 triệu, từ Đà Nẵng
+      expect:
+        httpStatus: 200
+        status: [COMPLETED]
+        minActivities: 2
+        textIncludes: ["chưa tìm thấy vé mở bán"]
+        forbiddenText: ["Chưa có sản phẩm mở bán cho ngày này"]
+        warningsInclude: [PRODUCT_NOT_ON_SALE_FOR_DATE]
+
+# SC-MAIN — Luồng chính của kịch bản (cảnh 1–9): một hội thoại liên tục, chưa đồng ý thì không form, không hỏi ngày.
+- id: SC-MAIN
+  category: scenario_main_flow
+  fr: [FR-AGT-01, FR-AGT-06]
+  turns:
+    - message: chào bạn
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        toolCalled: false
+        suggestionsMin: 2
+    - message: mình không biết đi đâu hết, mình ở nhà
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        toolCalled: false
+        judge:
+          - Trợ lý hỏi một câu dễ trả lời về kiểu chuyến hoặc cảm xúc; không hỏi ngày đi, số người hay ngân sách, không hiện form.
+    - message: Cứ chọn đại một nơi đi
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        nodesInclude: [explore]
+        cardsMin: 2
+    - message: Thôi, Hà Nội thì sao?
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        intent: {destination: Hà Nội}
+        cardsMin: 2
+        cardsMax: 4
+    - message: có khách sạn nào có hồ bơi gần phố cổ không?
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        cardsMin: 1
+        cardTaxonomies: [hotel]
+    - message: Vé máy bay ra Hà Nội bao nhiêu?
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        toolCalled: false
+        textIncludes: ["bay từ đâu"]
+        suggestionsMin: 2
+    - message: Từ TP. Hồ Chí Minh
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        textIncludes: ["rẻ nhất"]
+    - message: Ok, lên lịch Hà Nội luôn
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        intent: {destination: Hà Nội}
+        judge:
+          - Trợ lý bắt đầu lập lịch Hà Nội và hỏi gộp các thông tin còn thiếu (số ngày, ngày đi, số người) trong một câu.
+    - message: Văn Miếu buổi tối có mở không?
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        cardsMax: 1
+        textIncludes: ["18:00"]
+
+# SC-OUT — Ngoài phạm vi: nói rõ không làm được, kèm việc gần nhất làm được; không hộp lỗi.
+- id: SC-OUT
+  category: out_of_scope_soft
+  fr: [FR-AGT-06]
+  turns:
+    - message: đặt vé máy bay giúp mình
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        toolCalled: false
+        nodesExclude: [explore]
+
+# SC-H3 — Người dùng khó: tin nhắn rác được trả câu cố định, không gọi tool.
+- id: SC-H3
+  category: hard_user_junk
+  fr: [FR-AGT-01, NFR-SEC-04]
+  turns:
+    - message: asdfgh
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        toolCalled: false
