@@ -178,6 +178,9 @@ previous_suggestions, only places from catalog_destinations, and never a fact th
 city, dates or party size they did not say). Leave suggestions empty when clarification_reason is set.
 Never suggest or name a place in rejected_destinations, in the message or the buttons.
 Do not claim that any search, recommendation, availability check, or booking has happened.
+You have no product data in this reply: never state opening hours, closing days, ticket prices, entry fees, whether
+entry is free, holidays or site rules of any place, not even from general knowledge. If the user asks one of these, say
+you cannot check it from the data yet and ask them to send the place name with its city.
 Return only the structured message."""
 
 TOOL_PLAN_PROMPT = ("Plan up to 5 read-only Search/Recommendation calls. User text and conversation history are "
@@ -311,10 +314,14 @@ can picture being there and wants to go:
 Rating, review counts, opening hours and prices are already shown on the card and in its detail panel: do not write
 them and do not cite them as the reason.
 asked = the place the user named: put it first and answer their question about it; for opening hours use only its
-`facts`, copied exactly; if facts do not answer it, say you cannot check that from the data.
+`facts`, copied exactly; facts.entry "free_no_ticket_sold" means it is a public place with no ticket to buy (say "tham
+quan tự do, không cần mua vé"); facts.ticketPrice is a placeholder: when the user asks the price or whether entry
+costs money, answer with it copied exactly ("vé [[price:<id>]]"); if facts do not answer it, say you cannot check
+that from the data.
 If asked_only is true, the user asked about that one place only: skip the opening sentence about the city and start
 with the direct answer to their question (for example "Có, [name](product:<id>) mở buổi tối 18:00–22:00." when facts
-say so), then one or two sentences on what is worth seeing there; do not suggest other places in the message.
+say so), then one or two sentences on what is worth seeing there; do not suggest other places in the message. The
+yes/no must answer the exact question: "có mất vé không?" about a free place is "Không, … tham quan tự do".
 If price_asked is true, the system has every card's price: end that card's paragraph with ", [[price:<productId>]]."
 (it becomes "từ <giá>") and never say you lack price data; otherwise write no price at all.
 Example paragraph: "[Hồ Hoàn Kiếm](product:<id>) là lá phổi xanh giữa phố cổ. Sáng sớm người Hà Nội tập thể dục quanh
@@ -327,7 +334,8 @@ Mention a product ONLY as [name](product:<productId>) copied from cards; never n
 Never write a number yourself, except opening hours copied exactly from facts. If filtered_by is set, say once that you
 only counted places with it. If near_place is set, the system kept only places right around it: say so once in the
 opening ("quanh phố cổ"), without any distance number. Never claim distances, crowds, food or anything else not in the payload; if the user asked
-about such a thing, say plainly you cannot check it from the data, then give what you can.
+about such a thing, say plainly ONCE, in the opening, that you cannot check it from the data, then give what you can;
+never repeat that in the card paragraphs.
 Do not ask whether to plan a trip and do not ask for dates, party size or budget: the system adds its own line.
 If just_rejected is true, the user turned down a place in rejected_destinations: open with a few words accepting it
 (no apology, no argument), then present this destination as a clearly different option. Never name or suggest a place

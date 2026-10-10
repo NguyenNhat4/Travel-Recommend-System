@@ -280,6 +280,7 @@ MESSAGES = {
         "reason_near": "ngay gần đó",
         "explore_price_free": "tham quan tự do",
         "explore_price_unknown": "giá đang cập nhật",
+        "explore_asked_price": "Giá vé {price}.",
         "explore_price_from": "từ {money}",
         "chip_plan": "Lên lịch {destination} cho mình",
         "chip_continue": "Tiếp tục lập lịch",
@@ -330,6 +331,10 @@ MESSAGES = {
         "chip_sights": "{destination} có gì chơi?",
         "chip_near": "Gần {place} có gì nữa?",
         "explore_ask_old_quarter": "Bạn muốn tìm quanh phố cổ {first} hay phố cổ {second}?",
+        "title_unverified_fact": "Chưa kiểm được thông tin này",
+        "unverified_fact": ("Mình chưa kiểm được giờ mở cửa, giá vé hay quy định của nơi bạn hỏi trong dữ liệu hiện có, nên "
+                            "không dám nói chắc. Bạn nhắn tên nơi kèm thành phố (ví dụ \"Văn Miếu Hà Nội mở cửa mấy "
+                            "giờ?\") để mình tra nhé."),
         "chip_old_quarter": "Phố cổ {city}",
         "chip_more_sights": "{destination} còn gì đáng đi?",
         "chip_elsewhere": "Gợi ý nơi khác cho mình",
@@ -624,6 +629,7 @@ MESSAGES = {
         "reason_asked": "the place you asked about",
         "reason_near": "close by",
         "explore_price_free": "free to visit",
+        "explore_asked_price": "Tickets {price}.",
         "explore_price_unknown": "price being updated",
         "explore_price_from": "from {money}",
         "chip_plan": "Plan a {destination} trip for me",
@@ -674,6 +680,10 @@ MESSAGES = {
         "chip_sights": "What to do in {destination}?",
         "chip_near": "What else is near {place}?",
         "explore_ask_old_quarter": "Do you mean the old quarter of {first} or of {second}?",
+        "title_unverified_fact": "I cannot check this yet",
+        "unverified_fact": ("I cannot check the opening hours, ticket prices or rules of that place in the data I have, so "
+                            "I would rather not guess. Send the place name with its city (for example \"Temple of "
+                            "Literature Hanoi opening hours?\") and I will look it up."),
         "chip_old_quarter": "{city} old quarter",
         "chip_more_sights": "What else is worth seeing in {destination}?",
         "chip_elsewhere": "Suggest somewhere else",

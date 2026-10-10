@@ -3,9 +3,11 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import timedelta
+import re
 
 from src.backend.app.application.itinerary.contracts import bounds
 from src.backend.app.domain.itinerary import preferences
+from src.backend.app.domain.itinerary.normalization import fold
 from src.backend.app.domain.itinerary.planning import empty_intent
 
 from ..models import ConversationalAnswer
@@ -17,6 +19,9 @@ from .messages import display_date, event, failure, message, titled
 from .prompts import CONVERSATION_PROMPT
 from .turn_notes import question_note
 
+#: Câu khẳng định giờ mở cửa, giá vé, vé vào cửa, ngày lễ, quy định của một nơi (so trên chuỗi đã `fold`).
+_FACT_CLAIM = re.compile(r"\b(?:mo cua|dong cua|gio mo|gio dong|gio vieng|mien phi|mat ve|mat phi|thu phi|ve vao|gia ve|"
+                         r"phi vao|ngay le|khong mo|chi mo)\b|\b\d{1,2}(?::|h)\d{2}\b")
 #: Form gợi ý phủ mọi trường bắt buộc của chuyến đi, kể cả trường người dùng đã nói, để sửa được tại chỗ.
 FORM_FIELDS = ("destination", "days", "startDate", "party", "budget", "origin")
 #: Số ngày điền sẵn; người dùng chỉnh ngay trên form (giới hạn 1–7 lấy từ contract).
@@ -198,10 +203,20 @@ def with_suggestions(state: dict, update: dict, proposed: list[str] | None = Non
     return {**update, "response": {**response, "suggestions": suggestions}}
 
 
+def invents_fact(text: str) -> bool:
+    """Câu của `converse` nói giờ mở cửa, giá vé, vé vào cửa hay quy định của một nơi. Payload của `converse` không có
+    dữ liệu sản phẩm nào, nên mọi câu như vậy là LLM tự nói ("Văn Miếu không mở buổi tối" — sai, chat thử 10/10 M03)."""
+    return bool(_FACT_CLAIM.search(fold(text)) or _FACT_CLAIM.search(text.lower()))
+
+
 def conversational_update(state: dict, result: ConversationalAnswer) -> dict:
     """Câu LLM viết ra. Yêu cầu ngoài phạm vi (đặt vé hộ, chuyện ngoài du lịch) là câu trả lời thường 200 kèm nút, không
     còn là lỗi 400 (FR-AGT-06, chốt 2026-10-10); chỉ đầu vào bị guardrail chặn mới bị từ chối bằng lỗi."""
     answer = ConversationalAnswer.model_validate(result)
+    if not state.get("blocked_by_guardrail") and invents_fact(answer.message):
+        # Chốt chặn của prompt: câu tự nói giờ/giá/quy định thay bằng câu cố định "chưa kiểm được", giữ nút gợi ý.
+        answer = answer.model_copy(update={"title": message(state, "title_unverified_fact"),
+                                           "message": message(state, "unverified_fact")})
     fallback_title = reply_title(state)
     # Dòng đầu in đậm do backend ghép, để mọi câu trả lời có cùng một dạng; chào hỏi, cảm ơn thì không có tiêu đề.
     text = titled(answer.title or fallback_title, answer.message.strip()) if fallback_title else answer.message.strip()

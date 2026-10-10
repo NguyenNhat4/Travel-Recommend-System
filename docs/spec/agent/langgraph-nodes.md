@@ -21,6 +21,8 @@ Giai đoạn 3 có năm node (`compose` và `narrate` đi liền nhau) vì có �
   sản phẩm. Từ 2026-10-10 (FR-AGT-06) việc ngoài phạm vi là câu trả lời thường 200 kèm nút gợi ý (nói rõ không làm được,
   chỉ việc gần nhất làm được); chỉ đầu vào bị guardrail chặn mới trả lỗi 400.
   Xin lên lịch trình mà chưa nói điểm đến hay số ngày **không** thuộc nhóm này — đó vẫn là yêu cầu du lịch, đi `clarify`.
+  `converse` không có dữ liệu sản phẩm: câu LLM nói giờ mở cửa, giá vé, vé vào cửa hay quy định của một nơi bị thay bằng
+  câu cố định "chưa kiểm được" (`conversation.invents_fact`, chat thử 16 kiểu M03).
 - `explore` — **khám phá trước khi lập lịch** (FR-AGT-06, chốt 2026-10-10): "Hà Nội có gì?", "khách sạn nào có hồ bơi?" khi
   người dùng chưa đồng ý lập lịch. Gọi Search, chọn tối đa 4 thẻ bằng luật (mỗi thẻ một lý do đúng trên toàn bộ kết quả,
   `domain/itinerary/exploration.py`), LLM chỉ viết lời dẫn, số do code điền; thêm câu mời lập lịch và nút gợi ý. Xem mục
@@ -124,6 +126,7 @@ Trước khi người dùng đồng ý lập lịch, trợ lý **không hỏi th
 | Hỏi về một nơi mà chưa rõ thành phố ("có khách sạn nào có hồ bơi gần phố cổ không?") | Giữ nguyên | `explore`: "phố cổ" không kèm thành phố thì hỏi "phố cổ Hà Nội hay phố cổ Hội An?" kèm hai nút (luật, không LLM); không tra được nơi thì `extract` → `converse` hỏi lại. Câu hỏi gốc lưu ở `open_question`; lượt sau trả lời ngắn nêu điểm đến ("hà nội cha ơi") thì `explore` trả lời câu hỏi gốc ở đó. "gần <nơi>" khi hỏi chỗ ở: câu tìm khách sạn kèm "gần <nơi>", tìm thêm chính nơi đó làm mốc và chỉ giữ khách sạn trong 1,5 km quanh mốc (lý do `near`) |
 | Hỏi về chính một nơi ("Văn Miếu buổi tối có mở không?") hoặc quanh nơi đó ("gần Văn Miếu có gì nữa?") | Giữ nguyên | `explore.pick`: chỉ thẻ nơi đó, câu đầu trả lời thẳng (`asked_only`); hỏi quanh nơi đó thì các điểm tham quan gần nhất (≤ 3 km), không lặp nơi đó, không chen khách sạn |
 | Nêu tên một nơi mà không nêu thành phố ("Văn Miếu buổi tối có mở không?") | Chưa | `explore` tìm nguyên câu trên cả catalog (`place_destination`); nơi khớp tên thì điểm đến là điểm đến của chính sản phẩm đó, không để `extract` đoán |
+| Gọi nơi nổi tiếng bằng tên dân gian ("lăng bác", "hồ gươm", "chợ bến thành") | Chưa | Bảng `domain/itinerary/place_aliases.py` cho tên catalog, điểm đến và câu tìm; điểm đến theo nơi đó kể cả đang nói về thành phố khác; câu hỏi vé vào nơi đó không đi nhánh giá vé máy bay |
 
 Khi đã đồng ý lập lịch:
 

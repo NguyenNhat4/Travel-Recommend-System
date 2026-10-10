@@ -15,6 +15,7 @@ from src.backend.app.application.ports.itinerary_tools import ToolError, ToolExe
 from src.backend.app.domain.itinerary import exploration as rules
 from src.backend.app.domain.itinerary import preferences
 from src.backend.app.domain.itinerary.normalization import fold
+from src.backend.app.domain.itinerary.place_aliases import place_of, with_catalog_names
 from src.backend.app.domain.itinerary.planning import summary
 from src.backend.app.domain.search.normalize import DESTINATION_ALIASES
 
@@ -58,10 +59,15 @@ HIGHLIGHTS = 8
 #: (so trên chuỗi đã `fold`, kèm dấu nối đứng trước).
 _PRAISE = re.compile(r"(?:\s*[,;–-]\s*|\s+)(?:va |lai |cung )?(?:duoc (?:du khach |nhieu nguoi )?khen nhieu|"
                      r"(?:cung )?(?:duoc )?nhieu nguoi ghe(?: nhat(?: o day)?)?|ngay gan do|gia mem)")
+#: Đuôi câu hỏi ("… mở ko b", "… có mất vé không") bỏ khỏi câu tìm nơi: Search hiểu "ko/không" là phủ định và loại hết
+#: kết quả ("văn miếu tối mở ko b" ra 0 kết quả, chat thử 10/10 M03).
+#: Chỉ từ không thể là một phần tên nơi ("nha"/"ha"/"chua"/"sao" thì có: Nha Trang, Hạ Long, chùa, Bãi Sao).
+_QUESTION_WORDS = frozenset({"ko", "k", "khong", "hong", "kg", "khg", "b", "vay", "nhi", "nhe", "z"})
 #: Câu trong mô tả catalog chỉ chứa số liệu (giờ, địa chỉ, thời lượng): thẻ bên phải đã hiện, câu chat không nhắc lại.
 _DATA_SENTENCE = re.compile(r"^\s*(?:gio mo cua|dia chi|thoi gian tham quan|loai hinh|dia diem|toi da|\d)")
 #: Người dùng hỏi về giá: chỉ khi đó câu chat mới nêu giá; còn lại giá chỉ nằm trên thẻ.
-_PRICE_ASKED = re.compile(r"\b(?:gia(?! dinh)|bao nhieu|re|mem|tiet kiem|binh dan|dat do|dat qua|chi phi|het bao)\b")
+_PRICE_ASKED = re.compile(r"\b(?:gia(?! dinh)|bao nhieu|re|mem|tiet kiem|binh dan|dat do|dat qua|chi phi|het bao|mat ve|"
+                          r"mat phi|ve vao|phi vao|thu phi|mien phi)\b")
 
 
 def _named_destination(query: str, supported: list[str]) -> str | None:
@@ -75,13 +81,18 @@ def _named_destination(query: str, supported: list[str]) -> str | None:
 
 
 def destination_for(state: dict, supported: list[str] | None) -> str | None:
-    """Điểm đến cần khám phá, bỏ qua nơi người dùng đã chê: nơi câu này nhắc tới, nơi trợ lý tự chọn (bậc 2 của "không
+    """Điểm đến cần khám phá, bỏ qua nơi người dùng đã chê: nơi câu này nhắc tới (tên thành phố, hoặc thành phố của nơi
+    nổi tiếng câu gọi tên), nơi trợ lý tự chọn (bậc 2 của "không
     biết", hoặc vừa bị chê) theo thứ tự nhiều sản phẩm nhất, rồi điểm đến của chuyến."""
     rejected = {fold(name) for name in state.get("rejected_destinations") or []}
     allowed = [name for name in supported or [] if fold(name) not in rejected]
     named = _named_destination(state.get("query", ""), allowed)
     if named:
         return named
+    place = place_of(state.get("query", ""))
+    if place is not None and place.destination in allowed:
+        # "chợ bến thành mở tới mấy giờ" giữa cuộc chat về Hà Nội: nơi được hỏi quyết định điểm đến.
+        return place.destination
     current = (state.get("intent") or {}).get("destination")
     if state.get("explore_pick") or (current and fold(current) in rejected):
         return allowed[0] if allowed else None
@@ -177,11 +188,22 @@ def hotel_focus(state: dict) -> bool:
     return bool(_HOTEL_FOCUS.search(query) or _POOL.search(query))
 
 
+def place_query(text: str) -> str:
+    """Câu dùng để tìm nơi người dùng nêu tên: câu tìm của bảng tên gọi khác nếu câu gọi bằng tên dân gian ("lăng bác" →
+    "Lăng Chủ tịch"), không thì câu đã bỏ đuôi hỏi ("văn miếu tối mở ko b" → "văn miếu tối mở")."""
+    place = place_of(text)
+    if place:
+        return place.query
+    words = [word for word in (text or "").split() if fold(word).strip("?.!,") not in _QUESTION_WORDS]
+    return " ".join(words) or text
+
+
 def _asked(state: dict, destination: str, results: list[dict]) -> dict | None:
-    """Nơi người dùng nêu tên ("Văn Miếu buổi tối có mở không?"), tìm trong lượt Search bằng nguyên câu hỏi."""
+    """Nơi người dùng nêu tên ("Văn Miếu buổi tối có mở không?", "lăng bác mấy giờ mở cửa"), tìm trong lượt Search bằng
+    tên nơi đó (`place_query`)."""
     named = [result for result in results if result.get("tool_call_id") == NAMED_CALL_ID]
     products = [product for taxonomy in ("attraction", "hotel") for product in _products(named, destination, taxonomy)]
-    return rules.named_in(products, state.get("query", ""), exclude=[destination])
+    return rules.named_in(products, with_catalog_names(state.get("query", "")), exclude=[destination])
 
 
 def _landmark(state: dict, destination: str, results: list[dict]) -> dict | None:
@@ -252,10 +274,14 @@ async def place_destination(state: dict, supported: list[str] | None, tools: Too
     allowed = [name for name in supported or [] if fold(name) not in rejected]
     if not allowed:
         return None
+    known = place_of(state.get("query", ""))
+    if known is not None:
+        # Nơi trong bảng tên gọi khác: điểm đến đã biết, không cần tìm.
+        return known.destination if known.destination in allowed else None
     unscoped = {**state, "intent": {**(state.get("intent") or {}), "destination": None}, "tool_results": []}
     try:
         args = tool_planning._validated_args(unscoped, {"name": "search_products",
-                                                        "args": {"query": state.get("query", ""),
+                                                        "args": {"query": place_query(state.get("query", "")),
                                                                  "taxonomy": "attraction"}})
     except ToolError:
         return None
@@ -263,7 +289,7 @@ async def place_destination(state: dict, supported: list[str] | None, tools: Too
                                             tools, timeout_seconds)
     products = [product for result in results for product in (result.get("data") or {}).get("results", [])
                 if product.get("productId") and product.get("available") is not False]
-    named = rules.named_in(products, state.get("query", ""), exclude=allowed)
+    named = rules.named_in(products, with_catalog_names(state.get("query", "")), exclude=allowed)
     destination = (named or {}).get("destination")
     return next((name for name in allowed if fold(name) == fold(destination)), None) if destination else None
 
@@ -289,8 +315,8 @@ async def search(state: dict, destination: str, tools: ToolExecutorPort, timeout
             calls.append({**landmark, "id": NEAR_CALL_ID})
     if not hotel_focus(state):
         calls.append(_search_call(state, destination, "attraction", "điểm tham quan nổi tiếng", 1))
-    # Thêm một lượt bằng nguyên câu hỏi, để câu nêu tên một nơi ("Văn Miếu buổi tối có mở không?") ra đúng nơi đó.
-    named = _search_call(state, destination, "attraction", state.get("query", ""), 2)
+    # Thêm một lượt tìm chính nơi câu hỏi nêu tên ("Văn Miếu buổi tối có mở không?", "lăng bác mấy giờ mở cửa").
+    named = _search_call(state, destination, "attraction", place_query(state.get("query", "")), 2)
     if named is not None:
         calls.append({**named, "id": NAMED_CALL_ID})
     plan = [call for call in calls if call is not None]
@@ -298,9 +324,10 @@ async def search(state: dict, destination: str, tools: ToolExecutorPort, timeout
 
 
 def _price_text(state: dict, product: dict) -> str:
-    if rules.free_entry(product):
-        return message(state, "explore_price_free")
     value = rules.price(product)
+    if rules.free_entry(product) or (value is None and product.get("taxonomy") == "attraction"):
+        # Điểm tham quan không có giá là nơi đến chơi, như câu dẫn lịch (`narration._price`, người dùng chốt 01/10).
+        return message(state, "explore_price_free")
     if value is None:
         return message(state, "explore_price_unknown")
     return message(state, "explore_price_from", money=money(value, state.get("language", "vi")))
@@ -433,9 +460,16 @@ def _card_input(card: dict) -> dict:
     if isinstance(amenities, list):
         # Khách sạn: tiện ích có thật để kể về kỳ nghỉ (hồ bơi, spa, bữa sáng), không chỉ "giá mềm".
         item["highlights"] = [text for text in amenities if isinstance(text, str)][:HIGHLIGHTS]
-    # Giờ mở cửa chỉ đưa cho nơi người dùng hỏi tới, để trả lời đúng câu hỏi; nơi khác giờ nằm trên thẻ.
-    if rules.ASKED in card["reasons"] and attributes.get("openingHours"):
-        item["facts"] = {"openingHours": attributes["openingHours"]}
+    # Giờ mở cửa, vé vào chỉ đưa cho nơi người dùng hỏi tới, để trả lời đúng câu hỏi; nơi khác nằm trên thẻ.
+    if rules.ASKED in card["reasons"]:
+        facts = {"openingHours": attributes["openingHours"]} if attributes.get("openingHours") else {}
+        if product.get("taxonomy") == "attraction" and (rules.free_entry(product) or product.get("unitPrice") is None):
+            # Nơi công cộng không bán vé (Hồ Hoàn Kiếm): lịch cũng coi là tham quan tự do (`FREE_ENTRY_ASSUMED`).
+            facts["entry"] = "free_no_ticket_sold"
+        elif rules.price(product) is not None:
+            # Giá vé: LLM chép placeholder, code điền số (LLM thật từng nói "chưa kiểm tra được giá" dù có giá).
+            facts["ticketPrice"] = f"[[price:{product['productId']}]]"
+        item["facts"] = facts
     return item
 
 
@@ -463,6 +497,41 @@ def once_praise(text: str) -> str:
     return "\n".join(line.rstrip() for line in text.split("\n"))
 
 
+def _link_plain_name(lines: list[str], product: dict) -> int | None:
+    """LLM nêu tên thẻ mà không gắn link ("Có, Văn Miếu – Quốc Tử Giám mở buổi tối…"): gắn link vào lần nêu đầu tiên và
+    trả số dòng, thay vì chèn thêm một dòng nhắc lại nơi đó (chat thử M03 từng ra hai dòng Văn Miếu)."""
+    product_id = product["productId"]
+    for name in dict.fromkeys(((product.get("name") or "").strip(), rules.short_name(product))):
+        if len(name.split()) < 2:
+            continue
+        pattern = re.compile(rf"(?<!\[){re.escape(name)}(?!\]\(product:)")
+        for index, line in enumerate(lines):
+            masked = PRODUCT_LINK.sub(lambda match: " " * len(match.group(0)), line)
+            match = pattern.search(masked)
+            if match:
+                lines[index] = f"{line[:match.start()]}[{name}](product:{product_id}){line[match.end():]}"
+                return index
+    return None
+
+
+def _with_asked_price(state: dict, text: str, cards: list[dict]) -> str:
+    """Hỏi giá vé một nơi có giá ("văn miếu vé vào cửa bao nhiêu") mà câu LLM không nêu giá (LLM thật 2026-10-11): thêm
+    câu giá vào cuối đoạn của nơi đó, số do `_fill` điền."""
+    asked = next((card["product"] for card in cards if rules.ASKED in card["reasons"]), None)
+    if asked is None or not price_asked(state) or rules.price(asked) is None:
+        return text
+    product_id = asked["productId"]
+    if f"[[price:{product_id}]]" in text:
+        return text
+    lines = text.split("\n")
+    index = next((number for number, line in enumerate(lines)
+                  if any(match.group(2) == product_id for match in PRODUCT_LINK.finditer(line))), None)
+    if index is None:
+        return text
+    lines[index] = f"{lines[index].rstrip().rstrip('.')}. {message(state, 'explore_asked_price', price=f'[[price:{product_id}]]')}"
+    return "\n".join(lines)
+
+
 def _ensure_cards(state: dict, body: str, cards: list[dict]) -> str:
     """Mỗi thẻ phải có một dòng nhắc nó (thẻ hiện ngay sau dòng đó); LLM bỏ sót thẻ nào thì chèn dòng của code vào đúng
     thứ tự thẻ: trước dòng của thẻ kế tiếp đã được nhắc, không có thì ở cuối."""
@@ -474,6 +543,8 @@ def _ensure_cards(state: dict, body: str, cards: list[dict]) -> str:
 
     for position, card in enumerate(cards):
         found = line_of(card["product"]["productId"])
+        if found is None:
+            found = _link_plain_name(lines, card["product"])
         if found is not None and PRODUCT_LINK.sub("", lines[found]).strip(" .,:;-–") == "":
             # LLM chỉ viết link trơn, không nói gì về nơi đó: thay bằng dòng của code.
             lines[found] = card_line(state, card)
@@ -561,9 +632,8 @@ def explored(state: dict, destination: str, cards: list[dict], filtered_by: str 
     elif narration is not None:
         # Dòng trống giữa các đoạn (LLM thật 10/10) làm thẻ tách khỏi câu dẫn: gộp về một dòng mỗi đoạn.
         narration = narration.model_copy(update={"message": re.sub(r"\n\s*\n+", "\n", narration.message)})
-        body = once_praise(_ensure_cards(state, _fill(state, _unlink_unknown(_relinked(narration.message.strip(),
-                                                                                    products), products), products),
-                                         cards))
+        linked = _unlink_unknown(_relinked(narration.message.strip(), products), products)
+        body = once_praise(_ensure_cards(state, _fill(state, _with_asked_price(state, linked, cards), products), cards))
         title = narration.title or message(state, "explore_title", destination=destination)
     else:
         body = once_praise(fallback_body(state, destination, cards, filtered_by))

@@ -134,7 +134,7 @@ class ChatTextTests(unittest.TestCase):
         asked = _card_input({'product': place('vm', attributes=hours), 'reasons': [rules.ASKED]})
         self.assertNotIn('facts', plain)
         self.assertEqual(plain['tags'], ['Thắng cảnh lịch sử'])
-        self.assertEqual(asked['facts'], {'openingHours': '08:00–17:00'})
+        self.assertEqual(asked['facts']['openingHours'], '08:00–17:00')
 
     def test_the_fallback_line_describes_the_place_without_numbers(self):
         from src.backend.app.agents.steps.exploration import card_line

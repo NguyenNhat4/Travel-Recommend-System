@@ -15,6 +15,7 @@ from src.backend.app.application.itinerary.flights import _all, canonical_city, 
 from src.backend.app.application.ports.itinerary_tools import ToolExecutorPort
 from src.backend.app.domain.itinerary import flights as flight_rules
 from src.backend.app.domain.itinerary.normalization import fold
+from src.backend.app.domain.itinerary.place_aliases import place_of
 from src.backend.app.domain.search.normalize import DESTINATION_ALIASES
 
 from .classification import REQUIRED_FIELDS
@@ -22,7 +23,7 @@ from .messages import event, message, money, titled
 
 #: Câu nhắc tới vé hoặc chuyến bay (so trên chuỗi đã `fold`); "bay" đứng một mình dễ trùng "bây giờ" nên phải đi kèm hướng.
 _FLIGHT = re.compile(r"\b(?:ve may bay|ve bay|chuyen bay|may bay|bay (?:ra|vao|tu|den|toi|ve|di)|"
-                     r"ve (?:ra|vao|tu|den|toi|di|khu hoi|mot chieu))\b")
+                     r"ve (?:ra|vao(?! cua| cong)|tu|den|toi|di|khu hoi|mot chieu))\b")
 #: Danh từ vé máy bay rõ ràng (không tính "bay từ", vốn hay nằm trong câu xin lập lịch).
 _FLIGHT_NOUN = re.compile(r"\b(?:ve may bay|ve bay|chuyen bay|may bay)\b")
 #: Câu hỏi giá.
@@ -59,6 +60,9 @@ def vague(state: dict) -> bool:
     """Hỏi giá "vé" mà không nói vé gì ("vé nào rẻ", "vé ở Hà Nội bao nhiêu"): phải hỏi lại vé máy bay, khách sạn hay vé
     tham quan, không đoán (chat thử 10/10: trợ lý lập lịch luôn)."""
     query = fold(state.get("query", ""))
+    if place_of(state.get("query", "")) is not None:
+        # "bà nà vé bao nhiêu": vé vào một nơi nổi tiếng, không mơ hồ; lượt khám phá trả lời bằng thẻ nơi đó.
+        return False
     return bool(_TICKET.search(query) and (_PRICE.search(query) or _CHEAP.search(query) or _DEAR.search(query))
                 and not _FLIGHT.search(query) and not _OTHER_KIND.search(query) and not _NOT_FARE.search(query))
 
@@ -84,6 +88,9 @@ def asked(state: dict) -> bool:
     query = fold(state.get("query", ""))
     pending = state.get("pending_fare") or {}
     if _NOT_FARE.search(query):
+        return False
+    if place_of(state.get("query", "")) is not None and not _FLIGHT_NOUN.search(query):
+        # "văn miếu vé vào cửa bao nhiêu": vé vào một nơi nổi tiếng, lượt khám phá trả lời bằng thẻ nơi đó.
         return False
     if vague(state):
         return True
