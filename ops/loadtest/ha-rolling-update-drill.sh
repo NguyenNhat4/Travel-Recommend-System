@@ -22,6 +22,7 @@ SAMPLE_SECONDS=${SAMPLE_SECONDS:-10}
 MAX_DRILL_SECONDS=${MAX_DRILL_SECONDS:-1500}
 GCLOUD=${GCLOUD:-gcloud}
 K6=${K6:-k6}
+K6_SCRIPT=${K6_SCRIPT:-$(dirname "$0")/k6-ha.js}  # 150 VU mặc định; 1 VM dùng k6-ha-1vm.js (20 VU)
 OUT=${OUT:-$(mktemp -d)/rolling-drill}
 CONFIRM=0; [[ "${1:-}" == "--yes" ]] && CONFIRM=1
 here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -30,19 +31,19 @@ cat <<PLAN
 Kế hoạch diễn tập:
   1. k6 -e BASE_URL=$BASE_URL k6-ha.js (nền)
   2. đợi ${WARMUP_SECONDS}s tới đoạn 150 VU
-  3. $GCLOUD compute instance-groups managed rolling-action replace $MIG --region $REGION --max-surge 3 --max-unavailable 0 --min-ready ${MIN_READY_SECONDS}s  (đúng update_policy trong main.tf)
+  3. $GCLOUD compute instance-groups managed rolling-action replace $MIG --region $REGION --max-surge 3 --max-unavailable 0  (min_ready_sec lấy từ update_policy trong main.tf = ${MIN_READY_SECONDS}s; gcloud GA không có cờ --min-ready)
   4. mỗi ${SAMPLE_SECONDS}s đếm backend HEALTHY của $BACKEND_SERVICE, kết thúc khi MIG ổn định hoặc sau ${MAX_DRILL_SECONDS}s
   5. đạt khi min(HEALTHY) >= $MIN_HEALTHY và k6 qua ngưỡng. Kết quả: $OUT.*
 PLAN
 [[ $CONFIRM -eq 1 ]] || { echo 'Dry run: thêm --yes để thực hiện.'; exit 0; }
 
-"$K6" run -e BASE_URL="$BASE_URL" "$here/k6-ha.js" > "$OUT.k6.txt" 2>&1 &
+"$K6" run -e BASE_URL="$BASE_URL" "$K6_SCRIPT" > "$OUT.k6.txt" 2>&1 &
 k6_pid=$!
 trap 'kill "$k6_pid" 2>/dev/null || true' EXIT
 sleep "$WARMUP_SECONDS"
 
 "$GCLOUD" compute instance-groups managed rolling-action replace "$MIG" --project "$PROJECT" --region "$REGION" \
-  --max-surge 3 --max-unavailable 0 --min-ready "${MIN_READY_SECONDS}s" --quiet
+  --max-surge 3 --max-unavailable 0 --quiet
 echo "ts,healthy" > "$OUT.healthy.csv"
 min_seen=999
 end=$(( $(date +%s) + MAX_DRILL_SECONDS ))

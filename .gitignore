@@ -58,3 +58,9 @@ bench_out/
 
 # File tạm của gold_schema.atomic_write_text khi app/CLI chết giữa chừng
 src/evaluation/search_bench/gold/**/.*.tmp
+
+# Backend state của infra/monitoring (README: không commit)
+infra/monitoring/backend.staging.hcl
+
+# Worktree lồng do Claude Code tạo: mỗi thư mục là một git worktree riêng (có file .git), không commit.
+.claude/worktrees/

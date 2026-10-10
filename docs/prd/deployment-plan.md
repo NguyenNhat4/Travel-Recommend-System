@@ -18,7 +18,7 @@ Hệ thống được thiết kế để vận hành trên ba cấp môi trườ
 | **Mục đích** | Phát triển tính năng, debug | Tích hợp liên tục, kiểm thử E2E | Phục vụ người dùng thực tế |
 | **Cơ sở dữ liệu** | PostgreSQL 16 local qua Docker | PostgreSQL Cloud | Managed Cloud Database Cluster |
 | **Session store** | Redis local qua Docker (bind `127.0.0.1`, có mật khẩu); hội thoại dùng DB index riêng | Redis dùng chung, hội thoại dùng DB index riêng | Redis managed, `noeviction`; hội thoại dùng DB index riêng |
-| **Cơ sở dữ liệu vector** | Weaviate local qua Docker (volume riêng) | Weaviate dùng chung | Weaviate Cloud hoặc self-host có backup |
+| **Cơ sở dữ liệu vector** | Weaviate local qua Docker (volume riêng) | Weaviate Cloud (cluster chung của nhóm, eu-central-1) | Weaviate Cloud hoặc self-host có backup |
 | **Cổng thanh toán** | Stripe test mode, `stripe listen` chuyển webhook về máy | Stripe test mode, webhook trỏ về URL staging | Ngoài phạm vi (live mode) |
 | **Dữ liệu mẫu** | Snapshot nén hoặc dữ liệu tổng hợp | Toàn bộ dữ liệu snapshot chuẩn hóa | Dữ liệu giao dịch thực tế |
 | **Dịch vụ AI** | Local LLM hoặc API dev key | API key chia sẻ nội bộ | Dedicated API quota / Enterprise |
@@ -52,7 +52,7 @@ Hệ thống phân tách ranh giới bảo mật bằng các chuỗi kết nối
 | `VECTOR_COLLECTION` | Collection vector — mặc định `ProductE5Small` (vector e5-small). Biến cũ `WEAVIATE_COLLECTION` (collection `Product`, vector Cohere) không còn được đọc | Tất cả | Không bí mật. Job embed từ chối ghi vào collection đang chứa vector của model khác |
 | `SEARCH_CUTOFF` / `SEARCH_LEXICAL_CUTOFF` | Ngưỡng cosine của Search — mặc định 0,84 (hiệu chỉnh cho e5-small) / 0,50; `SEARCH_NO_DIACRITICS_CUTOFF` **0,80** cho câu không dấu (chỉ khi `SEARCH_NO_DIACRITICS_MODE=relax`, mặc định production) | Tất cả | Không bí mật. Hiệu chỉnh trên gold khi đổi model. Cutoff tuyệt đối không làm câu ngoài catalog trả rỗng — giới hạn đã biết |
 | `SEARCH_LLM_FALLBACK` / `SEARCH_LLM_FALLBACK_MIN_CONFIDENCE` / `SEARCH_LLM_FALLBACK_TIMEOUT_MS` | LLM fallback của query plan: `off` (mặc định) \| `shadow` \| `on`; ngưỡng độ tin cậy kích hoạt; hạn thời gian mỗi lượt | Tất cả | Không bí mật; dùng khoá LLM có sẵn (`LLM_API_KEY`) |
-| `WEAVIATE_URL` | Endpoint Weaviate (local: `http://localhost:8080`) | Tất cả | Không mở ra mạng ngoài ở local |
+| `WEAVIATE_URL` | Endpoint Weaviate (dev: `http://localhost:8080`; staging: URL cluster Weaviate Cloud, dạng `https://<cluster>.weaviate.cloud`) | Tất cả | Không mở ra mạng ngoài ở local |
 | `WEAVIATE_GRPC_PORT` | Cổng gRPC của Weaviate (mặc định `50051`). Search, Similar và Recommendation truy vấn top-K qua gRPC; Weaviate Cloud tự dùng cổng 443 của host `grpc-<cluster>` nên bỏ qua biến này | Tất cả | Không mở ra mạng ngoài ở local |
 | `JWT_PRIVATE_KEY_PATH` / `JWT_PUBLIC_KEY_PATH` | Khoá RS256 để FastAPI ký và kiểm JWT; public key công bố qua JWKS | Tất cả | Khoá riêng bí mật: không commit, không vào image. Chỉ FastAPI giữ |
 | `JWT_ISSUER` / `JWT_AUDIENCE` | Giá trị `iss`/`aud` bắt buộc khớp khi kiểm token | Tất cả | Không bí mật |
