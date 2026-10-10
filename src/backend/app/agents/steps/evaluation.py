@@ -5,6 +5,7 @@ from copy import deepcopy
 
 from src.backend.app.application.itinerary.retrieval import collect, drop_summary, nearest_open_date
 from src.backend.app.application.itinerary.tool_contracts import SIMILAR_PRODUCTS
+from src.backend.app.domain.itinerary import preferences
 from src.backend.app.domain.itinerary.planning import SCHEDULABLE_TAXONOMIES, SLOT_TAXONOMIES, STAY_TAXONOMY
 
 from . import messages
@@ -108,6 +109,19 @@ def _dropped_message(state: dict, reason: str, product: dict) -> str:
     return DROPPED_MESSAGE
 
 
+def _preferred_stays(state: dict, candidates: dict, sources: dict) -> tuple[dict, dict]:
+    """Lọc mềm theo sở thích khách sạn (FR-AGT-06): bỏ khách sạn không hợp chỉ khi còn đủ khách sạn hợp
+    (`preferences.preferred`); sản phẩm khác giữ nguyên."""
+    wanted = preferences.from_interests((state.get("intent") or {}).get("interests"))
+    hotels = [product for product in candidates.values() if product.get("taxonomy") == STAY_TAXONOMY]
+    kept = {product["productId"] for product in preferences.preferred(hotels, wanted)}
+    if len(kept) == len(hotels):
+        return candidates, sources
+    dropped = {product["productId"] for product in hotels} - kept
+    return ({pid: product for pid, product in candidates.items() if pid not in dropped},
+            {pid: source for pid, source in sources.items() if pid not in dropped})
+
+
 def evaluate_retrieval(state: dict) -> dict:
     """Update của `evaluate` (chưa gồm `events`): candidate, nguồn grounding, cảnh báo và quyết định."""
     errors = tool_errors(state)
@@ -117,6 +131,7 @@ def evaluate_retrieval(state: dict) -> dict:
     constraints = _relaxed_constraints(state)
     candidates, sources, dropped = collect(state.get("tool_results", []), state.get("details", {}),
                                            state["intent"], constraints)
+    candidates, sources = _preferred_stays(state, candidates, sources)
     products = _retrieved(state)
     warnings = [{"code": reason, "message": _dropped_message(state, reason, products.get(pid, {})), "productId": pid}
                 for pid, reason in dropped.items()]

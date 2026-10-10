@@ -1,24 +1,30 @@
-# LangGraph: mười bốn node và vì sao chia như vậy
+# LangGraph: mười lăm node và vì sao chia như vậy
 
-Agent lập lịch trình là một LangGraph gồm mười bốn node. Tài liệu này giải thích **ý đồ** của cách chia đó — đọc xong bạn nói lại được cho người khác mà không cần mở code. Xem [README](README.md) để chạy demo.
+Agent lập lịch trình là một LangGraph gồm mười lăm node. Tài liệu này giải thích **ý đồ** của cách chia đó — đọc xong bạn nói lại được cho người khác mà không cần mở code. Xem [README](README.md) để chạy demo.
 
 Một lượt gọi API đi qua ba việc: **hiểu người dùng muốn gì**, **lấy sản phẩm thật từ catalog**, và **soạn câu trả lời**. Mỗi node lo một mẩu của ba việc đó, và tất cả cùng đọc/ghi vào một state chung.
 
 ## 1. Bốn giai đoạn
 
-Đừng nhớ mười bốn node rời rạc. Nhớ bốn giai đoạn, mỗi giai đoạn trả lời một câu hỏi:
+Đừng nhớ mười lăm node rời rạc. Nhớ bốn giai đoạn, mỗi giai đoạn trả lời một câu hỏi:
 
 | Giai đoạn | Node | Câu hỏi nó trả lời |
 |---|---|---|
 | Hiểu người dùng | `intake`, `classify`, `extract` | Đây có phải yêu cầu du lịch không (`classify`), muốn gì và đã đủ thông tin chưa (`extract`)? |
 | Lấy dữ liệu thật | `tool`, `evaluate`, `retry`, `filter` | Có sản phẩm thật nào dùng được không, và có điểm nào trùng nhau không (`filter`)? |
-| Soạn câu trả lời | `converse`, `compose`, `narrate`, `clarify`, `dead_letter` | Nói gì với người dùng? |
+| Soạn câu trả lời | `converse`, `explore`, `compose`, `narrate`, `clarify`, `dead_letter` | Nói gì với người dùng? |
 | Cửa ra chung | `finalize` | Câu trả lời này có an toàn để gửi đi không? |
 
 Giai đoạn 3 có năm node (`compose` và `narrate` đi liền nhau) vì có đúng bốn tình huống cần nói với người dùng:
 
-- `converse` — **trò chuyện**: chào hỏi, cảm ơn, hoặc từ chối yêu cầu ngoài phạm vi. Chưa đụng tới sản phẩm.
+- `converse` — **trò chuyện**: chào hỏi, cảm ơn, "chưa biết đi đâu", câu hỏi cách dùng, hoặc việc ngoài phạm vi. Chưa đụng tới
+  sản phẩm. Từ 2026-10-10 (FR-AGT-06) việc ngoài phạm vi là câu trả lời thường 200 kèm nút gợi ý (nói rõ không làm được,
+  chỉ việc gần nhất làm được); chỉ đầu vào bị guardrail chặn mới trả lỗi 400.
   Xin lên lịch trình mà chưa nói điểm đến hay số ngày **không** thuộc nhóm này — đó vẫn là yêu cầu du lịch, đi `clarify`.
+- `explore` — **khám phá trước khi lập lịch** (FR-AGT-06, chốt 2026-10-10): "Hà Nội có gì?", "khách sạn nào có hồ bơi?" khi
+  người dùng chưa đồng ý lập lịch. Gọi Search, chọn tối đa 4 thẻ bằng luật (mỗi thẻ một lý do đúng trên toàn bộ kết quả,
+  `domain/itinerary/exploration.py`), LLM chỉ viết lời dẫn, số do code điền; thêm câu mời lập lịch và nút gợi ý. Xem mục
+  "Giai đoạn trò chuyện và khám phá" bên dưới.
 - `compose` — **dựng kết quả**: đã có sản phẩm thật, xếp thành lịch trình bằng luật.
 - `narrate` — **diễn giải kết quả**: chỉ với `COMPLETED`, LLM viết lời tư vấn như một người lập kế hoạch du lịch (tiêu đề, các mục in đậm, vì sao sắp xếp như vậy). Backend chèn câu ghi nhận thay đổi ("Mình ghi nhận đổi ngày đi thành …") từ `previous_intent` so với `intent`, thay tên sản phẩm bằng tên canonical, điền giá từ dữ liệu và chặn `productId` lạ hoặc số tiền LLM tự viết; không dùng được thì `narration.fallback_message` dựng cùng bố cục bằng luật. Status khác `COMPLETED` đi qua nguyên vẹn.
 - `clarify` — **hỏi thêm**: thiếu, sai, mâu thuẫn, loại nơi thay cho điểm đến, hoặc điều kiện bắt buộc không có sản phẩm. Khi nào hỏi gì: [nghiep-vu/hieu-y-dinh-va-hoi-lai.md](nghiep-vu/hieu-y-dinh-va-hoi-lai.md).
@@ -97,6 +103,49 @@ Kiểm thử: `tests/unit/agents/test_guardrails.py` (bảng dương/âm, không
 | `known_constraints`, `previous_selection` | Như trước |
 
 `finalize` dựng ghi chú bằng luật (`steps/turn_notes.turn_note`, không gọi LLM) từ state đã chốt và lưu kèm tin nhắn trợ lý trong `conversation_history` (khoá `note`, tối đa 300 ký tự). Lịch sử lưu trước khi có ghi chú thì dùng câu gọn ≤ 500 ký tự hoặc dòng tiêu đề. `clarify`/`converse` nhận thêm `this_turn` — ghi chú của chính lượt đang trả lời — để câu trả lời biết vì sao đang hỏi. Message `human` gửi LLM là YAML đọc được (`history.prompt_yaml`: giữ nguyên tiếng Việt, chuỗi nhiều dòng dạng khối `|`, nội dung người dùng được quote nên không phá được cấu trúc), không phải chuỗi JSON. Đây là chỗ hay bị hiểu sai — **`compose` không gọi LLM**, nó xếp lịch bằng quy tắc cố định (mục 5); LLM của `narrate` chỉ viết lời về lịch đã dựng, không chọn hay đổi sản phẩm.
+
+### Giai đoạn trò chuyện và khám phá (FR-AGT-06, chốt 2026-10-10)
+
+Trước khi người dùng đồng ý lập lịch, trợ lý **không hỏi thông tin chuyến và không hiện form**. `classify` thêm nhãn
+`explore` và cờ `plan_request`; luật đồng ý ở `steps/classification.plan_consented`:
+
+| Người dùng | Đồng ý lập lịch? | Đi đâu |
+|---|---|---|
+| Đã đồng ý ở lượt trước (`plan_consent`), sửa form/chip, hoặc câu xin lập lịch ("lập lịch", "lên kế hoạch", nút "Lên lịch …") | Có | Như AC-AGT-01: `extract` → hỏi gộp → form → `tool` |
+| Trợ lý vừa mời (`pending_offer`) và người dùng nói "ok", "được"… hoặc trả lời bằng thông tin chuyến | Có | Như trên; vừa đồng ý thì hỏi gộp một câu trước, chưa form |
+| Nêu thông tin chuyến ngoài điểm đến ("Hà Nội 3 ngày", "đi 3 ngày", "2 người") | Có (`planning_implied`) | Như trên |
+| Chỉ nêu hoặc hỏi về một nơi ("Hà Nội", "Hà Nội có gì?") | Chưa | `explore` thẳng, không qua `extract` (bớt một lượt LLM): tra tên nơi trong catalog và tên gọi khác ("hn", "Sài Gòn"), ghi làm điểm đến, kèm câu mời lập lịch lần đầu với nơi đó. Không tra được ("Bangkok có gì?") thì quay lại `extract` một lần (`route_after_explore`); câu có chữ số luôn qua `extract` trước |
+| Hỏi về một nơi khi đã đồng ý | Giữ nguyên | `explore` thẳng, chuyến không đổi, nút "Tiếp tục lập lịch" |
+| "Không biết" khi chưa có điểm đến | Chưa | Bậc 1 `converse` hỏi kiểu chuyến; bậc 2 `explore` tự chọn điểm đến nhiều sản phẩm nhất (`explore_pick`); bậc 3 ngừng hỏi |
+| "Để sau", "không biết" khi đang có lời mời | Chưa | `converse`, xoá lời mời, không hỏi lại |
+| "Cứ chọn đại", "tuỳ bạn", "đâu cũng được" khi chưa có điểm đến | Chưa | Luật `_DELEGATE`: `explore` tự chọn ngay (bậc 2), không đợi LLM xếp nhãn |
+| Chê một nơi đã gợi ý ("chán, Đà Nẵng đi rồi", "chỗ khác đi") | Chưa | Ghi `rejected_destinations`, bỏ lời mời, `explore` chọn nơi khác; nơi bị chê không vào nút gợi ý; hỏi lại đúng tên nơi đó là đổi ý |
+| Hỏi giá vé ("vé ra Hà Nội bao nhiêu?", "vé từ Đà Nẵng ra Phú Quốc giá sao") | Giữ nguyên | Luật `steps/fares.detected` trước LLM: `explore` nhánh giá vé (`fare_question`), không gọi LLM. Thiếu điểm đến hoặc nơi đi thì hỏi lại kèm nút (nơi đi lấy từ `originCity` các tuyến tới điểm đến), ghi `pending_fare` để câu trả lời ngắn lượt sau ("Sài Gòn", "từ Huế") điền đúng chỗ; đủ thì báo vé một chiều rẻ nhất (`flight_options`) và tối đa 3 ngày rẻ khác. Đã có lịch thì không bắt ở đây |
+| Nêu tên một nơi mà không nêu thành phố ("Văn Miếu buổi tối có mở không?") | Chưa | `explore` tìm nguyên câu trên cả catalog (`place_destination`); nơi khớp tên thì điểm đến là điểm đến của chính sản phẩm đó, không để `extract` đoán |
+
+Khi đã đồng ý lập lịch:
+
+- **Sở thích khách sạn** (hồ bơi, phù hợp trẻ nhỏ, view biển, có bữa sáng, spa; `domain/itinerary/preferences.py`) là
+  **ưu tiên**: nằm trong `intent.interests`, không trong `constraints.hotel_attributes` (bộ lọc bắt buộc; catalog thật chỉ ghi
+  tiện ích dạng chuỗi nên cờ bắt buộc sẽ loại gần hết khách sạn). Câu hỏi gộp mời nói sở thích; form có ô `interests` chọn
+  nhiều (`interestOptions`, tích sẵn "Phù hợp trẻ nhỏ" khi có trẻ em); câu "ưu tiên …" được `extract` giữ mềm. Sở thích vào câu
+  tìm khách sạn (`search_hints`) và lọc mềm ở `evaluate` (chỉ bỏ khách sạn không hợp khi còn ít nhất 3 khách sạn hợp).
+- **Ngày đã chọn không có chuyến bay:** câu cảnh báo vé nêu thêm tối đa 2 ngày gần nhất có vé, giữ số ngày của chuyến, ngày
+  đủ hai chiều trước (`domain/itinerary/flights.nearest_dates`, dữ liệu là chuyến `flight_options` đã tải, không tra thêm).
+- **Đổi khi chưa nói đổi thế nào** (`steps/changes.py`, luật tất định chạy trong `classify` trước LLM, không gọi LLM):
+  - "đổi khách sạn" trơn khi lịch đang hiện có phương án khác → `clarify` (lý do `choose_stay`, câu cố định) liệt kê các
+    phương án kèm chênh tiền và km; nút "Lấy phương án N" vào `apply_option` như bấm hàng thẻ. Câu có hướng ("rẻ hơn", "gần
+    biển") hoặc "bạn chọn giúp" thì đi `extract` như trước (loại khách sạn đang chọn rồi lập lại lịch).
+  - "đổi chuyến bay", "đổi vé" → `clarify` (lý do `choose_flight`) liệt kê chuyến khác cùng ngày của từng chặng
+    (`previous_flights`, do `compose` dựng bằng `flights.flight_choices`), mỗi chuyến một nút, thêm nút "Đổi ngày đi". Câu đã nói
+    rõ — bấm nút có số hiệu, "chuyến về muộn hơn/sớm hơn/rẻ hơn", "bạn chọn giúp" — thì `classify` chọn luôn chuyến đó
+    (`constraints.chosen_flights`) và đi thẳng `tool` để lập lại lịch (giờ bay đổi thì cửa sổ ngày đến, ngày về đổi);
+    `choose_flights` ưu tiên chuyến đã chọn nếu còn bán đúng ngày. Không có chuyến hợp ý thì nói rõ và vẫn đưa danh sách.
+
+Nút gợi ý (`suggestions`, tối đa 3) ở lượt trò chuyện và khám phá: LLM đề xuất, `exploration.checked_suggestions` bỏ nút
+rỗng, dài, lặp nút lượt trước hoặc trùng mẫu câu (bỏ tên điểm đến và chữ số rồi so), luôn có một nút đi tiếp khi chưa có
+nút xin lập lịch, thiếu thì bù nút mẫu. Response khám phá là `NEEDS_CLARIFICATION` có `searchResults` (contract 1.24.0);
+`finalize` kiểm từng thẻ là đúng sản phẩm Search lượt đó và link trong câu chỉ trỏ tới các thẻ đó.
 
 ## 2. Vì sao mọi nhánh đều đi qua `finalize`
 
@@ -274,7 +323,7 @@ request có `selectStayOption` hoặc câu "lấy phương án N" và lượt tr
 tính lại chênh km/tiền (bấm thẻ: không lời đáp, không thêm lượt hội thoại; gõ "lấy phương án N": lời đáp ngắn do code dựng), nạp sản phẩm của các lịch đã lưu làm `candidates` để `finalize`
 kiểm grounding như mọi lượt.
 
-## 6. Bảng tra cứu mười bốn node
+## 6. Bảng tra cứu mười lăm node
 
 Dùng khi đã nắm bức tranh chung ở trên và cần tra chi tiết một node. Tóm tắt hành vi trước, bảng field-level ở dưới cùng cho tên field thật trong `AgentState` (`agents/state.py`) — khớp `agents/nodes.py` (hàm node) và `agents/steps/` (luật chi tiết) tại thời điểm viết, `git blame`/`git log -p` mới là nguồn xác thực khi code đã đổi.
 
@@ -282,12 +331,13 @@ Dùng khi đã nắm bức tranh chung ở trên và cần tra chi tiết một 
 |---|---|---|---|
 | `intake` | Message của người dùng, `conversationId` (nếu có), `selectStayOption` (nếu bấm thẻ phương án). | State khởi tạo: message đã chuẩn hóa, `conversationId`, intent, lịch sử chat, `previous_options`/`previous_plan` đã lưu của hội thoại. | `apply_option` nếu chọn đúng một phương án có lịch đã lưu (`route_after_intake`); còn lại `classify` |
 | `apply_option` | `select_stay_option` hoặc câu "lấy phương án N", `previous_plan`, `previous_options`. **Không gọi LLM, không tool.** | `COMPLETED` với lịch đã lưu của phương án, `stayOptions` mới (lịch vừa bỏ thành một phương án), lời đáp ngắn chỉ khi gõ tay, `constraints.specific_hotel`; sản phẩm của các lịch đã lưu làm `candidates` cho `finalize`. | `finalize` |
-| `classify` | Message mới và ngữ cảnh hội thoại chung. Guardrail tất định (regex) chạy trước; khớp thì bỏ qua LLM. Còn lại **gọi LLM** (prompt ngắn, một nhãn). | `decision` (`travel`/`missing_info`/`simple`/`error`), `interaction_type` (`travel`/`conversation`/`out_of_scope`), `refusal`, `blocked_by_guardrail` (nếu guardrail chặn); với nhánh trò chuyện thêm `missing_fields` của chuyến đi đã lưu; nhãn `vague` thêm `clarification_reason="suggest_form"`, `missing_fields`, `start_date_asked`. | `extract` nếu du lịch; `clarify` nếu `vague` và còn thiếu trường bắt buộc; `converse` nếu trò chuyện hoặc ngoài phạm vi; `dead_letter` nếu LLM lỗi |
+| `classify` | Message mới và ngữ cảnh hội thoại chung. Guardrail tất định (regex) chạy trước; khớp thì bỏ qua LLM; luật đổi khách sạn/chuyến bay (`steps/changes.py`) cũng chạy trước LLM. Còn lại **gọi LLM** (prompt ngắn, một nhãn). | `decision` (`travel`/`missing_info`/`simple`/`error`), `interaction_type` (`travel`/`conversation`/`out_of_scope`), `refusal`, `blocked_by_guardrail` (nếu guardrail chặn); với nhánh trò chuyện thêm `missing_fields` của chuyến đi đã lưu; nhãn `vague` thêm `clarification_reason="suggest_form"`, `missing_fields`, `start_date_asked`. | `extract` nếu du lịch; `clarify` nếu `vague` và còn thiếu trường bắt buộc; `converse` nếu trò chuyện hoặc ngoài phạm vi; `dead_letter` nếu LLM lỗi |
 | `extract` | Message mới, ngữ cảnh hội thoại chung, `intentOverride`, `start_date_asked`. **Gọi LLM.** | Intent/constraints (`destination`, `days`, `startDate`, `party`, `budget`...), các trường còn thiếu, `start_date_asked`. | `tool` nếu đủ `destination` + `days` và đã xử lý chi tiết chuyến đi; `clarify` nếu thiếu, chưa hỏi chi tiết, mâu thuẫn hoặc có điều kiện không xác minh được; `dead_letter` nếu intent không hợp lệ hoặc LLM lỗi |
 | `tool` | Intent/constraints và lịch sử chat; ở lượt đổi món thêm `previous_selection`. **Có thể gọi LLM** để khớp tên điểm đến với catalog hoặc lập tool plan. | Tên điểm đến đã chuẩn hóa, kết quả Search/Recommendation/ProductDetail (hoặc lỗi) trong `tool_results`; chỉ ở lượt đổi món (có `previous_selection`) mới có thêm kết quả Similar. Có nơi đi thì tra chuyến bay song song, không qua LLM (`flight_options`, spec Itinerary §2.7). Điểm đến ngoài catalog thì xoá điểm đến khỏi intent, ghi `invalid_inputs` và `decision = "invalid_input"` (chưa gọi Search; hỏi lại kèm danh sách điểm đến hỗ trợ). | `evaluate` |
 | `evaluate` | `tool_results` và intent. | Danh sách candidate hợp lệ có nguồn grounding, hoặc phân loại: `compose`, `no_results`, `fallback`, `constraint_clarification`, lỗi tạm thời/vĩnh viễn. Lỗi mềm của Similar không tính vào phân loại này: 404/409 luôn mềm; 503/timeout (mode `http`: mọi 5xx và lỗi kết nối) mềm khi có `search_products` trả dữ liệu (spec Itinerary §2.5). | `filter`, `clarify` (khi `constraint_clarification`), `retry` hoặc `dead_letter` |
 | `retry` | Lỗi tool tạm thời và số lần đã thử. | Quyết định thử lại (tối đa một lần), dùng fallback hoặc báo lỗi. | `tool`, `filter` hoặc `dead_letter` |
-| `converse` | Message mới, lịch sử chat, loại tương tác, cờ từ chối. **Gọi LLM**, trừ khi `blocked_by_guardrail` đã đặt ở `classify` — khi đó dùng thẳng câu cố định, không gọi LLM. | Câu trả lời trò chuyện (`NEEDS_CLARIFICATION` kèm `missingFields`), hoặc từ chối (`VALIDATION_ERROR`, HTTP 400). LLM lỗi thì dùng câu cố định. | `finalize` |
+| `converse` | Message mới, lịch sử chat, loại tương tác, cờ từ chối, `plan_consent`, `dont_know_count`, `pending_offer`, `last_suggestions`. **Gọi LLM**, trừ khi `blocked_by_guardrail` đã đặt ở `classify` — khi đó dùng thẳng câu cố định, không gọi LLM. | Câu trả lời trò chuyện (`NEEDS_CLARIFICATION` kèm `missingFields`, nút `suggestions` khi `offer_suggestions`); ngoài phạm vi cũng là câu trả lời 200 (FR-AGT-06); chỉ guardrail chặn mới là `VALIDATION_ERROR` 400. LLM lỗi thì dùng câu cố định. | `finalize` |
+| `explore` | Message mới, `intent`, `plan_consent`, `pending_offer`, `offered_destinations`, `last_suggestions`, `explore_pick`, `fare_question`, `pending_fare`. **Gọi Search và LLM** (`ExploreNarration`); nhánh giá vé chỉ gọi GET /products, không LLM. Lời dẫn: mỗi thẻ một dòng nói nơi đó có gì hay (từ `about`/`tags`); điểm, lượt đánh giá, giờ mở cửa, giá không vào câu (giờ chỉ cho nơi được hỏi, giá chỉ khi hỏi giá). | `NEEDS_CLARIFICATION` có `searchResults` (tối đa 4 thẻ do luật chọn), `suggestions`, câu mời lập lịch hoặc nhắc tiếp tục; `candidates` cho `finalize`; `pending_offer`, `offered_destinations`; điểm đến của chuyến khi chưa đồng ý. LLM lỗi thì lời dẫn do code dựng. | `finalize`; `extract` khi đi thẳng từ `classify` mà không tra được tên nơi (`decision = needs_extract`) |
 | `filter` | Candidate đã evaluate, `sources`. **Gọi LLM** khi còn từ hai điểm tham quan sau bước luật (chỉ mã + tên). | `candidates` đã bỏ điểm tham quan trùng, `dropped_duplicates`, cảnh báo `PRODUCT_DROPPED_DUPLICATE`. LLM lỗi thì chỉ dùng luật cùng tên. | `compose` |
 | `compose` | Candidate đã evaluate và lọc trùng (chỉ `hotel`, `attraction`, `golf`). **Không gọi LLM.** | Lịch trình `COMPLETED` dựng bằng `compose_plan`, hoặc `NO_RESULTS`, `FALLBACK`. | `narrate` |
 | `narrate` | Lịch trình `COMPLETED` vừa dựng, `intent` và `previous_intent`, ngữ cảnh hội thoại chung. **Gọi LLM** (`ItineraryNarration`), bỏ qua với status khác `COMPLETED`. | `response.message` (tiêu đề, câu ghi nhận thay đổi, các mục, link sản phẩm, giá điền từ dữ liệu) và `response.itinerary.title`. LLM lỗi, quá hạn hoặc viết id lạ/số tiền tự đặt thì dùng bản dựng bằng luật. | `finalize` |

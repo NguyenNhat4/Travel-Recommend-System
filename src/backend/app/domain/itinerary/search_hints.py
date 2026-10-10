@@ -15,6 +15,7 @@ import re
 from typing import Any, Mapping
 
 from ..search.constraints import parse_negation, parse_numeric, parse_party, remove_spans
+from . import preferences
 from .normalization import fold
 
 #: Danh từ loại sản phẩm: query rỗng sau khi làm sạch thì dùng nó (kèm gợi ý) thay vì tên điểm đến.
@@ -75,11 +76,15 @@ def retrieval_hints(intent: Mapping[str, Any], constraints: Mapping[str, Any]) -
     kids = _has_kids(intent, constraints)
     attributes = constraints.get("hotel_attributes") or {}
     activity = constraints.get("specific_activity")
+    interests = [value for value in intent.get("interests") or [] if isinstance(value, str)]
     hints = {
+        # Sở thích khách sạn trong `interests` (FR-AGT-06) là ưu tiên: chỉ kéo khách sạn hợp vào top-K, không lọc.
         "hotel": _unique([constraints.get("specific_hotel"),
                           *(label for key, label in _HOTEL_ATTRIBUTE_LABELS if attributes.get(key) is True),
+                          *preferences.hints(preferences.from_interests(interests)),
                           *(_HOTEL_KIDS if kids else ())]),
-        "attraction": _unique([activity, *(intent.get("interests") or []), *(_ATTRACTION_KIDS if kids else ())]),
+        "attraction": _unique([activity, *(value for value in interests if not preferences.is_preference(value)),
+                               *(_ATTRACTION_KIDS if kids else ())]),
         # Hậu kiểm bắt tên `specific_activity` cả ở golf (`retrieval.py`), nên golf cũng tìm theo tên đó.
         "golf": _unique([activity]),
     }

@@ -2066,16 +2066,21 @@ export interface components {
             };
             /** @description Form gợi ý hiển thị trong khung chat khi hỏi bằng câu chữ một lượt vẫn chưa đủ thông tin. */
             clarificationForm?: {
-                fields: ("destination" | "days" | "startDate" | "party" | "budget" | "origin")[];
+                /** @description Ô hiển thị theo thứ tự. `interests` (1.24.0, FR-AGT-06): ô sở thích khách sạn chọn nhiều, không bắt buộc; lựa chọn lấy từ `interestOptions`, lựa chọn đã tích sẵn nằm trong `defaults.interests`. */
+                fields: ("destination" | "days" | "startDate" | "party" | "budget" | "origin" | "interests")[];
                 defaults: components["schemas"]["TripIntent"];
                 /**
                  * Format: date
                  * @description Ngày khởi hành sớm nhất được phép chọn; hôm nay theo giờ Việt Nam.
                  */
                 startDateMin?: string;
+                /** @description Tuỳ chọn (1.24.0, FR-AGT-06). Nhãn sở thích khách sạn đã có dữ liệu (ví dụ "Hồ bơi", "Phù hợp trẻ nhỏ"). Sở thích là ưu tiên khi tìm khách sạn, không loại khách sạn thiếu dữ liệu tiện ích. Client ghép lựa chọn vào câu xác nhận ("ưu tiên khách sạn có Hồ bơi, Phù hợp trẻ nhỏ"). */
+                interestOptions?: string[];
             };
-            /** @description Tuỳ chọn (1.13.0). Câu yêu cầu gửi được nguyên văn làm lượt chat kế tiếp, cùng ngữ nghĩa với `ItineraryNoResults.suggestions`. Có khi điều kiện bắt buộc (khách sạn, khách sạn hoặc hoạt động cụ thể) không có sản phẩm nào đáp ứng, ví dụ ngày khởi hành gần nhất còn bán hoặc lập lịch không cần khách sạn. */
+            /** @description Tuỳ chọn (1.13.0). Câu yêu cầu gửi được nguyên văn làm lượt chat kế tiếp, cùng ngữ nghĩa với `ItineraryNoResults.suggestions`. Có khi điều kiện bắt buộc (khách sạn, khách sạn hoặc hoạt động cụ thể) không có sản phẩm nào đáp ứng, ví dụ ngày khởi hành gần nhất còn bán hoặc lập lịch không cần khách sạn. Từ 1.24.0 còn có ở lượt trò chuyện và khám phá (FR-AGT-06): tối đa 3 nút theo các hướng khác nhau (đi tiếp như lập lịch, xem sâu, đổi hướng), không lặp nút của lượt trước. */
             suggestions?: string[];
+            /** @description Tuỳ chọn (1.24.0, FR-AGT-06). Lượt khám phá trước khi lập lịch ("Hà Nội có gì?", "khách sạn nào có hồ bơi?"): sản phẩm thật lấy từ Search của chính lượt này, nhóm theo loại, tối đa 4 mỗi loại. `question` nhắc từng sản phẩm bằng link `[Tên](product:<productId>)` với `productId` có trong đây; client đặt thẻ ngay sau dòng đầu tiên nhắc sản phẩm, như lời diễn giải lịch trình. Không có trường này thì lượt hỏi lại như trước. */
+            searchResults?: components["schemas"]["SearchResultsByTaxonomy"];
             metadata?: components["schemas"]["ItineraryMetadata"];
         };
         ItineraryNoResults: {

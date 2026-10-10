@@ -25,14 +25,25 @@ class RouteTests(unittest.TestCase):
         self.assertTrue(result['refusal'])
 
     def test_conversation_is_not_a_refusal_and_knows_what_the_trip_lacks(self):
-        state = {**intake_node({'query': 'cảm ơn'}), 'intent': {'destination': 'Huế', 'days': None}}
+        state = {**intake_node({'query': 'cảm ơn'}), 'intent': {'destination': 'Huế', 'days': None},
+                 'plan_consent': True}
         result = route_result(state, TurnRoute(route='conversation'))
         self.assertEqual(result['decision'], 'simple')
         self.assertFalse(result['refusal'])
         self.assertEqual(result['missing_fields'], ['days'])
 
+    def test_before_agreeing_to_plan_conversation_only_invites_a_destination(self):
+        # FR-AGT-06: chưa đồng ý lập lịch thì trò chuyện không hỏi số ngày; có điểm đến rồi thì không hỏi gì.
+        for intent, missing in (({'destination': 'Huế', 'days': None}, []), (empty_intent(), ['destination'])):
+            with self.subTest(intent=intent):
+                state = {**intake_node({'query': 'cảm ơn'}), 'intent': intent}
+                result = route_result(state, TurnRoute(route='conversation'))
+                self.assertEqual(result['missing_fields'], missing)
+                self.assertTrue(result['offer_suggestions'])
+
     def vague_state(self, **intent):
-        return {**intake_node({'query': 'không biết'}),
+        # Trợ lý đã hỏi gộp thông tin chuyến: người dùng đã đồng ý lập lịch (FR-AGT-06).
+        return {**intake_node({'query': 'không biết'}), 'plan_consent': True,
                 'conversation_history': [{'role': 'user', 'content': 'Đi Đà Nẵng 3 ngày'},
                                          {'role': 'assistant', 'content': 'Bạn đi ngày nào, mấy người, ngân sách bao nhiêu?'}],
                 'intent': {**empty_intent(), 'destination': 'Đà Nẵng', 'days': 3, **intent}}
@@ -58,9 +69,25 @@ class RouteTests(unittest.TestCase):
         state = self.vague_state(startDate='2999-10-10', party={'type': 'COUPLE', 'adults': 2, 'children': 0})
         self.assertEqual(route_result(state, TurnRoute(route='vague'))['decision'], 'travel')
 
-    def test_a_vague_first_message_goes_to_extract(self):
+    def test_not_knowing_where_to_go_never_shows_the_form(self):
+        # FR-AGT-06, ba bậc: hỏi kiểu chuyến → trợ lý tự chọn một nơi và khám phá → ngừng hỏi, chỉ giữ nút.
         state = {**intake_node({'query': 'không biết'}), 'intent': empty_intent()}
-        self.assertEqual(route_result(state, TurnRoute(route='vague'))['decision'], 'travel')
+        first = route_result(state, TurnRoute(route='vague'))
+        self.assertEqual((first['decision'], first['dont_know_count']), ('simple', 1))
+        second = route_result({**state, 'dont_know_count': 1}, TurnRoute(route='vague'))
+        self.assertEqual((second['decision'], second['explore_pick']), ('explore', True))
+        third = route_result({**state, 'dont_know_count': 2}, TurnRoute(route='vague'))
+        self.assertEqual((third['decision'], third['dont_know_count']), ('simple', 3))
+        for result in (first, second, third):
+            self.assertNotIn('clarification_reason', result)
+
+    def test_postponing_a_plan_offer_drops_the_offer_without_a_form(self):
+        state = {**intake_node({'query': 'để sau'}), 'pending_offer': {'destination': 'Hà Nội'},
+                 'intent': {**empty_intent(), 'destination': 'Hà Nội'}}
+        result = route_result(state, TurnRoute(route='vague'))
+        self.assertEqual(result['decision'], 'simple')
+        self.assertIsNone(result['pending_offer'])
+        self.assertNotIn('plan_consent', result)
 
     def test_classify_sees_the_whole_conversation_context(self):
         state = {**intake_node({'query': 'chưa chốt ngày đi'}),
@@ -109,7 +136,7 @@ class ClassifyPromptTests(unittest.TestCase):
 
     def test_cancellation_is_out_of_scope_only_for_existing_orders(self):
         out_of_scope = CLASSIFY_PROMPT.split('out_of_scope:')[1]
-        self.assertIn('existing order or booking', out_of_scope)
+        self.assertIn('cancel or change an existing order', out_of_scope)
         self.assertNotIn('cancellation actions', CLASSIFY_PROMPT)
 
 
@@ -285,7 +312,7 @@ class ClassifyRouteTests(unittest.TestCase):
 
     def test_second_round_still_missing_switches_to_suggest_form(self):
         """Đã hỏi một lượt mà vẫn thiếu điểm đến/số ngày: chuyển sang gợi ý form thay vì hỏi lại y hệt."""
-        state = {**intake_node({'query': 'bao nhiêu ngày cũng được'}), 'clarification_rounds': 1}
+        state = {**intake_node({'query': 'bao nhiêu ngày cũng được'}), 'clarification_rounds': 1, 'plan_consent': True}
         result = extract_result(state, Extraction(start_date_undecided=True, patch={}))
         self.assertEqual(result['decision'], 'missing_info')
         self.assertEqual(result['clarification_reason'], 'suggest_form')

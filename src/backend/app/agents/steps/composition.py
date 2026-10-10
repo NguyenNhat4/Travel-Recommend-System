@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from collections import Counter
 from copy import deepcopy
+from datetime import date, timedelta
 import logging
 
 from src.backend.app.domain.itinerary import flights as flight_rules
@@ -10,6 +11,7 @@ from src.backend.app.domain.itinerary.planning import (SCHEDULABLE_TAXONOMIES, c
                                                         price_plan, render_proposal, stay_rooms, summary, validate_plan)
 
 from . import messages
+from .classification import vietnam_today
 from .explanations import missing_stay_note
 from .messages import display_date, failure
 
@@ -198,7 +200,27 @@ def _flight_warning(state: dict, reason: str | None, legs: list) -> dict | None:
     key = reason
     if reason == flight_rules.ONE_WAY_ONLY:
         key = "MISSING_RETURN" if legs and legs[0]["direction"] == "OUTBOUND" else "MISSING_OUTBOUND"
-    return {"code": f"FLIGHT_{reason}", "message": messages.message(state, f"flight_warn_{key}", **values)}
+    text = messages.message(state, f"flight_warn_{key}", **values)
+    if reason in (flight_rules.NO_FLIGHT_ON_DATES, flight_rules.ONE_WAY_ONLY):
+        text = " ".join(filter(None, (text, _nearest_dates_sentence(state, options, intent))))
+    return {"code": f"FLIGHT_{reason}", "message": text}
+
+
+def _nearest_dates_sentence(state: dict, options: dict, intent: dict) -> str | None:
+    """Câu gợi ý ngày gần nhất có vé, giữ số ngày của chuyến; dữ liệu là chuyến đã tải lượt này (không tra thêm)."""
+    found = flight_rules.nearest_dates(options, intent, vietnam_today())
+    if not found:
+        return None
+    days = intent.get("days") or 1
+    items = []
+    for item in found:
+        start = date.fromisoformat(item["startDate"])
+        label = messages.message(state, "flight_nearest_both" if item["complete"] else "flight_nearest_out_only",
+                                 out=display_date(item["startDate"]),
+                                 back=display_date((start + timedelta(days=days - 1)).isoformat()))
+        items.append(label)
+    return messages.message(state, "flight_nearest", dates=messages.message(state, "detail_joiner").join(items),
+                            example=display_date(found[0]["startDate"])[:5])
 
 
 def with_flights(plan: dict, legs: list, intent: dict) -> dict:
@@ -280,7 +302,9 @@ def composed(state: dict) -> dict:
     Mỗi phương án khác cũng được dựng thành lịch đầy đủ (cùng luật, cùng kiểm tra) để client xem trước và lượt
     "chọn phương án" chỉ lấy lịch đó ra, không tìm lại (AC-AGT-04, chốt 2026-10-08).
     """
-    legs, flight_reason = flight_rules.choose_flights(state.get("flight_options") or {}, state["intent"])
+    options_by_route = state.get("flight_options") or {}
+    legs, flight_reason = flight_rules.choose_flights(options_by_route, state["intent"],
+                                                      (state.get("constraints") or {}).get("chosen_flights"))
     windows = day_windows(state["intent"], legs)
     # Vé trừ vào ngân sách khi chọn khách sạn (chốt 2026-10-08); vé chưa rõ giá thì không so được với ngân sách.
     fares = [flight_rules.flight_cost(leg) for leg in legs]
@@ -315,7 +339,9 @@ def composed(state: dict) -> dict:
                              for stay in plan.get("stays") or []]}
         if offers:
             current["searchResults"] = offers
-    return {"response": response, "stay_options": options, "current_plan": current}
+    # Chuyến khác cùng ngày của từng chặng, để lượt sau "đổi chuyến bay" hỏi bằng lựa chọn cụ thể (`steps/changes.py`).
+    return {"response": response, "stay_options": options, "current_plan": current,
+            "flight_choices": flight_rules.flight_choices(options_by_route, legs)}
 
 
 def _stored_stay(product: dict, from_night: int, nights: int) -> dict:

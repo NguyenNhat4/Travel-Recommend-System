@@ -1,6 +1,6 @@
 # AgentState: từng trường, node nào dùng để làm gì
 
-Phục vụ FR-AGT-01 (hội thoại đa lượt), FR-AGT-02 (tool calling), FR-AGT-03 (lịch trình có cấu trúc), FR-AGT-04 (grounding 100%), FR-AGT-05 (đổi món qua hội thoại) ở `docs/prd/requirements.md` §1.4 — tài liệu này chỉ mô tả lại field-level cách mười bốn node hiện thực các FR đó qua `AgentState`, không thêm hành vi mới.
+Phục vụ FR-AGT-01 (hội thoại đa lượt), FR-AGT-02 (tool calling), FR-AGT-03 (lịch trình có cấu trúc), FR-AGT-04 (grounding 100%), FR-AGT-05 (đổi món qua hội thoại), FR-AGT-06 (trò chuyện và khám phá trước khi lập lịch, chốt 2026-10-10, PRD chưa cập nhật) ở `docs/prd/requirements.md` §1.4 và đề xuất `docs/prd/update/2026-10-09-goi-y-truoc-khi-lap-lich.md` — tài liệu này chỉ mô tả lại field-level cách mười lăm node hiện thực các FR đó qua `AgentState`, không thêm hành vi mới.
 
 Bảng ở [langgraph-nodes.md](langgraph-nodes.md) mục 6.1 tổ chức theo **node** (mỗi node đọc/ghi field nào). Bảng dưới đây tổ chức theo **field** (mỗi field được node nào ghi, node nào đọc, để làm gì) — dùng khi cần tra một field cụ thể thay vì đọc lại toàn bộ một node.
 
@@ -57,3 +57,18 @@ Sau đợt review field (quyết định 2026-09-28, [`history/2026-09-28-ap-dun
 | `started_at` | `intake` | `finalize` | Mốc thời gian bắt đầu để tính `latency_ms` |
 | `latency_ms` | `finalize` | *(không đọc lại trong graph)* | Độ trễ tổng của lượt, trả về/log |
 | `language` | `intake` (mặc định "vi", khôi phục từ store), `finalize_node_async` (lưu lại) | `classify`, `converse`, `clarify`, mọi `_message()` fallback | Ngôn ngữ trả lời, ảnh hưởng prompt LLM và câu cố định |
+| `plan_consent` | `intake` (khôi phục; hội thoại lưu trước 2026-10-10 đã hỏi gộp hoặc đã có lịch thì coi là `true`), `classify` (`plan_consented`), `extract` (`planning_implied`), `finalize` (lưu) | `classify`, `extract`, `explore`, `converse` | Người dùng đã xin hoặc đồng ý lập lịch (FR-AGT-06). Chưa đồng ý thì không hỏi thông tin chuyến, không hiện form |
+| `pending_offer` | `explore` (`{"destination": ...}` khi chưa đồng ý), `classify` (xoá khi đồng ý hoặc "để sau"), `finalize` (lưu) | `classify` ("ok" sau lời mời là đồng ý; điểm đến trợ lý tự chọn được ghi vào chuyến khi đồng ý), `converse` | Lời mời lập lịch đang chờ trả lời |
+| `offered_destinations` | `explore` (thêm điểm đến vừa mời bằng câu), `finalize` (lưu) | `explore` | Điểm đến đã được hỏi "có muốn lập lịch không"; lượt khám phá sau chỉ giữ nút, không hỏi lại |
+| `dont_know_count` | `classify` (`_not_knowing`: tăng khi chưa có điểm đến; về 0 khi đồng ý), `finalize` (lưu) | `classify`, `converse` (`dont_know_level`) | Bậc của "không biết": 1 hỏi kiểu chuyến, 2 trợ lý tự chọn và khám phá, từ 3 ngừng hỏi |
+| `last_suggestions` | `finalize` (lưu `response.suggestions` của lượt này) | `converse`, `explore` (`checked_suggestions`) | Nút gợi ý lượt trước, để lượt này không lặp |
+| `rejected_destinations` | `classify` (`_rejection_update`: thêm nơi vừa bị chê, bỏ nơi người dùng hỏi lại), `finalize` (lưu) | `extract` (không ghi nơi bị chê vào chuyến khi chưa đồng ý), `explore` (`destination_for` bỏ qua), `converse`/`explore` (payload LLM, nút gợi ý `avoid`) | Nơi người dùng đã chê trong hội thoại, không gợi ý lại |
+| `pending_fare` | `explore` nhánh giá vé (hỏi lại nơi đi/điểm đến: `{"origin": ...}` hoặc `{"destination": ...}`; trả lời xong về `None`), `classify` (`_fare_settled`: lượt không phải giá vé thì bỏ), `finalize` (lưu) | `classify` (`fares.asked`: câu ngắn khi đang chờ là trả lời), `explore` (`fares.answer` điền chỗ còn thiếu) | Lần hỏi lại của câu hỏi giá vé (kịch bản bản 5 cảnh 6) |
+| `explore_pick` | `intake` (reset `False`), `classify` (bậc 2 của "không biết") | `explore` (`destination_for`) | Chỉ trong lượt: `explore` tự chọn điểm đến nhiều sản phẩm nhất |
+| `offer_suggestions` | `intake` (reset `False`), `classify`/`extract` (lượt trò chuyện, ngoài phạm vi, "không biết"), luật tin rác | `converse` (`with_suggestions`) | Chỉ trong lượt: câu trả lời trò chuyện có kèm nút gợi ý |
+| `flight_choices` | `intake` (reset `None`), `compose` (`flights.flight_choices`: chặng đã chọn kèm tối đa 2 chuyến khác cùng ngày) | `finalize` (lưu thành `previous_flights` khi `COMPLETED`; lượt đổi khách sạn giữ bản cũ) | Chuyến khác của lịch lượt này |
+| `previous_flights` | `intake` (khôi phục từ store), `finalize` | `classify` (`changes.detected`: số hiệu chuyến, "muộn hơn"…), `clarify` (`changes.question`) | Chuyến khác của lịch đang hiện, để "đổi chuyến bay" hỏi bằng lựa chọn cụ thể |
+| `change_request` | `intake` (reset `None`), `classify` (`changes.detected`) | `clarify` | Chỉ trong lượt: lượt đổi cần hỏi lại (`kind`, chiều bay, mong muốn không tìm thấy) |
+| `constraints.chosen_flights` | `classify` (`changes._pick`) | `compose` (`choose_flights`) | `{"OUTBOUND"|"RETURN": productId}` chuyến người dùng chọn khi đổi vé; chỉ dùng khi còn bán đúng ngày |
+| `explore_direct` | `intake` (reset `False`), `classify` (câu hỏi về một nơi, không có chữ số, chưa đồng ý), `explore` (về `False` khi trả lượt cho `extract`) | `explore` | Chỉ trong lượt: `explore` chạy thẳng không qua `extract`; không tra được tên nơi thì quay lại `extract` một lần |
+| `fare_question` | `intake` (reset `False`), `classify` (`fares.detected`) | `explore` | Chỉ trong lượt: câu hỏi giá vé, `explore` đi nhánh tra chuyến bay bằng luật, không gọi LLM |
