@@ -310,12 +310,22 @@ def composed(state: dict) -> dict:
     if options:
         response["stayOptions"] = stay_options_payload(proposal["distance_km"], options)
         current = {"itinerary": plan, "warnings": warnings, "distanceKm": proposal["distance_km"],
-                   "stays": [{"productId": stay["product"]["productId"], "name": stay["product"]["name"],
-                              "fromNight": stay.get("fromNight", 1), "nights": stay["nights"]}
+                   "stays": [_stored_stay(state["candidates"][stay["product"]["productId"]],
+                                          stay.get("fromNight", 1), stay["nights"])
                              for stay in plan.get("stays") or []]}
         if offers:
             current["searchResults"] = offers
     return {"response": response, "stay_options": options, "current_plan": current}
+
+
+def _stored_stay(product: dict, from_night: int, nights: int) -> dict:
+    """Một khách sạn của lịch lưu trong hội thoại. Kèm `priceAdults` của candidate: lịch trong response chỉ có `summary`
+    (không giữ khoá này), mà lượt chọn phương án phải tính lại đúng số phòng để `finalize` kiểm (AC-AGT-04, 2026-10-09)."""
+    stored = {"productId": product["productId"], "name": product["name"], "fromNight": from_night, "nights": nights}
+    price_adults = (product.get("attributes") or {}).get("priceAdults")
+    if price_adults is not None:
+        stored["priceAdults"] = price_adults
+    return stored
 
 
 def _stay_options(state: dict, proposal: dict) -> list[dict]:
@@ -328,8 +338,7 @@ def _stay_options(state: dict, proposal: dict) -> list[dict]:
             product = state["candidates"].get(stay["stay_id"])
             if product is None or product.get("taxonomy") != "hotel":
                 raise ValueError("option stay is not a candidate hotel")
-            stays.append({"productId": product["productId"], "name": product["name"],
-                          "fromNight": stay["from_night"], "nights": stay["nights"]})
+            stays.append(_stored_stay(product, stay["from_night"], stay["nights"]))
         options.append({"index": index, "stays": stays, "kmDelta": option["km_delta"],
                         "moneyDelta": option["money_delta"], "overBudget": option["over_budget"]})
     return options

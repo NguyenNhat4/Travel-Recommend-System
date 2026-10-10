@@ -83,6 +83,13 @@ def stored_products(state: dict) -> dict:
                 flights[key].append(leg["product"])
     for products in (state["previous_plan"].get("searchResults") or {}).values():
         candidates.update({product["productId"]: product for product in products})
+    # `summary` không giữ `priceAdults`; lấy lại từ khách sạn lưu kèm lịch để `finalize` tính đúng số phòng.
+    for plan in plans:
+        for stay in plan.get("stays") or []:
+            product = candidates.get(stay["productId"])
+            if product is not None and "priceAdults" in stay:
+                candidates[stay["productId"]] = {
+                    **product, "attributes": {**(product.get("attributes") or {}), "priceAdults": stay["priceAdults"]}}
     return {"candidates": candidates, "sources": sources, "flight_options": flights}
 
 
