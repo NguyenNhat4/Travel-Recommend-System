@@ -97,7 +97,7 @@ grep -q 'index("delete")' "$wf"
 grep -q 'apply -input=false -auto-approve staging.tfplan' "$wf"
 grep -q 'allow_vm_update' "$wf"
 grep -q 'ALLOW_VM_UPDATE' "$wf"
-grep -q 'replication_staging' "$wf"
-grep -q 'ops/ci-db-replication.sh' "$wf"
+# Job replication_staging đã gỡ (cặp DB cũ đã nghỉ, cụm Patroni thay thế): workflow không còn job này.
+! grep -q 'replication_staging' "$wf"
 
 echo 'infra layout, db replica scripts and terraform guards: PASS'
