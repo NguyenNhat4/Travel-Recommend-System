@@ -59,6 +59,11 @@ gcloud compute ssh "$CRAWLER_INSTANCE" "${ssh_flags[@]}" \
 gcloud compute ssh "$CRAWLER_INSTANCE" "${ssh_flags[@]}" \
   --command "sudo -n mkdir -p '$CRAWLER_DATA_DIR' '$CRAWLER_LOG_DIR' && sudo -n chown 10001:10001 '$CRAWLER_DATA_DIR' && sudo -n chown \"\$(id -u):\$(id -g)\" '$CRAWLER_LOG_DIR'"
 
+# 2c. chown thư mục không đổi owner của file đã có. Nếu monitor-cd.log do user khác tạo (ví dụ chạy tay), lần
+# `nohup ... > monitor-cd.log` sẽ lỗi Permission denied. Đưa file đó về user SSH trước khi khởi động monitor.
+gcloud compute ssh "$CRAWLER_INSTANCE" "${ssh_flags[@]}" \
+  --command "f='$CRAWLER_LOG_DIR/monitor-cd.log'; [ ! -e \"\$f\" ] || sudo -n chown \"\$(id -u):\$(id -g)\" \"\$f\""
+
 # 3. Cài cron (thay khối cron cũ, giữ dòng khác của crontab).
 gcloud compute ssh "$CRAWLER_INSTANCE" "${ssh_flags[@]}" \
   --command "/opt/vota/bin/install-vota-cron.sh --job fresh --image '$CRAWLER_REF' --runner '$CRAWLER_RUNNER' --data-dir '$CRAWLER_DATA_DIR' --env-file '$CRAWLER_ENV_FILE' --log-dir '$CRAWLER_LOG_DIR'"
