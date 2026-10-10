@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from copy import deepcopy
 
-from src.backend.app.application.itinerary.retrieval import collect, drop_summary, nearest_open_date
+from src.backend.app.application.itinerary.retrieval import (NOT_ON_SALE, collect, drop_summary, nearest_open_date,
+                                                           reference_only)
 from src.backend.app.application.itinerary.tool_contracts import SIMILAR_PRODUCTS
 from src.backend.app.domain.itinerary import preferences
 from src.backend.app.domain.itinerary.planning import SCHEDULABLE_TAXONOMIES, SLOT_TAXONOMIES, STAY_TAXONOMY
@@ -131,6 +132,8 @@ def evaluate_retrieval(state: dict) -> dict:
     constraints = _relaxed_constraints(state)
     candidates, sources, dropped = collect(state.get("tool_results", []), state.get("details", {}),
                                            state["intent"], constraints)
+    candidates = reference_only(candidates, dropped)
+    sources = {pid: source for pid, source in sources.items() if pid in candidates}
     candidates, sources = _preferred_stays(state, candidates, sources)
     products = _retrieved(state)
     warnings = [{"code": reason, "message": _dropped_message(state, reason, products.get(pid, {})), "productId": pid}
@@ -139,7 +142,8 @@ def evaluate_retrieval(state: dict) -> dict:
     update = {"candidates": candidates, "sources": sources, "warnings": warnings, "decision": decision}
     # Cần `details` (chứa ngày mở bán) trước khi xoá bên dưới; `compose`/`clarify` dùng các ngày này để nói lý do
     # và gợi ý đặt lại chuyến.
-    if decision == "no_results":
+    if decision == "no_results" or any(product.get(NOT_ON_SALE) for product in candidates.values()):
+        # Lịch tham khảo (điểm tham quan chưa mở bán cho ngày đi) cũng cần ngày gần nhất còn bán để gợi ý đặt lại.
         update["nearest_open_date"] = nearest_open_date(state.get("tool_results", []), state.get("details", {}),
                                                         state["intent"], constraints, vietnam_today())
     if decision in {"compose", "constraint_clarification"}:

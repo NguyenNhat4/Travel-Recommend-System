@@ -486,7 +486,8 @@ Không hợp lệ gồm: `startDate` sớm hơn hôm nay theo giờ Việt Nam, 
 `budget` < 0 (giới hạn số lấy từ contract), và điểm đến không có trong catalog. Đây **không phải lỗi**: agent trả
 `NEEDS_CLARIFICATION` (HTTP 200) với `clarification_reason = "invalid_input"`, trường sai bị xoá khỏi `knownIntent` và có trong
 `missingFields`, các trường hợp lệ khác được giữ. Nguồn giá trị gồm câu chat, chip `intentOverride` và intent đã lưu từ lượt
-trước. Ngày đi quá xa (ngoài cửa sổ mở bán) không thuộc nhóm này: vẫn đi tới `NO_RESULTS` kèm gợi ý ngày gần nhất (§4.4).
+trước. Ngày đi quá xa (ngoài cửa sổ mở bán) không thuộc nhóm này: đi tới lịch tham khảo hoặc `NO_RESULTS` kèm gợi ý ngày gần nhất
+(§4.4).
 
 - **Không gọi thêm tool để kiểm hợp lệ.** Ngày, số ngày, số người, ngân sách kiểm ngay ở `extract` (không gọi Search).
   Điểm đến kiểm ở node `tool` bằng danh sách điểm đến catalog (`list_destinations`, chưa gọi Search), rồi `evaluate` bỏ qua và
@@ -527,7 +528,7 @@ câu**, các dòng sau là phần chi tiết. Không có field mới: tiêu đ�
 | Đầu vào bị guardrail chặn (chèn lệnh, đòi secret, tục tĩu thuần) (`error.message`, 400) | Mình chưa thể hỗ trợ yêu cầu này | Cố định |
 | Tin nhắn rác: gõ bậy, ký tự lặp, toàn ký hiệu (`question`, 200) | Mình chưa hiểu ý bạn | Cố định |
 | `NO_RESULTS` không khớp sản phẩm | Chưa tìm thấy sản phẩm phù hợp | Cố định |
-| `NO_RESULTS` do ngày đi ngoài thời gian mở bán | Chưa có sản phẩm mở bán cho ngày này | Cố định |
+| `NO_RESULTS` do ngày đi ngoài thời gian mở bán (chỉ khi cũng không có điểm tham quan nào để dựng lịch tham khảo, §4.4) | Chưa có sản phẩm mở bán cho ngày này | Cố định |
 | `FALLBACK` | Chưa dựng được lịch trình hoàn chỉnh | Cố định |
 | Chào hỏi, cảm ơn | Không có tiêu đề | — |
 | `COMPLETED` | Do LLM đặt theo chuyến đi (dự phòng: "Lịch trình {days} ngày ở {destination}"); nằm ở dòng đầu `message` và ở `itinerary.title` | LLM (dự phòng cố định) |
@@ -575,6 +576,21 @@ không hỏi thông tin chuyến và không gửi `clarificationForm`:
   "suggestions": ["Đi Hà Nội 3 ngày từ ngày 24/10/2026", "Đi Phú Quốc 3 ngày", "Đi Nha Trang 3 ngày"]
 }
 ```
+
+**Ngày đi ngoài cửa sổ mở bán: lịch tham khảo thay cho `NO_RESULTS`** (chat thử 10/10/2026, người dùng giao agent tự chốt;
+`history/2026-10-10-lich-tham-khao-ngoai-cua-so-mo-ban.md`). Trợ lý không bao giờ chỉ nói "không có sản phẩm" khi lý do là
+ngày. Điểm tham quan/golf chỉ vướng ngày (không vướng lý do nào khác) được giữ tạm với cờ `notOnSaleForDate`
+(`retrieval.collect`). Nếu ngày đi vẫn còn điểm tham quan mở bán thì các điểm gắn cờ bị loại như cũ (`PRODUCT_DROPPED_DATE`);
+nếu không còn điểm nào, lịch `COMPLETED` dựng từ tối đa 8 điểm có nhiều lượt đánh giá nhất (`retrieval.reference_only`):
+- điểm có vé được xếp nhưng không tính vào `bookableCount`, mỗi điểm một cảnh báo `PRODUCT_NOT_ON_SALE_FOR_DATE` nêu cửa sổ
+  mở bán thật (code là chuỗi tự do, contract không đổi); điểm tham quan tự do không có cảnh báo;
+- khách sạn, vé máy bay vướng ngày vẫn bị loại (cảnh báo `NO_STAY_AVAILABLE`, `FLIGHT_*` như cũ);
+- `message` mở đầu bằng câu do backend dựng: "Mình chưa tìm thấy vé mở bán cho ngày dd/mm/yyyy (vé tham quan ở <điểm đến>
+  đang mở bán đến dd/mm/yyyy), nhưng <điểm đến> vẫn có những nơi rất đáng đến, nên mình dựng lịch tham khảo dưới đây…",
+  kèm câu gửi được nguyên văn để đặt lại ngày gần nhất còn bán; LLM (`reference_only`) kể chuyện từng nơi từ mô tả catalog,
+  không nói về ngày mở bán.
+
+Không có điểm tham quan nào (chỉ khách sạn, vé…) thì vẫn `NO_RESULTS` như dưới đây.
 
 Agent không lấp kết quả rỗng bằng sản phẩm do LLM tự tạo, và không tự đổi ràng buộc hay điểm đến thay người dùng
 (điều kiện bắt buộc chưa đáp ứng vẫn đi nhánh `NEEDS_CLARIFICATION`, xem §4.4.1). Để người dùng không gặp ngõ cụt, `message` và

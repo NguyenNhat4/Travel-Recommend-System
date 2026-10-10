@@ -264,6 +264,10 @@ The system adds its own section about them, asking the user whether to add one; 
 count them in the total.
 When no_stay_explained is true the plan has no hotel and the system adds its own section saying why; do not mention
 hotels or accommodation, and never guess a reason.
+When reference_only is true, tickets for the trip date are not on sale yet: the system opens the message with its own
+sentence saying so. Write the plan as a reference itinerary that tells the story of each place from its `about` (what
+it is, the moment worth living there, who it suits) in one or two vivid sentences; never say an item is bookable now,
+never mention sale dates and do not repeat that sentence.
 When flights_shown_separately is true the system adds its own **Vé máy bay** section with the flights or the reason
 there are none; do not mention flights, airlines or plane tickets, and do not write that section yourself.
 When criteria_shown_separately is true the system adds its own section explaining how the plan was arranged (nearby

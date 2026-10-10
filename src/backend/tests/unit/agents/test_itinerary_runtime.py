@@ -190,11 +190,12 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
             source = catalog[item['productId']]
             self.assertEqual((item['name'], item['unitPrice'], item['destination']),
                              (source['name'], source['unitPrice'], source['destination']))
-        # Cheapest first is the documented rule, so the stay is verifiable against the catalog.
-        hotels = [p for p in clients._products
-                  if p['destination'] == 'Nha Trang' and p['taxonomy'] == 'hotel' and p['available']]
-        self.assertEqual(plan['stay']['product']['productId'],
-                         min(hotels, key=lambda p: (p['unitPrice'] is None, p['unitPrice'] or 0))['productId'])
+        hotels = {p['productId'] for p in clients._products
+                  if p['destination'] == 'Nha Trang' and p['taxonomy'] == 'hotel' and p['available']}
+        self.assertIn(plan['stay']['product']['productId'], hotels)
+        # Ngày đi (2999) ngoài cửa sổ mở bán của mọi điểm tham quan fixture: lịch tham khảo, điểm có vé gắn cảnh báo
+        # và không tính là đặt được (chat thử 10/10; trước đó lịch không có hoạt động nào).
+        self.assertIn('PRODUCT_NOT_ON_SALE_FOR_DATE', {w['code'] for w in result['response']['warnings']})
 
     async def test_abbreviation_is_resolved_by_llm_from_catalog_names_only(self):
         clients = Clients(products=[product('a', destination='TP. Hồ Chí Minh')], destinations=['Nha Trang', 'TP. Hồ Chí Minh'])
@@ -713,7 +714,8 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_start_date_outside_the_sale_window_offers_the_nearest_open_date_and_other_destinations(self):
         window = {'availableFrom': '2999-10-01', 'availableTo': '2999-10-24'}
-        clients = Clients(products=[product('a', **window), product('b', taxonomy='hotel', **window)],
+        # Chỉ có khách sạn: điểm tham quan ngoài cửa sổ đã có lịch tham khảo (test_out_of_window_dates.py).
+        clients = Clients(products=[product('a', taxonomy='hotel', **window), product('b', taxonomy='hotel', **window)],
                           destinations=['Nha Trang', 'Huế', 'Đà Nẵng'])
         llm = ScriptedLlm(extraction=extracted(destination='Nha Trang', days=3, startDate='2999-12-01'))
         result = await self.run_graph(llm, clients)
@@ -736,7 +738,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_start_date_before_the_sale_window_suggests_the_first_open_day(self):
         window = {'availableFrom': '2999-10-01', 'availableTo': '2999-10-24'}
-        clients = Clients(products=[product('a', **window)], destinations=['Nha Trang'])
+        clients = Clients(products=[product('a', taxonomy='hotel', **window)], destinations=['Nha Trang'])
         llm = ScriptedLlm(extraction=extracted(destination='Nha Trang', days=2, startDate='2999-09-01'))
         response = (await self.run_graph(llm, clients))['response']
         self.assertEqual(response['status'], 'NO_RESULTS')

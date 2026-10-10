@@ -54,6 +54,26 @@ def changes_sentence(state: dict) -> str | None:
     return message(state, "narrate_changes", changes=", ".join(parts))
 
 
+def reference_note(state: dict, response: dict) -> str | None:
+    """Câu mở đầu của lịch tham khảo: vé chưa mở bán cho ngày đi (cảnh báo `PRODUCT_NOT_ON_SALE_FOR_DATE` của
+    `compose`), kèm ngày gần nhất còn bán. Code viết, không để LLM nói về ngày mở bán (chat thử 10/10: trợ lý chỉ nói
+    "chưa có sản phẩm mở bán cho ngày này")."""
+    flagged = [warning.get("productId") for warning in response.get("warnings", [])
+               if warning.get("code") == "PRODUCT_NOT_ON_SALE_FOR_DATE"]
+    intent = state.get("intent") or {}
+    if not flagged or not intent.get("startDate"):
+        return None
+    ends = [state.get("candidates", {}).get(pid, {}).get("availableTo") for pid in flagged]
+    ends = [end for end in ends if end]
+    end = display_date(max(ends)) if ends else message(state, "sale_window_unknown")
+    text = message(state, "reference_note", date=display_date(intent["startDate"]),
+                   destination=intent.get("destination") or "", end=end)
+    if state.get("nearest_open_date"):
+        text += " " + message(state, "reference_nearest", destination=intent.get("destination") or "",
+                              days=intent.get("days") or 1, nearest=display_date(state["nearest_open_date"]))
+    return text
+
+
 def _products(itinerary: dict) -> dict[str, dict]:
     """productId → sản phẩm đã xếp, theo thứ tự xuất hiện (stay trước, rồi từng slot)."""
     found = {}
@@ -155,6 +175,14 @@ def narration_input(state: dict) -> list:
                       if slot.get("product") else
                       {"time": _time_label(state, slot), "activityType": slot.get("activityType"), "note": slot.get("note")}
                       for slot in day.get("slots", [])]})
+    if reference_note(state, response) is not None:
+        # Lịch tham khảo (vé chưa mở bán cho ngày đi): LLM kể chuyện từng nơi nên cần mô tả catalog của nó.
+        from .exploration import about  # import muộn: exploration dùng product_link của module này
+        candidates = state.get("candidates") or {}
+        for day in view["days"]:
+            for item in day["items"]:
+                if item.get("productId") in candidates:
+                    item["about"] = about(candidates[item["productId"]])
     offers = [{"productId": product["productId"], "name": _label(product), "days_covered": multi_day_span(product),
                "price_known": product.get("unitPrice") is not None} for product in _offers(response).values()]
     language = "Vietnamese" if state.get("language", "vi") == "vi" else "English"
@@ -162,6 +190,7 @@ def narration_input(state: dict) -> list:
                "itinerary": view, "consider_separately": offers, "changes": trip_changes(state),
                "budgetStatus": itinerary.get("budgetStatus"), "total_known": itinerary.get("estimatedTotal") is not None,
                "no_stay_explained": _no_stay_block(state, response) is not None,
+               "reference_only": reference_note(state, response) is not None,
                "flights_shown_separately": _flights_block(state, response) is not None,
                "criteria_shown_separately": _criteria_block(state, response) is not None,
                "has_budget": state["intent"].get("budget") is not None}
@@ -247,6 +276,8 @@ def fallback_message(state: dict, response: dict) -> str:
     """Bản dựng bằng luật, cùng bố cục với câu LLM: tiêu đề, ghi nhận thay đổi, nơi nghỉ, từng ngày, chi phí, lưu ý."""
     itinerary = response["itinerary"]
     blocks = [changes_sentence(state) or message(state, "narrate_intro")]
+    if (note := reference_note(state, response)):
+        blocks.insert(0, note)
     flights = _flights_block(state, response)
     if flights:
         blocks.append(flights)
@@ -382,6 +413,10 @@ def render(state: dict, response: dict, narration: ItineraryNarration) -> tuple[
     changes = changes_sentence(state)
     if changes:
         body = f"{changes}\n\n{body}"
+    note = reference_note(state, response)
+    if note:
+        # Vé chưa mở bán cho ngày đi: câu mở đầu do code viết, đứng trước mọi phần khác.
+        body = f"{note}\n\n{body}"
     # Cùng cách làm sạch với `titled`, để `itinerary.title` (header khung bên phải) khớp dòng tiêu đề trong chat.
     title = " ".join((narration.title or "").replace("*", " ").split())[:MAX_TITLE_CHARS].strip() or _default_title(state)
     return title, titled(title, body), "llm"

@@ -252,6 +252,11 @@ MESSAGES = {
         "narrate_outro": "Bấm vào tên sản phẩm để xem chi tiết ở khung lịch trình bên phải, hoặc nhắn mình nếu muốn "
                          "đổi ngày, khách sạn hay hoạt động.",
         # Lượt khám phá và trò chuyện trước khi lập lịch (FR-AGT-06, chốt 2026-10-10).
+        "not_on_sale_item": "Vé chưa mở bán cho ngày đi ({window}); lịch giữ nơi này để bạn tham khảo.",
+        "sale_window": "đang mở bán từ {start} đến {end}",
+        "sale_window_unknown": "chưa rõ ngày mở bán",
+        "reference_note": "Mình chưa tìm thấy vé mở bán cho ngày {date} (vé tham quan ở {destination} đang mở bán đến {end}), nhưng {destination} vẫn có những nơi rất đáng đến, nên mình dựng lịch tham khảo dưới đây. Các điểm có vé sẽ đặt được khi mở bán cho ngày của bạn.",
+        "reference_nearest": "Muốn đặt được ngay thì bạn nhắn \"Đi {destination} {days} ngày từ ngày {nearest}\" nhé.",
         "explore_title": "{destination} có gì đáng đi",
         "explore_hotel_title": "Chỗ ở tại {destination}",
         "explore_intro": "Mình gợi ý vài chỗ ở {destination}, mỗi chỗ mạnh một điểm khác nhau.",
@@ -589,6 +594,11 @@ MESSAGES = {
         "narrate_outro": "Tap a product name to see its details in the itinerary panel on the right, or tell me if you "
                          "want to change the date, hotel or activities.",
         # Exploration and chat turns before planning (FR-AGT-06, agreed 2026-10-10).
+        "not_on_sale_item": "Tickets are not on sale for your date yet ({window}); kept in the plan for reference.",
+        "sale_window": "on sale from {start} to {end}",
+        "sale_window_unknown": "sale dates unknown",
+        "reference_note": "I could not find tickets on sale for {date} (attraction tickets in {destination} are on sale until {end}), but {destination} still has places well worth a visit, so here is a reference plan. Ticketed places can be booked once your date goes on sale.",
+        "reference_nearest": "To book right away, send \"Đi {destination} {days} ngày từ ngày {nearest}\".",
         "explore_title": "What to see in {destination}",
         "explore_hotel_title": "Where to stay in {destination}",
         "explore_intro": "Here are a few places in {destination}, each good for a different reason.",

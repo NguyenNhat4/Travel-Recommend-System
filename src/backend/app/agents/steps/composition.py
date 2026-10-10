@@ -10,6 +10,8 @@ from src.backend.app.domain.itinerary import flights as flight_rules
 from src.backend.app.domain.itinerary.planning import (SCHEDULABLE_TAXONOMIES, compose_plan, day_windows, free_to_visit, multi_day_offers,
                                                         price_plan, render_proposal, stay_rooms, summary, validate_plan)
 
+from src.backend.app.application.itinerary.retrieval import NOT_ON_SALE
+
 from . import messages
 from .classification import vietnam_today
 from .explanations import missing_stay_note
@@ -223,6 +225,32 @@ def _nearest_dates_sentence(state: dict, options: dict, intent: dict) -> str | N
                             example=display_date(found[0]["startDate"])[:5])
 
 
+def _sale_window(state: dict, product: dict) -> str:
+    start, end = product.get("availableFrom"), product.get("availableTo")
+    if start and end:
+        return messages.message(state, "sale_window", start=display_date(start), end=display_date(end))
+    return messages.message(state, "sale_window_unknown")
+
+
+def _not_on_sale(state: dict, plan: dict) -> list[dict]:
+    """Điểm tham quan giữ làm tham khảo vì vé chưa mở bán cho ngày đi (`retrieval.NOT_ON_SALE`): không tính là mục đặt
+    được, mỗi điểm một cảnh báo `PRODUCT_NOT_ON_SALE_FOR_DATE` nêu cửa sổ mở bán thật (code là chuỗi tự do, contract
+    không đổi)."""
+    flagged = [slot["product"]["productId"] for day in plan["days"] for slot in day["slots"]
+               if slot.get("product") and state["candidates"].get(slot["product"]["productId"], {}).get(NOT_ON_SALE)
+               and not free_to_visit(state["candidates"][slot["product"]["productId"]])]
+    if not flagged:
+        return []
+    plan["bookableCount"] = max(0, plan.get("bookableCount", 0) - len(flagged))
+    warnings = []
+    for product_id in flagged:
+        product = state["candidates"][product_id]
+        warnings.append({"code": "PRODUCT_NOT_ON_SALE_FOR_DATE", "productId": product_id,
+                         "message": messages.message(state, "not_on_sale_item",
+                                                     window=_sale_window(state, product))})
+    return warnings
+
+
 def with_flights(plan: dict, legs: list, intent: dict) -> dict:
     """Gắn chặng bay chọn bằng luật (AC-AGT-02) vào lịch trình và tính lại tổng."""
     if legs:
@@ -245,6 +273,7 @@ def _planned(state: dict, proposal: dict, legs: list, flight_reason: str | None,
     warnings = deepcopy(state.get("warnings", []))
     if flight_warning:
         warnings.append(flight_warning)
+    warnings += _not_on_sale(state, plan)
     warnings.append({"code": "SNAPSHOT_ONLY", "message": WARNINGS["SNAPSHOT_ONLY"]})
     warnings.append({"code": "SCHEDULE_ESTIMATE", "message": WARNINGS["SCHEDULE_ESTIMATE"]})
     if proposal.get("criteria") == "DISTANCE":
