@@ -50,7 +50,7 @@ MAX_ATTEMPTS = 2
 #: Trường của giai đoạn trò chuyện/khám phá (FR-AGT-06) lưu qua các lượt cùng intent; giá trị khi chưa có gì.
 CONVERSATION_PHASE = {"plan_consent": False, "pending_offer": None, "offered_destinations": [],
                       "dont_know_count": 0, "last_suggestions": [], "rejected_destinations": [],
-                      "pending_fare": None, "open_question": None}
+                      "pending_fare": None, "open_question": None, "open_understood": None}
 
 
 def _phase(source: dict) -> dict:
@@ -95,7 +95,8 @@ def intake_node(state: AgentState) -> dict:
             "final_answer": None, "http_status": 200, "decision": "", "validation_issues": [],
             "started_at": time(), "language": state.get("language") or "vi",
             **_phase(state), "explore_pick": False, "offer_suggestions": False, "explore_direct": False,
-            "fare_question": False,
+            "fare_question": False, "fare_ask": {}, "explore_place": None, "explore_city": None,
+            "explore_focus": None, "explore_price": None, "other_questions": [],
             "flight_choices": None, "previous_flights": deepcopy(state.get("previous_flights") or []),
             "change_request": None,
             "events": [event("intake", "request initialized")]}
@@ -228,7 +229,7 @@ def classify_node(state: AgentState, *, llm=None) -> dict:
     blocked = _guardrail_blocked_input(state) or _guardrail_junk_input(state)
     if blocked is not None:
         return blocked
-    picked = _option_pick(state) or changes.detected(state) or fares.detected(state)
+    picked = _option_pick(state) or changes.detected(state)
     if picked is not None:
         return _fare_settled(state, picked)
     try:
@@ -248,7 +249,7 @@ def _fare_settled(state: AgentState, update: dict) -> dict:
         update = {**update, "pending_fare": None}
     if state.get("open_question") and (update.get("fare_question")
                                           or update.get("decision") not in ("explore", "travel")):
-        update = {**update, "open_question": None}
+        update = {**update, "open_question": None, "open_understood": None}
     return update
 
 
@@ -262,7 +263,7 @@ async def classify_node_async(state: AgentState, *, llm=None, timeout_seconds: f
     blocked = _guardrail_blocked_input(state) or _guardrail_junk_input(state)
     if blocked is not None:
         return blocked
-    picked = _option_pick(state) or changes.detected(state) or fares.detected(state)
+    picked = _option_pick(state) or changes.detected(state)
     if picked is not None:
         return _fare_settled(state, picked)
     try:

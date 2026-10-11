@@ -71,17 +71,49 @@ class ConstraintUpdate(StrictModel):
                                "exclude_products"]] = Field(default_factory=list)
 
 
+class FareQuestion(StrictModel):
+    """Câu hỏi giá/giờ vé máy bay, đã hiểu từ câu chữ lộn xộn (gõ sai, viết tắt, tiếng Anh). Tên nơi là chữ LLM đọc ra;
+    code đối chiếu với danh sách điểm đến và tuyến bay của catalog trước khi dùng (`fares.answer`)."""
+    origin: str | None = Field(default=None, max_length=60,
+                               description="Nơi bay đi, kể cả khi người dùng chỉ nói mình đang ở đó; null khi chưa rõ.")
+    destination: str | None = Field(default=None, max_length=60, description="Nơi bay đến; null khi chưa rõ.")
+    anywhere: bool = Field(default=False, description="Đi đâu cũng được, chỉ cần so giá giữa các nơi.")
+    dearest: bool = Field(default=False, description="Hỏi vé đắt nhất thay cho rẻ nhất.")
+    return_leg: bool = Field(default=False, description="Hỏi chuyến về của chuyến đi đang có (chiều ngược lại).")
+    other_days: bool = Field(default=False, description="Hỏi ngày khác, chuyến khác của tuyến vừa báo.")
+    cheaper: bool = Field(default=False, description="Hỏi còn vé rẻ hơn mức vừa báo không.")
+    kind_unclear: bool = Field(default=False,
+                               description="Hỏi giá 'vé' mà không rõ vé máy bay, phòng khách sạn hay vé tham quan.")
+
+
 class TurnRoute(StrictModel):
-    """Nhãn của `classify`: chỉ phân luồng, không trích gì khác.
+    """Nhãn của `classify` và ý định đã hiểu của lượt này.
 
     `explore` (FR-AGT-06): hỏi một điểm đến có gì, khách sạn, điểm tham quan ở đó, khi chưa xin lập lịch.
+    `fare`: hỏi giá hoặc giờ vé máy bay, trả lời bằng luật ở nhánh giá vé (`fare` chứa nơi đi, nơi đến…).
     `plan_request`: người dùng xin lập lịch hoặc đồng ý lời mời lập lịch; luật trong `classification.plan_consented`
     nhận các câu đồng ý ngắn trước, LLM chỉ bổ sung cho cách nói khác.
+    Các trường còn lại chỉ là cách LLM hiểu câu chữ (tên nơi, thành phố, loại nơi, có hỏi giá không); code đối chiếu với
+    catalog rồi mới dùng, không trường nào là dữ liệu sản phẩm.
     """
-    route: Literal["travel", "explore", "vague", "conversation", "out_of_scope"]
+    route: Literal["travel", "explore", "fare", "vague", "conversation", "out_of_scope"]
     plan_request: bool = Field(
         default=False,
         description="true khi tin nhắn xin lập lịch trình/kế hoạch, hoặc đồng ý lời mời lập lịch của trợ lý.")
+    fare: FareQuestion | None = None
+    place: str | None = Field(
+        default=None, max_length=120,
+        description="Nơi cụ thể (điểm tham quan, chợ, khách sạn) mà tin nhắn hỏi tới, viết bằng tên đầy đủ thường dùng.")
+    city: str | None = Field(
+        default=None, max_length=60,
+        description="Thành phố/điểm đến mà tin nhắn nói tới, kể cả khi chỉ nhắc lại qua ngữ cảnh ('ở đó', 'chỗ đó').")
+    focus: Literal["hotels", "sights"] | None = Field(
+        default=None, description="Tin nhắn chỉ hỏi về chỗ ở (hotels) hoặc chỉ về chỗ chơi (sights).")
+    price: Literal["asks", "cheap"] | None = Field(
+        default=None, description="asks: hỏi giá, phí, có mất tiền không; cheap: muốn lựa chọn giá rẻ.")
+    other_questions: list[str] = Field(
+        default_factory=list, max_length=3,
+        description="Câu hỏi khác trong cùng tin nhắn chưa thuộc nhãn đã chọn, viết lại ngắn như lời người dùng.")
 
 
 class Extraction(StrictModel):

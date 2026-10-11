@@ -41,7 +41,9 @@ class ScriptedLlm:
     def __init__(self, extraction=None, plan=None, route='travel',
                  conversational_message='Bạn muốn đi đâu và trong bao nhiêu ngày?',
                  destination_choice=None, fail_destination=False, fail_conversation=False, plan_delay=0,
-                 conversational_title=None, narration=None):
+                 conversational_title=None, narration=None, turn=None):
+        # `turn`: TurnRoute đầy đủ (nhãn kèm ý định đã hiểu: câu hỏi vé, tên nơi, thành phố); không có thì chỉ nhãn `route`.
+        self.turn = turn
         self.fail_conversation = fail_conversation
         self.narration = narration or ItineraryNarration(title='Chuyến đi Nha Trang', message='Lịch trình gợi ý.')
         self.conversational_title = conversational_title
@@ -63,7 +65,7 @@ class ScriptedLlm:
             self.calls.append(schema.__name__)
             self.prompts[schema.__name__] = str(prompt)
             if schema is TurnRoute:
-                return TurnRoute(route=self.route)
+                return self.turn or TurnRoute(route=self.route)
             if schema is Extraction:
                 return self.extraction
             if schema is DestinationChoice:

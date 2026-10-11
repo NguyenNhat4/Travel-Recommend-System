@@ -5,6 +5,7 @@
 - Nhánh: fix/chat-messy
 - Trạng thái: hoàn thành
 - Phạm vi: agent
+- Bị thay thế bởi: `history/2026-10-11-llm-hieu-cau-chu-thay-tu-khoa.md` (bảng tên dân gian và chốt chặn từ khoá đã gỡ; mục "Nguyên nhân" về Search lọc Hà Nội đo sai, xem entry mới)
 
 ## Mục tiêu
 

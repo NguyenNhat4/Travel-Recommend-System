@@ -111,6 +111,26 @@ def question_note(state: dict) -> str:
     return message(state, "note_chat")
 
 
+#: Số thẻ nêu tên trong ghi chú lượt khám phá (ghi chú tối đa 300 ký tự).
+NOTE_CARDS = 3
+
+
+def _answer_note(state: dict, response: dict, destination: str) -> str | None:
+    """Lượt đã trả lời (giá vé, thẻ khám phá): ghi tuyến hay nơi vừa giới thiệu, để LLM lượt sau hiểu "chỗ đó", "ngày
+    khác thì sao", "còn đi Đà Nẵng thì sao" là nói về gì."""
+    fare = state.get("pending_fare") or {}
+    if state.get("fare_question") and fare.get("answered"):
+        if fare.get("anywhere"):
+            return message(state, "note_fare_anywhere", origin=fare.get("origin") or "",
+                           destination=fare.get("best") or "")
+        return message(state, "note_fare", origin=fare.get("origin") or "", destination=fare.get("destination") or "")
+    results = response.get("searchResults") or {}
+    names = [item.get("name") for items in results.values() for item in items if item.get("name")]
+    if names:
+        return message(state, "note_explore", destination=destination, names=", ".join(names[:NOTE_CARDS]))
+    return None
+
+
 def turn_note(state: dict, response: dict, http_status: int) -> str | None:
     """Ghi chú cho câu trả lời vừa chốt ở `finalize`; `None` với lỗi hệ thống (không có gì để nhắc lại)."""
     status = response.get("status")
@@ -126,6 +146,9 @@ def turn_note(state: dict, response: dict, http_status: int) -> str | None:
     if status == "FALLBACK":
         return message(state, "note_fallback", destination=destination)
     if status == "NEEDS_CLARIFICATION":
+        answered = _answer_note(state, response, destination)
+        if answered:
+            return answered
         if not state.get("missing_fields") and response.get("missingFields"):
             state = {**state, "missing_fields": response["missingFields"]}
         return question_note(state)

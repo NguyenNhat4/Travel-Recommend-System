@@ -1,22 +1,27 @@
 """Nhớ câu hỏi còn dở khi trợ lý phải hỏi lại điểm đến (chat thử 10/10, lỗi G).
 
 "có khách sạn nào có hồ bơi gần phố cổ không?" → trợ lý hỏi phố cổ ở đâu → "hà nội cha ơi" từng ra "Hà Nội có gì" chung
-chung thay vì khách sạn có hồ bơi gần phố cổ Hà Nội như kịch bản cảnh 5.
+chung thay vì khách sạn có hồ bơi gần phố cổ Hà Nội như kịch bản cảnh 5. Hỏi lại khi tên nơi (LLM đọc ra) khớp nơi ở nhiều
+thành phố của catalog, nút là tên các nơi đó; không còn luật riêng cho "phố cổ".
 """
 import unittest
 
-from src.backend.app.agents.models import Extraction
+from src.backend.app.agents.models import Extraction, TurnRoute
 from src.backend.app.agents.nodes import _fare_settled, intake_node
-from src.backend.app.agents.steps.exploration import ask_old_quarter, near_phrase, resumed
+from src.backend.app.agents.steps.exploration import ask_which_place, near_phrase, resumed
 from src.backend.app.domain.itinerary.planning import empty_intent
 from src.backend.app.infrastructure.persistence.conversation_store import InMemoryConversationStore
 
 from . import test_itinerary_runtime as runtime
 from .test_exploration import HANOI, ExploringLlm
-from .test_itinerary_runtime import Clients
+from .test_itinerary_runtime import Clients, product
 
 SUPPORTED = ['Hà Nội', 'Hội An', 'Đà Nẵng']
 QUESTION = 'có khách sạn nào có hồ bơi gần phố cổ không?'
+OLD_QUARTERS = [product('pho-co-hn', destination='Hà Nội', name='Khu Phố Cổ Hà Nội', reviewCount=900),
+                product('pho-co-ha', destination='Hội An', name='Phố cổ Hội An', reviewCount=800)]
+#: LLM của `classify` hiểu câu hỏi: hỏi chỗ ở gần "phố cổ", không nêu thành phố.
+UNDERSTOOD = TurnRoute(route='explore', place='phố cổ', focus='hotels')
 
 
 def _state(query, **extra):
@@ -37,10 +42,15 @@ class RecordingClients(Clients):
 
 class PendingQuestionRuleTests(unittest.TestCase):
     def test_a_short_reply_naming_a_destination_resumes_the_question(self):
-        state, destination = resumed(_state('hà nội cha ơi', open_question=QUESTION), SUPPORTED)
+        state, destination = resumed(_state('hà nội cha ơi', open_question=QUESTION,
+                                            open_understood={'explore_focus': 'hotels', 'explore_price': 'cheap'},
+                                            explore_price='asks'), SUPPORTED)
         self.assertEqual(destination, 'Hà Nội')
         self.assertEqual(state['query'], QUESTION)
         self.assertEqual(state['intent']['destination'], 'Hà Nội')
+        # Ý định của câu hỏi gốc đi theo; lượt này đọc ra gì thì thắng.
+        self.assertEqual(state['explore_focus'], 'hotels')
+        self.assertEqual(state['explore_price'], 'asks')
 
     def test_a_new_question_or_no_destination_does_not_resume(self):
         long_reply = 'thôi cho mình hỏi Hà Nội có gì chơi vào buổi tối nhé'
@@ -48,12 +58,13 @@ class PendingQuestionRuleTests(unittest.TestCase):
         self.assertIsNone(resumed(_state('ok', open_question=QUESTION), SUPPORTED)[1])
         self.assertIsNone(resumed(_state('Hà Nội'), SUPPORTED)[1])
 
-    def test_old_quarter_without_a_city_is_asked_with_two_buttons(self):
-        update = ask_old_quarter(_state(QUESTION), SUPPORTED)
-        self.assertIn('phố cổ Hà Nội hay phố cổ Hội An', update['response']['question'])
-        self.assertEqual(update['response']['suggestions'], ['Phố cổ Hà Nội', 'Phố cổ Hội An'])
+    def test_a_place_in_several_cities_is_asked_with_one_button_per_place(self):
+        update = ask_which_place(_state(QUESTION, explore_place='phố cổ', explore_focus='hotels'), SUPPORTED,
+                                 OLD_QUARTERS)
+        self.assertEqual(update['response']['question'], 'Bạn muốn nói Khu Phố Cổ Hà Nội hay Phố cổ Hội An?')
+        self.assertEqual(update['response']['suggestions'], ['Khu Phố Cổ Hà Nội', 'Phố cổ Hội An'])
         self.assertEqual(update['open_question'], QUESTION)
-        self.assertIsNone(ask_old_quarter(_state('Hà Nội có gì chơi?'), SUPPORTED))
+        self.assertEqual(update['open_understood'], {'explore_place': 'phố cổ', 'explore_focus': 'hotels'})
 
     def test_the_place_to_be_near_is_read_from_the_question(self):
         self.assertEqual(near_phrase(QUESTION), 'phố cổ')
@@ -97,13 +108,15 @@ class PendingQuestionFlowTests(unittest.IsolatedAsyncioTestCase):
     run_graph = runtime.RuntimeTests.run_graph
 
     async def test_the_city_reply_answers_the_hotel_question_there(self):
-        clients = RecordingClients(products=[dict(item) for item in HANOI], destinations=SUPPORTED)
+        clients = RecordingClients(products=[dict(item) for item in HANOI + OLD_QUARTERS], destinations=SUPPORTED)
         store = InMemoryConversationStore()
-        llm = ExploringLlm(route='explore', extraction=Extraction(patch={}))
+        llm = ExploringLlm(turn=UNDERSTOOD, extraction=Extraction(patch={}))
         first = await self.run_graph(llm, clients, store=store, owner='u', state={'query': QUESTION})
-        self.assertEqual(first['response']['suggestions'], ['Phố cổ Hà Nội', 'Phố cổ Hội An'])
+        self.assertEqual(first['response']['suggestions'], ['Khu Phố Cổ Hà Nội', 'Phố cổ Hội An'])
         self.assertEqual(first['open_question'], QUESTION)
-        second = await self.run_graph(llm, clients, store=store, owner='u',
+        # Lượt trả lời: LLM chỉ đọc ra thành phố; chỗ ở gần "phố cổ" lấy từ câu hỏi còn dở.
+        reply = ExploringLlm(turn=TurnRoute(route='explore', city='Hà Nội'), extraction=Extraction(patch={}))
+        second = await self.run_graph(reply, clients, store=store, owner='u',
                                       state={'query': 'hà nội cha ơi', 'conversation_id': first['conversation_id']})
         results = second['response']['searchResults']
         self.assertEqual(list(results), ['hotel'])

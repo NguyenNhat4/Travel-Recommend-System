@@ -164,6 +164,21 @@ def _vague_form(state: dict) -> dict | None:
     return update
 
 
+#: Câu hỏi khác trong cùng tin nhắn thành nút gợi ý; dài hơn thì không vừa một nút.
+MAX_OTHER_QUESTION_CHARS = 60
+
+
+def understood(route: TurnRoute) -> dict:
+    """Những gì LLM hiểu từ câu chữ của lượt này (tên nơi, thành phố, loại nơi, câu hỏi giá vé), ghi vào state cho
+    `explore` và nhánh giá vé đối chiếu với catalog. Câu gõ sai, viết tắt, tiếng Anh, "tao ở X" đều qua đây thay cho
+    danh sách từ khoá (chat thử 16 kiểu người dùng)."""
+    return {"fare_ask": route.fare.model_dump() if route.fare else {}, "explore_place": route.place,
+            "explore_city": route.city, "explore_focus": route.focus, "explore_price": route.price,
+            # Thành nút gợi ý: câu ngắn như lời người dùng, quá dài thì bỏ (khung chat hẹp).
+            "other_questions": [" ".join(text.split()) for text in route.other_questions
+                                if text and 0 < len(text.strip()) <= MAX_OTHER_QUESTION_CHARS]}
+
+
 def route_result(state: dict, result: TurnRoute) -> dict:
     """Update của `classify` (FR-AGT-06, chốt 2026-10-10).
 
@@ -175,9 +190,13 @@ def route_result(state: dict, result: TurnRoute) -> dict:
     """
     route = TurnRoute.model_validate(result)
     label = route.route
+    if label == "fare":
+        # Hỏi giá/giờ vé máy bay: nhánh giá vé của `explore` tra chuyến bằng luật từ các trường LLM đã hiểu.
+        return {**understood(route), "interaction_type": "conversation", "refusal": False, "decision": "explore",
+                "fare_question": True, "missing_fields": [], "events": [event("classify", "route fare")]}
     consent = plan_consented(state, label, route.plan_request)
     update = {"interaction_type": "travel" if label in ("vague", "explore") else label,
-              "refusal": label == "out_of_scope",
+              "refusal": label == "out_of_scope", **understood(route),
               "events": [event("classify", f"route {label}" + (" (plan consent)" if consent else ""))]}
     if consent:
         update.update(_consent_update(state) if not state.get("plan_consent") else {})

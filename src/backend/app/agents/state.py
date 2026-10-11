@@ -104,7 +104,22 @@ class AgentState(TypedDict, total=False):
     #   phố cổ không?" → "phố cổ Hà Nội hay Hội An?"); lượt sau chỉ nêu điểm đến ("hà nội cha ơi") thì `explore` trả lời câu
     #   hỏi gốc ở điểm đến đó (chat thử 10/10).
     open_question: str | None
+    # - `open_understood`: những gì LLM hiểu ở câu hỏi còn dở (`explore_place`, `explore_focus`, `explore_price`), đi
+    #   theo `open_question` để lượt trả lời không mất "chỗ ở", "giá rẻ".
+    open_understood: dict[str, Any] | None
     fare_question: bool
+    # Những gì `classify` (LLM) hiểu từ câu chữ của lượt này, chỉ trong lượt; code đối chiếu với catalog rồi mới dùng:
+    # - `fare_ask`: câu hỏi vé máy bay (`models.FareQuestion`: origin, destination, anywhere, dearest, return_leg,
+    #   other_days, kind_unclear).
+    # - `explore_place`, `explore_city`: nơi cụ thể và thành phố câu hỏi nói tới (kể cả qua "ở đó", "chỗ đó").
+    # - `explore_focus`: `hotels`/`sights` khi chỉ hỏi chỗ ở/chỗ chơi; `explore_price`: `asks`/`cheap`.
+    # - `other_questions`: câu hỏi khác trong cùng tin nhắn, thành nút gợi ý.
+    fare_ask: dict[str, Any]
+    explore_place: str | None
+    explore_city: str | None
+    explore_focus: str | None
+    explore_price: str | None
+    other_questions: list[str]
     # Đổi vé khi chưa nói đổi thế nào (kịch bản bản 5): chặng đã chọn kèm chuyến khác cùng ngày. `flight_choices` là của lịch
     # lượt này (`composition.composed`, None khi lượt này không dựng lịch), `previous_flights` là của lịch đang hiện.
     flight_choices: list[dict[str, Any]] | None
