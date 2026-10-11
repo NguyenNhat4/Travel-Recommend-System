@@ -110,7 +110,7 @@ Kiểm thử: `tests/unit/agents/test_guardrails.py` (bảng dương/âm, không
 ### Giai đoạn trò chuyện và khám phá (FR-AGT-06, chốt 2026-10-10)
 
 Trước khi người dùng đồng ý lập lịch, trợ lý **không hỏi thông tin chuyến và không hiện form**. `classify` thêm nhãn
-`explore` và cờ `plan_request`; luật đồng ý ở `steps/classification.plan_consented`:
+`explore` và cờ `plan_request`; luật đồng ý gom ở `steps/consent.py` (`plan_consented` xét ở `classify`, `planning_implied` xét sau `extract`); vòng đời các cờ hội thoại (lưu qua lượt, chỉ trong lượt, khi nào bị dọn) ở `steps/phase.py`:
 
 | Người dùng | Đồng ý lập lịch? | Đi đâu |
 |---|---|---|

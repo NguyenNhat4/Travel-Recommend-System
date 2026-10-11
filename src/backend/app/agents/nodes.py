@@ -35,8 +35,8 @@ from src.backend.app.application.ports.itinerary_tools import ConversationStoreP
 from src.backend.app.domain.itinerary.normalization import normalize_intent
 from src.backend.app.domain.itinerary.planning import empty_intent
 
-from .steps import (changes, composition, conversation, evaluation, exploration, fares, filtering, guardrails, messages,
-                    narration, option_swap, tool_planning, turn_notes, validation)
+from .steps import (changes, composition, consent, conversation, evaluation, exploration, fares, filtering,
+                    guardrails, messages, narration, option_swap, phase, tool_planning, turn_notes, validation)
 from .steps.classification import extract_result, extraction_input, picked_option, route_input, route_result
 from .steps.failures import terminal_failure
 from .steps.history import append_conversation_turn, sanitize_conversation_history
@@ -47,17 +47,6 @@ from .state import AgentState
 logger = logging.getLogger("uvicorn.error")
 
 MAX_ATTEMPTS = 2
-#: Trường của giai đoạn trò chuyện/khám phá (FR-AGT-06) lưu qua các lượt cùng intent; giá trị khi chưa có gì.
-CONVERSATION_PHASE = {"plan_consent": False, "pending_offer": None, "offered_destinations": [],
-                      "dont_know_count": 0, "last_suggestions": [], "rejected_destinations": [],
-                      "pending_fare": None, "open_question": None, "open_understood": None,
-                      "skipped_details": []}
-
-
-def _phase(source: dict) -> dict:
-    """Bản sao các trường giai đoạn hội thoại từ state hoặc bản ghi đã lưu; thiếu trường nào thì lấy giá trị đầu."""
-    return {key: deepcopy(source.get(key, default)) if source.get(key) is not None else deepcopy(default)
-            for key, default in CONVERSATION_PHASE.items()}
 
 
 def intake_node(state: AgentState) -> dict:
@@ -95,9 +84,7 @@ def intake_node(state: AgentState) -> dict:
             "interaction_type": "", "refusal": False, "blocked_by_guardrail": None, "unclear_input": None,
             "final_answer": None, "http_status": 200, "decision": "", "validation_issues": [],
             "started_at": time(), "language": state.get("language") or "vi",
-            **_phase(state), "explore_pick": False, "offer_suggestions": False, "explore_direct": False,
-            "fare_question": False, "fare_ask": {}, "explore_place": None, "explore_city": None,
-            "explore_focus": None, "explore_price": None, "other_questions": [], "form_request": False,
+            **phase.carried(state), **phase.turn_defaults(),
             "flight_choices": None, "previous_flights": deepcopy(state.get("previous_flights") or []),
             "change_request": None,
             "events": [event("intake", "request initialized")]}
@@ -143,9 +130,7 @@ async def intake_node_async(state: AgentState, *, store: ConversationStorePort |
                           previous_flights=previous.get("previous_flights") or [],
                           conversation_history=sanitize_conversation_history(
                               previous.get("conversation_history", [])),
-                          # Hội thoại lưu trước khi có giai đoạn khám phá (đã có lịch hoặc đang hỏi) coi như đã đồng ý.
-                          **_phase({**previous, "plan_consent": previous.get(
-                              "plan_consent", bool(previous.get("start_date_asked") or previous.get("previous_plan")))}))
+                          **phase.carried({**previous, "plan_consent": consent.restored(previous)}))
     return update
 
 
@@ -232,26 +217,16 @@ def classify_node(state: AgentState, *, llm=None) -> dict:
         return blocked
     picked = _option_pick(state) or changes.detected(state) or fares.chip_reply(state)
     if picked is not None:
-        return _fare_settled(state, picked)
+        return phase.settled(state, picked)
     try:
         result = chat_model(llm).with_structured_output(TurnRoute).invoke(route_input(state))
-        return _fare_settled(state, route_result(state, result))
+        return phase.settled(state, route_result(state, result))
     except Exception:
         return _llm_failed(state, "classify", "sync")
 
 
-def _fare_settled(state: AgentState, update: dict) -> dict:
-    """Lượt không phải câu hỏi giá vé thì bỏ lần hỏi lại giá vé còn treo, để câu ngắn sau này không bị coi là nơi đi.
-
-    Tương tự, câu hỏi còn dở (`open_question`) chỉ giữ khi lượt này còn đi khám phá hoặc trích ý định (người dùng
-    trả lời điểm đến); lượt đi nhánh khác thì bỏ.
-    """
-    if state.get("pending_fare") and not update.get("fare_question"):
-        update = {**update, "pending_fare": None}
-    if state.get("open_question") and (update.get("fare_question")
-                                          or update.get("decision") not in ("explore", "travel")):
-        update = {**update, "open_question": None, "open_understood": None}
-    return update
+#: Tên cũ của `phase.settled`, còn được test dùng.
+_fare_settled = phase.settled
 
 
 async def classify_node_async(state: AgentState, *, llm=None, timeout_seconds: float = 2) -> dict:
@@ -266,11 +241,11 @@ async def classify_node_async(state: AgentState, *, llm=None, timeout_seconds: f
         return blocked
     picked = _option_pick(state) or changes.detected(state) or fares.chip_reply(state)
     if picked is not None:
-        return _fare_settled(state, picked)
+        return phase.settled(state, picked)
     try:
         result = await asyncio.wait_for(
             chat_model(llm).with_structured_output(TurnRoute).ainvoke(route_input(state)), timeout_seconds)
-        return _fare_settled(state, route_result(state, result))
+        return phase.settled(state, route_result(state, result))
     except Exception:
         return _llm_failed(state, "classify", "async", timeout_seconds)
 
@@ -718,7 +693,7 @@ async def finalize_node_async(state: AgentState, *, store: ConversationStorePort
                          "previous_plan": plan,
                          "previous_flights": state.get("flight_choices") if completed and state.get("flight_choices")
                          is not None else state.get("previous_flights", []),
-                         **_phase(state),
+                         **phase.carried(state),
                          "last_suggestions": list(response.get("suggestions") or [])}
         await store.save(state["conversation_id"], working_state, owner)
         if archive is not None and cdp_user_id:

@@ -79,7 +79,9 @@ Câu hỏi giá vé đi nhánh riêng ở cả hai giai đoạn: [tu-van-ve-may-
 
 ## Code liên quan
 
-- [`agents/steps/classification.py`](../../../../src/backend/app/agents/steps/classification.py) — `plan_consented`, `route_result`, chê nơi, "không biết"
+- [`agents/steps/consent.py`](../../../../src/backend/app/agents/steps/consent.py) — mọi luật đồng ý lập lịch
+- [`agents/steps/phase.py`](../../../../src/backend/app/agents/steps/phase.py) — cờ hội thoại nào lưu qua lượt, cờ nào bị dọn khi nào
+- [`agents/steps/classification.py`](../../../../src/backend/app/agents/steps/classification.py) — `route_result`, chê nơi, "không biết"
 - [`agents/steps/exploration.py`](../../../../src/backend/app/agents/steps/exploration.py) — node `explore`, lời dẫn, nút
 - [`domain/itinerary/exploration.py`](../../../../src/backend/app/domain/itinerary/exploration.py) — chọn thẻ, lý do thẻ, khớp tên nơi, gần nơi
 - [`agents/steps/conversation.py`](../../../../src/backend/app/agents/steps/conversation.py) — `converse`, câu cố định khi không kiểm được

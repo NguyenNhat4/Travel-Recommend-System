@@ -20,7 +20,8 @@ from src.backend.app.domain.search.normalize import DESTINATION_ALIASES
 
 from ..models import ExploreNarration
 from . import tool_planning
-from .classification import REQUIRED_FIELDS, asks_for_plan
+from .classification import REQUIRED_FIELDS
+from .consent import asks_for_plan
 from .history import llm_context, prompt_yaml
 from .messages import PRODUCT_LINK, event, message, money, titled
 from .narration import product_link
