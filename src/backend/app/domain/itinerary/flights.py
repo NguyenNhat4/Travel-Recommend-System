@@ -235,6 +235,35 @@ def nearest_dates(options: dict[str, Any], intent: TripIntent, today: date,
              "price": min(float(product["unitPrice"]) for product in by_day[day])} for day in ranked[:limit]]
 
 
+#: Xa nhất chừng này ngày quanh ngày đã chọn khi tìm ngày đi chung (cửa sổ mở bán của catalog là 30 ngày).
+JOINT_SEARCH_DAYS = 60
+
+
+def joint_start(chosen: date, days: int, today: date, flight_starts: list[date] | None,
+                windows: list[tuple[date | None, date | None, int]]) -> date | None:
+    """Ngày đi gần `chosen` nhất mà mọi phần đang thiếu vì ngày cùng có (chat thử M09: vé gợi ý 28/10, khách sạn 05/11,
+    vé tham quan 05/11 — người dùng không biết chọn ngày nào).
+
+    `flight_starts`: ngày đi có đủ chuyến hai chiều (None khi vé không thiếu vì ngày). `windows`: (mở, đóng, độ lệch)
+    của từng phần khác, ngày `start + độ lệch` phải còn trong cửa sổ (khách sạn: đêm cuối = số ngày − 2; vé tham quan:
+    ngày cuối = số ngày − 1). Không phần nào thiếu thì None.
+    """
+    if flight_starts is None and not windows:
+        return None
+
+    def fits(day: date) -> bool:
+        return day >= today and day != chosen and all(
+            (opens is None or day >= opens) and (closes is None or day + timedelta(days=max(offset, 0)) <= closes)
+            for opens, closes, offset in windows)
+
+    if flight_starts is not None:
+        candidates = flight_starts
+    else:
+        candidates = [chosen + timedelta(days=step) for step in range(-JOINT_SEARCH_DAYS, JOINT_SEARCH_DAYS + 1)]
+    found = sorted((day for day in candidates if fits(day)), key=lambda day: (abs((day - chosen).days), day))
+    return found[0] if found else None
+
+
 def _local(value: Any, day: str | None = None, clock: Any = None) -> datetime | None:
     """Thời điểm theo giờ Việt Nam, không múi giờ. `value` là ISO datetime; không có thì ghép `day` với `clock` HH:MM."""
     try:

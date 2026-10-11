@@ -134,7 +134,7 @@ class ChatTextTests(unittest.TestCase):
         asked = _card_input({'product': place('vm', attributes=hours), 'reasons': [rules.ASKED]})
         self.assertNotIn('facts', plain)
         self.assertEqual(plain['tags'], ['Thắng cảnh lịch sử'])
-        self.assertEqual(asked['facts'], {'openingHours': '08:00–17:00'})
+        self.assertEqual(asked['facts']['openingHours'], '08:00–17:00')
 
     def test_the_fallback_line_describes_the_place_without_numbers(self):
         from src.backend.app.agents.steps.exploration import card_line
@@ -355,6 +355,18 @@ class ExploreFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['intent']['destination'], 'Hà Nội')
         self.assertEqual(result['response']['searchResults']['attraction'][0]['productId'], 'vm')
         self.assertIn('18:00–22:00', llm.prompts['ExploreNarration'])
+
+    async def test_the_catalog_city_of_a_named_place_wins_over_the_city_the_llm_guessed(self):
+        # LLM thật gán "văn miếu vé vào cửa nhiu" cho Đà Nẵng vì lượt trước nói về Bà Nà (2026-10-11).
+        van_mieu = product('vm', destination='Hà Nội', name='Văn Miếu – Quốc Tử Giám', unitPrice=30_000)
+        clients = Clients(products=[dict(item) for item in HANOI] + [van_mieu], destinations=['Hà Nội', 'Đà Nẵng'])
+        llm = ExploringLlm(turn=TurnRoute(route='explore', place='Văn Miếu – Quốc Tử Giám', city='Đà Nẵng',
+                                          price='asks'),
+                           explore_message='[Văn Miếu – Quốc Tử Giám](product:vm) là quần thể di tích.')
+        result = await self.run_graph(llm, clients, state={'query': 'văn miếu vé vào cửa nhiu'})
+        self.assertEqual(result['intent']['destination'], 'Hà Nội')
+        self.assertEqual([p['productId'] for p in result['response']['searchResults']['attraction']], ['vm'])
+        self.assertIn('Giá vé từ 30.000 ₫.', result['response']['question'])
 
     async def test_a_link_with_another_cards_id_is_pointed_back_to_the_card_it_names(self):
         clients = self.clients()

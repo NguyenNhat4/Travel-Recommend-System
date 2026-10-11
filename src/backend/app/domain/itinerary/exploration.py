@@ -26,6 +26,8 @@ ALSO_POPULAR = "also_popular"
 ASKED = "asked"
 #: Gần nơi người dùng hỏi quanh ("gần Văn Miếu có gì nữa?").
 NEAR = "near"
+#: Người dùng muốn chỗ rẻ: thẻ sau thẻ rẻ nhất, cũng thuộc nhóm giá thấp (`cheapest_cards`).
+LOW_PRICE = "low_price"
 #: "Gần" tính theo đường chim bay; xa hơn thì không gọi là gần nữa.
 NEAR_KM = 3.0
 
@@ -140,6 +142,14 @@ def pick_cards(products: list[Product], limit: int, taxonomy: str | None = None)
     return cards
 
 
+def cheapest_cards(products: list[Product], limit: int) -> list[dict]:
+    """Người dùng muốn chỗ rẻ ("khách sạn giá rẻ", "rẻ nhất là chỗ nào"): các nơi có giá, rẻ nhất trước; thẻ đầu lý do
+    `CHEAPEST`, các thẻ sau `LOW_PRICE`. Mỗi nơi tối đa một thẻ (`distinct_places`)."""
+    priced = sorted((product for product in distinct_places(products) if price(product) is not None), key=price)
+    return [{"product": product, "reasons": [CHEAPEST if index == 0 else LOW_PRICE]}
+            for index, product in enumerate(priced[:limit])]
+
+
 def has_amenity(product: Product, key: str) -> bool:
     """Catalog ghi nhận có tiện ích này: cờ `attributes.<key> = true`, hoặc một chuỗi trong `attributes.amenities` khớp
     khoá đó theo từ vựng của Search (`domain/search/amenities.py`). Catalog thật hầu như chỉ có dạng chuỗi."""
@@ -171,6 +181,38 @@ def named_in(products: list[Product], text: str, exclude: Iterable[str] = ()) ->
         if len(core.split()) >= 2 and core not in excluded and f" {core} " in padded:
             found.append((len(core), product))
     return max(found, key=lambda item: item[0])[1] if found else None
+
+
+#: Tên gần đúng: phần tên nơi người dùng hỏi phải có trong tên sản phẩm (tính theo từ, đã `fold`).
+MIN_NAME_SHARE = 0.6
+MIN_SHARED_WORDS = 2
+
+
+def closest_matches(products: list[Product], name: str, exclude: Iterable[str] = ()) -> list[Product]:
+    """Các sản phẩm có tên gần `name` nhất khi không sản phẩm nào khớp trọn tên (LLM viết "Lăng Bác Hồ", catalog ghi
+    "Lăng Chủ tịch Hồ Chí Minh"): ít nhất `MIN_SHARED_WORDS` từ và `MIN_NAME_SHARE` số từ của `name` nằm trong tên sản
+    phẩm, cùng tỷ lệ cao nhất; giữ thứ tự Search (liên quan hơn trước). Không sản phẩm nào đủ thì danh sách rỗng."""
+    wanted = fold(name).split()
+    if len(wanted) < MIN_SHARED_WORDS:
+        return []
+    excluded = {fold(item) for item in exclude}
+    scored = []
+    for product in products:
+        words = set(fold(product.get("name") or "").split())
+        if not words or fold(product.get("name") or "") in excluded:
+            continue
+        shared = sum(1 for word in wanted if word in words)
+        if shared >= MIN_SHARED_WORDS and shared / len(wanted) >= MIN_NAME_SHARE:
+            scored.append((shared / len(wanted), product))
+    best = max((share for share, _ in scored), default=None)
+    return [product for share, product in scored if share == best]
+
+
+def closest_named(products: list[Product], name: str, exclude: Iterable[str] = ()) -> Product | None:
+    """Sản phẩm gần tên `name` nhất (`closest_matches`); các sản phẩm gần nhất nằm ở hai thành phố khác nhau ("phố cổ":
+    Hà Nội, Hội An) thì None, để hỏi lại thay vì tự chọn."""
+    matches = closest_matches(products, name, exclude)
+    return matches[0] if matches and len({fold(item.get("destination")) for item in matches}) == 1 else None
 
 
 def near_cards(products: list[Product], anchor: Product, limit: int) -> list[dict]:

@@ -7,8 +7,9 @@ from datetime import date, timedelta
 import logging
 
 from src.backend.app.domain.itinerary import flights as flight_rules
-from src.backend.app.domain.itinerary.planning import (SCHEDULABLE_TAXONOMIES, compose_plan, day_windows, free_to_visit, multi_day_offers,
-                                                        price_plan, render_proposal, stay_rooms, summary, validate_plan)
+from src.backend.app.domain.itinerary.planning import (SCHEDULABLE_TAXONOMIES, STAY_TAXONOMY, compose_plan, day_windows,
+                                                        free_to_visit, multi_day_offers, price_plan, render_proposal,
+                                                        stay_rooms, summary, validate_plan)
 
 from src.backend.app.application.itinerary.retrieval import NOT_ON_SALE
 
@@ -211,6 +212,11 @@ def _flight_warning(state: dict, reason: str | None, legs: list) -> dict | None:
 def _nearest_dates_sentence(state: dict, options: dict, intent: dict) -> str | None:
     """Câu gợi ý ngày gần nhất có vé, giữ số ngày của chuyến; dữ liệu là chuyến đã tải lượt này (không tra thêm)."""
     found = flight_rules.nearest_dates(options, intent, vietnam_today())
+    joint = state.get("joint_date")
+    if joint:
+        # Ngày đi chung (có cả khách sạn, vé tham quan) đứng đầu và là ví dụ "đổi sang".
+        found = [{"startDate": joint, "complete": True}, *(item for item in found if item["startDate"] != joint)]
+        found = found[:flight_rules.NEAREST_DATES]
     if not found:
         return None
     days = intent.get("days") or 1
@@ -324,6 +330,35 @@ def stay_options_payload(distance_km: float, options: list[dict]) -> dict:
                         for option in options]}
 
 
+def _joint_date(state: dict, flight_reason: str | None) -> str | None:
+    """Một ngày đi gợi ý chung cho mọi phần đang thiếu vì ngày (vé máy bay, khách sạn, vé tham quan chưa mở bán), để các
+    câu gợi ý cùng nói một ngày (`flight_rules.joint_start`). Dữ liệu là kết quả đã tải lượt này."""
+    intent = state["intent"]
+    dates = flight_rules.trip_dates(intent)
+    if dates is None:
+        return None
+    days, today = intent["days"], vietnam_today()
+    flight_starts = None
+    if flight_reason in (flight_rules.NO_FLIGHT_ON_DATES, flight_rules.ONE_WAY_ONLY):
+        found = flight_rules.nearest_dates(state.get("flight_options") or {}, intent, today,
+                                           limit=flight_rules.JOINT_SEARCH_DAYS)
+        flight_starts = [date.fromisoformat(item["startDate"]) for item in found if item["complete"]]
+    windows = []
+    stay = (state.get("drop_summary") or {}).get(STAY_TAXONOMY) or {}
+    if stay.get("openFrom") and stay.get("openTo") and days >= 2 and not _has_stay_candidate(state):
+        windows.append((date.fromisoformat(stay["openFrom"]), date.fromisoformat(stay["openTo"]), days - 2))
+    closing = [product.get("availableTo") for product in state["candidates"].values()
+               if product.get(NOT_ON_SALE) and product.get("availableTo")]
+    if closing:
+        windows.append((None, date.fromisoformat(max(closing)), days - 1))
+    joint = flight_rules.joint_start(dates[0], days, today, flight_starts, windows)
+    return joint.isoformat() if joint else None
+
+
+def _has_stay_candidate(state: dict) -> bool:
+    return any(product.get("taxonomy") == STAY_TAXONOMY for product in state["candidates"].values())
+
+
 def composed(state: dict) -> dict:
     """Build the itinerary from the retrieved candidates with fixed rules; no model is consulted.
 
@@ -334,6 +369,10 @@ def composed(state: dict) -> dict:
     options_by_route = state.get("flight_options") or {}
     legs, flight_reason = flight_rules.choose_flights(options_by_route, state["intent"],
                                                       (state.get("constraints") or {}).get("chosen_flights"))
+    # Mọi câu gợi ý đổi ngày (vé, khách sạn, vé tham quan) cùng nói một ngày đi có đủ các phần đó.
+    joint = _joint_date(state, flight_reason)
+    if joint:
+        state = {**state, "joint_date": joint, "nearest_open_date": joint}
     windows = day_windows(state["intent"], legs)
     # Vé trừ vào ngân sách khi chọn khách sạn (chốt 2026-10-08); vé chưa rõ giá thì không so được với ngân sách.
     fares = [flight_rules.flight_cost(leg) for leg in legs]
@@ -370,7 +409,8 @@ def composed(state: dict) -> dict:
             current["searchResults"] = offers
     # Chuyến khác cùng ngày của từng chặng, để lượt sau "đổi chuyến bay" hỏi bằng lựa chọn cụ thể (`steps/changes.py`).
     return {"response": response, "stay_options": options, "current_plan": current,
-            "flight_choices": flight_rules.flight_choices(options_by_route, legs)}
+            "flight_choices": flight_rules.flight_choices(options_by_route, legs),
+            **({"nearest_open_date": joint} if joint else {})}
 
 
 def _stored_stay(product: dict, from_night: int, nights: int) -> dict:

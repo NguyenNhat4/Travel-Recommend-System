@@ -6,6 +6,7 @@ from datetime import timedelta
 
 from src.backend.app.application.itinerary.contracts import bounds
 from src.backend.app.domain.itinerary import preferences
+from src.backend.app.domain.itinerary.normalization import fold
 from src.backend.app.domain.itinerary.planning import empty_intent
 
 from ..models import ConversationalAnswer
@@ -202,12 +203,38 @@ def conversational_update(state: dict, result: ConversationalAnswer) -> dict:
     """Câu LLM viết ra. Yêu cầu ngoài phạm vi (đặt vé hộ, chuyện ngoài du lịch) là câu trả lời thường 200 kèm nút, không
     còn là lỗi 400 (FR-AGT-06, chốt 2026-10-10); chỉ đầu vào bị guardrail chặn mới bị từ chối bằng lỗi."""
     answer = ConversationalAnswer.model_validate(result)
+    if state.get("explore_place") and state.get("explore_focus") != "hotels" and not state.get("blocked_by_guardrail") \
+            and not state.get("refusal"):
+        # Hỏi về một nơi cụ thể mà không tra ra nơi đó trong catalog: `converse` không có dữ liệu nơi đó, câu LLM viết
+        # có thể tự nói giờ, giá ("Văn Miếu không mở buổi tối" — sai, chat thử M03). Thay bằng câu cố định, giữ nút.
+        answer = answer.model_copy(update={"title": message(state, "title_unverified_fact"),
+                                           "message": message(state, "unverified_fact",
+                                                              place=state["explore_place"])})
     fallback_title = reply_title(state)
     # Dòng đầu in đậm do backend ghép, để mọi câu trả lời có cùng một dạng; chào hỏi, cảm ơn thì không có tiêu đề.
     text = titled(answer.title or fallback_title, answer.message.strip()) if fallback_title else answer.message.strip()
     if state.get("blocked_by_guardrail"):
         return failure(state, "VALIDATION_ERROR", text, 400)
-    return with_suggestions(state, _question_response(state, text), answer.suggestions)
+    update = with_suggestions(state, _question_response(state, text), answer.suggestions)
+    if state.get("clarification_reason") == "destination_kind":
+        update = _with_destination_buttons(state, update, answer.message)
+    return update
+
+
+#: Tối đa chừng này nút chọn điểm đến khi hỏi lại theo loại nơi (contract: `suggestions` tối đa 3).
+MAX_DESTINATION_BUTTONS = 3
+
+
+def _with_destination_buttons(state: dict, update: dict, text: str) -> dict:
+    """Hỏi chọn điểm đến theo loại nơi ("đi biển", "chỗ nào mát"): mỗi điểm đến của catalog mà câu hỏi nêu tên thành một
+    nút, theo thứ tự trong câu (chat thử M02, M16: liệt kê Phú Quốc, Nha Trang… mà không có nút bấm)."""
+    padded = f" {fold(text)} "
+    named = sorted(((padded.find(f" {fold(name)} "), name) for name in state.get("supported_destinations") or []
+                    if fold(name) and f" {fold(name)} " in padded), key=lambda item: item[0])
+    if not named:
+        return update
+    response = {**update["response"], "suggestions": [name for _, name in named[:MAX_DESTINATION_BUTTONS]]}
+    return {**update, "response": response}
 
 
 def _invalid_input_question(state: dict) -> str:

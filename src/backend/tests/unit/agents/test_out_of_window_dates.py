@@ -71,7 +71,9 @@ class ReferencePlanFlowTests(unittest.IsolatedAsyncioTestCase):
         message = response['message']
         self.assertIn('Mình chưa tìm thấy vé mở bán cho ngày 01/12/2999', message)
         self.assertIn('đang mở bán đến 24/10/2999', message)
-        self.assertIn('Đi Nha Trang 2 ngày từ ngày 24/10/2999', message)
+        # Ngày đi chung: chuyến 2 ngày phải về trước khi hết cửa sổ bán (24/10), và mục khách sạn nói cùng ngày đó.
+        self.assertIn('Đi Nha Trang 2 ngày từ ngày 23/10/2999', message)
+        self.assertIn('dời ngày khởi hành sang 23/10/2999', message)
         self.assertNotIn('Chưa có sản phẩm mở bán', message)
         self.assertEqual(result['validation_issues'], [])
         # LLM kể chuyện từng nơi của lịch tham khảo từ mô tả catalog.

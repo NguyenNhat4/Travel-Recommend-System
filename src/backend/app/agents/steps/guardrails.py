@@ -174,10 +174,12 @@ def _mostly_valid(tokens: list[str]) -> bool:
     return bool(tokens) and sum(map(_valid_token, tokens)) / len(tokens) >= _MIN_VALID_TOKEN_RATIO
 
 
-def input_quality(query: str) -> tuple[str, str] | None:
+def input_quality(query: str, replying: bool = False) -> tuple[str, str] | None:
     """(`UNCLEAR`|`ABUSIVE`, tên luật) nếu `query` là rác hiển nhiên, `None` nếu cho qua LLM.
 
     Tục tĩu lẫn trong một yêu cầu hợp lệ thì cho qua — chỉ chặn khi bỏ từ tục đi không còn gì có nghĩa.
+    `replying`: tin nhắn trả lời giữa hội thoại. Khi đó không xét "không giống từ nào" (`gibberish`): câu trả lời cụt cho
+    câu hỏi của trợ lý ("2 ng", "3n", "t7") bị luật này chặn thành "chưa hiểu ý bạn" (chat thử M10); để LLM đọc.
     """
     text = (query or "").strip()
     if not text:
@@ -198,6 +200,6 @@ def input_quality(query: str) -> tuple[str, str] | None:
     if profane:
         rest = [token for token in tokens if token not in profane and token not in _ADDRESSEES]
         return None if _mostly_valid(rest) else (ABUSIVE, "profanity")
-    if not _mostly_valid(tokens):
+    if not replying and not _mostly_valid(tokens):
         return UNCLEAR, "gibberish"
     return None
