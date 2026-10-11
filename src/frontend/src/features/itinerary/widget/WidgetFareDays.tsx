@@ -5,6 +5,7 @@ import type { Product } from '../../../types/travel';
 import { flightShortDay, flightTime } from './widgetFlight';
 
 const vnd = new Intl.NumberFormat('vi-VN');
+const CABINS: Record<string, string> = { PREMIUM_ECONOMY: 'Phổ thông đặc biệt', BUSINESS: 'Thương gia', FIRST: 'Hạng nhất' };
 
 function text(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
@@ -27,6 +28,10 @@ function FareTile({ product, answer, showRoute, onNavigate }: {
   const day = flightShortDay(departureAt);
   const time = flightTime(departureAt) ?? text(attributes.departureTimeLocal);
   const carrier = [text(attributes.airline), text(attributes.flightNumber)].filter(Boolean).join(' ');
+  // Hạng ghế khác Phổ thông và giá minh hoạ của catalog phải hiện trên thẻ: vé Thương gia mô phỏng đắt gấp mấy lần
+  // (chat thử 11/10, "tại sao đắt").
+  const cabin = CABINS[text(attributes.cabinClass) ?? ''] ?? null;
+  const note = [cabin, attributes.simulated === true ? 'giá minh hoạ' : null].filter(Boolean).join(' · ');
   const price = product.unitPrice != null ? `${vnd.format(product.unitPrice)} ₫` : null;
   const destination = text(attributes.destinationCity) ?? text(product.destination);
   const label = `Xem chuyến bay ${showRoute && destination ? `đi ${destination} ` : ''}${day ? `ngày ${day.date}` : product.name}${price ? `, từ ${price}` : ''}`;
@@ -49,6 +54,7 @@ function FareTile({ product, answer, showRoute, onNavigate }: {
             ? <><span className="text-lg font-bold text-blue-700">{price}</span><span className="text-xs text-slate-500">/khách</span></>
             : <span className="text-sm text-slate-500">Chưa có giá</span>}
         </span>
+        {note && <span className="text-xs font-semibold text-amber-700">{note}</span>}
         {(time || carrier) && (
           <span className="line-clamp-2 text-xs leading-snug text-slate-600">{[time, carrier].filter(Boolean).join(' · ')}</span>
         )}

@@ -69,6 +69,7 @@ class MessyFlowTests(unittest.IsolatedAsyncioTestCase):
         pending = result['pending_fare']
         self.assertEqual((pending['origin'], pending['destination'], pending['answered']), ('Hà Nội', 'Nha Trang', True))
         self.assertEqual(result['response']['searchResults']['flight'][0]['productId'], 'VJ2')
+        self.assertNotIn('Khách sạn ở Hà Nội', result['response'].get('suggestions', []))
 
 
 class AnswerNoteTests(unittest.TestCase):

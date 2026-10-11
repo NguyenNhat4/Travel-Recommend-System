@@ -89,6 +89,24 @@ class AnswerTextTests(unittest.TestCase):
         self.assertIn('Bạn bấm vào vé bên dưới', body)
         self.assertEqual([item['productId'] for item in shown], ['VN9'])
 
+    def test_illustrative_business_fares_are_left_out_while_real_fares_exist(self):
+        business = flight_product('BIZ', 'Nha Trang', START, 9_000_000, parent='r-out')
+        business['attributes'].update(cabinClass='BUSINESS', simulated=True)
+        _, body, shown = fares.answer_text({'intent': {}}, 'Hà Nội', 'Nha Trang', self.flights + [business], TODAY,
+                                           fares.DEAREST)
+        self.assertIn('đắt nhất mình thấy là 2.500.000 ₫', body)
+        self.assertNotIn('BIZ', [item['productId'] for item in shown])
+
+    def test_why_names_the_cabin_and_the_illustrative_price(self):
+        business = flight_product('BIZ', 'Nha Trang', START, 9_000_000, parent='r-out')
+        business['attributes'].update(cabinClass='BUSINESS', simulated=True)
+        cheap = [dict(item, attributes={**item['attributes'], 'cabinClass': 'ECONOMY', 'simulated': True})
+                 for item in self.flights]
+        _, body, _ = fares.why_text({}, 'Hà Nội', 'Nha Trang', cheap + [business], TODAY, {'shown': ['BIZ']})
+        self.assertIn('Vé này là hạng Thương gia, còn vé rẻ nhất tuyến là hạng Phổ thông.', body)
+        self.assertIn('giá minh hoạ trong dữ liệu', body)
+        self.assertIn('[VietJet Air BIZ](product:BIZ) hạng Thương gia', body)
+
 
 class FollowUpFlowTests(unittest.IsolatedAsyncioTestCase):
     run_graph = runtime.RuntimeTests.run_graph

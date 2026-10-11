@@ -15,6 +15,7 @@ from statistics import median
 
 from src.backend.app.application.itinerary.flights import _all, canonical_city, flight_options
 from src.backend.app.application.ports.itinerary_tools import ToolExecutorPort
+from src.backend.app.domain.catalog.fares import CABIN_CODES, CABIN_NAMES
 from src.backend.app.domain.itinerary import flights as flight_rules
 from src.backend.app.domain.itinerary.normalization import fold
 from src.backend.app.domain.itinerary.planning import summary
@@ -90,15 +91,32 @@ def _flight_text(state: dict, product: dict) -> str:
     item = flight_rules.brief(product)
     label = " ".join(part for part in (item.get("airline"), item.get("flightNumber")) if part) or product.get("name")
     text = f"[{label}](product:{product['productId']})"
+    cabin = _cabin(product)
+    if cabin and cabin != CABIN_NAMES["ECO"]:
+        text += " " + message(state, "fare_cabin", cabin=cabin)
     if item.get("departure"):
         text += ", " + message(state, "fare_departs", time=item["departure"])
     return text
 
 
+def _cabin(product: dict) -> str | None:
+    """Tên hạng ghế ("Thương gia") từ `attributes.cabinClass`; không ghi thì None."""
+    code = CABIN_CODES.get(str((product.get("attributes") or {}).get("cabinClass") or "").upper())
+    return CABIN_NAMES.get(code) if code else None
+
+
+def _simulated(product: dict) -> bool:
+    return bool((product.get("attributes") or {}).get("simulated"))
+
+
 def _one_way(products: list[dict], today: date) -> list[dict]:
-    """Chuyến một chiều còn bán từ hôm nay."""
-    return [p for p in products if flight_rules._bookable(p) and not flight_rules._is_round_trip(p)
-            and (day := flight_rules.flight_date(p)) is not None and day >= today]
+    """Chuyến một chiều còn bán từ hôm nay. Giá minh hoạ (`attributes.simulated`, hạng Thương gia mô phỏng trong catalog)
+    chỉ dùng khi tuyến không còn chuyến nào có giá thật: so rẻ/đắt giữa giá thật và giá mô phỏng thì "đắt nhất" luôn là vé
+    mô phỏng (chat thử 11/10: 2.385.000 ₫ là "Thương gia (giá minh hoạ)")."""
+    usable = [p for p in products if flight_rules._bookable(p) and not flight_rules._is_round_trip(p)
+              and (day := flight_rules.flight_date(p)) is not None and day >= today]
+    real = [p for p in usable if not _simulated(p)]
+    return real or usable
 
 
 def _in_period(products: list[dict], period: str | None) -> list[dict]:
@@ -250,6 +268,11 @@ def why_text(state: dict, origin: str, destination: str, products: list[dict], t
     else:
         lines.append(message(state, "fare_why_low", **fields, percent=round(100 * (1 - price / typical))
                              if typical else 0))
+    cabin, cheap_cabin = _cabin(subject), _cabin(cheapest)
+    if price > typical and cabin and cheap_cabin and cabin != cheap_cabin:
+        lines.append(message(state, "fare_why_cabin", cabin=cabin, cheap_cabin=cheap_cabin))
+    if _simulated(subject):
+        lines.append(message(state, "fare_why_simulated"))
     airline = flight_rules.brief(subject).get("airline")
     cheap_airline = flight_rules.brief(cheapest).get("airline")
     if price > typical and airline and cheap_airline and fold(airline) != fold(cheap_airline):
@@ -570,7 +593,9 @@ async def answer(state: dict, *, tools: ToolExecutorPort | None, supported: list
     asks = state.get("other_questions") or []
     if asks:
         body = f"{body}\n{message(state, 'fare_other_asks')}"
-    extra = asks or [*fare_chips, message(state, "chip_hotels", destination=destination)]
+    # Chiều về của lịch (Hà Nội → TP. Hồ Chí Minh): nút khách sạn vẫn là điểm đến của chuyến, không phải nơi bay về.
+    stay_city = intent.get("destination") if ask.get("return_leg") and intent.get("destination") else destination
+    extra = asks or [*fare_chips, message(state, "chip_hotels", destination=stay_city)]
     response = _response(state, title, body, _chips(state, destination, extra), intent, shown)
     if start is not None and ask.get("return_leg"):
         origin, destination = destination, origin  # tuyến của chuyến, để câu hỏi tiếp vẫn đúng chiều đi

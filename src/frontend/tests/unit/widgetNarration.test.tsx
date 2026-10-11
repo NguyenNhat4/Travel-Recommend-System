@@ -206,6 +206,14 @@ describe('WidgetNarration fare days', () => {
     expect(screen.getAllByRole('link')[0].textContent).not.toContain('Đi Hà Nội');
   });
 
+  it('marks business-class and illustrative prices on the tile', () => {
+    const business: Product = { ...fares.f13, attributes: { ...fares.f13.attributes, cabinClass: 'BUSINESS', simulated: true } };
+    render(<WidgetNarration text={fareText} products={{ f12: fares.f12, f13: business }} onOpen={vi.fn()} />);
+    const links = screen.getAllByRole('link');
+    expect(links[1].textContent).toContain('Thương gia · giá minh hoạ');
+    expect(links[0].textContent).not.toContain('Thương gia');
+  });
+
   it('keeps plan legs as flight cards, not fare tiles', () => {
     const leg: ItineraryFlightItem = { productId: 'f12', product: fares.f12, date: '2099-10-12', returnDate: null,
       direction: 'OUTBOUND', passengers: 1 };

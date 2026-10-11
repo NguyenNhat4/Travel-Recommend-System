@@ -314,8 +314,11 @@ MESSAGES = {
         "fare_missing_days": "Các ngày chưa có chuyến{period}: {days}.",
         "fare_every_day": "Ngày nào trong đợt này cũng có chuyến{period}.",
         "fare_why_title": "Vì sao vé {origin} – {destination} có giá này",
-        "fare_why_no_reason": ("Dữ liệu của mình chỉ có giá, hãng, ngày và giờ bay; không có hạng vé, hành lý hay số ghế còn "
-                               "lại, nên mình không khẳng định được hãng định giá vì sao."),
+        "fare_why_no_reason": ("Dữ liệu của mình có giá, hãng, hạng ghế, ngày và giờ bay; không có hành lý, điều kiện vé hay số "
+                               "ghế còn lại, nên mình không khẳng định được hãng định giá vì sao."),
+        "fare_why_cabin": "Vé này là hạng {cabin}, còn vé rẻ nhất tuyến là hạng {cheap_cabin}.",
+        "fare_why_simulated": "Giá của vé này là giá minh hoạ trong dữ liệu, chưa phải giá hãng đang bán.",
+        "fare_cabin": "hạng {cabin}",
         "fare_why_high": "Vé {flight} ngày {day} giá {money}/khách, {ratio} vé rẻ nhất của tuyến ({cheapest}) và {typical_ratio} mức giá phổ biến ({typical}).",
         "fare_why_low": "Vé {flight} ngày {day} giá {money}/khách, thấp hơn mức giá phổ biến của tuyến ({typical}) khoảng {percent}%.",
         "fare_why_airline": "Vé này của {airline}, còn vé rẻ nhất tuyến là của {cheap_airline}.",
@@ -694,8 +697,11 @@ MESSAGES = {
         "fare_missing_days": "Days without flights{period}: {days}.",
         "fare_every_day": "Every day in this period has flights{period}.",
         "fare_why_title": "Why this {origin} – {destination} fare costs that much",
-        "fare_why_no_reason": ("My data only has the price, airline, date and time; it has no fare class, baggage or seats "
+        "fare_why_no_reason": ("My data has the price, airline, cabin, date and time; it has no baggage, fare rules or seats "
                                "left, so I cannot say why the airline priced it this way."),
+        "fare_why_cabin": "This one is {cabin} class; the cheapest fare on the route is {cheap_cabin}.",
+        "fare_why_simulated": "This fare is an illustrative price in the data, not a price the airline is selling.",
+        "fare_cabin": "{cabin} class",
         "fare_why_high": "The {flight} flight on {day} costs {money} per person, {ratio} the cheapest fare on this route ({cheapest}) and {typical_ratio} the typical fare ({typical}).",
         "fare_why_low": "The {flight} flight on {day} costs {money} per person, about {percent}% below the typical fare on this route ({typical}).",
         "fare_why_airline": "This one is {airline}; the cheapest fare on the route is {cheap_airline}.",
