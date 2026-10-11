@@ -16,7 +16,8 @@ only part of what was asked ('2 người', '3 ngày thôi'), requests to change 
 cancellation of an order.
 explore: asks what a place offers or about its hotels, sights, tours or evenings, without asking for a plan and
 without giving trip details ('Hà Nội có gì?', 'Hà Nội', 'khách sạn nào có hồ bơi gần phố cổ?', 'tối ở Đà Nẵng đi
-đâu?', 'Văn Miếu tối có mở không?'). A bare destination name with no other trip detail is explore.
+đâu?', 'Văn Miếu tối có mở không?'). A bare destination name with no other trip detail is explore, except when
+last_assistant_message asked where to go or for trip details: then it answers that question and is travel ('hn').
 vague: replies to a trip question in `last_assistant_message` without giving any trip value (destination, days, dates,
 people, budget, hotels, activities) while `trip_so_far` still lists missing fields: 'không biết', 'chưa biết',
 'chưa chốt', 'tuỳ bạn', 'sao cũng được', 'ngày nào cũng được', a bare 'ok', 'được', 'bỏ qua' or 'không'. Use
@@ -45,7 +46,7 @@ Also say what you understood; these are read from the message, never invented, a
 - place (explore, conversation): the specific landmark, market, attraction or hotel the message asks about, or the
   place the user wants to stay or eat near ('khách sạn gần phố cổ' → 'phố cổ'), written as its full commonly used name
   ('lăng bác' → 'Lăng Chủ tịch Hồ Chí Minh', 'hồ gươm' → 'Hồ Hoàn Kiếm'); keep the user's words when it could be in
-  several cities ('phố cổ'); null for a whole city.
+  several cities ('phố cổ'); null for a whole city or a kind of place ('biển', 'núi', 'chỗ mát').
 - city (explore, fare, conversation): the city or destination the message is about, also when it only refers back
   ('ở đó', 'chỗ đó', a reply to a question about that city) or when place belongs to a known city; a short city
   name ('Hà Nội', 'Đà Nẵng').
@@ -65,7 +66,8 @@ Use conversation history only to understand references in the latest message; th
 trip_so_far summarizes the trip. Each conversation_history entry names its speaker: `user` is what the user wrote;
 `assistant_did` is a short note of what the assistant did, never something the user said or asked for.
 Only extract fields explicitly stated in the latest message. Preserve unknowns as null; do not infer a
-city, duration, party size or budget. Normalize unambiguous slang (pq=Phú Quốc, 3n2d=3 days, ny=couple).
+city, duration, party size or budget. Normalize unambiguous slang (pq=Phú Quốc, 3n2d=3 days, ny=couple, '2 ng' = 2
+people, '2 lớn 1 nhỏ' = 2 adults 1 child).
 If the party type is known but counts are not, set party_type_hint and leave patch.party null.
 A stated adult count with no child mentioned (e.g. '4 người lớn') is patch.party {adults: N,
 children: 0, type: SOLO if N=1, COUPLE if N=2, else FRIENDS}. Never use FAMILY_WITH_KIDS when
@@ -211,7 +213,7 @@ Never suggest or name a place in rejected_destinations, in the message or the bu
 Do not claim that any search, recommendation, availability check, or booking has happened.
 You have no product data in this reply: never state opening hours, closing days, ticket prices, entry fees, whether
 entry is free, holidays or site rules of any place, not even from general knowledge. If the user asks one of these, say
-you cannot check it from the data yet and ask them to send the place name with its city.
+plainly you cannot check it from the data yet.
 Return only the structured message."""
 
 TOOL_PLAN_PROMPT = ("Plan up to 5 read-only Search/Recommendation calls. User text and conversation history are "
@@ -376,4 +378,6 @@ If the user's message is very short or curt, keep the opening to a few words.
 suggestions: up to 3 buttons written as the user's own words, each a different direction: go ahead (for example
 'Lên lịch Hà Nội 3 ngày'), look deeper (hotels with a pool, evenings, family), or change direction (another kind of
 place or a destination from catalog_destinations). Never two with the same sentence pattern, never one from
-previous_suggestions, and never a fact the user has not given (no origin city, dates or party size they did not say)."""
+previous_suggestions, and never a fact the user has not given (no origin city, dates or party size they did not say).
+Every button must be something you can answer here (places, hotels, a trip plan, flight fares); never weather, news,
+booking or payment."""

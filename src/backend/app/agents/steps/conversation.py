@@ -203,7 +203,8 @@ def conversational_update(state: dict, result: ConversationalAnswer) -> dict:
     """Câu LLM viết ra. Yêu cầu ngoài phạm vi (đặt vé hộ, chuyện ngoài du lịch) là câu trả lời thường 200 kèm nút, không
     còn là lỗi 400 (FR-AGT-06, chốt 2026-10-10); chỉ đầu vào bị guardrail chặn mới bị từ chối bằng lỗi."""
     answer = ConversationalAnswer.model_validate(result)
-    if state.get("explore_place") and not state.get("blocked_by_guardrail") and not state.get("refusal"):
+    if state.get("explore_place") and state.get("explore_focus") != "hotels" and not state.get("blocked_by_guardrail") \
+            and not state.get("refusal"):
         # Hỏi về một nơi cụ thể mà không tra ra nơi đó trong catalog: `converse` không có dữ liệu nơi đó, câu LLM viết
         # có thể tự nói giờ, giá ("Văn Miếu không mở buổi tối" — sai, chat thử M03). Thay bằng câu cố định, giữ nút.
         answer = answer.model_copy(update={"title": message(state, "title_unverified_fact"),

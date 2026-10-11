@@ -538,6 +538,12 @@ def _relinked(text: str, products: dict[str, dict]) -> str:
     # LLM có lúc viết "(product: <id>)" có dấu cách: không gỡ thì link không nhận ra và thẻ bị coi là chưa nhắc.
     # Tên trong link có lúc bị in đậm ("[**Tên**](product:…)"): bỏ dấu in đậm để chữ link đúng tên thẻ.
     text = re.sub(r"\[(?:\*\*)?\s*([^\]]+?)\s*(?:\*\*)?\]\(product:", r"[\1](product:", text)
+    # LLM có lúc bỏ dấu "[" mở link ("Lăng Chủ tịch Hồ Chí Minh](product:…)", trace 2026-10-11): tên thẻ đứng ngay trước
+    # "](product:" mà không có "[" thì chèn lại. Chạy sau bước gỡ in đậm, để không chèn thừa vào "[**Tên**](…)".
+    for product in products.values():
+        name = (product.get("name") or "").strip()
+        if name:
+            text = re.sub(rf"(?<!\[){re.escape(name)}\]\(product:", f"[{name}](product:", text)
     return PRODUCT_LINK.sub(fix, re.sub(r"\(product:\s+", "(product:", text))
 
 
