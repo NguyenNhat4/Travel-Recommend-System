@@ -97,7 +97,7 @@ def intake_node(state: AgentState) -> dict:
             "started_at": time(), "language": state.get("language") or "vi",
             **_phase(state), "explore_pick": False, "offer_suggestions": False, "explore_direct": False,
             "fare_question": False, "fare_ask": {}, "explore_place": None, "explore_city": None,
-            "explore_focus": None, "explore_price": None, "other_questions": [],
+            "explore_focus": None, "explore_price": None, "other_questions": [], "form_request": False,
             "flight_choices": None, "previous_flights": deepcopy(state.get("previous_flights") or []),
             "change_request": None,
             "events": [event("intake", "request initialized")]}
@@ -230,7 +230,7 @@ def classify_node(state: AgentState, *, llm=None) -> dict:
     blocked = _guardrail_blocked_input(state) or _guardrail_junk_input(state)
     if blocked is not None:
         return blocked
-    picked = _option_pick(state) or changes.detected(state)
+    picked = _option_pick(state) or changes.detected(state) or fares.chip_reply(state)
     if picked is not None:
         return _fare_settled(state, picked)
     try:
@@ -264,7 +264,7 @@ async def classify_node_async(state: AgentState, *, llm=None, timeout_seconds: f
     blocked = _guardrail_blocked_input(state) or _guardrail_junk_input(state)
     if blocked is not None:
         return blocked
-    picked = _option_pick(state) or changes.detected(state)
+    picked = _option_pick(state) or changes.detected(state) or fares.chip_reply(state)
     if picked is not None:
         return _fare_settled(state, picked)
     try:

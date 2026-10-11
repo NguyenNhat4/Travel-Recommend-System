@@ -2046,6 +2046,8 @@ export interface components {
             /** @description Gói hoặc tour nhiều ngày (vé dùng 2 ngày trở lên, tour 3N2Đ...) tìm được nhưng không xếp vào một buổi của lịch trình, để người dùng cân nhắc riêng; `message` có mục hỏi người dùng có muốn thêm không. Không tính vào `estimatedTotal`. */
             searchResults?: components["schemas"]["SearchResultsByTaxonomy"];
             stayOptions?: components["schemas"]["ItineraryStayOptions"];
+            /** @description Tuỳ chọn (1.25.0, FR-AGT-06). Câu yêu cầu gửi được nguyên văn làm lượt chat kế tiếp, cùng ngữ nghĩa với `ItineraryNeedsClarification.suggestions`. Ví dụ lịch tham khảo khi ngày đi chưa mở bán: nút "Đi Phú Quốc 3 ngày từ ngày 28/10/2026" để lập lại lịch đặt được ngay. */
+            suggestions?: string[];
             warnings: components["schemas"]["ItineraryWarning"][];
             metadata?: components["schemas"]["ItineraryMetadata"];
         };
@@ -2079,7 +2081,7 @@ export interface components {
             };
             /** @description Tuỳ chọn (1.13.0). Câu yêu cầu gửi được nguyên văn làm lượt chat kế tiếp, cùng ngữ nghĩa với `ItineraryNoResults.suggestions`. Có khi điều kiện bắt buộc (khách sạn, khách sạn hoặc hoạt động cụ thể) không có sản phẩm nào đáp ứng, ví dụ ngày khởi hành gần nhất còn bán hoặc lập lịch không cần khách sạn. Từ 1.24.0 còn có ở lượt trò chuyện và khám phá (FR-AGT-06): tối đa 3 nút theo các hướng khác nhau (đi tiếp như lập lịch, xem sâu, đổi hướng), không lặp nút của lượt trước. */
             suggestions?: string[];
-            /** @description Tuỳ chọn (1.24.0, FR-AGT-06). Lượt khám phá trước khi lập lịch ("Hà Nội có gì?", "khách sạn nào có hồ bơi?"): sản phẩm thật lấy từ Search của chính lượt này, nhóm theo loại, tối đa 4 mỗi loại. `question` nhắc từng sản phẩm bằng link `[Tên](product:<productId>)` với `productId` có trong đây; client đặt thẻ ngay sau dòng đầu tiên nhắc sản phẩm, như lời diễn giải lịch trình. Không có trường này thì lượt hỏi lại như trước. */
+            /** @description Tuỳ chọn (1.24.0, FR-AGT-06). Lượt khám phá trước khi lập lịch ("Hà Nội có gì?", "khách sạn nào có hồ bơi?"): sản phẩm thật lấy từ Search của chính lượt này, nhóm theo loại, tối đa 4 mỗi loại. `question` nhắc từng sản phẩm bằng link `[Tên](product:<productId>)` với `productId` có trong đây; client đặt thẻ ngay sau dòng đầu tiên nhắc sản phẩm, như lời diễn giải lịch trình. Không có trường này thì lượt hỏi lại như trước. Từ 1.25.0 còn có ở lượt hỏi giá vé máy bay (FR-AGT-07): `flight` là các chuyến một chiều thật của tuyến được hỏi, lấy từ catalog (danh sách chuyến của tuyến), tối đa 4, chuyến `question` nêu đầu tiên đứng đầu (thường mỗi chuyến một ngày bay; hỏi một ngày cụ thể thì có thể nhiều chuyến cùng ngày). Client gom các chuyến này thành một hàng thẻ ngày–giá đặt tại dòng đầu tiên nhắc chuyến, mỗi thẻ mở trang vé máy bay của đúng tuyến và ngày bay đó. */
             searchResults?: components["schemas"]["SearchResultsByTaxonomy"];
             metadata?: components["schemas"]["ItineraryMetadata"];
         };

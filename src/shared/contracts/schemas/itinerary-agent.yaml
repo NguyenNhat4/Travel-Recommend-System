@@ -609,6 +609,15 @@ ItineraryCompleted:
       - $ref: ../openapi.yaml#/components/schemas/SearchResultsByTaxonomy
     stayOptions:
       $ref: ../openapi.yaml#/components/schemas/ItineraryStayOptions
+    suggestions:
+      type: array
+      maxItems: 3
+      description: >-
+        Tuỳ chọn (1.25.0, FR-AGT-06). Câu yêu cầu gửi được nguyên văn làm lượt chat kế tiếp, cùng ngữ nghĩa với
+        `ItineraryNeedsClarification.suggestions`. Ví dụ lịch tham khảo khi ngày đi chưa mở bán: nút "Đi Phú Quốc 3 ngày
+        từ ngày 28/10/2026" để lập lại lịch đặt được ngay.
+      items:
+        type: string
     warnings:
       type: array
       items:
@@ -716,6 +725,10 @@ ItineraryNeedsClarification:
         sản phẩm thật lấy từ Search của chính lượt này, nhóm theo loại, tối đa 4 mỗi loại. `question` nhắc từng sản
         phẩm bằng link `[Tên](product:<productId>)` với `productId` có trong đây; client đặt thẻ ngay sau dòng đầu tiên
         nhắc sản phẩm, như lời diễn giải lịch trình. Không có trường này thì lượt hỏi lại như trước.
+        Từ 1.25.0 còn có ở lượt hỏi giá vé máy bay (FR-AGT-07): `flight` là các chuyến một chiều thật của tuyến được hỏi,
+        lấy từ catalog (danh sách chuyến của tuyến), tối đa 4, chuyến `question` nêu đầu tiên đứng đầu (thường mỗi
+        chuyến một ngày bay; hỏi một ngày cụ thể thì có thể nhiều chuyến cùng ngày). Client gom các chuyến này thành một
+        hàng thẻ ngày–giá đặt tại dòng đầu tiên nhắc chuyến, mỗi thẻ mở trang vé máy bay của đúng tuyến và ngày bay đó.
       allOf:
       - $ref: ../openapi.yaml#/components/schemas/SearchResultsByTaxonomy
     metadata:

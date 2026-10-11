@@ -634,3 +634,38 @@ class ExploreSearchFailureTests(unittest.IsolatedAsyncioTestCase):
                                       clients, state={'query': 'Hà Nội có gì?'})
         self.assertIn('chưa tải được', result['response']['question'])
         self.assertNotIn('searchResults', result['response'])
+
+
+class HotelPriceOrderTests(unittest.IsolatedAsyncioTestCase):
+    """"ks nào đắt nhất", "rẻ nhất là chỗ nào" (chat thử M04): thẻ theo giá của cả điểm đến (danh sách catalog xếp theo giá),
+    không chỉ vài kết quả Search."""
+
+    def test_dearest_cards_put_the_priciest_first(self):
+        hotels = [place('a', 'hotel', unitPrice=500_000), place('b', 'hotel', unitPrice=3_000_000),
+                  place('c', 'hotel', unitPrice=None)]
+        cards = rules.dearest_cards(hotels, 3)
+        self.assertEqual([card['product']['productId'] for card in cards], ['b', 'a'])
+        self.assertEqual(cards[0]['reasons'], [rules.DEAREST])
+
+    async def test_the_catalog_listing_sorted_by_price_is_used_for_the_whole_city(self):
+        from src.backend.app.agents.steps import exploration
+
+        class Listing:
+            def __init__(self):
+                self.params = None
+
+            async def list_products(self, params):
+                self.params = params
+                return {'results': [place('lux', 'hotel', unitPrice=5_000_000)], 'total': 1}
+
+        tools = Listing()
+        state = {'query': 'ks nào đắt nhất', 'explore_focus': 'hotels', 'explore_price': 'dear'}
+        results = await exploration.price_listing(state, 'Hà Nội', tools, 1)
+        self.assertEqual(tools.params['sort'], 'price_desc')
+        self.assertEqual(exploration.price_scope(state, results), 'city')
+        cards, _ = exploration.pick(state, 'Hà Nội', results)
+        self.assertEqual(cards[0]['product']['productId'], 'lux')
+        # Hỏi gần một nơi thì chỉ trong các khách sạn tìm được quanh nơi đó.
+        near = {**state, 'explore_place': 'Hồ Hoàn Kiếm'}
+        self.assertEqual(await exploration.price_listing(near, 'Hà Nội', tools, 1), [])
+        self.assertEqual(exploration.price_scope(near, []), 'found')

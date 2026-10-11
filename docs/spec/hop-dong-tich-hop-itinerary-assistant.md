@@ -566,6 +566,29 @@ không hỏi thông tin chuyến và không gửi `clarificationForm`:
   khác cùng ngày của từng chặng, mỗi chuyến một nút ("Về chuyến VJ167 lúc 21:45"); gửi nút đó, hoặc "chuyến về muộn hơn/sớm
   hơn/rẻ hơn", thì trả `COMPLETED` với chuyến đã chọn. Không còn chuyến nào khác trong ngày thì gợi ý đổi ngày.
 
+**Tư vấn vé máy bay (contract 1.25.0, FR-AGT-07, chốt 2026-10-11).** Câu hỏi vé máy bay trả `NEEDS_CLARIFICATION`, không lập
+lịch (kể cả khi đã có lịch):
+
+- `question` gọn, chỉ nêu chuyến trả lời câu hỏi (rẻ nhất/đắt nhất cả đợt mở bán, đúng ngày hỏi, trong khung giờ hỏi, đợt mở
+  bán và các ngày chưa có chuyến, hoặc "tại sao đắt"); chuyến đó là link `[Hãng Số hiệu](product:<productId>)`.
+- `searchResults.flight`: tối đa 4 chuyến một chiều thật của tuyến được hỏi, lấy từ danh sách chuyến của tuyến trong catalog
+  (`GET /products?parentProductId=<tuyến>`), chuyến `question` nêu đứng đầu. Web gom các chuyến này thành một hàng thẻ
+  ngày–giá đặt ở dòng đầu tiên nhắc chuyến; mỗi thẻ ghi thứ, ngày, giá/khách, giờ cất cánh, hãng và mở
+  `/flights?origin=<nơi đi>&destination=<nơi đến>&checkIn=<ngày bay>`. So nhiều tuyến ("đi đâu cũng được") thì thẻ ghi
+  thêm nơi đến.
+- "Tại sao đắt": catalog không có hạng vé, hành lý hay số ghế còn lại, nên câu nói rõ không khẳng định được lý do, chỉ nêu số
+  liệu (gấp bao nhiêu lần vé rẻ nhất, so với giá phổ biến của tuyến, khác hãng, bay sát ngày) và kèm thẻ của chính vé đó.
+- Câu chỉ nói "vé" (không rõ máy bay, khách sạn hay tham quan) thì hỏi lại kèm 3 nút; `suggestions` của câu trả lời vé
+  ("Từ TP. Hồ Chí Minh", "Đắt nhất thì sao?", "Ngày nào còn vé?") gửi lại nguyên văn là đi thẳng nhánh vé.
+
+**Các nút khác (1.25.0).**
+
+- `COMPLETED` có thể có `suggestions` (tối đa 3). Lịch tham khảo khi ngày đi chưa mở bán có nút "Đi <nơi> <n> ngày từ ngày
+  <ngày gần nhất còn bán>"; gửi lại câu này là lập lại lịch đặt được ngay.
+- "Đổi sang chỗ khác" chưa nêu nơi mới: `NEEDS_CLARIFICATION` hỏi đổi sang đâu, không có `clarificationForm`, `suggestions` là
+  3 nút "Đổi sang <nơi>" (điểm đến khác của catalog).
+- Người dùng xin form ("cho mình cái form"): lượt đó luôn có `clarificationForm` điền sẵn.
+
 ### 4.4. Response không có kết quả
 
 ```json

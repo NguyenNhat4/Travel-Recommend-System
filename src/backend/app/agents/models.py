@@ -84,6 +84,12 @@ class FareQuestion(StrictModel):
     cheaper: bool = Field(default=False, description="Hỏi còn vé rẻ hơn mức vừa báo không.")
     kind_unclear: bool = Field(default=False,
                                description="Hỏi giá 'vé' mà không rõ vé máy bay, phòng khách sạn hay vé tham quan.")
+    day: date | None = Field(default=None, description="Ngày bay người dùng hỏi ('ngày 20/10', 'thứ 7 này'), tính theo today.")
+    time_of_day: Literal["early", "morning", "afternoon", "evening"] | None = Field(
+        default=None, description="Giờ bay muốn: early = đi sớm/sáng sớm, morning, afternoon, evening = tối/muộn.")
+    why: bool = Field(default=False, description="Hỏi vì sao vé vừa báo đắt (hoặc rẻ).")
+    availability: bool = Field(default=False,
+                               description="Hỏi ngày nào có, ngày nào không có chuyến, mở bán tới khi nào.")
 
 
 class TurnRoute(StrictModel):
@@ -109,8 +115,11 @@ class TurnRoute(StrictModel):
         description="Thành phố/điểm đến mà tin nhắn nói tới, kể cả khi chỉ nhắc lại qua ngữ cảnh ('ở đó', 'chỗ đó').")
     focus: Literal["hotels", "sights"] | None = Field(
         default=None, description="Tin nhắn chỉ hỏi về chỗ ở (hotels) hoặc chỉ về chỗ chơi (sights).")
-    price: Literal["asks", "cheap"] | None = Field(
-        default=None, description="asks: hỏi giá, phí, có mất tiền không; cheap: muốn lựa chọn giá rẻ.")
+    price: Literal["asks", "cheap", "dear"] | None = Field(
+        default=None, description="asks: hỏi giá, phí, có mất tiền không; cheap: muốn lựa chọn giá rẻ; "
+                                  "dear: hỏi chỗ đắt nhất, sang nhất.")
+    form_request: bool = Field(
+        default=False, description="true khi người dùng xin form/bảng để tự điền thông tin chuyến ('cho mình cái form').")
     other_questions: list[str] = Field(
         default_factory=list, max_length=3,
         description="Câu hỏi khác trong cùng tin nhắn chưa thuộc nhãn đã chọn, viết lại ngắn như lời người dùng.")

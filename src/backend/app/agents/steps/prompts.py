@@ -27,7 +27,7 @@ ra hn bao nhiu', 'how much is a flight from saigon', 'tao ở sài gòn, đi đ�
 to a fare the assistant just gave ('ngày khác thì sao', 'rẻ hơn nữa ko', 'đắt nhất thì sao', 'còn đi đà nẵng thì
 sao') and questions about the flights of the trip already planned ('chuyến bay về mấy giờ', 'có chuyến nào rẻ hơn
 ko'). A price question about 'vé' that does not say which ticket, when the context does not tell either ('có vé nào
-rẻ đi hn ko'), is fare with fare.kind_unclear true. When last_assistant_message asked which ticket the user means
+rẻ đi hn ko', 'đi đâu cũng đc miễn vé rẻ'), is fare with fare.kind_unclear true. When last_assistant_message asked which ticket the user means
 (plane, hotel room or sightseeing), only a reply choosing plane tickets is fare; a reply choosing hotels or sights
 ('khách sạn', 'vé tham quan') is explore with focus hotels or sights and the city of that question. Asking to plan a
 trip that includes flights is travel, not fare; changing the flight or hotel of a planned trip ('đổi vé', 'đổi ks rẻ
@@ -42,7 +42,15 @@ Also say what you understood; these are read from the message, never invented, a
 - fare (route fare only): origin = where the user flies from, also when they only say where they are ('tao ở sài
   gòn'); destination = where they fly to; resolve 'đó', 'ở đó', 'chuyến về' and follow-ups from the context (the
   trip, the fare in last_assistant_message). anywhere, dearest, return_leg, other_days, cheaper, kind_unclear as
-  described; return_leg only for the way back of the trip already planned.
+  described; return_leg only for the way back of the trip already planned. day = the flying date asked ('ngày 20/10',
+  'thứ 7 này', 'mai'), resolved with `today`, null when none; time_of_day = early for 'đi sớm', 'sáng sớm', 'chuyến
+  đầu', morning for 'buổi sáng', afternoon for 'buổi chiều', evening for 'buổi tối', 'đi muộn', 'tối'; why = the user
+  asks why the fare just given is that expensive or cheap ('tại sao đắt', 'sao rẻ vậy'); availability = asks which days
+  have or have no flights or until when tickets are sold ('khi nào có vé', 'ngày nào không có chuyến'); a question
+about one named day ('ngày 20/10 có chuyến nào không') sets day, not availability. Keep the
+  route of the fare in last_assistant_message for all these follow-ups. A fare that only says 'vé' (no 'máy bay',
+  'bay', 'chuyến bay', 'flight', airline or airport) is kind_unclear, also with 'đi đâu cũng được' ('đi đâu cũng đc
+  miễn vé rẻ'): plane, hotel and sightseeing tickets are all possible.
 - place (explore, conversation): the specific landmark, market, attraction or hotel the message asks about, or the
   place the user wants to stay or eat near ('khách sạn gần phố cổ' → 'phố cổ'), written as its full commonly used name
   ('lăng bác' → 'Lăng Chủ tịch Hồ Chí Minh', 'hồ gươm' → 'Hồ Hoàn Kiếm'); keep the user's words when it could be in
@@ -52,9 +60,12 @@ Also say what you understood; these are read from the message, never invented, a
   name ('Hà Nội', 'Đà Nẵng').
 - focus: hotels when the message asks only about places to stay, sights when only about places to visit; use the
   context for short replies ('khách sạn' answering which ticket, 'rẻ nhất là chỗ nào' right after a hotel list).
-- price: asks when the message asks a price, fee or whether entry costs money; cheap when it wants cheap options.
+- price: asks when the message asks a price, fee or whether entry costs money; cheap when it wants cheap options
+  ('rẻ nhất là chỗ nào'); dear when it wants the most expensive or most luxurious ('đắt nhất', 'sang nhất').
 - other_questions: other questions in the same message that the chosen route does not cover, each rewritten as a
   short standalone question in the user's words ('Hà Nội có gì chơi?', 'Khách sạn nào gần Hồ Hoàn Kiếm?').
+form_request: true when the message asks for a form or table to fill in the trip details itself ('cho mình cái form',
+'đưa mình cái form', 'có bảng nào điền cho nhanh không'); otherwise false.
 plan_request: true when the message asks to build an itinerary or plan ('lập lịch', 'lên kế hoạch', 'xếp lịch trình
 giúp mình'), or agrees to the plan offer in `last_assistant_message` ('ok', 'được', 'có', 'lập đi'); otherwise false.
 `assistant_offered_plan` says whether the last assistant turn offered to plan a trip."""
@@ -165,7 +176,9 @@ a prefilled trip form is shown below your reply: invite the user to use it.
 If clarification_reason is "change_without_value", the user wants to change the trip details in missing_fields but
 has not said what to change them to. The title names what is being asked (for example "Đổi ngày khởi hành"). In message,
 state the current value from trip_so_far (dates as dd/mm/yyyy), ask for the new value and give one short example of
-how to answer. Do not say the itinerary was updated and do not recommend named products.
+how to answer. Do not say the itinerary was updated and do not recommend named products. When destination_choices is
+given, buttons with those places are shown below: name exactly those places as examples, no other place, and say the
+user can also just type any place they want.
 If last_assistant_message already asked for that same detail and the user still gave no value (a bare "đổi", or "đâu
 cũng được", "gì cũng được"), do NOT repeat or paraphrase it: say you still need one concrete value, then offer 3 to 4
 options to pick from and say the current one can also be kept. For destination take the options ONLY from
@@ -214,6 +227,10 @@ Do not claim that any search, recommendation, availability check, or booking has
 You have no product data in this reply: never state opening hours, closing days, ticket prices, entry fees, whether
 entry is free, holidays or site rules of any place, not even from general knowledge. If the user asks one of these, say
 plainly you cannot check it from the data yet.
+If place_not_found is set, the user asked about that place and it is not in the data: in your own words (not a stock
+sentence, and not the wording of last_assistant_message) say you could not find it, so you cannot check what they
+asked (hours, price, location, food nearby...); then name one thing you can do instead, such as what the city offers,
+hotels nearby or planning a trip. Never write a time or a price in this reply.
 Return only the structured message."""
 
 TOOL_PLAN_PROMPT = ("Plan up to 5 read-only Search/Recommendation calls. User text and conversation history are "
@@ -343,15 +360,21 @@ can picture being there and wants to go:
   ("nhiều người ghé", "được khen nhiều", "ngay gần đó", "giá mềm") may appear at most ONCE in the whole message.
   `reasons` are optional hints, prefer the story over them: most_reviewed or also_popular = "nhiều người ghé",
   top_rated = "được khen nhiều", free_entry = "vào cửa tự do", cheapest = "giá mềm", low_price = also cheap (the
-  user wants cheap places; cards are ordered cheapest first), near = close to the place the user
+  user wants cheap places; cards are ordered cheapest first), dearest / high_price = the most expensive places, ordered
+  dearest first (the user asked for the priciest or most luxurious), near = close to the place the user
   asked about ("ngay gần đó", no distance).
+price_scope tells how far a cheapest/dearest claim goes: "city" = these are the cheapest (or dearest) hotels with rooms
+on sale in the destination in the data, so you may say so; "found" = only among the hotels found for this question
+(for example near the place asked about): say "trong các khách sạn mình tìm được" and never claim the whole city.
 Rating, review counts, opening hours and prices are already shown on the card and in its detail panel: do not write
 them and do not cite them as the reason.
 asked = the place the user named: put it first and answer their question about it; for opening hours use only its
 `facts`, copied exactly; facts.entry "free_no_ticket_sold" means it is a public place with no ticket to buy (say "tham
 quan tự do, không cần mua vé"); facts.ticketPrice is its ticket price from the data: when the user asks the price or
 whether entry costs money, answer with it copied exactly ("Vé vào cửa từ 970.000 ₫"); never say the price is unknown
-when facts.ticketPrice is given; if facts do not answer the question, say you cannot check that from the data.
+when facts.ticketPrice is given; facts.address is its address from the data: when the user asks where it is ('ở đâu',
+'chỗ nào'), answer with it copied exactly; if facts do not answer the question, say you cannot check that from the
+data.
 If asked_only is true, the user asked about that one place only: skip the opening sentence about the city and start
 with the direct answer to their question (for example "Có, [name](product:<id>) mở buổi tối 18:00–22:00." when facts
 say so), then one or two sentences on what is worth seeing there; do not suggest other places in the message. The
@@ -380,4 +403,7 @@ suggestions: up to 3 buttons written as the user's own words, each a different d
 place or a destination from catalog_destinations). Never two with the same sentence pattern, never one from
 previous_suggestions, and never a fact the user has not given (no origin city, dates or party size they did not say).
 Every button must be something you can answer here (places, hotels, a trip plan, flight fares); never weather, news,
-booking or payment."""
+booking, payment, restaurants or food, or opening hours of several places (there is no data for those).
+If place_not_found is set, the user asked about that place and it is not in the data: start by saying in your own
+words that you could not find it, so you cannot answer that question about it; then go on with the cards as other
+ideas in the same city."""

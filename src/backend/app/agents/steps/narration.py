@@ -432,7 +432,20 @@ def narrated(state: dict, narration: ItineraryNarration | None) -> tuple[dict, s
     else:
         response["itinerary"]["title"] = title
         response["message"] = text
+    chip = reference_chip(state, response)
+    if chip:
+        response["suggestions"] = [chip]
     return {"response": response}, reason
+
+
+def reference_chip(state: dict, response: dict) -> str | None:
+    """Nút lập lại lịch từ ngày gần nhất còn bán, dưới lịch tham khảo (contract 1.25.0; chat thử M09: chỉ có câu "bạn
+    nhắn …", không bấm được). Cùng chữ với câu `reference_nearest`, `extract` đọc được như mọi câu chat."""
+    intent = state.get("intent") or {}
+    if not state.get("nearest_open_date") or reference_note(state, response) is None:
+        return None
+    return message(state, "chip_reference_nearest", destination=intent.get("destination") or "",
+                   days=intent.get("days") or 1, nearest=display_date(state["nearest_open_date"]))
 
 
 def unknown_links(response: dict) -> list[str]:

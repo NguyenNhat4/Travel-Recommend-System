@@ -61,12 +61,14 @@ class MessyFlowTests(unittest.IsolatedAsyncioTestCase):
         question = result['response']['question']
         # Chặng về Nha Trang → Hà Nội, ngày cuối của chuyến 3 ngày (START + 2): VJ2 19:00.
         self.assertIn('Nha Trang → Hà Nội', question)
-        self.assertIn('VJ2 cất cánh 19:00', question)
+        self.assertIn('[VietJet Air VJ2](product:VJ2), cất cánh 19:00', question)
         self.assertNotIn('compose', [item['node'] for item in result['events']])
         saved = await store.load('c-plan', 'u')
         self.assertEqual(saved['previous_plan'], PLAN)
         self.assertEqual(saved['intent']['origin'], 'Hà Nội')
-        self.assertEqual(result['pending_fare'], {'origin': 'Hà Nội', 'destination': 'Nha Trang', 'answered': True})
+        pending = result['pending_fare']
+        self.assertEqual((pending['origin'], pending['destination'], pending['answered']), ('Hà Nội', 'Nha Trang', True))
+        self.assertEqual(result['response']['searchResults']['flight'][0]['productId'], 'VJ2')
 
 
 class AnswerNoteTests(unittest.TestCase):

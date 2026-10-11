@@ -122,6 +122,8 @@ class AgentState(TypedDict, total=False):
     explore_focus: str | None
     explore_price: str | None
     other_questions: list[str]
+    # - `form_request`: người dùng xin form để tự điền ("cho mình cái form"); lượt này luôn kèm form.
+    form_request: bool
     # Đổi vé khi chưa nói đổi thế nào (kịch bản bản 5): chặng đã chọn kèm chuyến khác cùng ngày. `flight_choices` là của lịch
     # lượt này (`composition.composed`, None khi lượt này không dựng lịch), `previous_flights` là của lịch đang hiện.
     flight_choices: list[dict[str, Any]] | None

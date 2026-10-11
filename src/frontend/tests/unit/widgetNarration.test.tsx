@@ -3,7 +3,7 @@ import React from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WidgetNarration, narrationBlocks } from '../../src/features/itinerary/widget/WidgetNarration';
-import type { Product } from '../../src/types/travel';
+import type { ItineraryFlightItem, Product } from '../../src/types/travel';
 
 vi.mock('../../src/context/TravelContext', () => ({
   useTravel: () => ({ navigate: vi.fn(), debugMode: false, recordEvent: vi.fn() }),
@@ -130,5 +130,87 @@ describe('WidgetNarration stays', () => {
     const { container } = render(<WidgetNarration text={stayText} products={withHotels} onOpen={vi.fn()}
       stays={{ ids: new Set(['ghost-hotel']), node: <div data-testid="row" /> }} />);
     expect(order(container)).toEqual(['Nơi nghỉ', 'Ngày 1', 'row']);
+  });
+});
+
+describe('WidgetNarration fare days', () => {
+  afterEach(cleanup);
+  const flight = (id: string, day: string, price: number, flightNumber: string): Product => product(id, `VietJet Air ${flightNumber}`, {
+    taxonomy: 'flight', destination: 'Hà Nội', unitPrice: price,
+    attributes: {
+      airline: 'VietJet Air', flightNumber, departureAt: `${day}T06:15:00+07:00`, arrivalAt: `${day}T08:20:00+07:00`,
+      departureTimeLocal: '06:15', originCity: 'TP. Hồ Chí Minh', destinationCity: 'Hà Nội', nonstop: true,
+    },
+  });
+  // Response đưa chuyến lời trả lời nêu lên đầu; các ngày khác không có trong chữ.
+  const fares = {
+    f12: flight('f12', '2099-10-12', 632000, 'VJ124'),
+    f13: flight('f13', '2099-10-13', 710000, 'VJ126'),
+    f14: flight('f14', '2099-10-14', 590000, 'VJ128'),
+  };
+  const fareText = [
+    '**Vé TP. Hồ Chí Minh → Hà Nội**',
+    'Chuyến rẻ nhất ngày 12/10 là [VietJet Air VJ124](product:f12), 632.000 ₫/khách.',
+    'Bạn muốn mình lập lịch Hà Nội luôn không?',
+  ].join('\n');
+
+  it('groups fare flights into one block right after the line that first cites one of them', () => {
+    const blocks = narrationBlocks(fareText, (id) => id in fares, new Set(), new Set(Object.keys(fares)));
+    expect(blocks.map((block) => (block.kind === 'text' ? 'text' : `${block.kind}:${'productId' in block ? block.productId : ''}`)))
+      .toEqual(['text', 'fares:f12', 'text']);
+  });
+
+  it('renders one tile per day linking to the flights page of that route and day, first tile is the answer', () => {
+    const { container } = render(<WidgetNarration text={fareText} products={fares} onOpen={vi.fn()} />);
+    expect(screen.getAllByRole('region', { name: 'Giá vé theo ngày bay' })).toHaveLength(1);
+    const links = screen.getAllByRole('link');
+    expect(links.map((link) => link.getAttribute('aria-label'))).toEqual([
+      'Xem chuyến bay ngày 12/10, từ 632.000 ₫',
+      'Xem chuyến bay ngày 13/10, từ 710.000 ₫',
+      'Xem chuyến bay ngày 14/10, từ 590.000 ₫',
+    ]);
+    const url = new URL(links[0].getAttribute('href')!, 'http://x');
+    expect(url.pathname).toBe('/flights');
+    expect(url.searchParams.get('origin')).toBe('TP. Hồ Chí Minh');
+    expect(url.searchParams.get('destination')).toBe('Hà Nội');
+    expect(url.searchParams.get('checkIn')).toBe('2099-10-12');
+    expect(new URL(links[2].getAttribute('href')!, 'http://x').searchParams.get('checkIn')).toBe('2099-10-14');
+    expect(links[0].textContent).toContain('T2, 12/10');
+    expect(links[0].textContent).toContain('06:15 · VietJet Air VJ124');
+    expect(links[0].className).toContain('bg-sky-50');
+    expect(links[1].className).not.toContain('border-blue-300 bg-sky-50');
+    // Không thẻ gọn nào, và tên chuyến trong chữ không mở panel chi tiết (vé không có trang chi tiết).
+    expect(screen.queryByRole('button', { name: /Xem chi tiết/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'VietJet Air VJ124' })).toBeNull();
+    expect(container.textContent).toContain('Bấm vào một ngày để xem các chuyến trên trang vé máy bay.');
+  });
+
+  it('puts the cited flight first and the block at the end when the text cites none', () => {
+    const cited = narrationBlocks('Ngày 13 có [VJ126](product:f13).', (id) => id in fares, new Set(), new Set(Object.keys(fares)));
+    expect(cited).toContainEqual({ kind: 'fares', productId: 'f13' });
+    render(<WidgetNarration text={'Ngày 13 có [VJ126](product:f13).'} products={fares} onOpen={vi.fn()} />);
+    expect(screen.getAllByRole('link')[0].getAttribute('aria-label')).toBe('Xem chuyến bay ngày 13/10, từ 710.000 ₫');
+    cleanup();
+    const { container } = render(<WidgetNarration text={'Giá vé tuyến này.'} products={fares} onOpen={vi.fn()} />);
+    expect(container.lastElementChild?.getAttribute('aria-label')).toBe('Giá vé theo ngày bay');
+  });
+
+  it('names the destination on each tile when the tiles belong to different routes', () => {
+    const toDaNang: Product = { ...fares.f13, attributes: { ...fares.f13.attributes, destinationCity: 'Đà Nẵng' } };
+    render(<WidgetNarration text={fareText} products={{ f12: fares.f12, f13: toDaNang }} onOpen={vi.fn()} />);
+    const links = screen.getAllByRole('link');
+    expect(links[1].textContent).toContain('Đi Đà Nẵng');
+    expect(links[1].getAttribute('aria-label')).toBe('Xem chuyến bay đi Đà Nẵng ngày 13/10, từ 710.000 ₫');
+    cleanup();
+    render(<WidgetNarration text={fareText} products={fares} onOpen={vi.fn()} />);
+    expect(screen.getAllByRole('link')[0].textContent).not.toContain('Đi Hà Nội');
+  });
+
+  it('keeps plan legs as flight cards, not fare tiles', () => {
+    const leg: ItineraryFlightItem = { productId: 'f12', product: fares.f12, date: '2099-10-12', returnDate: null,
+      direction: 'OUTBOUND', passengers: 1 };
+    render(<WidgetNarration text={fareText} products={{ f12: fares.f12 }} onOpen={vi.fn()} flights={[leg]} />);
+    expect(screen.queryByRole('region', { name: 'Giá vé theo ngày bay' })).toBeNull();
+    expect(screen.getByRole('article', { name: /Vé máy bay/ })).toBeTruthy();
   });
 });

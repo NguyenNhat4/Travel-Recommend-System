@@ -25,13 +25,25 @@ function text(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
-/** "2026-10-20T08:00:00+07:00" → "T3, 20 thg 10". Giờ trong chuỗi đã là giờ Việt Nam nên chỉ đọc phần ngày. */
-export function flightDay(iso: string | null): string | null {
+/** Thứ, ngày, tháng của phần ngày trong chuỗi ISO; giờ trong chuỗi đã là giờ Việt Nam nên không đổi múi giờ. */
+function dayParts(iso: string | null): { weekday: string; day: number; month: number } | null {
   const match = iso ? /^(\d{4})-(\d{2})-(\d{2})/.exec(iso) : null;
   if (!match) return null;
   const [, year, month, day] = match;
   const weekday = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day))).getUTCDay();
-  return `${WEEKDAY[weekday]}, ${Number(day)} thg ${Number(month)}`;
+  return { weekday: WEEKDAY[weekday], day: Number(day), month: Number(month) };
+}
+
+/** "2026-10-20T08:00:00+07:00" → "T3, 20 thg 10". */
+export function flightDay(iso: string | null): string | null {
+  const parts = dayParts(iso);
+  return parts && `${parts.weekday}, ${parts.day} thg ${parts.month}`;
+}
+
+/** "2026-10-12T06:15:00+07:00" → { weekday: "T2", date: "12/10" }: ô ngày–giá cần ngắn để vừa lưới 2 cột. */
+export function flightShortDay(iso: string | null): { weekday: string; date: string } | null {
+  const parts = dayParts(iso);
+  return parts && { weekday: parts.weekday, date: `${parts.day}/${parts.month}` };
 }
 
 /** Giờ địa phương "HH:MM" của chuỗi ISO có múi giờ (không đổi sang giờ máy người xem). */

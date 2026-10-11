@@ -146,7 +146,9 @@ def vietnam_today(now: datetime | None = None) -> date:
 def route_input(state: dict) -> list:
     """Message hiện tại cộng ngữ cảnh hội thoại chung; `classify` chỉ trả một nhãn."""
     payload = {"message": state.get("query", ""), **llm_context(state),
-               "assistant_offered_plan": bool(state.get("pending_offer"))}
+               "assistant_offered_plan": bool(state.get("pending_offer")),
+               # Để LLM đổi "thứ 7 này", "ngày 20/10" của câu hỏi vé thành ngày cụ thể.
+               "today": vietnam_today().isoformat()}
     return [("system", CLASSIFY_PROMPT), ("human", prompt_yaml(payload))]
 
 
@@ -174,8 +176,9 @@ def understood(route: TurnRoute) -> dict:
     """Những gì LLM hiểu từ câu chữ của lượt này (tên nơi, thành phố, loại nơi, câu hỏi giá vé), ghi vào state cho
     `explore` và nhánh giá vé đối chiếu với catalog. Câu gõ sai, viết tắt, tiếng Anh, "tao ở X" đều qua đây thay cho
     danh sách từ khoá (chat thử 16 kiểu người dùng)."""
-    return {"fare_ask": route.fare.model_dump() if route.fare else {}, "explore_place": route.place,
+    return {"fare_ask": route.fare.model_dump(mode="json") if route.fare else {}, "explore_place": route.place,
             "explore_city": route.city, "explore_focus": route.focus, "explore_price": route.price,
+            "form_request": route.form_request and route.route not in ("fare", "out_of_scope"),
             # Thành nút gợi ý: câu ngắn như lời người dùng, quá dài thì bỏ (khung chat hẹp).
             "other_questions": [" ".join(text.split()) for text in route.other_questions
                                 if text and 0 < len(text.strip()) <= MAX_OTHER_QUESTION_CHARS]}
@@ -203,6 +206,15 @@ def route_result(state: dict, result: TurnRoute) -> dict:
     if consent:
         update.update(_consent_update(state) if not state.get("plan_consent") else {})
     update.update(_rejection_update({**state, **update}, consent))
+    if update["form_request"] and label != "travel":
+        # Xin form ("cho mình cái form", chat thử 11/10: trợ lý hỏi lại bằng câu chữ): đưa form điền sẵn ngay, coi như
+        # đồng ý lập lịch. Câu có kèm thông tin chuyến (`travel`) thì `extract` ghi trước, form vẫn hiện (`_form_shown`).
+        intent = {**state.get("intent", {}), **update.get("intent", {})}
+        missing = [key for key in TRIP_FIELDS if intent.get(key) is None]
+        consent_update = _consent_update(state) if not state.get("plan_consent") else {}
+        return {**update, **consent_update, "plan_consent": True, "interaction_type": "travel",
+                "decision": "missing_info", "clarification_reason": "suggest_form", "missing_fields": missing,
+                "start_date_asked": True}
     if update.get("explore_pick") and label not in ("out_of_scope",):
         # Vừa chê một nơi khi chưa đồng ý lập lịch: câu có nêu nơi khác thì qua `extract` để ghi lại, không thì khám phá
         # luôn một nơi khác.
@@ -544,6 +556,12 @@ def _extract_update(state: dict, result: Extraction) -> dict:
     if conflict or constraints.get("unverified_requirements"):
         return {**update, "decision": "missing_info",
                 "clarification_reason": "conflict" if conflict else "unverified"}
+    if asks_change:
+        # Hỏi "đổi sang đâu" trước mọi câu hỏi phần còn thiếu: "đổi sang chỗ khác" khi chuyến chưa có số ngày từng ra form
+        # điền sẵn điểm đến cũ kèm "còn thiếu số ngày" (chat thử 11/10).
+        return {**update, "decision": "missing_info",
+                "missing_fields": list(dict.fromkeys(result.change_without_value)),
+                "clarification_reason": "change_without_value"}
     if missing == ["days"] and not rounds and not asked and not state.get("intent_override"):
         # Đã có điểm đến (vừa đồng ý lập lịch: "Ok, lên lịch Hà Nội luôn"): hỏi gộp số ngày cùng ngày đi, số người, ngân
         # sách, nơi đi trong một câu (AC-AGT-01, kịch bản bản 5 cảnh 7); trước đây chỉ hỏi số ngày rồi lượt sau hỏi tiếp.
@@ -556,10 +574,6 @@ def _extract_update(state: dict, result: Extraction) -> dict:
         return {**update, "decision": "missing_info",
                 "clarification_reason": "suggest_form" if asked_once else None,
                 "clarification_rounds": rounds + 1}
-    if asks_change:
-        return {**update, "decision": "missing_info",
-                "missing_fields": list(dict.fromkeys(result.change_without_value)),
-                "clarification_reason": "change_without_value"}
     details = trip_details_missing(intent, skipped)
     # Chip sửa tay là chỉnh có chủ ý trên hội thoại đã có, không hỏi thêm bằng câu chữ ở đó.
     if details and not asked and not state.get("intent_override"):
