@@ -220,6 +220,12 @@ START → intake → classify → extract → tool → evaluate → retry → to
 START → intake → classify → extract → tool → evaluate → dead_letter → finalize → END  (lỗi vĩnh viễn/auth)
 START → intake → classify → extract → clarify             → finalize → END  (thiếu destination/days, mâu thuẫn, hoặc điều kiện không xác minh được)
 START → intake → classify → converse                      → finalize → END  (chào hỏi, cảm ơn, hoặc yêu cầu ngoài phạm vi — không gồm yêu cầu du lịch thiếu chi tiết)
+START → intake → classify → explore                       → finalize → END  (hỏi về một nơi, hỏi giá vé, "cứ chọn đại"; FR-AGT-06, FR-AGT-07)
+START → intake → classify → explore → extract → …          → finalize → END  (explore không tra được tên nơi: quay lại extract một lần)
+START → intake → classify → extract → explore              → finalize → END  (chưa đồng ý lập lịch, đã có điểm đến)
+START → intake → classify → clarify                        → finalize → END  (đã đồng ý mà "không biết", xin form, đổi khách sạn/chuyến bay chưa rõ)
+START → intake → classify → tool → evaluate → …            → finalize → END  (đã chọn chuyến bay khác bằng luật, lập lại lịch)
+START → intake → apply_option                              → finalize → END  (bấm/gõ "phương án N" có lịch đã lưu)
 START → intake → classify → dead_letter                    → finalize → END  (request lỗi hoặc LLM classify lỗi)
 ```
 
@@ -233,18 +239,25 @@ Dòng thứ tư (`retry`) tự nó rẽ tiếp thành ba luồng thẳng, theo `
 
 ### 3.1. Sơ đồ mermaid
 
-Cùng nội dung sơ đồ trên, vẽ bằng mermaid theo đúng cạnh trong `agents/graph.py` và điều kiện trong `agents/routing.py`. Node có viền đậm là node **có gọi LLM** (`classify`, `extract`, `tool` khi cần khớp destination hoặc lập plan, `filter` khi còn từ hai điểm tham quan, `converse`, `clarify`, `narrate`); các node còn lại thuần rule-based.
+Cùng nội dung sơ đồ trên, vẽ bằng mermaid theo đúng cạnh trong `agents/graph.py` và điều kiện trong `agents/routing.py`. Node có viền đậm là node **có gọi LLM** (`classify`, `extract`, `tool` khi cần khớp destination hoặc lập plan, `filter` khi còn từ hai điểm tham quan, `converse`, `explore` khi viết lời dẫn thẻ — nhánh giá vé không gọi LLM, `clarify`, `narrate`); các node còn lại thuần rule-based.
 
 ```mermaid
 flowchart TD
     START([START]) --> intake
+    intake -->|"phương án N" có lịch đã lưu| apply_option
     intake --> classify
 
-    classify --> converse
-    classify --> extract
-    classify -->|vague, còn thiếu trường bắt buộc| clarify
+    classify -->|trò chuyện, ngoài phạm vi, guardrail| converse
+    classify -->|hỏi về một nơi, giá vé| explore
+    classify -->|câu du lịch| extract
+    classify -->|đã đồng ý + vague, xin form, đổi KS/vé chưa rõ| clarify
+    classify -->|đã chọn chuyến bay khác| tool
     classify --> dead_letter
 
+    explore -->|không tra được tên nơi| extract
+
+    extract -->|chưa đồng ý, có điểm đến| explore
+    extract -->|chưa đồng ý, chưa có điểm đến| converse
     extract --> tool
     extract --> clarify
     extract --> dead_letter
@@ -262,7 +275,9 @@ flowchart TD
 
     filter --> compose
     compose --> narrate
+    apply_option --> finalize
     converse --> finalize
+    explore --> finalize
     narrate --> finalize
     clarify --> finalize
     dead_letter --> finalize
@@ -274,6 +289,7 @@ flowchart TD
     tool:::llm
     filter:::llm
     converse:::llm
+    explore:::llm
     clarify:::llm
     narrate:::llm
     classDef llm stroke:#d33,stroke-width:3px;

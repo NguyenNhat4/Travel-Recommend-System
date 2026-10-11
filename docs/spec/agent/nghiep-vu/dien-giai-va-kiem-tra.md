@@ -1,6 +1,6 @@
 # Diễn giải lịch trình và kiểm tra trước khi trả
 
-Phục vụ FR-AGT-03, FR-AGT-04, NFR-REL-01, NFR-SEC-01. Mô tả theo code tại 2026-10-07; khi lệch, PRD và contract thắng.
+Phục vụ FR-AGT-03, FR-AGT-04, FR-AGT-06, FR-AGT-07, NFR-REL-01, NFR-SEC-01. Mô tả theo code tại 2026-10-11; khi lệch, PRD và contract thắng.
 
 ## Mục đích
 
@@ -47,6 +47,11 @@ sequenceDiagram
 | **Ngoài ra trong lịch trình** | Sản phẩm đã xếp mà LLM quên nhắc, để vẫn bấm được |
 
 - Dòng di chuyển `TRANSFER` được viết lại đúng ghi chú, không thêm chi tiết chuyến bay.
+- [Lịch tham khảo](glossary.md#lich-tham-khao): câu mở đầu (ngày chưa mở bán, ngày gần nhất còn bán) do code viết; LLM chỉ
+  kể chuyện từng nơi, không nói về ngày mở bán. `COMPLETED` có thể kèm tối đa 3 nút (ví dụ "Đi <nơi> <n> ngày từ ngày X").
+- **Không bịa giờ, giá.** Khám phá mà không tra ra nơi được hỏi: LLM được báo để tự nói là chưa kiểm được. Lượt trò chuyện
+  (`converse`) mà câu LLM nêu giờ, giá, vé không có dữ liệu: code thay bằng câu cố định. Câu trả lời vé do code viết hoàn
+  toàn.
 - Mọi câu trả lời (trừ chào hỏi) mở đầu bằng **Tiêu đề** in đậm.
 
 ## Kiểm tra ở `finalize`
@@ -60,6 +65,7 @@ sequenceDiagram
 | Tổng và trạng thái ngân sách tính lại khớp | 500 |
 | Link sản phẩm trong lời diễn giải đều có trong lịch | 500 |
 | Sản phẩm của `FALLBACK`/gói nhiều ngày trùng khớp ứng viên | 500 |
+| Thẻ khám phá và thẻ ngày–giá (`searchResults`) là đúng sản phẩm tra trong lượt; link trong câu chỉ trỏ tới các thẻ đó | 500 |
 | Câu LLM viết lộ chuỗi giống secret, hoặc nói "đã đặt", "đã thanh toán" | Thay câu bằng bản cố định, giữ status |
 
 ## Mã cảnh báo (`warnings`) hay gặp
@@ -73,6 +79,7 @@ sequenceDiagram
 | `FREE_ENTRY_ASSUMED` | Có điểm tham quan tự do tính 0 đ |
 | `RECOMMENDATION_FALLBACK` | Có mục lấy từ Recommendation vì Search không có |
 | `NO_STAY_AVAILABLE` | Lịch không có chỗ ở |
+| `PRODUCT_NOT_ON_SALE_FOR_DATE` | Điểm trong lịch tham khảo chưa mở bán cho ngày đi; nêu cửa sổ mở bán thật |
 | `DAY_WITHOUT_PRODUCTS` | Một ngày không có sản phẩm |
 | `FLIGHT_*` | Lý do thiếu vé; xem [ve-may-bay.md](ve-may-bay.md) |
 
@@ -84,6 +91,7 @@ sequenceDiagram
 ## Code liên quan
 
 - [`agents/steps/narration.py`](../../../../src/backend/app/agents/steps/narration.py) — dựng input LLM, kiểm và điền bài viết, bản dựng bằng luật
+- [`agents/steps/conversation.py`](../../../../src/backend/app/agents/steps/conversation.py) — `_claims_a_fact` (chặn giờ, giá không có dữ liệu)
 - [`agents/steps/prompts.py`](../../../../src/backend/app/agents/steps/prompts.py) — `NARRATE_PROMPT`
 - [`agents/steps/validation.py`](../../../../src/backend/app/agents/steps/validation.py) — kiểm response ở `finalize`
 - [`agents/steps/guardrails.py`](../../../../src/backend/app/agents/steps/guardrails.py) — `output_violations`
