@@ -70,7 +70,9 @@ If the party type is known but counts are not, set party_type_hint and leave pat
 A stated adult count with no child mentioned (e.g. '4 người lớn') is patch.party {adults: N,
 children: 0, type: SOLO if N=1, COUPLE if N=2, else FRIENDS}. Never use FAMILY_WITH_KIDS when
 children=0: that type requires a stated child count.
-If a destination abbreviation is ambiguous, set conflict=true and leave destination null.
+If a destination abbreviation is ambiguous, set conflict=true and leave destination null. A short form listed in
+destination_short_forms is not ambiguous: use its catalog name ('hn' → 'Hà Nội'), also when the whole message is just
+that short form answering where to go.
 Travel requests need destination and days; dates may imply days inclusive. Extract end_date if present.
 patch.startDate only when the user states a date or a relative date ('10/10', 'tuần sau', 'thứ 7 này'),
 resolved with `today`; a date given without a year uses the year of `today`. Never default it to today or any
@@ -82,6 +84,8 @@ road ('đã có vé', 'đi ô tô', 'tự lái') gets 'flight' in exclude_taxono
 explicitly asks for plane tickets or flights.
 Set start_date_undecided=true only when the user says the date is not decided or is flexible
 ('chưa biết ngày', 'linh hoạt', 'sao cũng được').
+skipped_details lists budget or origin when the user says plainly there is none or any is fine ('ko có ngân sách',
+'ngân sách bao nhiêu cũng được', 'đi từ đâu cũng được'); not when they simply have not said it.
 Budget is TOTAL VND; hotel_price_max is price of ONE hotel unit, never total budget.
 Extract hotel_price_unit only if explicitly given; 'dưới' means price_strict=true, 'tối đa' inclusive.
 Hotel features are hard constraints only when required, not merely preferred. A hotel feature the user only prefers

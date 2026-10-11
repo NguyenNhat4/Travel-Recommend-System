@@ -476,10 +476,30 @@ def _short_about(product: dict) -> str:
 _FEATURE_WORDS = {"pool": "hồ bơi", "seaView": "view biển", "breakfast": "bữa sáng", "spa": "spa"}
 
 
+#: Số nhãn/tiện ích của catalog kể trong dòng dự phòng khi không có câu mô tả; số phần đầu của địa chỉ khi không có cả nhãn.
+FALLBACK_DETAILS = 3
+ADDRESS_PARTS = 2
+
+
+def _catalog_details(product: dict) -> list[str]:
+    """Nhãn (điểm tham quan) hoặc tiện ích (khách sạn) của catalog, viết thường, để dòng dự phòng nói được nơi đó là gì
+    thay vì chỉ "cũng được nhiều người ghé" (chat thử M02)."""
+    attributes = product.get("attributes") or {}
+    values = attributes.get("amenities") if product.get("taxonomy") == "hotel" else attributes.get("tags")
+    details = [value.strip() for value in values if isinstance(value, str) and value.strip()] \
+        if isinstance(values, list) else []
+    details = [value[:1].lower() + value[1:] for value in details[:FALLBACK_DETAILS]]
+    address = attributes.get("address")
+    if not details and product.get("taxonomy") != "hotel" and isinstance(address, str) and address.strip():
+        # Không nhãn, không mô tả (Bảo tàng Gấu Teddy): ít ra nói nơi đó nằm ở đâu, lấy từ địa chỉ catalog.
+        details = ["ở " + ", ".join(part.strip() for part in address.split(",")[:ADDRESS_PARTS] if part.strip())]
+    return details
+
+
 def _hotel_features(product: dict, reason: str) -> str:
     found = {item.key for item in preferences.PREFERENCES if preferences.satisfies(product, item)}
     parts = []
-    words = [word for key, word in _FEATURE_WORDS.items() if key in found]
+    words = [word for key, word in _FEATURE_WORDS.items() if key in found] or _catalog_details(product)
     if words:
         parts.append("khách sạn có " + ", ".join(words))
     if "familyFriendly" in found:
@@ -488,11 +508,13 @@ def _hotel_features(product: dict, reason: str) -> str:
 
 
 def card_line(state: dict, card: dict) -> str:
-    """Dòng dẫn do code dựng cho một thẻ: câu mô tả của catalog (nơi đó là gì), không có thì lý do đầu tiên; giá chỉ khi
-    người dùng hỏi giá. Điểm, lượt đánh giá, giờ mở cửa nằm trên thẻ."""
+    """Dòng dẫn do code dựng cho một thẻ: câu mô tả của catalog (nơi đó là gì); không có thì nhãn/tiện ích của catalog
+    kèm lý do đầu tiên; giá chỉ khi người dùng hỏi giá. Điểm, lượt đánh giá, giờ mở cửa nằm trên thẻ."""
     product = card["product"]
-    reason = (_short_about(product) if state.get("language", "vi") == "vi" else "") \
-        or message(state, f"reason_{card['reasons'][0]}")
+    reason = message(state, f"reason_{card['reasons'][0]}")
+    if state.get("language", "vi") == "vi" and product.get("taxonomy") != "hotel":
+        details = _catalog_details(product)
+        reason = _short_about(product) or (", ".join([*details, reason]) if details else reason)
     if product.get("taxonomy") == "hotel" and state.get("language", "vi") == "vi":
         reason = _hotel_features(product, reason)
     if price_asked(state):

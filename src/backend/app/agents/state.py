@@ -107,6 +107,8 @@ class AgentState(TypedDict, total=False):
     # - `open_understood`: những gì LLM hiểu ở câu hỏi còn dở (`explore_place`, `explore_focus`, `explore_price`), đi
     #   theo `open_question` để lượt trả lời không mất "chỗ ở", "giá rẻ".
     open_understood: dict[str, Any] | None
+    # - `skipped_details`: chi tiết không bắt buộc người dùng đã nói là không có ("không có ngân sách"); không hỏi lại.
+    skipped_details: list[str]
     fare_question: bool
     # Những gì `classify` (LLM) hiểu từ câu chữ của lượt này, chỉ trong lượt; code đối chiếu với catalog rồi mới dùng:
     # - `fare_ask`: câu hỏi vé máy bay (`models.FareQuestion`: origin, destination, anywhere, dearest, return_leg,

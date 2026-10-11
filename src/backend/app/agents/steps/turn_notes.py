@@ -49,7 +49,9 @@ def trip_summary(state: dict, intent: dict | None = None) -> str:
         parts.append(message(state, "trip_origin", origin=intent["origin"]))
     if intent.get("interests"):
         parts.append(message(state, "trip_interests", interests=", ".join(intent["interests"])))
-    missing = [field for field in INTENT_FIELDS if intent.get(field) is None]
+    # Chi tiết người dùng đã nói là không có ("không có ngân sách") không còn là "chưa có".
+    skipped = set(state.get("skipped_details") or [])
+    missing = [field for field in INTENT_FIELDS if intent.get(field) is None and field not in skipped]
     if not parts:
         return message(state, "trip_none")
     text = ", ".join(parts)

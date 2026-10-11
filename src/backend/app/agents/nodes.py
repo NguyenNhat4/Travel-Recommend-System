@@ -50,7 +50,8 @@ MAX_ATTEMPTS = 2
 #: Trường của giai đoạn trò chuyện/khám phá (FR-AGT-06) lưu qua các lượt cùng intent; giá trị khi chưa có gì.
 CONVERSATION_PHASE = {"plan_consent": False, "pending_offer": None, "offered_destinations": [],
                       "dont_know_count": 0, "last_suggestions": [], "rejected_destinations": [],
-                      "pending_fare": None, "open_question": None, "open_understood": None}
+                      "pending_fare": None, "open_question": None, "open_understood": None,
+                      "skipped_details": []}
 
 
 def _phase(source: dict) -> dict:
@@ -190,7 +191,7 @@ def _guardrail_junk_input(state: AgentState) -> dict | None:
     """Tầng 1 (NFR-SEC-04): tin nhắn rác hiển nhiên không tốn lượt gọi LLM nào. Rác → `unclear_input`,
     `converse` trả câu "chưa hiểu" cố định; chỉ có tục tĩu → nhánh từ chối của guardrail (`blocked_by_guardrail`).
     Event chỉ ghi tên luật, không ghi câu người dùng."""
-    verdict = guardrails.input_quality(state.get("query", ""))
+    verdict = guardrails.input_quality(state.get("query", ""), replying=bool(state.get("conversation_history")))
     if verdict is None:
         return None
     kind, rule = verdict
