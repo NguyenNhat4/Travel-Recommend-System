@@ -111,7 +111,8 @@ def missing_stay_note(state: dict, plan: dict) -> str | None:
         return None
     intent = state.get("intent", {})
     destination = intent.get("destination") or ""
-    reason, nearest = _reason(entry), entry.get("nearestOpenDate")
+    # Ngày đi chung của cả lịch (có vé, khách sạn, vé tham quan) thắng ngày gần nhất chỉ có khách sạn.
+    reason, nearest = _reason(entry), state.get("joint_date") or entry.get("nearestOpenDate")
     start, _ = _trip_dates(intent)
     if reason is None:
         return messages.message(state, "no_stay_none", destination=destination)

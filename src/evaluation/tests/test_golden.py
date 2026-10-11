@@ -544,3 +544,51 @@ class ProgressEventTests(unittest.IsolatedAsyncioTestCase):
             lines = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
         self.assertEqual([line["event"] for line in lines], ["start", "done"])
         self.assertIn("at", lines[0])
+
+
+SCENARIO_PATH = Path(__file__).resolve().parents[1] / "datasets" / "agent_scenarios_v5.yaml"
+
+
+class ScenarioDatasetTests(DatasetTests):
+    """Cùng các kiểm tra dataset cho bộ kịch bản bản 5 và lỗi chat thử 10/10 (`agent_scenarios_v5.yaml`)."""
+
+    def setUp(self):
+        self.cases = load_dataset(SCENARIO_PATH)
+
+    def test_every_bug_of_the_test_chat_has_a_case(self):
+        ids = {case.id for case in self.cases}
+        self.assertLessEqual({"SC-A", "SC-B", "SC-C", "SC-E", "SC-F", "SC-G", "SC-H", "SC-MAIN"}, ids)
+
+
+class ScenarioKeyTests(unittest.TestCase):
+    """Khoá `expect` của bộ kịch bản: chữ phải có, cụm không lặp, thẻ, nút, cảnh báo phải có."""
+
+    RESPONSE = {
+        "status": "NEEDS_CLARIFICATION",
+        "question": "**Văn Miếu**\nCó, Văn Miếu mở buổi tối 18:00–22:00. Nơi này được khen nhiều, được khen nhiều.",
+        "searchResults": {"attraction": [{"productId": "vm", "taxonomy": "attraction"}],
+                          "hotel": [{"productId": "ks", "taxonomy": "hotel"}]},
+        "suggestions": ["Gần Văn Miếu có gì nữa?"],
+        "warnings": [{"code": "PRODUCT_NOT_ON_SALE_FOR_DATE"}],
+    }
+
+    def findings(self, expect):
+        return dataset_findings(self.RESPONSE, 200, [], expect, {})
+
+    def test_text_includes_is_case_insensitive(self):
+        self.assertEqual(self.findings({"textIncludes": ["18:00", "văn miếu"]}), [])
+        self.assertTrue(self.findings({"textIncludes": ["hồ bơi"]}))
+
+    def test_phrase_max_count(self):
+        self.assertEqual(self.findings({"phraseMaxCount": {"được khen nhiều": 2}}), [])
+        self.assertTrue(self.findings({"phraseMaxCount": {"được khen nhiều": 1}}))
+
+    def test_cards_and_taxonomies(self):
+        self.assertEqual(self.findings({"cardsMin": 2, "cardsMax": 2}), [])
+        self.assertTrue(self.findings({"cardsMax": 1}))
+        self.assertTrue(self.findings({"cardTaxonomies": ["attraction"]}))
+
+    def test_suggestions_and_warnings(self):
+        self.assertTrue(self.findings({"suggestionsMin": 2}))
+        self.assertEqual(self.findings({"warningsInclude": ["PRODUCT_NOT_ON_SALE_FOR_DATE"]}), [])
+        self.assertTrue(self.findings({"warningsInclude": ["NO_STAY_AVAILABLE"]}))
