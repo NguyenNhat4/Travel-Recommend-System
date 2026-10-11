@@ -51,6 +51,7 @@ export function WidgetChat({ widget }: { widget: FloatingWidgetController }) {
                         flights={message.plan?.flights}
                         bookableIds={message.plan ? new Set(message.plan.cartItems.map((item) => item.product.productId)) : undefined}
                         onBookNow={message.plan ? (productId) => bookPlanItem(message.plan!, productId) : undefined}
+                        onLeave={() => { setIsExpanded(false); widget.setIsOpen(false); }}
                         stays={message.stayOptions ? {
                           // Hàng thẻ "Phương án khác" là nội dung mục "Nơi nghỉ": thay dòng chữ và thẻ của mọi khách sạn
                           // trong hàng (kể cả khách sạn cũ mà lời diễn giải còn nhắc sau khi đã đổi).

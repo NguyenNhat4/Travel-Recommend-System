@@ -1,11 +1,13 @@
 """Hai node dùng LLM để viết câu chữ: `clarify` (hỏi thiếu thông tin) và `converse` (chat/từ chối)."""
 from __future__ import annotations
 
+import re
 from copy import deepcopy
 from datetime import timedelta
 
 from src.backend.app.application.itinerary.contracts import bounds
 from src.backend.app.domain.itinerary import preferences
+from src.backend.app.domain.itinerary.normalization import fold
 from src.backend.app.domain.itinerary.planning import empty_intent
 
 from ..models import ConversationalAnswer
@@ -78,8 +80,11 @@ def _form_shown(state: dict) -> bool:
     Không kèm khi đang hỏi chọn điểm đến theo loại ("đi biển"): form điền sẵn điểm đến đầu catalog, có thể không hợp loại.
     """
     reason = state.get("clarification_reason")
-    if reason == "destination_kind":
+    if reason in ("destination_kind", "change_without_value"):
         return False
+    if state.get("form_request"):
+        # Người dùng xin form ("cho mình cái form"): đưa form điền sẵn ngay lượt này.
+        return True
     if reason == "suggest_form":
         return True
     return state.get("clarification_rounds", 0) >= 2 and bool({"destination", "days"} & set(state.get("missing_fields") or []))
@@ -123,6 +128,31 @@ def reply_title(state: dict) -> str | None:
     return message(state, "title_missing_days")
 
 
+#: Giờ ("8h", "08:00", "8 giờ") hoặc số tiền ("50.000", "50k", "₫", "đồng") trong câu LLM viết khi không có dữ liệu.
+_FACT_NUMBER = re.compile(r"\d{1,2}\s*(?:h|giờ|:\d{2})|\d+[.,]\d{3}|\d+\s*(?:k|nghìn|ngàn|triệu)\b|₫|đồng|vnd",
+                          re.IGNORECASE)
+
+
+#: Câu nói về giờ, giá, vé, quy định của một nơi; và câu thừa nhận không kiểm được.
+_FACT_WORDS = re.compile(r"mở cửa|đóng cửa|miễn phí|vé|giá|giờ|nghỉ lễ|quy định|open|close|free|ticket|price",
+                         re.IGNORECASE)
+_CANNOT_CHECK = re.compile(r"(?:không|chưa)\s+(?:kiểm|tìm thấy|có dữ liệu|có thông tin|tra được|xác nhận)|"
+                           r"(?:cannot|can't|could not|couldn't)\s+(?:check|find|verify)", re.IGNORECASE)
+
+
+def _claims_a_fact(text: str) -> bool:
+    """Câu LLM viết khi không có dữ liệu mà vẫn nói giờ, giá: có con số giờ/tiền, hoặc nhắc giờ, giá, vé mà không nói là
+    không kiểm được ("Văn Miếu không mở cửa buổi tối", chat thử M03)."""
+    return bool(_FACT_NUMBER.search(text)) or bool(_FACT_WORDS.search(text) and not _CANNOT_CHECK.search(text))
+
+
+def place_not_found(state: dict) -> str | None:
+    """Nơi người dùng hỏi tới mà lượt khám phá không tra ra trong catalog (không phải câu hỏi chỗ ở)."""
+    if state.get("explore_focus") == "hotels" or state.get("blocked_by_guardrail") or state.get("refusal"):
+        return None
+    return state.get("explore_place") or None
+
+
 def conversation_input(state: dict) -> list:
     """Chỉ gửi ngữ cảnh đã chốt cho LLM; nó viết câu chữ, không được tự quyết luồng."""
     language = "Vietnamese" if state.get("language", "vi") == "vi" else "English"
@@ -139,7 +169,8 @@ def conversation_input(state: dict) -> list:
                "dont_know_level": int(state.get("dont_know_count", 0) or 0),
                "catalog_destinations": (state.get("supported_destinations") or [])[:exploration.CATALOG_HINT],
                "previous_suggestions": state.get("last_suggestions", []),
-               "rejected_destinations": state.get("rejected_destinations", [])}
+               "rejected_destinations": state.get("rejected_destinations", []),
+               "place_not_found": place_not_found(state)}
     if state.get("clarification_reason") == "invalid_input":
         payload.update(invalid_inputs=_invalid_for_llm(state), today=display_date(vietnam_today().isoformat()),
                        valid_ranges=_valid_ranges(), form_shown=_form_shown(state),
@@ -150,8 +181,22 @@ def conversation_input(state: dict) -> list:
     elif state.get("clarification_reason") == "change_without_value":
         # Để LLM đoán năm khi hỏi xác nhận một câu trả lời chưa đọc được ("1410" → "14/10/2026?").
         payload["today"] = display_date(vietnam_today().isoformat())
+        if destination_choices(state):
+            payload["destination_choices"] = destination_choices(state)
     return [("system", CONVERSATION_PROMPT + f"\nReply in {language}."),
             ("human", prompt_yaml(payload))]
+
+
+def destination_choices(state: dict) -> list[str]:
+    """"Đổi sang chỗ khác" chưa nêu nơi mới: ba điểm đến khác của catalog (nhiều sản phẩm trước) làm nút và làm ví dụ
+    trong câu hỏi, để chữ và nút nêu cùng các nơi (chat thử 11/10). Người dùng vẫn gõ được nơi bất kỳ."""
+    if state.get("clarification_reason") != "change_without_value" or "destination" not in (
+            state.get("missing_fields") or []):
+        return []
+    current = fold((state.get("intent") or {}).get("destination"))
+    rejected = {fold(name) for name in state.get("rejected_destinations") or []}
+    return [name for name in state.get("supported_destinations") or []
+            if fold(name) != current and fold(name) not in rejected][:3]
 
 
 def _question_response(state: dict, question: str) -> dict:
@@ -167,6 +212,9 @@ def _question_response(state: dict, question: str) -> dict:
         suggested["days"] = list(range(1, 8))
     if suggested:
         response["suggestedValues"] = suggested
+    choices = destination_choices(state)
+    if choices:
+        response["suggestions"] = [message(state, "chip_change_destination", destination=name) for name in choices]
     # Lượt hỏi đầu dùng câu chữ; hỏi rồi mà vẫn thiếu điểm đến/số ngày thì đưa form thay vì hỏi lại y hệt.
     if _form_shown(state):
         response["clarificationForm"] = clarification_form(state)
@@ -202,12 +250,38 @@ def conversational_update(state: dict, result: ConversationalAnswer) -> dict:
     """Câu LLM viết ra. Yêu cầu ngoài phạm vi (đặt vé hộ, chuyện ngoài du lịch) là câu trả lời thường 200 kèm nút, không
     còn là lỗi 400 (FR-AGT-06, chốt 2026-10-10); chỉ đầu vào bị guardrail chặn mới bị từ chối bằng lỗi."""
     answer = ConversationalAnswer.model_validate(result)
+    if place_not_found(state) and _claims_a_fact(answer.message):
+        # Hỏi về một nơi không tra ra trong catalog: LLM tự viết câu nói rõ là không kiểm được (chat thử 11/10: một câu
+        # cố định lặp lại mọi lượt), nhưng câu có giờ hay giá thì là LLM tự nói ("Văn Miếu không mở buổi tối" — sai, chat
+        # thử M03): thay bằng câu cố định, giữ nút.
+        answer = answer.model_copy(update={"title": message(state, "title_unverified_fact"),
+                                           "message": message(state, "unverified_fact",
+                                                              place=state["explore_place"])})
     fallback_title = reply_title(state)
     # Dòng đầu in đậm do backend ghép, để mọi câu trả lời có cùng một dạng; chào hỏi, cảm ơn thì không có tiêu đề.
     text = titled(answer.title or fallback_title, answer.message.strip()) if fallback_title else answer.message.strip()
     if state.get("blocked_by_guardrail"):
         return failure(state, "VALIDATION_ERROR", text, 400)
-    return with_suggestions(state, _question_response(state, text), answer.suggestions)
+    update = with_suggestions(state, _question_response(state, text), answer.suggestions)
+    if state.get("clarification_reason") == "destination_kind":
+        update = _with_destination_buttons(state, update, answer.message)
+    return update
+
+
+#: Tối đa chừng này nút chọn điểm đến khi hỏi lại theo loại nơi (contract: `suggestions` tối đa 3).
+MAX_DESTINATION_BUTTONS = 3
+
+
+def _with_destination_buttons(state: dict, update: dict, text: str) -> dict:
+    """Hỏi chọn điểm đến theo loại nơi ("đi biển", "chỗ nào mát"): mỗi điểm đến của catalog mà câu hỏi nêu tên thành một
+    nút, theo thứ tự trong câu (chat thử M02, M16: liệt kê Phú Quốc, Nha Trang… mà không có nút bấm)."""
+    padded = f" {fold(text)} "
+    named = sorted(((padded.find(f" {fold(name)} "), name) for name in state.get("supported_destinations") or []
+                    if fold(name) and f" {fold(name)} " in padded), key=lambda item: item[0])
+    if not named:
+        return update
+    response = {**update["response"], "suggestions": [name for _, name in named[:MAX_DESTINATION_BUTTONS]]}
+    return {**update, "response": response}
 
 
 def _invalid_input_question(state: dict) -> str:

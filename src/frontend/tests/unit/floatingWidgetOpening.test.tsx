@@ -155,6 +155,20 @@ describe('floating assistant opening', () => {
     expect(mocks.sendMessage).toHaveBeenCalledWith('Đi Hà Nội 3 ngày, không cần khách sạn');
   });
 
+  it('shows suggestion chips on a COMPLETED answer too (contract 1.25.0)', () => {
+    const response = { status: 'COMPLETED' as const, conversationId: 'c1', message: 'Lịch tham khảo Phú Quốc 3 ngày.',
+      warnings: [], intent: { destination: 'Phú Quốc', days: 1, party: { type: 'SOLO', adults: 1, children: 0 }, budget: null },
+      itinerary: { days: [{ day: 1, slots: [] }], currency: 'VND', estimatedTotal: null, budgetStatus: 'UNKNOWN' },
+      suggestions: ['Đi Phú Quốc 3 ngày từ ngày 28/10/2026'] };
+    mocks.state = { ...mocks.state, transcript: [
+      { id: 'user-1', sender: 'user', text: 'Phú Quốc 3 ngày', createdAt: 1 },
+      { id: 'assistant-1', sender: 'assistant', text: response.message, response: response as never, createdAt: 2 },
+    ] };
+    open();
+    fireEvent.click(screen.getByRole('button', { name: 'Đi Phú Quốc 3 ngày từ ngày 28/10/2026' }));
+    expect(mocks.sendMessage).toHaveBeenCalledWith('Đi Phú Quốc 3 ngày từ ngày 28/10/2026');
+  });
+
   it('drops the chips once a later message exists', () => {
     const response = { status: 'NO_RESULTS' as const, conversationId: 'c1', message: 'Hiện chưa có sản phẩm.',
       suggestions: ['Đi Huế 3 ngày'] };

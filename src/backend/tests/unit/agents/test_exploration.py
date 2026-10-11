@@ -134,7 +134,7 @@ class ChatTextTests(unittest.TestCase):
         asked = _card_input({'product': place('vm', attributes=hours), 'reasons': [rules.ASKED]})
         self.assertNotIn('facts', plain)
         self.assertEqual(plain['tags'], ['Thắng cảnh lịch sử'])
-        self.assertEqual(asked['facts'], {'openingHours': '08:00–17:00'})
+        self.assertEqual(asked['facts']['openingHours'], '08:00–17:00')
 
     def test_the_fallback_line_describes_the_place_without_numbers(self):
         from src.backend.app.agents.steps.exploration import card_line
@@ -355,6 +355,18 @@ class ExploreFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['intent']['destination'], 'Hà Nội')
         self.assertEqual(result['response']['searchResults']['attraction'][0]['productId'], 'vm')
         self.assertIn('18:00–22:00', llm.prompts['ExploreNarration'])
+
+    async def test_the_catalog_city_of_a_named_place_wins_over_the_city_the_llm_guessed(self):
+        # LLM thật gán "văn miếu vé vào cửa nhiu" cho Đà Nẵng vì lượt trước nói về Bà Nà (2026-10-11).
+        van_mieu = product('vm', destination='Hà Nội', name='Văn Miếu – Quốc Tử Giám', unitPrice=30_000)
+        clients = Clients(products=[dict(item) for item in HANOI] + [van_mieu], destinations=['Hà Nội', 'Đà Nẵng'])
+        llm = ExploringLlm(turn=TurnRoute(route='explore', place='Văn Miếu – Quốc Tử Giám', city='Đà Nẵng',
+                                          price='asks'),
+                           explore_message='[Văn Miếu – Quốc Tử Giám](product:vm) là quần thể di tích.')
+        result = await self.run_graph(llm, clients, state={'query': 'văn miếu vé vào cửa nhiu'})
+        self.assertEqual(result['intent']['destination'], 'Hà Nội')
+        self.assertEqual([p['productId'] for p in result['response']['searchResults']['attraction']], ['vm'])
+        self.assertIn('Giá vé từ 30.000 ₫.', result['response']['question'])
 
     async def test_a_link_with_another_cards_id_is_pointed_back_to_the_card_it_names(self):
         clients = self.clients()
@@ -622,3 +634,38 @@ class ExploreSearchFailureTests(unittest.IsolatedAsyncioTestCase):
                                       clients, state={'query': 'Hà Nội có gì?'})
         self.assertIn('chưa tải được', result['response']['question'])
         self.assertNotIn('searchResults', result['response'])
+
+
+class HotelPriceOrderTests(unittest.IsolatedAsyncioTestCase):
+    """"ks nào đắt nhất", "rẻ nhất là chỗ nào" (chat thử M04): thẻ theo giá của cả điểm đến (danh sách catalog xếp theo giá),
+    không chỉ vài kết quả Search."""
+
+    def test_dearest_cards_put_the_priciest_first(self):
+        hotels = [place('a', 'hotel', unitPrice=500_000), place('b', 'hotel', unitPrice=3_000_000),
+                  place('c', 'hotel', unitPrice=None)]
+        cards = rules.dearest_cards(hotels, 3)
+        self.assertEqual([card['product']['productId'] for card in cards], ['b', 'a'])
+        self.assertEqual(cards[0]['reasons'], [rules.DEAREST])
+
+    async def test_the_catalog_listing_sorted_by_price_is_used_for_the_whole_city(self):
+        from src.backend.app.agents.steps import exploration
+
+        class Listing:
+            def __init__(self):
+                self.params = None
+
+            async def list_products(self, params):
+                self.params = params
+                return {'results': [place('lux', 'hotel', unitPrice=5_000_000)], 'total': 1}
+
+        tools = Listing()
+        state = {'query': 'ks nào đắt nhất', 'explore_focus': 'hotels', 'explore_price': 'dear'}
+        results = await exploration.price_listing(state, 'Hà Nội', tools, 1)
+        self.assertEqual(tools.params['sort'], 'price_desc')
+        self.assertEqual(exploration.price_scope(state, results), 'city')
+        cards, _ = exploration.pick(state, 'Hà Nội', results)
+        self.assertEqual(cards[0]['product']['productId'], 'lux')
+        # Hỏi gần một nơi thì chỉ trong các khách sạn tìm được quanh nơi đó.
+        near = {**state, 'explore_place': 'Hồ Hoàn Kiếm'}
+        self.assertEqual(await exploration.price_listing(near, 'Hà Nội', tools, 1), [])
+        self.assertEqual(exploration.price_scope(near, []), 'found')
