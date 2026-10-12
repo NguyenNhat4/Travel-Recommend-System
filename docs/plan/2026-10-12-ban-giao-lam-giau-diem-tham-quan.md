@@ -57,8 +57,9 @@ Môi trường:
 
 ### 2.2. Sau lượt cào 08:35 ngày 13/10 (VM còn code cũ)
 
-Lượt cào hằng ngày (code cũ) có thể: tắt lại khách sạn đã bật, bật lại điểm rác, ghi đè ảnh vé. Chạy từng lệnh xem trước, báo số
-dòng, hỏi người dùng rồi mới `--apply` (cả bốn script đều chạy lại được, không đổi gì nếu DB đã đúng):
+Lượt cào hằng ngày (code cũ) có thể: tắt lại khách sạn đã bật, bật lại điểm rác, ghi đè ảnh vé, xoá giá golf (upsert
+`unit_price = EXCLUDED.unit_price`). Chạy từng lệnh xem trước, báo số dòng, hỏi người dùng rồi mới `--apply` (cả năm script đều
+chạy lại được, không đổi gì nếu DB đã đúng):
 
 ```bash
 cd ~/code/Travel-Recommendation-Product/src/data_collection && set -a && . ./.env && set +a
@@ -67,7 +68,10 @@ $P data/vm-repair-20261012/reopen_hotels_with_rooms.py            # 1. khách s�
 $P data/vm-repair-20261012/hide_junk_attractions.py               # 2. 20 điểm rác đợt đầu
 $P data/vm-repair-20261012/fix_final_junk_and_tuyen_quang.py      # 3. 5 điểm rác đợt cuối + Tuyên Quang
 $P data/flight-logos-20261012/set_flight_images.py                # 4. logo hãng cho vé, ảnh thành phố cho tuyến
+$P data/golf-prices-20261012/set_golf_prices.py                   # 5. giá golfscape cho Bà Nà Hills, Legend Đà Nẵng; ẩn Vinpearl Golf Hải Phòng (Trip)
 ```
+
+Script 5 xem trước bằng transaction chỉ đọc (bốn script đầu xem trước bằng UPDATE rồi ROLLBACK).
 
 Lặp lại sau **mỗi** lượt cào/bảo trì chạy code cũ, cho tới khi mục 2.3 deploy xong.
 
@@ -79,7 +83,7 @@ Lặp lại sau **mỗi** lượt cào/bảo trì chạy code cũ, cho tới khi
    `git merge-tree` báo merge sạch. Chạy lại test data + backend + `validate_contract.py` sau merge.
 3. Người dùng mở PR vào `release-mvp-v2`; Crawler CD deploy. Cổng khung giờ CD (23:45–08:40) còn trên `release-mvp-v2` cho tới khi
    PR #180 của Khoa merge.
-4. Sau deploy: một lượt bảo trì, rồi chạy bốn lệnh mục 2.2 ở chế độ xem trước — kỳ vọng 0 dòng cần sửa. Nếu đúng, bỏ bước 2.2.
+4. Sau deploy: một lượt bảo trì, rồi chạy năm lệnh mục 2.2 ở chế độ xem trước — kỳ vọng 0 dòng cần sửa. Nếu đúng, bỏ bước 2.2.
 
 ### 2.4. Cào tiếp và nạp đợt mới (không trần số điểm mỗi thành phố)
 
@@ -116,9 +120,11 @@ Quy trình một đợt (vd. `3i`):
 
 ## 3. Chờ người dùng quyết
 
-1. "Vinpearl Golf Hải Phòng" (Trip, không giá, đợt trước) trùng chỗ voucher Vinpearl có giá: ẩn hay giữ?
-2. Golf không giá: (a) bổ sung vào issue #185 cho team agent — giá trống ở golf là "chưa có giá", không phải miễn phí;
-   (b) thêm nguồn có bán tee time = mở rộng phạm vi (kiểm robots/điều khoản trước), chưa làm.
+1. ~~"Vinpearl Golf Hải Phòng" (Trip) trùng voucher Vinpearl có giá~~ — đã chốt 12/10 23:45: ẩn (`excluded_products.csv` + script 5
+   mục 2.2), xem `history/2026-10-12-gia-san-golf-tu-golfscape.md`.
+2. Golf không giá: (a) bổ sung vào issue #185 cho team agent — giá trống ở golf là "chưa có giá", không phải miễn phí (chưa làm);
+   (b) ~~thêm nguồn có giá~~ — đã chốt 12/10 23:45: chỉ giá hiện hành của nguồn cho phép cào; có cho Bà Nà Hills và Legend Đà Nẵng
+   (golfscape.com, `collectors/golf_prices.csv`); 17 sân còn lại không có nguồn như vậy nên để trống, không dùng giá tham khảo cũ.
 3. Sửa job cho lần sau (người dùng để sau): bỏ trần `tripAttractions.perDestination` 25, cào trang Trip Moments trong job, đưa
    override điểm đến của các đợt (`trip_poi_wave*/overrides_wave*.csv`, `nearest_destination_wave*.csv`, danh sách `--keep-dest`)
    vào `collectors/destination_overrides.csv` để dựng lại catalog từ đầu vẫn đúng.
@@ -135,4 +141,6 @@ PR #169 (orchestrator mới, merge 22:59 ngày 12/10) có thể đã đổi các
 - Lịch tắt VM 23:59 / bật 08:30: Khoa15 gỡ bằng gcloud 12/10, PR #180 (gỡ trong Terraform + bỏ cổng khung giờ CD) **chưa merge**.
   Đọc 23:21 ngày 12/10 (`gcloud compute instances list --project vinpearl-508801`): crawler, pg-a, pg-b, pg-w, bastion **lại gắn
   lịch** sau CD của #184/#169 (mỗi lượt CD trên `release-mvp-v2` gắn lại cho tới khi #180 merge). Đã báo người dùng để báo Khoa.
+  `gcloud compute operations list`: Khoa gỡ lần nữa 23:31, rồi chính lượt "Staging-HA Backend CD" Khoa chạy tay 23:35 (run
+  38278448557) gắn lại 23:37; đọc 23:48 cả năm VM vẫn gắn lịch, run còn chạy.
 - Hệ quả cho việc data: nếu VM tắt, không có DB 23:59–08:30; lượt cào 08:35 chạy sau khi VM bật.

@@ -47,6 +47,8 @@ products = [json.loads(line) for line in open("products.jsonl", encoding="utf-8"
    Với vé máy bay: trip.com liệt kê chuyến này kèm giá ở các ngày trong `datesSeen`. Luồng đặt chỗ thật phải gọi lại nguồn.
 2. **`unitPrice = null` không phải là miễn phí.** 300 sản phẩm còn `null`; 300 là điểm trip.com (tham quan, golf)
    không hiện giá — **chưa rõ có bán vé hay không** (`attributes.ticketed` vắng mặt). Web cần trạng thái hiển thị riêng, không quy về 0 đồng.
+   Sân golf Trip có giá hiện hành trên nền tảng đặt tee time (golfscape.com) lấy giá đó, `fieldSources.unitPrice` ghi nguồn
+   (`src/data_collection/collectors/golf_prices.csv`, 12/10/2026); sân golf không tìm được giá vẫn `null`.
 3. **Giá là một lần hỏi giá tại một thời điểm.** Khách sạn: nhận phòng 2026-10-15, 1 đêm, 2 người lớn (9.095 sản phẩm; ngày khác: 2026-09-29, 2026-10-23, 2026-11-14, 2026-11-20). Vé máy bay: giá tham khảo theo ngày trip.com liệt kê. Đọc `priceDate` / `datesSeen` thay vì giả định.
 4. **`destination` ≠ `province`.** `destination` là nhãn du lịch dùng để lọc và gợi ý (Hội An, Sa Pa);
    `attributes.province` là đơn vị hành chính (Quảng Nam, Lào Cai).

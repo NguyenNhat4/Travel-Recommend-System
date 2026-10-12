@@ -365,6 +365,44 @@ class QualityTests(unittest.TestCase):
             self.assertIn(ref, excluded)
             self.assertTrue(excluded[ref].startswith("không phải sản phẩm du lịch"))
 
+    def test_trip_golf_duplicating_priced_vinpearl_voucher_is_excluded(self):
+        """Người dùng chốt 12/10/2026: điểm Trip không giá "Vinpearl Golf Hải Phòng" trùng voucher Vinpearl có giá."""
+        self.assertIn("trip:attraction:147484815", n.load_excluded_products())
+
+    def test_golf_prices_have_source_url_and_observation_time(self):
+        prices = n.load_golf_prices()
+        self.assertEqual(set(prices), {"trip:attraction:58257538", "trip:attraction:15151594"})
+        for price in prices.values():
+            self.assertGreater(price["unitPrice"], 0)
+            self.assertEqual(price["priceSource"], "golfscape.com")
+            self.assertTrue(price["observedAt"].startswith("2026-10-12T"))
+
+    def test_golf_price_only_fills_golf_without_own_price(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "golf_prices.csv"
+            with open(path, "w", encoding="utf-8", newline="") as f:
+                w = csv.writer(f)
+                w.writerow(["sourceRef", "name", "unitPrice", "priceSource", "priceSourceUrl", "observedAt", "evidence"])
+                for ref in ("trip:attraction:1", "trip:attraction:2", "trip:attraction:3"):
+                    w.writerow([ref, "Sân", "3950000", "golfscape.com", "https://golfscape.com/x", "2026-10-12T16:35:18Z", "e"])
+                w.writerow(["trip:attraction:4", "Sân không URL", "3950000", "golfscape.com", "", "2026-10-12T16:35:18Z", "e"])
+            prices = n.load_golf_prices(path)
+        self.assertNotIn("trip:attraction:4", prices)
+        sources = {"name": "trip.com", "unitPrice": "trip.com"}
+        no_price = {"sourceRef": "trip:attraction:1", "taxonomy": "golf", "unitPrice": None,
+                    "attributes": {"fieldSources": dict(sources), "priceObservedAt": "2026-10-12T15:49:01Z"}}
+        own_price = {"sourceRef": "trip:attraction:2", "taxonomy": "golf", "unitPrice": 2500000,
+                     "attributes": {"fieldSources": dict(sources)}}
+        attraction = {"sourceRef": "trip:attraction:3", "taxonomy": "attraction", "unitPrice": None,
+                      "attributes": {"fieldSources": dict(sources)}}
+        self.assertEqual(n.apply_golf_prices([no_price, own_price, attraction], prices), 1)
+        self.assertEqual(no_price["unitPrice"], 3950000)
+        self.assertEqual(no_price["attributes"]["fieldSources"], {"name": "trip.com", "unitPrice": "golfscape.com"})
+        self.assertEqual(no_price["attributes"]["priceObservedAt"], "2026-10-12T16:35:18Z")
+        self.assertEqual(own_price["unitPrice"], 2500000)
+        self.assertEqual(own_price["attributes"]["fieldSources"]["unitPrice"], "trip.com")
+        self.assertIsNone(attraction["unitPrice"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -2098,6 +2098,43 @@ def non_tourism_reason(name: str | None) -> str | None:
     return None
 
 
+GOLF_PRICES_CSV = Path(__file__).resolve().parent / "collectors" / "golf_prices.csv"
+
+
+def load_golf_prices(path: Path | None = None) -> dict[str, dict]:
+    """Giá sân golf mà Trip không hiện giá, lấy từ nền tảng đặt tee time công khai giá và cho phép cào, kèm URL và thời
+    điểm quan sát (người dùng chốt 12/10/2026: chỉ giá hiện hành; sân không tìm được giá thì để trống, không dùng giá
+    tham khảo cũ)."""
+    path = path or GOLF_PRICES_CSV
+    if not path.exists():
+        return {}
+    out = {}
+    with open(path, encoding="utf-8-sig", newline="") as f:
+        for n, row in enumerate(csv.DictReader(f), 2):
+            ref, price, source, url, observed = (str(row.get(k) or "").strip() for k in
+                                                 ("sourceRef", "unitPrice", "priceSource", "priceSourceUrl", "observedAt"))
+            if not ref or not price.isdigit() or int(price) <= 0 or not source or not url or not observed:
+                log.warning("%s dòng %d: thiếu sourceRef/giá/nguồn/URL/thời điểm quan sát – bỏ qua", path.name, n)
+                continue
+            out[ref] = {"unitPrice": int(price), "priceSource": source, "observedAt": observed}
+    return out
+
+
+def apply_golf_prices(products: list[dict], prices: dict[str, dict]) -> int:
+    """Sân golf chưa có giá nhận giá ở golf_prices.csv; giá của chính nguồn (nếu có) luôn thắng."""
+    changed = 0
+    for p in products:
+        price = prices.get(p["sourceRef"])
+        if not price or p["taxonomy"] != "golf" or p.get("unitPrice") is not None:
+            continue
+        attrs = p["attributes"]
+        p["unitPrice"] = price["unitPrice"]
+        attrs["priceObservedAt"] = price["observedAt"]
+        attrs["fieldSources"] = dict(attrs.get("fieldSources") or {}, unitPrice=price["priceSource"])
+        changed += 1
+    return changed
+
+
 def apply_airline_logos(products: list[dict]) -> int:
     """Vé máy bay (`level: flight`) chưa có ảnh: logo hãng của chặng đi (collectors/airlines.py; người dùng chốt 12/10/2026,
     như các OTA). Tuyến bay để trống: ảnh thành phố đến đặt trên DB. Upsert của job không ghi đè image_url nên chỉ dòng mới nhận."""
@@ -3400,6 +3437,7 @@ def merge_catalog(a: argparse.Namespace, clock: StepClock, paths: Paths, entries
             dropped["đã soát tay và loại (collectors/excluded_products.csv)"] += before - len(products)
 
     apply_airline_logos(products)
+    stage_report["golfPricesApplied"] = apply_golf_prices(products, load_golf_prices())
 
     auto_excluded = [(p, non_tourism_reason(p["name"])) for p in products
                      if p["taxonomy"] == "attraction" and p["sourceRef"].startswith("trip:attraction:")]
