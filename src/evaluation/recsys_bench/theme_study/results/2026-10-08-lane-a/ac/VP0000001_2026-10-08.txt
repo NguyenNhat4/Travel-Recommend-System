@@ -1,0 +1,75 @@
+{
+  "asOf": "2026-10-08T00:00:00+00:00",
+  "user": "VP0000001",
+  "historyEvents": 12,
+  "strategy": "long_term",
+  "destination": null,
+  "nextVertical": "flight",
+  "diagnostics": {
+    "eventsUsed": 12,
+    "coldStart": false,
+    "excludedVerticals": [],
+    "trips": 8,
+    "latencyMs": 47
+  },
+  "extraFields": [
+    "sections"
+  ],
+  "items": [
+    {
+      "rank": 1,
+      "productId": "78d99b32-1150-5e38-beef-99dd98785b09",
+      "name": "Vé máy bay TP. Hồ Chí Minh - Phú Quốc",
+      "taxonomy": "flight",
+      "destination": "Phú Quốc",
+      "because": 2,
+      "becauseDaysAgo": [
+        17,
+        17
+      ]
+    },
+    {
+      "rank": 2,
+      "productId": "38cd32e4-0b7a-5076-9fe8-a1feb3961e00",
+      "name": "Vinpearl Resort Nha Trang",
+      "taxonomy": "hotel",
+      "destination": "Nha Trang",
+      "because": 2,
+      "becauseDaysAgo": [
+        17,
+        17
+      ]
+    },
+    {
+      "rank": 3,
+      "productId": "c6f8db47-eca2-5bde-befd-591c5abf27fb",
+      "name": "Lâu đài rượu vang RD Phan Thiết - Mũi Né",
+      "taxonomy": "attraction",
+      "destination": "Phan Thiết",
+      "because": 2,
+      "becauseDaysAgo": [
+        17,
+        17
+      ]
+    },
+    {
+      "rank": 4,
+      "productId": "0171db25-0c70-5126-add8-d837e9216545",
+      "name": "Vé máy bay Hà Nội - Nha Trang",
+      "taxonomy": "flight",
+      "destination": "Nha Trang",
+      "because": 2,
+      "becauseDaysAgo": [
+        17,
+        17
+      ]
+    }
+  ],
+  "contractErrors": [],
+  "day1Check": {
+    "strategy == cross_vertical": false,
+    "excludedVerticals == ['hotel']": false,
+    "không có item hotel": false,
+    "nextVertical ∈ {flight, attraction}": true
+  }
+}

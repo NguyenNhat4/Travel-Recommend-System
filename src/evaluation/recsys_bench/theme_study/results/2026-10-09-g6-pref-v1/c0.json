@@ -1,0 +1,138 @@
+{
+ "parity_mismatch_llbo200": 0,
+ "parity_mismatch_by_field": {},
+ "P0_prod/stats": {
+  "trips_p50": 6.0,
+  "share_trips_without_purchase": 0.731,
+  "share_open": 1.0
+ },
+ "P0_prod+F0_prod": {
+  "llbo": {
+   "n": 3003,
+   "hit@20": 0.7592,
+   "ndcg@10": 0.4556,
+   "hit@4": 0.5048,
+   "destHit@20": 0.9997
+  },
+  "temporal": {
+   "n": 660,
+   "hit@20": 0.1409,
+   "ndcg@10": 0.0775,
+   "hit@4": 0.0879,
+   "destHit@20": 0.7
+  },
+  "nexttrip": {
+   "n": 1552,
+   "hit@20": 0.0767,
+   "ndcg@10": 0.0229,
+   "hit@4": 0.0238,
+   "destHit@20": 0.6727
+  },
+  "coldstart": {
+   "n": 3750,
+   "hit@20": 0.7957,
+   "ndcg@10": 0.5713,
+   "hit@4": 0.6549,
+   "destHit@20": 0.9947
+  },
+  "syn_between": {
+   "themePrec": 0.45,
+   "themePrec_beach": 0.791,
+   "themePrec_mountain": 0.192,
+   "themePrec_city": 0.368,
+   "nextDestHit@20": 0.3958,
+   "nextDestHit@4": 0.1181,
+   "tgtHit@20": 0.0014,
+   "tgtHit@4": 0.0,
+   "distinctDestsTotal": 41,
+   "top5Dests": [
+    [
+     "Nha Trang",
+     1227
+    ],
+    [
+     "Côn Đảo",
+     541
+    ],
+    [
+     "TP. Hồ Chí Minh",
+     516
+    ],
+    [
+     "Đà Nẵng",
+     56
+    ],
+    [
+     "Phú Quốc",
+     44
+    ]
+   ]
+  },
+  "syn_open": {
+   "themePrec": 0.8,
+   "themePrec_beach": 0.808,
+   "themePrec_mountain": 0.796,
+   "themePrec_city": 0.796,
+   "nextDestHit@20": 1.0,
+   "nextDestHit@4": 1.0,
+   "tgtHit@20": 0.4264,
+   "tgtHit@4": 0.0833,
+   "distinctDestsTotal": 41,
+   "top5Dests": [
+    [
+     "Đà Lạt",
+     148
+    ],
+    [
+     "TP. Hồ Chí Minh",
+     144
+    ],
+    [
+     "Hà Nội",
+     136
+    ],
+    [
+     "Huế",
+     132
+    ],
+    [
+     "Phú Quốc",
+     128
+    ]
+   ]
+  },
+  "syn_noisy_paired": {
+   "themePrec": 0.361,
+   "themePrec_beach": 0.776,
+   "themePrec_mountain": 0.07,
+   "themePrec_city": 0.237,
+   "nextDestHit@20": 0.4389,
+   "nextDestHit@4": 0.1153,
+   "tgtHit@20": 0.0014,
+   "tgtHit@4": 0.0,
+   "distinctDestsTotal": 37,
+   "top5Dests": [
+    [
+     "Nha Trang",
+     1383
+    ],
+    [
+     "Côn Đảo",
+     586
+    ],
+    [
+     "TP. Hồ Chí Minh",
+     473
+    ],
+    [
+     "Đà Nẵng",
+     156
+    ],
+    [
+     "Đà Lạt",
+     34
+    ]
+   ]
+  }
+ }
+}

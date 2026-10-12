@@ -126,6 +126,7 @@ EVENT_FIELDS: dict[str, set[str]] = {
     "search.embed.failed": {"error_kind"},
     "recsys.recommend": {"persona", "branch", "result_count", "duration_ms"},
     "recsys.fallback": {"reason", "persona"},
+    "recsys.explore_fill": {"filled"},
     "cart.item.add": {"product_id", "quantity", "using_date", "owner_kind"},
     "cart.item.remove": {"cart_item_id", "owner_kind"},
     "draft.create": {"draft_id", "item_count", "owner_kind"},

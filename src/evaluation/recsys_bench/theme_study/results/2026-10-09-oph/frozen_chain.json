@@ -1,0 +1,5 @@
+{"frozenAt": "2026-10-09", "decidedOn": "TUNE (sha1(uid) mod 10 < 3), seed 13; track N trên DB vota_g6pref_v1",
+ "F_O": {"config": "B1p+orig:pen:0.15+sess", "kept": ["O1 w_origin=0.15", "O3 booked_first", "O4 session_agg"], "dropped": ["O2 (≈O1)", "O5 cart (lợi chỉ ở target-in-cart, temporal h@4 -0.0045)"]},
+ "F": {"config": "B2+orig:pen:0.15+sess", "kept": [], "dropped": ["N1 pop_h (G6: themePrec -0.039..-0.046, không split thật nào tăng)", "N2 dormHL:3 (không tác dụng)", "N3 dormPop:0.5 (G6 syn_dormant P3 themePrec -0.213 > ngưỡng 0.10)", "N4 p2Pop:0.45 (không khách nào chịu tác động)"]},
+ "OPH-prod": {"config": "B0+orig:pen:0.15+sess", "gate": "G7"},
+ "testSeeds": [101, 202, 303], "family": "family.json"}

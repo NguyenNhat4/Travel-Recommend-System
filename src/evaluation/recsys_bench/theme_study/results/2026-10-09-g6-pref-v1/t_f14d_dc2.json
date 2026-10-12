@@ -1,0 +1,153 @@
+{
+ "parity_mismatch_llbo200": 0,
+ "parity_mismatch_by_field": {},
+ "F14_calibration": {
+  "profile": "P2_confidence",
+  "calSeed": 99,
+  "requests": 120,
+  "q_low_p10": 0.8588106036186218,
+  "q_high_p99": 0.9390765833854675,
+  "q_display": [
+   0.8588,
+   0.9391
+  ],
+  "pinned": [
+   0.8529,
+   0.9387
+  ]
+ },
+ "P2_confidence/stats": {
+  "trips_p50": 6.0,
+  "share_trips_without_purchase": 0.731,
+  "share_open": 1.0
+ },
+ "P2_confidence+F14d_betweenQuantilePop45+destCap2": {
+  "llbo": {
+   "n": 3003,
+   "hit@20": 0.7582,
+   "ndcg@10": 0.4542,
+   "hit@4": 0.5028,
+   "destHit@20": 0.9997
+  },
+  "temporal": {
+   "n": 660,
+   "hit@20": 0.1288,
+   "ndcg@10": 0.0769,
+   "hit@4": 0.0879,
+   "destHit@20": 0.7303
+  },
+  "nexttrip": {
+   "n": 1552,
+   "hit@20": 0.0528,
+   "ndcg@10": 0.0218,
+   "hit@4": 0.0213,
+   "destHit@20": 0.7429
+  },
+  "coldstart": {
+   "n": 3750,
+   "hit@20": 0.7936,
+   "ndcg@10": 0.5679,
+   "hit@4": 0.6544,
+   "destHit@20": 0.9947
+  },
+  "syn_between": {
+   "themePrec": 0.585,
+   "themePrec_beach": 0.78,
+   "themePrec_mountain": 0.411,
+   "themePrec_city": 0.565,
+   "nextDestHit@20": 0.4208,
+   "nextDestHit@4": 0.1278,
+   "tgtHit@20": 0.0083,
+   "tgtHit@4": 0.0028,
+   "distinctDestsTotal": 45,
+   "top5Dests": [
+    [
+     "Nha Trang",
+     844
+    ],
+    [
+     "TP. Hồ Chí Minh",
+     459
+    ],
+    [
+     "Côn Đảo",
+     116
+    ],
+    [
+     "Sa Pa",
+     100
+    ],
+    [
+     "Phú Quốc",
+     82
+    ]
+   ]
+  },
+  "syn_open": {
+   "themePrec": 0.8,
+   "themePrec_beach": 0.808,
+   "themePrec_mountain": 0.796,
+   "themePrec_city": 0.796,
+   "nextDestHit@20": 1.0,
+   "nextDestHit@4": 1.0,
+   "tgtHit@20": 0.425,
+   "tgtHit@4": 0.0847,
+   "distinctDestsTotal": 41,
+   "top5Dests": [
+    [
+     "Đà Lạt",
+     148
+    ],
+    [
+     "TP. Hồ Chí Minh",
+     144
+    ],
+    [
+     "Hà Nội",
+     136
+    ],
+    [
+     "Huế",
+     132
+    ],
+    [
+     "Phú Quốc",
+     128
+    ]
+   ]
+  },
+  "syn_noisy_paired": {
+   "themePrec": 0.562,
+   "themePrec_beach": 0.836,
+   "themePrec_mountain": 0.429,
+   "themePrec_city": 0.42,
+   "nextDestHit@20": 0.3847,
+   "nextDestHit@4": 0.1028,
+   "tgtHit@20": 0.0083,
+   "tgtHit@4": 0.0014,
+   "distinctDestsTotal": 46,
+   "top5Dests": [
+    [
+     "Nha Trang",
+     976
+    ],
+    [
+     "TP. Hồ Chí Minh",
+     166
+    ],
+    [
+     "Côn Đảo",
+     122
+    ],
+    [
+     "Sa Pa",
+     88
+    ],
+    [
+     "Đà Lạt",
+     71
+    ]
+   ]
+  }
+ }
+}

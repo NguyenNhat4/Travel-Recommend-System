@@ -110,7 +110,8 @@ P1 = {"destination": "Nha Trang", "past_trip_days_ago": (520, 300, 125), "past_v
       "upcoming_purchase_days_ago": 3, "upcoming_using_in_days": 12, "upcoming_nights": 1, "upcoming_brand": "Vinpearl",
       "upcoming_view_days_before": 1, "upcoming_cart_minutes_before": 20, "phone": "0900000001"}
 P2 = {"destination": "Phú Quốc", "view_days_ago": (2, 1)}
-P3 = {"destination": "Phú Quốc", "trip_days_ago": (470, 190), "verticals": ("hotel", "ticket")}
+#: Chuyến cuối 400 ngày (> 365 = ngưỡng dormant của engine, chốt 09/10); CDP lifecycle theo luật seed → churned.
+P3 = {"destination": "Phú Quốc", "trip_days_ago": (700, 400), "verticals": ("hotel", "ticket")}
 PERSONA_LEAD_DAYS = (7, 20)               # chuyến cũ của persona: nhận phòng sau ngày mua 7–20 ngày
 TEST_USERS = 50
 TEST_USER_EMAIL = "test{n:02d}@vota.demo"
@@ -158,6 +159,27 @@ ABANDONED_CART_RATE = 0.0                 # xác suất chèn một lần bỏ g
 ABANDONED_SAME_DEST_RATE = 0.5            # lần bỏ giỏ cùng điểm đến với chuyến mua kế sau nó …
 ABANDONED_DAYS_BEFORE = (3, 60)           # … và xảy ra 3–60 ngày trước chuyến đó
 
+# ================================================================== §4.3 sở thích chủ đề (g6-pref-v1, 08/10/2026)
+# Gate G6 (docs/spec/bench/recsys-bam-so-thich-quyet-dinh.md §7.1): seed demo bốc điểm đến mỗi chuyến từ phân phối TOÀN CỤC, không phụ
+# thuộc khách, nên split temporal / nexttrip không thể thưởng cho việc bám sở thích. Profile `g6-pref-v1` gán cho mỗi khách thường một
+# chủ đề ẨN (biển / núi / thành phố) và bốc điểm đến cùng chủ đề với xác suất THEME_PREF_RATE. Nhãn chỉ ra file sidecar
+# (`user_themes.jsonl` / `themes.json`), không có cột DB, không thuật toán nào đọc. Demo / eval-v2 / append-v1: THEME_PREF_RATE = 0 → không
+# tạo stream RNG nào, output không đổi byte.
+THEME_PREF_RATE = 0.0                     # demo: tắt. Xác suất mỗi lần bốc điểm đến lấy trong chủ đề của khách (còn lại: bốc toàn cục)
+THEME_NO_PREF_SHARE = 0.30                # 30% khách thường không có sở thích (theme None → luôn bốc toàn cục)
+THEME_MIX = None                          # trọng số chọn chủ đề cho khách; None = theo khối lượng bookable của từng chủ đề trong catalog lúc sinh
+# Nhãn chủ đề chép từ theme_exp.THEME (beach / mountain / city; theme_exp import lại từ đây để một nguồn). "mixed" và 7 điểm đến chưa
+# nhãn của prodcopy (Quảng Ngãi, Quảng Trị, Cà Mau, Sóc Trăng, Vinpearl Onsen Resort Tuyên Quang, Tuyên Quang, Bạc Liêu) KHÔNG có ở đây
+# = không chủ đề, chỉ tới được qua lần bốc toàn cục.
+DEST_THEMES = {
+    "beach": ["Phú Quốc", "Nha Trang", "Đà Nẵng", "Quy Nhơn", "Phan Thiết", "Côn Đảo", "Cát Bà", "Tuy Hòa", "Hạ Long",
+              "Sầm Sơn", "Vũng Tàu", "Phan Rang", "Lý Sơn", "Hà Tiên", "Vân Đồn"],
+    "mountain": ["Đà Lạt", "Sa Pa", "Điện Biên", "Mai Châu", "Pleiku", "Buôn Ma Thuột", "Phong Nha",
+                 "Kon Tum", "Tam Đảo", "Mù Cang Chải", "Sơn La", "Mộc Châu", "Hà Giang", "Bảo Lộc", "Cao Bằng", "Lạng Sơn"],
+    "city": ["Hà Nội", "TP. Hồ Chí Minh", "Huế", "Hội An", "Hải Phòng", "Cần Thơ", "Ninh Bình",
+             "Mỹ Tho", "Vĩnh Long", "Đồng Tháp"],
+}
+
 # Profile `eval-v2` (05/10/2026, người dùng chốt): bộ dữ liệu sinh RIÊNG để đánh giá đủ tín hiệu RecSys — khách quay lại (CF, chuyến
 # kế tiếp), bỏ giỏ, chuyến một loại đa dạng. Nạp vào database riêng, không phải demo / staging; db/verify.sql (cổng 2.000 khách,
 # 6.000–8.000 event, ≤ 15 event/khách) không áp cho bộ này. Ghi đè hằng ở trên khi chạy `seed_histories --profile eval-v2`.
@@ -192,4 +214,11 @@ PROFILES["append-v1"] = {
     "DEFAULT_USERS": 5_000 + len(PERSONAS),
     "MESSY_PURCHASE_BAD_PRODUCT": 0.0,
     "MESSY_DROP_GROUP": 0.0,
+}
+
+# G6 (08/10/2026, MOCK_DATA_SPEC §4.3): append-v1 + sở thích chủ đề ẩn. Chỉ cho DB nghiên cứu RecSys (`append_histories prepare
+# --profile g6-pref-v1`); demo / staging không dùng. Với THEME_PREF_RATE = 0 output trùng byte append-v1.
+PROFILES["g6-pref-v1"] = {
+    **PROFILES["append-v1"],
+    "THEME_PREF_RATE": 0.8,
 }

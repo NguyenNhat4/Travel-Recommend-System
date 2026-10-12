@@ -90,3 +90,34 @@ def test_popular_units_fill_the_pool_when_vector_neighbours_lack_variety(service
 
     assert len(run(0)["recommendations"]) == 1
     assert len(run(50)["recommendations"]) > 1
+
+
+def _booking_history(uid, room, using_date, now):
+    """Khách xem, thêm giỏ rồi mua một hạng phòng — khuôn AC-REC-02 (`docs/prd/requirements.md` §3) trên catalog giả."""
+    t = lambda h: (now.replace(microsecond=0) - __import__("datetime").timedelta(hours=h)).isoformat()
+    return [
+        {"cdpUserId": uid, "eventName": "product_view", "productId": room, "timestamp": t(30), "eventGroupId": None},
+        {"cdpUserId": uid, "eventName": "add_to_cart", "productId": room, "timestamp": t(29), "usingDate": using_date},
+        {"cdpUserId": uid, "eventName": "purchase", "productId": room, "timestamp": t(28), "usingDate": using_date,
+         "eventGroupId": "AC02"},
+    ]
+
+
+def test_ac_rec_02_booking_prioritises_flights_and_activities_at_the_destination(services):
+    """AC-REC-02: vừa đặt phòng tại X (chuyến chưa diễn ra) → trang xác nhận (khoá destination) và trang chủ (không khoá)
+    đều ưu tiên vé máy bay đến X và hoạt động tại X, không có khách sạn, mỗi món có because[]. Bản trên catalog thật:
+    src/evaluation/recsys_bench/tests/test_ac_rec02_danang.py."""
+    now = services["now"]
+    history = _booking_history("AC02", "R1", "2026-10-01", now)
+    for destination in ("Nha Trang", None):
+        r = services["recommend"]("AC02", k=4, now=now, events=history, destination=destination)
+        recs = r["recommendations"]
+        assert r["strategy"] == "cross_vertical" and r["destination"] == "Nha Trang"
+        assert r["diagnostics"]["excludedVerticals"] == ["hotel"]
+        assert recs and all(x["destination"] == "Nha Trang" and x["taxonomy"] != "hotel" for x in recs)
+        assert "H1" not in {x["productId"] for x in recs}
+        taxonomies = {x["taxonomy"] for x in recs}
+        assert "flight" in taxonomies and taxonomies & {"attraction", "combo", "golf"}, taxonomies
+        # FakeEmbedder băm text bằng hash() (ngẫu nhiên theo tiến trình) nên cos giữa phòng đã mua và từng món có thể âm →
+        # because[] của món đó rỗng theo đúng luật phân rã; chỉ đòi ít nhất một món có lý do. Bản catalog thật kiểm đủ 4/4.
+        assert any(x["because"] for x in recs)

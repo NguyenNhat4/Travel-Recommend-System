@@ -72,6 +72,8 @@ class UserCtx:
     excluded: set[str]                               # taxonomy đã mua trong trip mở
     bought: set[int]                                 # unit đã mua (mọi trip) — luôn bị loại
     user_row: int | None                             # hàng trong TrainData.U, None nếu khách không có event trong X_train
+    origin: str | None = None                        # điểm xuất phát chuyến bay của khách (`profile.infer_origin`, FR-REC-04 09/10)
+    next_trip_scoring: bool = False                  # engine chấm F14c ở nhánh không chuyến mở (bật + đúng tag model, PR-B 09/10)
 
     @property
     def strategy(self) -> str:

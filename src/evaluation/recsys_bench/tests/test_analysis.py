@@ -40,8 +40,9 @@ def test_labels_target_trip_and_segments_sum_to_users(world, events):
     index, split, rows, views = _world_rows(world, events)
     labels = user_labels(split, index, rows["engine"], views)
     assert set(labels) == set(split.targets) and all(set(labels[u]) == set(LABELS) for u in labels)
-    # u1: target FL1 thuộc trip T1 (đã có trong train, nhưng trip mở là view lẻ _solo_A1) → closed; u5: mua lại G1 trong trip T7 mới → new
-    assert target_trip_kind(split, "u1", views["u1"]) == "closed" and labels["u1"]["activeTripIsSolo"] is True
+    # u1: target FL1 thuộc trip T1; từ 09/10 chuyến đã đặt T1 là trip mở (trước đó view lẻ _solo_A1 chiếm chỗ, I-3) → open;
+    # u5: mua lại G1 trong trip T7 mới → new
+    assert target_trip_kind(split, "u1", views["u1"]) == "open" and labels["u1"]["activeTripIsSolo"] is False
     assert target_trip_kind(split, "u5", views["u5"]) == "new" and labels["u5"]["strategy"] == "cross_vertical"
     assert labels["VP0000001"]["persona"] is True and labels["u2"]["lifecycleAtAsOf"] == "active"
     assert labels["u1"]["targetTaxonomy"] == "flight"
@@ -74,8 +75,8 @@ def test_case_reasons_follow_priority_and_cases_are_deterministic(world, events)
     ceil = ceiling(rows["engine"], split, index, views, k=20)
     # u5: bị lọc (đã mua + golf) → filtered dù các lý do sau cũng đúng
     assert case_reason("u5", rows, ceil["perUser"], views, split, base="engine")[0] == "filtered"
-    # u1: tới được nhưng trip mở là view lẻ → wrong_active_trip
-    assert case_reason("u1", rows, ceil["perUser"], views, split, base="engine")[0] == "wrong_active_trip"
+    # u1: trip mở đã là chuyến chứa target (09/10, sửa I-3) nên không còn wrong_active_trip; engine không lấy được F1 vào list
+    assert case_reason("u1", rows, ceil["perUser"], views, split, base="engine")[0] == "out_of_candidates"
     # u2: không trip mở, trả đủ 20 → không có engine_nommr → ranked_low; có nommr → pool_miss / mmr_demoted
     r2 = dict(rows["engine"]["u2"]); r2["returned"] = 20
     rows2 = {**rows, "engine": {**rows["engine"], "u2": r2}}

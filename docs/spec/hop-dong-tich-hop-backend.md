@@ -564,7 +564,7 @@ Mỗi phần tử `recommendations[]` là một `ProductSummary` rút gọn (b�
 ```text
 cross_vertical     Người dùng đã đặt một danh mục trong chuyến, hệ thống gợi ý danh mục còn thiếu
 recent_activity    Có event gần đây nhưng chưa thành chuyến rõ ràng
-dormant            Event gần nhất cách đây trên 90 ngày
+dormant            Chuyến gần nhất cách đây trên 365 ngày (từ 2026-10-09; trước đó 90) — `diagnostics.dormant` vẫn là 90 ngày
 popular            Không đủ dữ liệu cá nhân hóa, hoặc khách ẩn danh
 long_term          Có lịch sử, không có chuyến đang mở, chưa quá ngưỡng dormant của engine
 cold_start_content Có chuyến đang mở, tổng dưới 3 event dùng được, chưa mua gì trong chuyến
