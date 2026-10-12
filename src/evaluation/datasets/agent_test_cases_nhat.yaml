@@ -253,3 +253,45 @@
         status: [NEEDS_CLARIFICATION, COMPLETED]
         judge:
           - Nếu lượt trước có vé máy bay thì trợ lý liệt kê các chuyến khác cùng ngày của từng chặng (số hiệu, giờ bay, giá, chênh giá) với nút chọn, hoặc nói rõ ngày đó không còn chuyến khác và gợi ý đổi ngày; không lập lại đúng lịch cũ.
+
+# TC-15 — Không muốn đi nữa thì cảm ơn, hẹn gặp lại (AC-AGT-01, chốt 2026-10-12). Lỗi gốc (báo lỗi 12/10): "ko đi du lịch
+# nữa" bị `classify` xếp `travel` (hoặc `vague`) nên hiện form thông tin chuyến; đủ thông tin thì lập lại lịch.
+# Mong đợi: nhãn `stop` → `converse`, không form, không hỏi thêm; chuyến giữ nguyên để "đi tiếp" nối lại được.
+# Nhãn do LLM chọn (nhiệt độ 1): chạy kèm --repeat.
+- id: TC-15
+  category: stop_planning
+  fr: [FR-AGT-01]
+  turns:
+    - message: Lập lịch Đà Nẵng 3 ngày cho mình
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        toolCalled: false
+        intent: {destination: Đà Nẵng, days: 3}
+    - message: ko đi du lịch nữa
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        toolCalled: false
+        nodesInclude: [classify, converse]
+        nodesExclude: [extract, explore, clarify]
+        intent: {destination: Đà Nẵng, days: 3}
+        forbiddenText: [clarificationForm, missingFields]
+        judge:
+          - Trợ lý cảm ơn và hẹn gặp lại; không hỏi ngày đi, số người, ngân sách hay thông tin chuyến đi nào.
+          - Trợ lý không thuyết phục người dùng đi tiếp và không trình bày lịch trình hay gợi ý sản phẩm.
+    - message: thôi mình đi tiếp, khởi hành {today+3}, 2 người lớn
+      expect:
+        httpStatus: 200
+        status: [COMPLETED, FALLBACK, NO_RESULTS]
+        intent: {destination: Đà Nẵng, days: 3, startDate: "{today+3:iso}", party.adults: 2}
+    - message: thôi không đi nữa đâu
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        toolCalled: false
+        nodesInclude: [classify, converse]
+        nodesExclude: [extract, tool]
+        forbiddenText: [clarificationForm]
+        judge:
+          - Trợ lý cảm ơn và hẹn gặp lại, không lập lại lịch trình và không hỏi thêm.

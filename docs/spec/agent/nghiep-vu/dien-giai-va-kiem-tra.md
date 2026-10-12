@@ -47,7 +47,7 @@ sequenceDiagram
 | **Ngoài ra trong lịch trình** | Sản phẩm đã xếp mà LLM quên nhắc, để vẫn bấm được |
 
 - Dòng di chuyển `TRANSFER` được viết lại đúng ghi chú, không thêm chi tiết chuyến bay.
-- Mọi câu trả lời (trừ chào hỏi) mở đầu bằng **Tiêu đề** in đậm.
+- Mọi câu trả lời (trừ chào hỏi, cảm ơn, chào tạm biệt khi người dùng không muốn đi nữa) mở đầu bằng **Tiêu đề** in đậm.
 
 ## Kiểm tra ở `finalize`
 

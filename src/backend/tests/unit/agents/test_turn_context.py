@@ -65,10 +65,17 @@ class TurnNoteTests(unittest.TestCase):
                  ({'clarification_reason': 'destination_kind', 'destination_kind': 'biển'},
                   'hỏi chọn điểm đến kiểu "biển" trong danh sách điểm đến'),
                  ({'missing_fields': ['startDate', 'budget']}, 'hỏi ngày khởi hành, ngân sách'),
-                 ({'refusal': True}, 'từ chối: yêu cầu ngoài phạm vi lập lịch trình')]
+                 ({'refusal': True}, 'từ chối: yêu cầu ngoài phạm vi lập lịch trình'),
+                 ({'interaction_type': 'stop', 'missing_fields': ['days']},
+                  'người dùng dừng lên lịch: cảm ơn, hẹn gặp lại, không hỏi thêm')]
         for state, expected in cases:
             with self.subTest(expected=expected):
                 self.assertEqual(question_note(state), expected)
+
+    def test_a_goodbye_is_noted_so_the_next_turn_knows_the_user_stopped(self):
+        note = turn_note({'intent': HANOI, 'interaction_type': 'stop'},
+                         {'status': 'NEEDS_CLARIFICATION', 'question': 'Cảm ơn bạn, hẹn gặp lại!'}, 200)
+        self.assertEqual(note, 'người dùng dừng lên lịch: cảm ơn, hẹn gặp lại, không hỏi thêm')
 
     def test_english(self):
         note = turn_note({'intent': HANOI, 'language': 'en'}, itinerary_response(), 200)

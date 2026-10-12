@@ -94,11 +94,11 @@ def invalid_title(state: dict) -> str:
 
 
 def reply_title(state: dict) -> str | None:
-    """Tiêu đề cố định của câu hỏi/từ chối này, theo lý do và phần còn thiếu; `None` với chào hỏi, cảm ơn.
+    """Tiêu đề cố định của câu hỏi/từ chối này, theo lý do và phần còn thiếu; `None` với chào hỏi, cảm ơn, chào tạm biệt.
 
     Dùng khi LLM không đặt `title` hoặc không viết được câu (câu dự phòng luôn có tiêu đề cùng dạng).
     """
-    if state.get("interaction_type") == "conversation":
+    if state.get("interaction_type") in ("conversation", "stop"):
         return None
     reason = state.get("clarification_reason")
     if reason == "invalid_input":
@@ -301,10 +301,12 @@ def clarification_fallback(state: dict) -> dict:
 
 
 def conversational_fallback(state: dict) -> dict:
-    """Bản dự phòng cho `converse`: đầu vào bị guardrail chặn thì trả lỗi cố định; ngoài phạm vi thì câu cố định 200
-    kèm nút; còn lại hỏi như `clarify`."""
+    """Bản dự phòng cho `converse`: đầu vào bị guardrail chặn thì trả lỗi cố định; không muốn đi nữa thì câu chào cố
+    định; ngoài phạm vi thì câu cố định 200 kèm nút; còn lại hỏi như `clarify`."""
     if state.get("blocked_by_guardrail"):
         return failure(state, "VALIDATION_ERROR", messages.REFUSAL_BLOCKED, 400)
+    if state.get("interaction_type") == "stop":
+        return _question_response(state, message(state, "farewell"))
     if state.get("refusal"):
         return with_suggestions(state, {"response": {"status": "NEEDS_CLARIFICATION",
                                                      "conversationId": state["conversation_id"],

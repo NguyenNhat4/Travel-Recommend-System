@@ -25,6 +25,7 @@
 | TC-08 | Không dựng lịch trình hoàn chỉnh khi thiếu ngày | 9 |
 | TC-09 | Không tự sinh hoặc đảo ngày khởi hành | 10 |
 | TC-11 | Lịch không lặp một nơi | — (trace LangSmith 08/10/2026) |
+| TC-15 | Không muốn đi nữa thì cảm ơn, hẹn gặp lại | — (báo lỗi 12/10/2026) |
 
 ## TC-01 - Cập nhật ngày qua nhiều lượt chat
 
@@ -376,3 +377,28 @@ Quốc] - Vé đi thuyền Venice (Water Taxi)" khác mã, cùng tên.
 
 - [ ] Lịch không có hai điểm tham quan cùng một nơi hoặc cùng một trải nghiệm.
 - [ ] Mã bị bỏ có cảnh báo `PRODUCT_DROPPED_DUPLICATE` và hiện ở mục "Đã loại" của eval.
+
+## TC-15 - Không muốn đi nữa thì cảm ơn, hẹn gặp lại
+
+**Nguồn:** báo lỗi của người dùng 12/10/2026 (không có trong PDF). Phục vụ AC-AGT-01 (chốt 2026-10-12, đề xuất
+`docs/prd/update-archive/2026-10-12-dung-len-lich-cam-on-hen-gap-lai.md`).
+
+### Hội thoại tái hiện
+
+```text
+T1: Lập lịch Đà Nẵng 3 ngày cho mình
+A1: Hỏi gộp ngày đi, số người, ngân sách, nơi đi.
+T2: ko đi du lịch nữa
+T3: thôi mình đi tiếp, khởi hành <3 ngày sau>, 2 người lớn
+T4: thôi không đi nữa đâu
+```
+
+### Lỗi quan sát trong nguồn
+
+T2 hiện form thông tin chuyến đi (đã đồng ý lập lịch mà còn thiếu trường bắt buộc). Khi chuyến đã đủ thông tin, câu tương
+tự làm trợ lý tìm và lập lại lịch.
+
+### Tiêu chí đạt đề xuất
+
+- [ ] T2, T4: trợ lý cảm ơn và hẹn gặp lại; không form, không hỏi thêm, không thuyết phục, không gọi tool.
+- [ ] T3: chuyến Đà Nẵng 3 ngày vẫn được giữ, chỉ cần nói nốt ngày đi và số người là lập lịch.
