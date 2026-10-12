@@ -6,6 +6,7 @@ from typing import Any
 
 import yaml
 
+from . import shown
 from .messages import plain_links, strip_title
 from .turn_notes import stage, trip_summary
 
@@ -91,7 +92,14 @@ def llm_context(state: dict[str, Any], *, intent: dict[str, Any] | None = None,
       nghĩa (`turn_notes`), không còn cả bài lịch trình kèm giá — thứ khiến LLM chép giá/khách sạn cũ thành ràng buộc mới.
     - `last_assistant_message`: câu cuối của trợ lý, nguyên văn khi ngắn (câu hỏi lại) để hiểu câu trả lời ngắn
       ("1 ngày thôi") là trả lời cho câu nào; lịch trình thì là ghi chú.
-    - `known_constraints`, `previous_selection`: ràng buộc đã chốt và sản phẩm đã cho xem (id để loại/đổi món).
+    - `known_constraints`: ràng buộc đã chốt.
+    - `already_shown`: sản phẩm đã cho xem trong cả hội thoại, mỗi cái một mã `#n` và một dòng thông tin, kèm lịch gần
+      nhất tóm theo mã (`shown.context`), để LLM biết "còn gì nữa", "rẻ hơn", "cái thứ hai" nói tới thẻ nào mà không
+      phải tra lại cả hội thoại. Dữ kiện nêu trong câu trả lời vẫn tra lại ngay lượt đó.
+    - `previous_selection`: sản phẩm của lịch gần nhất kèm id (để loại/đổi món).
+    Thứ tự giữ như trước khi có `already_shown`: tin nhắn hiện tại (`message`, node tự thêm) đứng đầu payload. Đo lặp
+    `classify` 2026-10-12 (plan B3): đưa tin nhắn xuống cuối payload làm câu hỏi vé hiểu sai nhiều hơn rõ rệt ("vé nha
+    trang đi phú quốc bao nhiêu" hỏi lại loại vé 24/24 lần → 10/24), còn thêm khối `already_shown` thì không đổi kết quả.
     Lịch sử bị giới hạn (20 message, 8.000 ký tự) nên phần tóm tắt giữ được thông tin của lượt cũ đã bị cắt.
     Node truyền `intent`/`constraints` khi đã có bản mới hơn state (ví dụ điểm đến đã chuẩn hóa ở `tool`).
     """
@@ -104,12 +112,17 @@ def llm_context(state: dict[str, Any], *, intent: dict[str, Any] | None = None,
     if last is not None:
         verbatim = plain_links(strip_title(last["content"]))
         last_text = verbatim if len(verbatim) <= MAX_VERBATIM_ASSISTANT_CHARS else _assistant_line(last)
-    return {"trip_so_far": trip_summary(state, intent),
-            "stage": stage(state),
-            "conversation_history": history,
-            "last_assistant_message": last_text,
-            "known_constraints": constraints if constraints is not None else state.get("constraints", {}),
-            "previous_selection": state.get("previous_selection", [])}
+    context: dict[str, Any] = {
+        "trip_so_far": trip_summary(state, intent),
+        "stage": stage(state),
+        "conversation_history": history,
+        "last_assistant_message": last_text,
+        "known_constraints": constraints if constraints is not None else state.get("constraints", {})}
+    block = shown.context(state)
+    if block:
+        context["already_shown"] = block
+    context["previous_selection"] = state.get("previous_selection", [])
+    return context
 
 
 class _PromptDumper(yaml.SafeDumper):

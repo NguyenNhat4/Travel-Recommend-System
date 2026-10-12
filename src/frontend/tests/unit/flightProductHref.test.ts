@@ -22,3 +22,10 @@ describe('flightProductHref', () => {
     expect(flightProductHref({ destination: 'Phú Quốc', attributes: {} })).toBeNull();
   });
 });
+
+
+it('carries the exact fare id so the landing page can select the quoted price', () => {
+  const href = flightProductHref({ productId: 'fare-cheap', destination: 'Hà Nội',
+    attributes: { originCity: 'Đà Nẵng', destinationCity: 'Hà Nội', departureAt: '2999-10-10T08:00:00+07:00' } });
+  expect(href).toContain('fare=fare-cheap');
+});

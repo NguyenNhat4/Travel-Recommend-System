@@ -43,7 +43,9 @@ def build_graph(checkpointer: Any | None = None, *, tools: ToolExecutorPort | No
                 tool_timeout_seconds: float = 1.0, llm: Any | None = None,
                 store: ConversationStorePort | None = None, owner: str = "anonymous",
                 archive: ConversationArchivePort | None = None, cdp_user_id: str | None = None,
-                require_recommendations: bool = False, llm_timeout_seconds: float | None = None):
+                require_recommendations: bool = False, llm_timeout_seconds: float | None = None,
+                orchestrator_enabled: bool = False, orchestrator_llm: Any | None = None,
+                orchestrator_budget_seconds: float = 10):
     """Build the lab topology with injected API tools; execute API tools using ainvoke.
 
     Runtime clients and JWT are captured in the tool node, never checkpointed.
@@ -61,6 +63,8 @@ def build_graph(checkpointer: Any | None = None, *, tools: ToolExecutorPort | No
         ask_clarification_node_async,
         classify_node,
         classify_node_async,
+        precheck_node,
+        precheck_node_async,
         extract_node,
         extract_node_async,
         apply_option_node,
@@ -80,15 +84,16 @@ def build_graph(checkpointer: Any | None = None, *, tools: ToolExecutorPort | No
         narrate_node,
         narrate_node_async,
         retry_or_fallback_node,
-        tool_node,
+        tool_node, orchestrate_node, run_jobs_node, gatekeep_node,
     )
     from .routing import (
         route_after_classify,
+        route_after_precheck,
         route_after_evaluate,
         route_after_explore,
         route_after_extract,
         route_after_intake,
-        route_after_retry,
+        route_after_retry, route_after_orchestrate, route_after_jobs, route_after_gatekeep,
     )
 
     # `partial` objects carry no __name__, so nodes built from one are named explicitly;
@@ -103,11 +108,15 @@ def build_graph(checkpointer: Any | None = None, *, tools: ToolExecutorPort | No
         "retry": retry_or_fallback_node, "dead_letter": dead_letter_node,
     }.items():
         graph.add_node(name, RunnableLambda(timed(node), afunc=timed(partial(run_local, node=node))))
-    graph.add_node("intake", RunnableLambda(timed(intake_node), afunc=timed(partial(
-        intake_node_async, store=store, owner=owner, archive=archive, cdp_user_id=cdp_user_id))))
+    graph.add_node("intake", RunnableLambda(timed(partial(intake_node, orchestrator_enabled=orchestrator_enabled)), afunc=timed(partial(
+        intake_node_async, store=store, owner=owner, archive=archive, cdp_user_id=cdp_user_id, orchestrator_enabled=orchestrator_enabled))))
     graph.add_node("finalize", RunnableLambda(timed(finalize_node), afunc=timed(partial(
         finalize_node_async, store=store, owner=owner, archive=archive, cdp_user_id=cdp_user_id))))
-    graph.add_node("classify", RunnableLambda(timed(partial(classify_node, llm=llm)), afunc=timed(partial(classify_node_async, llm=llm, timeout_seconds=llm_timeout_seconds if llm_timeout_seconds is not None else 2)), name="classify_node"))
+    entry_node = "precheck" if orchestrator_enabled else "classify"
+    if orchestrator_enabled:
+        graph.add_node("precheck", RunnableLambda(timed(precheck_node), afunc=timed(precheck_node_async), name="precheck_node"))
+    else:
+        graph.add_node("classify", RunnableLambda(timed(partial(classify_node, llm=llm)), afunc=timed(partial(classify_node_async, llm=llm, timeout_seconds=llm_timeout_seconds if llm_timeout_seconds is not None else 2)), name="classify_node"))
     graph.add_node("extract", RunnableLambda(timed(partial(extract_node, llm=llm)), afunc=timed(partial(extract_node_async, llm=llm, timeout_seconds=llm_timeout_seconds if llm_timeout_seconds is not None else 2, tools=tools, tool_timeout_seconds=tool_timeout_seconds)), name="extract_node"))
     graph.add_node("converse", RunnableLambda(timed(partial(converse_node, llm=llm)), afunc=timed(partial(converse_node_async, llm=llm, timeout_seconds=llm_timeout_seconds if llm_timeout_seconds is not None else 3, tools=tools, tool_timeout_seconds=tool_timeout_seconds)), name="converse_node"))
     # Khám phá trước khi lập lịch (FR-AGT-06, chốt 2026-10-10): Search theo điểm đến, thẻ chọn bằng luật, LLM viết lời dẫn.
@@ -119,15 +128,30 @@ def build_graph(checkpointer: Any | None = None, *, tools: ToolExecutorPort | No
                                    llm=llm, require_recommendations=require_recommendations,
                                    llm_timeout_seconds=llm_timeout_seconds if llm_timeout_seconds is not None else 2)))
 
+    if orchestrator_enabled:
+        graph.add_node("orchestrate", timed(partial(orchestrate_node, llm=orchestrator_llm or llm, tools=tools,
+                                                  timeout_seconds=llm_timeout_seconds or 10,
+                                                  tool_timeout_seconds=tool_timeout_seconds,
+                                                  budget_seconds=orchestrator_budget_seconds)))
+        graph.add_node("run_jobs", timed(partial(run_jobs_node, tools=tools, tool_timeout_seconds=tool_timeout_seconds,
+                                               budget_seconds=orchestrator_budget_seconds)))
+        graph.add_node("gatekeep", timed(partial(gatekeep_node, budget_seconds=orchestrator_budget_seconds)))
+        graph.add_conditional_edges("orchestrate", route_after_orchestrate,
+                                    {name: name for name in ("gatekeep", "run_jobs", "extract")})
+        graph.add_conditional_edges("run_jobs", route_after_jobs,
+                                    {name: name for name in ("gatekeep", "orchestrate", "run_jobs")})
+        graph.add_conditional_edges("gatekeep", route_after_gatekeep,
+                                    {name: name for name in ("finalize", "orchestrate", "run_jobs")})
+
     graph.add_edge(START, "intake")
     # Chọn một phương án đã hiện (hàng thẻ, AC-AGT-04): lấy lịch đã dựng, không phân luồng/tìm lại/gọi LLM.
-    graph.add_conditional_edges("intake", route_after_intake,
-                                {name: name for name in ("classify", "apply_option")})
-    graph.add_conditional_edges("classify", route_after_classify,
+    graph.add_conditional_edges("intake", partial(route_after_intake, orchestrator_enabled=True) if orchestrator_enabled else route_after_intake,
+                                {name: name for name in (entry_node, "apply_option")})
+    graph.add_conditional_edges(entry_node, route_after_precheck if orchestrator_enabled else route_after_classify,
                                 {name: name for name in ("converse", "extract", "clarify", "explore", "tool",
-                                                         "dead_letter")})
+                                                         "dead_letter", *(("orchestrate", "run_jobs") if orchestrator_enabled else ()))})
     graph.add_conditional_edges("extract", route_after_extract,
-                                {name: name for name in ("tool", "clarify", "explore", "converse", "dead_letter")})
+                                {name: name for name in ("tool", "clarify", "explore", "converse", "dead_letter", *(("gatekeep",) if orchestrator_enabled else ()))})
     graph.add_edge("tool", "evaluate")
     graph.add_conditional_edges("evaluate", route_after_evaluate,
                                 {name: name for name in ("retry", "dead_letter", "filter", "clarify")})

@@ -102,3 +102,55 @@ class BuildChatModelTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OrchestratorModelTests(unittest.TestCase):
+    def build(self, **overrides):
+        from src.backend.app.infrastructure.llm import build_orchestrator_model
+        return build_orchestrator_model(settings(itinerary_orchestrator="on", **overrides), "shared")
+
+    def test_off_or_blank_model_reuses_shared_model(self):
+        from src.backend.app.infrastructure.llm import build_orchestrator_model
+        self.assertEqual(build_orchestrator_model(settings(itinerary_orchestrator="off", itinerary_orchestrator_model="gpt-6.1-sol"), "shared"), "shared")
+        self.assertEqual(self.build(itinerary_orchestrator_model=None), "shared")
+
+    def test_explicit_openai_provider_wins_even_when_common_provider_is_gemini(self):
+        mock, calls = fake_sdk("langchain_openai", "ChatOpenAI")
+        with mock:
+            result = self.build(openai_api_key="o", gemini_api_key="g", itinerary_orchestrator_model="gpt-6.1-sol",
+                                itinerary_orchestrator_provider="openai", itinerary_orchestrator_reasoning_effort="low")
+        self.assertEqual(result.model.model, "gpt-6.1-sol")
+        self.assertNotIn("temperature", calls[0])
+        self.assertEqual(calls[0]["reasoning_effort"], "low")
+        self.assertEqual(calls[0]["max_retries"], 0)
+
+    def test_model_selection_requires_explicit_provider_and_matching_key(self):
+        for provider in (None, "openai", "gemini", "anthropic"):
+            with self.subTest(provider=provider), self.assertRaises(RuntimeError):
+                self.build(itinerary_orchestrator_model="gpt-6.1-sol", itinerary_orchestrator_provider=provider)
+
+    def test_gpt_61_sol_rejects_unsupported_reasoning_effort(self):
+        for effort in ("none", "minimal"):
+            with self.subTest(effort=effort), self.assertRaises(RuntimeError):
+                self.build(openai_api_key="o", itinerary_orchestrator_model="gpt-6.1-sol",
+                           itinerary_orchestrator_provider="openai", itinerary_orchestrator_reasoning_effort=effort)
+
+    def test_openai_uses_native_schema_without_function_tools(self):
+        from src.backend.app.infrastructure.llm.client import StructuredOrchestratorModel
+        from unittest.mock import Mock
+        inner = Mock()
+        adapter = StructuredOrchestratorModel(inner)
+        adapter.with_structured_output("schema")
+        inner.with_structured_output.assert_called_once_with("schema", method="json_schema", strict=True)
+
+    def test_empty_optional_env_fields_are_none_and_rollout_defaults_off(self):
+        value = settings(itinerary_orchestrator_model="", itinerary_orchestrator_provider="", itinerary_orchestrator_reasoning_effort="")
+        self.assertEqual(value.itinerary_orchestrator, "off")
+        self.assertIsNone(value.itinerary_orchestrator_model)
+        self.assertIsNone(value.itinerary_orchestrator_provider)
+        self.assertIsNone(value.itinerary_orchestrator_reasoning_effort)
+
+    def test_orchestrator_does_not_bind_function_tools(self):
+        from src.backend.app.infrastructure.llm.client import StructuredOrchestratorModel
+        with self.assertRaises(RuntimeError):
+            StructuredOrchestratorModel(None).bind_tools([], tool_choice="any")

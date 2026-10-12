@@ -20,7 +20,8 @@ from src.backend.app.domain.search.normalize import DESTINATION_ALIASES
 
 from ..models import ExploreNarration
 from . import tool_planning
-from .classification import REQUIRED_FIELDS, asks_for_plan
+from .classification import REQUIRED_FIELDS
+from .consent import asks_for_plan
 from .history import llm_context, prompt_yaml
 from .messages import PRODUCT_LINK, event, message, money, titled
 from .narration import product_link
@@ -29,7 +30,10 @@ from .prompts import EXPLORE_PROMPT
 #: Tối đa 4 thẻ mỗi lượt (khung chat hẹp): hỏi chung thì 2 điểm tham quan + 2 khách sạn, hỏi riêng một loại thì 4.
 MAX_CARDS = 4
 #: Hỏi về chỗ ở (so trên chuỗi đã `fold`).
-_HOTEL_FOCUS = re.compile(r"\b(?:khach san|ks|resort|homestay|hostel|cho o|cho nghi|noi o|o dau|villa|nha nghi|hotel)\b")
+_HOTEL_FOCUS = re.compile(r"\b(?:khach san|ks|resort|homestay|hostel|cho o|cho nghi|noi o|villa|nha nghi|hotel)\b")
+#: "ở đâu" chỉ là hỏi chỗ ở khi câu không nêu nơi nào: "chùa thiên mụ ở đâu" hỏi vị trí ngôi chùa (chat thử 11/10 ra danh
+#: sách khách sạn).
+_WHERE = re.compile(r"\bo dau\b")
 _POOL = re.compile(r"\b(?:ho boi|be boi|pool)\b")
 #: "phố cổ" không kèm thành phố: catalog có hai nơi gọi như vậy, phải hỏi lại (chat thử 10/10).
 #: Hỏi lại khi tên nơi khớp nhiều thành phố: tối đa chừng này lựa chọn (mỗi lựa chọn một nút).
@@ -47,6 +51,9 @@ MAX_SUGGESTIONS = 3
 CATALOG_HINT = 12
 NAMED_CALL_ID = "explore-named"
 NEAR_CALL_ID = "explore-near"
+#: Danh sách khách sạn còn phòng của cả điểm đến, xếp theo giá ("rẻ nhất", "đắt nhất"): lấy chừng này dòng.
+PRICE_CALL_ID = "explore-price"
+PRICE_LISTING = 8
 #: Khách sạn "gần <nơi>": trong bán kính này (đường chim bay) quanh nơi đó; kịch bản cảnh 5 dùng 1 km quanh phố cổ.
 NEAR_HOTEL_KM = 1.5
 PLACE_CALL_ID = "explore-place"
@@ -184,7 +191,8 @@ def hotel_focus(state: dict) -> bool:
     if focus == "sights":
         return False
     query = fold(state.get("query", ""))
-    return focus == "hotels" or bool(_HOTEL_FOCUS.search(query) or _POOL.search(query))
+    where = bool(_WHERE.search(query)) and not state.get("explore_place")
+    return focus == "hotels" or bool(_HOTEL_FOCUS.search(query) or _POOL.search(query) or where)
 
 
 def _without_cities(text: str, names: list[str]) -> str:
@@ -280,11 +288,41 @@ def asked_only(state: dict, cards: list[dict]) -> bool:
 
 def _hotel_cards(state: dict, hotels: list[dict], limit: int) -> list[dict]:
     """Thẻ khách sạn: người dùng muốn chỗ rẻ (`explore_price` = `cheap`, LLM hiểu từ câu: "giá rẻ", "rẻ nhất là chỗ
-    nào") thì rẻ nhất trước (chat thử M08 từng có khách sạn 3 triệu/đêm khi hỏi "giá rẻ"); không thì mỗi thẻ một lý do."""
+    nào") thì rẻ nhất trước (chat thử M08 từng có khách sạn 3 triệu/đêm khi hỏi "giá rẻ"); hỏi chỗ đắt nhất (`dear`) thì
+    đắt nhất trước; không thì mỗi thẻ một lý do."""
     if state.get("explore_price") == "cheap":
         # Không khách sạn nào có giá thì không nói được nơi nào rẻ: chọn như thường thay vì trả rỗng.
         return rules.cheapest_cards(hotels, limit) or rules.pick_cards(hotels, limit, "hotel")
+    if state.get("explore_price") == "dear":
+        return rules.dearest_cards(hotels, limit) or rules.pick_cards(hotels, limit, "hotel")
     return rules.pick_cards(hotels, limit, "hotel")
+
+
+def price_scope(state: dict, results: list[dict]) -> str | None:
+    """Câu "rẻ nhất/đắt nhất" đúng tới đâu: `city` khi thẻ lấy từ danh sách khách sạn còn phòng của cả điểm đến xếp theo
+    giá (`price_listing`), `found` khi chỉ trong các khách sạn Search tìm được (gần một nơi)."""
+    if state.get("explore_price") not in ("cheap", "dear") or not hotel_focus(state):
+        return None
+    return "city" if any(result.get("tool_call_id") == PRICE_CALL_ID for result in results) else "found"
+
+
+async def price_listing(state: dict, destination: str, tools: ToolExecutorPort,
+                        timeout_seconds: float) -> list[dict]:
+    """Hỏi khách sạn rẻ nhất/đắt nhất của cả điểm đến (không kèm "gần <nơi>"): danh sách khách sạn còn phòng của catalog
+    xếp theo giá, thay cho vài kết quả Search ("khách sạn được đánh giá tốt") vốn không phải rẻ/đắt nhất thành phố (chat
+    thử M04)."""
+    if state.get("explore_price") not in ("cheap", "dear") or not hotel_focus(state) or near_place_name(state) \
+            or not hasattr(tools, "list_products"):
+        return []
+    sort = "price_asc" if state["explore_price"] == "cheap" else "price_desc"
+    try:
+        data = await asyncio.wait_for(tools.list_products({"destination": destination, "taxonomy": "hotel",
+                                                           "sort": sort, "availableOnly": True,
+                                                           "limit": PRICE_LISTING}), timeout_seconds)
+    except Exception:
+        return []
+    items = [product for product in data.get("results") or [] if product.get("unitPrice") is not None]
+    return [{"tool_call_id": PRICE_CALL_ID, "data": {"results": items}}] if items else []
 
 
 def pick(state: dict, destination: str, results: list[dict]) -> tuple[list[dict], str | None]:
@@ -305,7 +343,9 @@ def pick(state: dict, destination: str, results: list[dict]) -> tuple[list[dict]
         if near:
             return near, None
     general = [result for result in results if result.get("tool_call_id") != NAMED_CALL_ID]
-    hotels = _products(general, destination, "hotel")
+    by_price = [result for result in general if result.get("tool_call_id") == PRICE_CALL_ID]
+    # Đã có danh sách xếp theo giá của cả điểm đến thì chỉ dùng nó cho thẻ khách sạn.
+    hotels = _products(by_price or general, destination, "hotel")
     filtered_by = None
     if _POOL.search(query):
         hotels, filtered_by = rules.with_amenity(hotels, "pool"), "pool"
@@ -397,6 +437,7 @@ async def search(state: dict, destination: str, tools: ToolExecutorPort, timeout
         calls.append({**named, "id": NAMED_CALL_ID})
     plan = [call for call in calls if call is not None]
     results = await tool_planning.run_calls({**state, "tool_results": []}, plan, tools, timeout_seconds)
+    results += await price_listing(state, destination, tools, timeout_seconds)
     if near and not _products(results, destination, "hotel"):
         broad = _search_call(state, destination, "hotel", base_hotel_query, 4)
         if broad is not None:
@@ -576,6 +617,9 @@ def _card_input(card: dict, language: str = "vi") -> dict:
     # Giờ mở cửa, vé vào chỉ đưa cho nơi người dùng hỏi tới, để trả lời đúng câu hỏi; nơi khác nằm trên thẻ.
     if rules.ASKED in card["reasons"]:
         facts = {"openingHours": attributes["openingHours"]} if attributes.get("openingHours") else {}
+        if isinstance(attributes.get("address"), str) and attributes["address"].strip():
+            # "Chùa Thiên Mụ ở đâu": địa chỉ của catalog, LLM chép nguyên văn; không có thì không nói vị trí.
+            facts["address"] = attributes["address"].strip()
         if product.get("taxonomy") == "attraction" and (rules.free_entry(product) or product.get("unitPrice") is None):
             # Nơi công cộng không bán vé (Hồ Hoàn Kiếm): lịch cũng coi là tham quan tự do (`FREE_ENTRY_ASSUMED`).
             facts["entry"] = "free_no_ticket_sold"
@@ -696,6 +740,10 @@ def explore_input(state: dict, destination: str, cards: list[dict], filtered_by:
                "price_asked": price_asked(state),
                "asked_only": asked_only(state, cards),
                "near_place": _near_place(state, cards),
+               "price_scope": state.get("price_scope"),
+               # Nơi người dùng hỏi mà không tra ra (không có thẻ `asked`): LLM nói rõ là không kiểm được nơi đó.
+               "place_not_found": state.get("explore_place") if state.get("explore_place") and not hotel_focus(state)
+               and not any(rules.ASKED in card["reasons"] for card in cards) else None,
                "cards": [_card_input(card, state.get("language", "vi")) for card in cards],
                "catalog_destinations": (supported or [])[:CATALOG_HINT],
                "previous_suggestions": state.get("last_suggestions", []),
@@ -878,6 +926,7 @@ async def explore(state: dict, *, tools: ToolExecutorPort | None, llm_call, tool
     results = await search(state, destination, tools, tool_timeout_seconds)
     search_failed = bool(results) and all("error" in result for result in results)
     cards, filtered_by = pick(state, destination, results)
+    state = {**state, "price_scope": price_scope(state, results)}
     narration = None
     if cards:
         try:

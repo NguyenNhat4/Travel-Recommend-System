@@ -430,7 +430,7 @@ class ExploreFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('attraction', result['response']['searchResults'])
         self.assertIn('hồ bơi', result['response']['question'])
 
-    async def test_yes_after_the_offer_starts_planning_with_one_question_and_no_form(self):
+    async def test_yes_after_the_offer_starts_planning_with_one_question_and_a_closed_form(self):
         store = InMemoryConversationStore()
         clients = self.clients()
         first = await self.run_graph(ExploringLlm(route='explore', extraction=Extraction(patch={'destination': 'Hà Nội'})),
@@ -447,8 +447,25 @@ class ExploreFlowTests(unittest.IsolatedAsyncioTestCase):
                                    owner='u', state={'query': 'ok', 'conversation_id': cid})
         self.assertTrue(yes['plan_consent'])
         self.assertEqual(yes['response']['status'], 'NEEDS_CLARIFICATION')
-        self.assertNotIn('clarificationForm', yes['response'])
+        # AC-AGT-01 chốt 12/10: chỉ kèm nút mở form, form không tự mở.
+        self.assertFalse(yes['response']['clarificationForm']['autoOpen'])
         self.assertIn('days', yes['response']['missingFields'])
+
+    async def test_yes_after_the_offer_plans_even_when_the_llm_calls_it_conversation(self):
+        """Snapshot sau merge release-mvp-v2 (12/10): prompt mới gọi "ok" ngay sau lời chào tạm biệt là `conversation`,
+        LLM thật gắn cả "ok" sau lời mời lập lịch là `conversation` và trợ lý hỏi bằng câu, không có nút form."""
+        store = InMemoryConversationStore()
+        clients = self.clients()
+        first = await self.run_graph(ExploringLlm(route='explore', extraction=Extraction(patch={'destination': 'Hà Nội'})),
+                                     clients, store=store, owner='u', state={'query': 'Hà Nội có gì?',
+                                                                             'start_date_asked': False})
+        yes = await self.run_graph(ExploringLlm(route='conversation', extraction=Extraction()), clients, store=store,
+                                   owner='u', state={'query': 'ok', 'conversation_id': first['conversation_id']})
+        self.assertTrue(yes['plan_consent'])
+        self.assertEqual(yes['response']['status'], 'NEEDS_CLARIFICATION')
+        self.assertIn('clarificationForm', yes['response'])
+        # Hỏi gộp mọi trường còn thiếu (AC-AGT-01), không chỉ số ngày như nhánh trò chuyện.
+        self.assertTrue({'days', 'startDate', 'party'} <= set(yes['response']['missingFields']))
 
     async def test_not_knowing_twice_lets_the_assistant_pick_and_explore_a_place(self):
         clients = Clients(products=[dict(item, destination='Đà Nẵng') for item in HANOI], destinations=['Đà Nẵng'])
@@ -634,3 +651,38 @@ class ExploreSearchFailureTests(unittest.IsolatedAsyncioTestCase):
                                       clients, state={'query': 'Hà Nội có gì?'})
         self.assertIn('chưa tải được', result['response']['question'])
         self.assertNotIn('searchResults', result['response'])
+
+
+class HotelPriceOrderTests(unittest.IsolatedAsyncioTestCase):
+    """"ks nào đắt nhất", "rẻ nhất là chỗ nào" (chat thử M04): thẻ theo giá của cả điểm đến (danh sách catalog xếp theo giá),
+    không chỉ vài kết quả Search."""
+
+    def test_dearest_cards_put_the_priciest_first(self):
+        hotels = [place('a', 'hotel', unitPrice=500_000), place('b', 'hotel', unitPrice=3_000_000),
+                  place('c', 'hotel', unitPrice=None)]
+        cards = rules.dearest_cards(hotels, 3)
+        self.assertEqual([card['product']['productId'] for card in cards], ['b', 'a'])
+        self.assertEqual(cards[0]['reasons'], [rules.DEAREST])
+
+    async def test_the_catalog_listing_sorted_by_price_is_used_for_the_whole_city(self):
+        from src.backend.app.agents.steps import exploration
+
+        class Listing:
+            def __init__(self):
+                self.params = None
+
+            async def list_products(self, params):
+                self.params = params
+                return {'results': [place('lux', 'hotel', unitPrice=5_000_000)], 'total': 1}
+
+        tools = Listing()
+        state = {'query': 'ks nào đắt nhất', 'explore_focus': 'hotels', 'explore_price': 'dear'}
+        results = await exploration.price_listing(state, 'Hà Nội', tools, 1)
+        self.assertEqual(tools.params['sort'], 'price_desc')
+        self.assertEqual(exploration.price_scope(state, results), 'city')
+        cards, _ = exploration.pick(state, 'Hà Nội', results)
+        self.assertEqual(cards[0]['product']['productId'], 'lux')
+        # Hỏi gần một nơi thì chỉ trong các khách sạn tìm được quanh nơi đó.
+        near = {**state, 'explore_place': 'Hồ Hoàn Kiếm'}
+        self.assertEqual(await exploration.price_listing(near, 'Hà Nội', tools, 1), [])
+        self.assertEqual(exploration.price_scope(near, []), 'found')

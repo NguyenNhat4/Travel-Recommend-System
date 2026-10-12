@@ -77,6 +77,12 @@ POST /api/v1/assistant/itineraries hoặc /stream
 Kết quả tool quay lại `retrieval.py` để gộp, hậu kiểm và ghi nguồn; `planning.py` xếp lịch tất định;
 `finalize` kiểm OpenAPI, grounding và lưu conversation trước khi trả response.
 
+Với `ITINERARY_ORCHESTRATOR=on` (mặc định off, chốt 12/10): `precheck` giữ luật đầu vào (không LLM phân loại), chuyển hội thoại tới
+`steps/orchestration.py` (`orchestrate` → `run_jobs` → `gatekeep`). `steps/jobs.py` thực thi qua port, domain
+`gatekeeper.py` kiểm nguồn/phạm vi/số/thẻ; `steps/shown.py` ghi trí nhớ từ response ở finalize. Model riêng nằm tại
+`app.state.itinerary_orchestrator_llm`, không vào state. Nhánh lập lịch và narrate giữ nguyên.
+Các bước B11–B13 (bộ đo, chuyển mặc định, gỡ regex) chưa làm; cờ off phải giữ snapshot hiện có.
+
 ## 4. Trách nhiệm các lớp — dùng để tránh sửa sai chỗ
 
 | Lớp | Chịu trách nhiệm | Không đặt ở đây |
@@ -98,6 +104,18 @@ Kết quả tool quay lại `retrieval.py` để gộp, hậu kiểm và ghi ngu
 
 Bằng chứng tối thiểu: state trước/sau node, node path, tool name/arguments, final status. Không dùng chất
 lượng ranking để kết luận prompt tốt hoặc xấu.
+
+**Snapshot hành vi** (`tests/unit/agents/test_behavior_snapshot.py`, chạy cùng unit test agent). Phát lại 57 hội thoại
+với tool ghi từ chế độ `inprocess` (dữ liệu thật) và LLM ghi sẵn, rồi so từng lượt (response, node path, state lưu,
+payload gửi LLM, tham số gọi tool). Phát lại không cần DB hay mạng. Refactor phải giữ nó xanh. Đổi prompt hoặc hành vi **có
+chủ ý** thì test fail. Khi đó ghi lại bằng `inprocess` và LLM thật (cần Postgres, Weaviate local), chỉ những kịch bản bị
+ảnh hưởng, rồi đọc diff của `snapshot.json` trước khi commit:
+
+```bash
+HF_HUB_OFFLINE=1 .venv/bin/python -m src.backend.tests.unit.agents.behavior_snapshot.record --only X01-plan-doi,v5-SC-A
+```
+
+Chi tiết: `src/backend/tests/unit/agents/behavior_snapshot/harness.py`, plan `docs/plan/2026-10-11-refactor-agent-giu-hanh-vi.md`.
 
 ### B. Tune retrieval/recommendation
 

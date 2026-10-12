@@ -1,39 +1,46 @@
 # Hiểu ý định và hỏi lại
 
-Phục vụ FR-AGT-01, AC-AGT-01, NFR-SEC-01, NFR-SEC-04. Mô tả theo code tại 2026-10-07; khi lệch, PRD và contract thắng.
+Phục vụ FR-AGT-01, AC-AGT-01, NFR-SEC-01, NFR-SEC-04. Mô tả theo code tại 2026-10-11; khi lệch, PRD và contract thắng.
 
 ## Mục đích
 
 Từ câu chat, trợ lý dựng [intent](glossary.md#intent) và [constraints](glossary.md#constraints) của chuyến đi.
 Thiếu hoặc sai thì hỏi lại. Chỉ đủ thông tin mới đi tìm sản phẩm.
 
+File này mô tả phần **sau khi người dùng [đồng ý lập lịch](glossary.md#dong-y-lap-lich)**. Trước đó trợ lý không hỏi
+thông tin chuyến: xem [tro-chuyen-va-kham-pha.md](tro-chuyen-va-kham-pha.md).
+
 ## Phân luồng (`classify`)
 
 Thứ tự kiểm trong `classify`; bước nào khớp thì dừng ở đó:
 
-1. **Chip sửa tay** (`intentOverride`, không có message) → du lịch, không gọi LLM.
+1. **Chip sửa tay** (`intentOverride`, không có message) → du lịch, coi như đồng ý, không gọi LLM.
 2. **Chèn lệnh / đòi secret** khớp mẫu → từ chối 400, không gọi LLM nào nữa.
-3. **Tin rác** (tầng 1): rác → hỏi "chưa hiểu" (200); chỉ có tục tĩu → từ chối 400. Không gọi LLM.
+3. **Tin rác** (tầng 1): rác → hỏi "chưa hiểu" (200); chỉ có tục tĩu → từ chối 400. Không gọi LLM. Câu cụt giữa hội
+   thoại ("2 ng", "3n") không bị coi là rác.
 4. **Câu dừng chắc chắn** (`classification.says_stop`) → `stop`, không gọi LLM `classify`; lời chào ở `converse` vẫn do LLM
    viết. So nguyên câu sau khi `fold` và bỏ từ đệm cuối câu (nhé, nha, đâu, luôn, rồi, mà, bạn), từ vựng đóng:
    `[thôi | vậy thôi] [mình | tôi | tui | tao | em | anh | chị] không/ko/k/kh/khg/hong/hok/hk/hem/chẳng/chả [muốn | cần]
    đi / đi du lịch / du lịch / đi chơi / lên lịch / lập lịch / lên kế hoạch + nữa`; `[thôi] huỷ chuyến [đi] / lịch trình [này]`;
    `thôi khỏi lên/lập lịch`; `[ok | cảm ơn | thanks] tạm biệt / bye / goodbye / hẹn gặp lại`. Câu có "?", có thêm tên nơi, số,
-   ngày hay chữ ngoài danh sách không khớp và đi bước 5. Cố ý không nhận "thôi khỏi", "thôi cảm ơn", "cảm ơn" đứng riêng
+   ngày hay chữ ngoài danh sách không khớp và đi bước 6. Cố ý không nhận "thôi khỏi", "thôi cảm ơn", "cảm ơn" đứng riêng
    (hay là từ chối một gợi ý hoặc còn nói tiếp) và "không đi" thiếu "nữa".
-5. **LLM gắn một nhãn:**
-   - `travel` → đi `extract`;
-   - `vague` → nếu đã có lượt trước và còn thiếu trường bắt buộc thì hỏi lại kèm form, không thì như `travel`;
-   - `stop` → người dùng không muốn đi hoặc không muốn lên lịch nữa ("ko đi nữa", "thôi huỷ lịch trình"): `converse` cảm
-     ơn, hẹn gặp lại; không form, không hỏi thêm, không nút; chuyến đang lên giữ nguyên, chỉ bỏ lời mời lập lịch đang chờ
-     (AC-AGT-01, chốt 2026-10-12);
-   - `conversation` → trò chuyện;
-   - `out_of_scope` → từ chối 400.
+5. **Luật tất định, không LLM:** chọn "phương án N", đổi khách sạn/chuyến bay
+   ([sua-lich-qua-nhieu-luot.md](sua-lich-qua-nhieu-luot.md#doi-ve-khach-san)), bấm nút của câu trả lời vé.
+6. **LLM gắn một nhãn** (`TurnRoute`) và đọc ra tên nơi, thành phố, câu hỏi vé, có xin lập lịch/xin form không:
 
-`out_of_scope` gồm đặt chỗ, thanh toán, giỏ hàng, huỷ/đổi đơn đã có, chèn lệnh, đòi secret. "Đổi ngày", "không đổi nữa",
-"không đi Đà Nẵng nữa" (chê một nơi) vẫn là `travel`; "không đi nữa" là `stop`, không phải huỷ đơn. Nối lại sau khi dừng
-("thôi đi tiếp") là `travel` trên chuyến đã giữ. Luật guardrail chi tiết: [../langgraph-nodes.md](../langgraph-nodes.md)
-mục Guardrail.
+| Nhãn | Đi đâu |
+|---|---|
+| `travel` | `extract`. Chưa đồng ý thì `extract` chỉ ghi lại rồi chuyển sang khám phá |
+| `explore` (hỏi về một nơi) | `explore` |
+| `fare` (hỏi giá, giờ vé máy bay) | `explore`, nhánh giá vé → [tu-van-ve-may-bay.md](tu-van-ve-may-bay.md) |
+| `vague` ("không biết", "tuỳ") | Đã đồng ý và còn thiếu trường bắt buộc: hỏi kèm form. Chưa đồng ý: bậc gợi ý của trò chuyện |
+| `stop` (không muốn đi hoặc lên lịch nữa: "ko đi nữa", "thôi huỷ lịch trình") | `converse` cảm ơn, hẹn gặp lại; không form, không hỏi thêm, không nút; chuyến đang lên giữ nguyên, chỉ bỏ lời mời lập lịch đang chờ (AC-AGT-01, chốt 2026-10-12) |
+| `conversation` | `converse` |
+| `out_of_scope` | `converse`, trả lời 200: nói rõ không làm được, kèm nút việc gần nhất |
+
+"Đổi ngày", "không đổi nữa", "không đi Đà Nẵng nữa" (chê một nơi) vẫn là `travel`; "không đi nữa" là `stop`, không phải huỷ đơn. Nối lại sau khi dừng ("thôi đi tiếp") là `travel` trên chuyến đã giữ. Luật guardrail chi tiết: [../langgraph-nodes.md](../langgraph-nodes.md) mục
+Guardrail.
 
 ## Trường của chuyến đi
 
@@ -45,13 +52,16 @@ mục Guardrail.
 | `party` | Có | ≥ 1 người lớn, ≥ 0 trẻ em | |
 | `budget` | Không | ≥ 0 | Hỏi một lần, không bắt buộc |
 | `origin` (nơi đi) | Không | — | Hỏi một lần; chỉ dùng cho [vé máy bay](ve-may-bay.md) |
-| `interests`, `pace` | Không | — | `pace` hiện chưa ảnh hưởng xếp lịch |
+| `interests` | Không | — | Sở thích khách sạn (hồ bơi, trẻ nhỏ, view biển…) là **ưu tiên mềm**, không phải bộ lọc bắt buộc |
+| `pace` | Không | — | Hiện chưa ảnh hưởng xếp lịch |
 
 ## Quyết định hỏi lại (`extract`)
 
 ```mermaid
 flowchart TD
-    A[LLM trích patch + constraints] --> B{Giá trị sai?<br/>ngày đã qua, ngoài giới hạn}
+    A[LLM trích patch + constraints] --> Z{Đã đồng ý<br/>lập lịch?}
+    Z -- "chưa" --> ZK[Khám phá / trò chuyện<br/>tro-chuyen-va-kham-pha.md]
+    Z -- "có" --> B{Giá trị sai?<br/>ngày đã qua, ngoài giới hạn}
     B -- có --> Q1[Hỏi lại từng giá trị sai]
     B -- không --> C{Điểm đến ngoài catalog?}
     C -- có --> Q1
@@ -73,16 +83,22 @@ flowchart TD
 
 ## Business rule
 
-- **Hỏi gộp một lần mỗi hội thoại.** Câu hỏi gồm ngày đi, số người, ngân sách và nơi đi. Đã hỏi rồi mà vẫn thiếu ngày đi
-  hoặc số người thì lượt nào cũng kèm form, cho tới khi đủ. Thiếu ngân sách hay nơi đi thì không hỏi lại.
-- **Form gợi ý** (`clarificationForm`) gồm 6 ô: điểm đến, số ngày, ngày đi, số người, ngân sách, nơi đi.
+- **Hỏi gộp một lần mỗi hội thoại.** Câu hỏi gồm ngày đi, số người, ngân sách, nơi đi và sở thích; vừa đồng ý mà mới có
+  điểm đến thì hỏi cả số ngày. Đã hỏi rồi mà vẫn thiếu ngày đi hoặc số người thì lượt nào cũng kèm form, cho tới khi đủ.
+  Thiếu ngân sách hay nơi đi thì không hỏi lại. "Không có ngân sách" được LLM nhận ra (`skipped_details`) và không bị
+  đòi nữa.
+- **Xin form** ("cho mình cái form"): coi như đồng ý, có form điền sẵn ngay lượt đó.
+- **Form gợi ý** (`clarificationForm`) gồm 7 ô: điểm đến, số ngày, ngày đi, số người, ngân sách, nơi đi, sở thích (chọn
+  nhiều).
   - Giá trị người dùng đã nói luôn thắng giá trị gợi ý.
-  - Gợi ý mặc định: 1 ngày, 2 người lớn, ngày đi hôm nay (`startDateMin` = hôm nay), điểm đến nhiều sản phẩm nhất.
+  - Gợi ý mặc định: 1 ngày, 2 người lớn. Ngày đi và điểm đến người dùng chưa nói thì để trống (`startDateMin` = hôm nay); form chỉ xác nhận được khi đã chọn đủ hai ô này (cập nhật 2026-10-12).
   - Không kèm form khi đang hỏi chọn điểm đến theo loại nơi.
+- **"Đổi sang chỗ khác" chưa nêu nơi mới:** hỏi "đổi sang đâu" kèm 3 nút "Đổi sang <nơi>", không form.
 - **Đếm vòng hỏi** (`clarification_rounds`) chỉ tăng khi còn thiếu điểm đến/số ngày.
 - **Chip sửa tay là quyền cao nhất.** Ghi đè lên giá trị LLM trích, và không kích hoạt câu hỏi gộp.
 - **Chỉ phục vụ điểm đến trong catalog (Việt Nam).** Ngoài catalog thì xoá điểm đến, giữ phần còn lại của chuyến, hỏi lại
-  (200, không phải lỗi). Tên gần đúng được LLM chọn lại trong danh sách catalog; câu trả lời phải nằm trong danh sách.
+  (200, không phải lỗi). LLM nhận danh sách điểm đến và cách viết tắt ("hn", "sg") để tự đổi về tên catalog; câu trả lời
+  phải nằm trong danh sách.
 - **Điều kiện bắt buộc không ai đáp ứng** (sau khi tìm): `require_hotel`, `specific_hotel`, `specific_activity`. Trợ lý hỏi
   trước khi nới, nêu lý do thật lấy từ dữ liệu (sai ngày, vượt giá…) và đưa chip gợi ý. Xem [tim-ung-vien.md](tim-ung-vien.md).
 

@@ -68,7 +68,10 @@ describe('WidgetFlightCard', () => {
     expect(screen.getByText('Chiều về')).toBeTruthy();
     expect(screen.getByText("1h00'")).toBeTruthy();
     expect(screen.getByText('1.730.362 ₫')).toBeTruthy();
-    expect(screen.getByText(/\/khách × 2/)).toBeTruthy();
+    expect(screen.getByText(/\/khách × 2 khách/)).toBeTruthy();
+    // Giờ bay đã ở ô giờ lớn; dòng chiều chỉ ghi số hiệu, không lặp lại giờ.
+    expect(screen.getByText('VN1823')).toBeTruthy();
+    expect(screen.queryByText(/VN1823 · 08:00/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Đặt ngay' }));
     expect(onBookNow).toHaveBeenCalledOnce();
   });
@@ -116,7 +119,7 @@ describe('budget summary', () => {
     expect(screen.getByText('3N2Đ')).toBeTruthy();
     expect(screen.getByText('5.378.000 ₫')).toBeTruthy();
     expect(screen.getByText('Vé máy bay')).toBeTruthy();
-    expect(screen.getByText('Vui chơi')).toBeTruthy();
+    expect(screen.queryByText('Vui chơi')).toBeNull();
     expect(screen.getByText('Vượt ngân sách')).toBeTruthy();
     expect(screen.queryByText(/Ăn uống/)).toBeNull();
     // Nhóm bằng 0 có dòng nhưng không có đoạn trên thanh.

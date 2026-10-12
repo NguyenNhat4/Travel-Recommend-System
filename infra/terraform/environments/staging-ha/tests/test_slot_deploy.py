@@ -59,6 +59,20 @@ class Proxy(unittest.TestCase):
         seconds = int(re.search(r"worker_shutdown_timeout\s+(\d+)s;", SCRIPT).group(1))
         self.assertGreaterEqual(seconds, 100)
 
+    def test_reload_names_the_config_so_nginx_finds_its_pid_file(self):
+        # Lỗi thật 2026-10-12: `nginx -s reload` không kèm -c tìm /run/nginx.pid (config đặt pid /tmp/nginx.pid) và lỗi.
+        self.assertIn("pid /tmp/nginx.pid;", SCRIPT)
+        for line in re.findall(r".*nginx .*-s reload.*", SCRIPT):
+            if line.lstrip().startswith("#"):
+                continue
+            self.assertRegex(line, r"nginx -c \"\$PROXY_DIR/nginx\.conf\" -s reload", line)
+
+    def test_failed_reload_puts_the_old_upstream_back(self):
+        deploy = SCRIPT[SCRIPT.index("mode_deploy() {"):]
+        branch = deploy[deploy.index("elif running vota-proxy; then"):deploy.index("log \"kiểm tra qua proxy")]
+        self.assertIn("if ! reload_proxy; then", branch)
+        self.assertLess(branch.index("if ! reload_proxy; then"), branch.index('slot_ports "$active"'))
+
     def test_switch_validates_config_before_reload(self):
         self.assertRegex(SCRIPT, r"nginx -t -c .*\n?.*nginx -s reload|nginx -t -c")
         self.assertIn("nginx -s reload", SCRIPT)
@@ -129,6 +143,10 @@ class WiringWithTerraformAndCd(unittest.TestCase):
         self.assertIn("SLOT_RESULT", ROLL)
         self.assertIn('backend=$BACKEND_REF', ROLL)
 
+    def test_roll_does_not_pin_ssh_host_keys(self):
+        # Lỗi thật 2026-10-12: MIG tạo lại fn9m (autohealing) -> khoá host mới -> "Host key verification failed" trên runner.
+        self.assertIn("--strict-host-key-checking=no", ROLL)
+
     def test_pin_script_matches_main_tf_policy(self):
         self.assertIn('"type":"OPPORTUNISTIC"', PIN)
         self.assertIn('"maxSurge":{"fixed":0}', PIN)
@@ -149,6 +167,52 @@ class NoWorkflowConcurrency(unittest.TestCase):
 
     def test_background_drain_does_not_hold_the_lock(self):
         self.assertIn('9>- >'.replace("-", "&-"), SCRIPT[SCRIPT.index("drain_and_remove_old() {"):])
+
+
+class RollVisitsEveryVm(unittest.TestCase):
+    """Chạy roll-staging-ha-app-slots.sh thật với gcloud giả, nhưng ssh giả đọc stdin như ssh thật.
+
+    Lỗi thật 2026-10-12: vòng `while read ... <<< "$vms"` bị `gcloud compute ssh` nuốt stdin nên chỉ VM đầu tiên được cập nhật.
+    """
+
+    def _run(self, tmp):
+        import json
+        import os
+        import stat
+        digest = "sha256:" + "a" * 64
+        backend = f"asia-southeast1-docker.pkg.dev/p/r/vota-backend@{digest}"
+        frontend = f"asia-southeast1-docker.pkg.dev/p/r/vota-frontend@{digest}"
+        vms = [
+            {"instance": f"https://www.googleapis.com/compute/v1/projects/p/zones/z-{n}/instances/vm-{n}", "instanceStatus": "RUNNING"}
+            for n in ("a", "b", "c")
+        ]
+        (tmp / "vms.json").write_text(json.dumps(vms))
+        stub = tmp / "bin" / "gcloud"
+        stub.parent.mkdir()
+        stub.write_text(
+            """#!/usr/bin/env bash
+case "$*" in
+  *list-instances*) cat "$STUB_DIR/vms.json" ;;
+  *"compute ssh"*)
+    cat > /dev/null    # ssh thật đọc stdin
+    name="$3"; echo "$name" >> "$STUB_DIR/visited"
+    echo "SLOT_RESULT host=$name active=blue backend=$BACKEND_REF frontend=$FRONTEND_REF" ;;
+esac
+"""
+        )
+        stub.chmod(stub.stat().st_mode | stat.S_IEXEC)
+        env = dict(os.environ, PATH=f"{stub.parent}:{os.environ['PATH']}", STUB_DIR=str(tmp),
+                   BACKEND_REF=backend, FRONTEND_REF=frontend, GCP_PROJECT_ID="p")
+        result = subprocess.run(["bash", str(ROOT / "scripts" / "roll-staging-ha-app-slots.sh")], env=env, capture_output=True, text=True)
+        visited = (tmp / "visited").read_text().split() if (tmp / "visited").exists() else []
+        return result, visited
+
+    def test_every_running_vm_is_updated_even_when_ssh_reads_stdin(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            result, visited = self._run(pathlib.Path(d))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(visited, ["vm-a", "vm-b", "vm-c"], result.stdout + result.stderr)
 
 
 if __name__ == "__main__":
