@@ -98,6 +98,18 @@ describe('trang danh mục ở chế độ tìm (?q=)', () => {
     expect(bodies[0]).toMatchObject({ travelContext: { checkIn: '2099-10-20', checkOut: '2099-10-22', guests: { adults: 2, children: 1 } } });
   });
 
+  it('the star filter goes to the API together with the dates and the party', async () => {
+    render(<VerticalLanding vertical="hotels" query="khách sạn" trip={TRIP} />);
+    await screen.findByTestId('row-hotel-1');
+    fireEvent.click(screen.getByRole('radio', { name: '5 sao (Luxury)' }));
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    expect(bodies[1]).toMatchObject({
+      taxonomy: 'hotel', starRatingMin: 5, offset: 0,
+      travelContext: { checkIn: '2099-10-20', checkOut: '2099-10-22', guests: { adults: 2, children: 1 } },
+    });
+    expect(await screen.findByText('· 2 kết quả theo bộ lọc')).toBeTruthy();
+  });
+
   it('a one-day product sends only checkIn', async () => {
     render(<VerticalLanding vertical="experiences" query="vé tham quan" trip={{ checkIn: '2099-10-20', adults: 2 }} />);
     await screen.findByTestId('row-attraction-1');

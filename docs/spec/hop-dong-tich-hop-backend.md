@@ -482,7 +482,7 @@ Agent vẫn có schema tool giàu hơn (`priceMin`, `priceMax`, `starRatingMin`,
 | `results[].score` | Điểm gần nghĩa, `0.0`–`1.0`. Chỉ hiển thị cho khách ở chế độ debug |
 | `total` | Tổng số kết quả trước phân trang |
 | `topScore` | `score` cao nhất trong toàn bộ kết quả, hoặc `null` khi rỗng |
-| `facets` | Số lượng theo từng giá trị, tính trên **toàn bộ** kết quả chứ không riêng trang hiện tại. Dùng cho tab danh mục và bộ đếm bộ lọc |
+| `facets` | Số lượng theo từng giá trị, tính trên **toàn bộ** kết quả của request này chứ không riêng trang hiện tại. `facets.taxonomy[t]` của request không lọc taxonomy **không** bằng `total` của request `taxonomy = t` (top-K và suất vớt BM25 tính riêng trên tập đã lọc của từng request, hợp đồng Search §2.2), nên Web không dùng nó để đếm tab mà đếm bằng `total` của từng request theo nhóm (frontend §4.2) |
 
 ### 5.3. Cam kết dữ liệu từ Search
 
