@@ -153,5 +153,51 @@ class WiringWithTerraformAndCd(unittest.TestCase):
         self.assertIn('"maxUnavailable":{"fixed":3}', PIN)
 
 
+class RollVisitsEveryVm(unittest.TestCase):
+    """Chạy roll-staging-ha-app-slots.sh thật với gcloud giả, nhưng ssh giả đọc stdin như ssh thật.
+
+    Lỗi thật 2026-10-12: vòng `while read ... <<< "$vms"` bị `gcloud compute ssh` nuốt stdin nên chỉ VM đầu tiên được cập nhật.
+    """
+
+    def _run(self, tmp):
+        import json
+        import os
+        import stat
+        digest = "sha256:" + "a" * 64
+        backend = f"asia-southeast1-docker.pkg.dev/p/r/vota-backend@{digest}"
+        frontend = f"asia-southeast1-docker.pkg.dev/p/r/vota-frontend@{digest}"
+        vms = [
+            {"instance": f"https://www.googleapis.com/compute/v1/projects/p/zones/z-{n}/instances/vm-{n}", "instanceStatus": "RUNNING"}
+            for n in ("a", "b", "c")
+        ]
+        (tmp / "vms.json").write_text(json.dumps(vms))
+        stub = tmp / "bin" / "gcloud"
+        stub.parent.mkdir()
+        stub.write_text(
+            """#!/usr/bin/env bash
+case "$*" in
+  *list-instances*) cat "$STUB_DIR/vms.json" ;;
+  *"compute ssh"*)
+    cat > /dev/null    # ssh thật đọc stdin
+    name="$3"; echo "$name" >> "$STUB_DIR/visited"
+    echo "SLOT_RESULT host=$name active=blue backend=$BACKEND_REF frontend=$FRONTEND_REF" ;;
+esac
+"""
+        )
+        stub.chmod(stub.stat().st_mode | stat.S_IEXEC)
+        env = dict(os.environ, PATH=f"{stub.parent}:{os.environ['PATH']}", STUB_DIR=str(tmp),
+                   BACKEND_REF=backend, FRONTEND_REF=frontend, GCP_PROJECT_ID="p")
+        result = subprocess.run(["bash", str(ROOT / "scripts" / "roll-staging-ha-app-slots.sh")], env=env, capture_output=True, text=True)
+        visited = (tmp / "visited").read_text().split() if (tmp / "visited").exists() else []
+        return result, visited
+
+    def test_every_running_vm_is_updated_even_when_ssh_reads_stdin(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            result, visited = self._run(pathlib.Path(d))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(visited, ["vm-a", "vm-b", "vm-c"], result.stdout + result.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()
