@@ -1,12 +1,13 @@
 # Tìm và lọc ứng viên
 
-Phục vụ FR-AGT-02, FR-AGT-04, FR-AGT-05, NFR-REL-01. Mô tả theo code tại 2026-10-07; khi lệch, PRD và contract thắng.
+Phục vụ FR-AGT-02, FR-AGT-04, FR-AGT-05, NFR-REL-01. Mô tả theo code tại 2026-10-11; khi lệch, PRD và contract thắng.
 
 ## Mục đích
 
 Lấy sản phẩm thật từ catalog cho chuyến đi, rồi lọc còn những [ứng viên](glossary.md#candidate) dùng được. Mọi sản phẩm
 trong lịch trình phải đi ra từ bước này ([grounding](glossary.md#grounding)). Vé máy bay đi đường riêng:
-[ve-may-bay.md](ve-may-bay.md).
+[ve-may-bay.md](ve-may-bay.md). Lượt khám phá gọi Search riêng trong node `explore`, không qua planner:
+[tro-chuyen-va-kham-pha.md](tro-chuyen-va-kham-pha.md).
 
 ## Luồng chính
 
@@ -34,7 +35,7 @@ sequenceDiagram
 
 | Tool | Khi nào | Giới hạn |
 |---|---|---|
-| `search_products` | Mọi lượt | 10 kết quả mỗi lời gọi |
+| `search_products` | Mọi lượt | 50 kết quả mỗi lời gọi (tối đa contract) |
 | `get_recommendations` | Planner tự chọn; **luôn có** khi người dùng đã đăng nhập | k = 10 |
 | `get_similar_products` | Chỉ ở lượt đổi món, khi đã có [sản phẩm đã cho xem](glossary.md#previous_selection) | ≤ 2 lời gọi, mỗi sản phẩm gốc một lần, gốc phải nằm trong danh sách đã xem |
 
@@ -71,10 +72,13 @@ Mỗi sản phẩm bị loại ở lý do đầu tiên khớp; lý do thành c�
 | `DESTINATION` | Khác điểm đến (Similar lệch điểm đến thì bỏ lặng lẽ, không cảnh báo) |
 | `UNAVAILABLE` | `available = false` |
 | `TAXONOMY` | Loại bị loại trừ |
-| `DATE` | Ngày đi nằm ngoài `availableFrom`–`availableTo` của sản phẩm |
+| `DATE` | Ngày đi nằm ngoài `availableFrom`–`availableTo` của sản phẩm. Điểm tham quan chỉ vướng ngày được giữ tạm cho [lịch tham khảo](xep-lich.md#ngay-ngoai-cua-so) |
 | `PRICE_BASIS`, `PRICE` | Khách sạn: không có giá hoặc sai đơn vị giá; vượt trần giá |
 | `ATTRIBUTES` | Khách sạn: thiếu số sao tối thiểu, tiện ích không khớp |
 | `NAMED_REQUIREMENT` | Không chứa tên khách sạn/hoạt động người dùng bắt buộc |
+
+**Sở thích khách sạn là lọc mềm:** hồ bơi, phù hợp trẻ nhỏ, view biển… vào câu tìm khách sạn, rồi `evaluate` chỉ bỏ khách
+sạn không hợp khi còn ít nhất 3 khách sạn hợp. Lý do: catalog thật ghi tiện ích dạng chuỗi, lọc cứng sẽ loại gần hết.
 
 **Loại trừ tạm theo Recommendation:** loại hàng Recommendation báo người dùng đã mua trong chuyến thật trên CDP
 (`excludedVerticals`) chỉ bị lọc **trong lượt này**, không ghi vào constraints. Bắt buộc có khách sạn thì không áp.

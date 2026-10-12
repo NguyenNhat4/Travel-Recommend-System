@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import pendingFixture from '../../../shared/mocks/booking/createBooking.201-default.json';
 import confirmedFixture from '../../../shared/mocks/booking/getBooking.200-default.json';
@@ -88,15 +88,29 @@ describe('ConfirmationView — trạng thái đơn', () => {
   });
 
   it('polls after returning from Stripe until the webhook confirmed the booking, then shows next-trip recs', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
     api.getBooking.mockResolvedValueOnce(pending()).mockResolvedValueOnce(pending()).mockResolvedValue(confirmed());
     render(<ConfirmationView referenceCode="VOTA-20260916-8K3F" paymentReturn="return" />);
-    expect(await screen.findByText('Đang kiểm tra thanh toán...')).toBeTruthy();
-    expect(await screen.findByText('Đặt chỗ thành công!')).toBeTruthy();
-    expect(api.getBooking.mock.calls.length).toBeGreaterThanOrEqual(3);
-    await waitFor(() => expect(api.fetchRecommendations).toHaveBeenCalledWith(
-      expect.objectContaining({ k: 4, destination: 'Nha Trang' })));
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(screen.getByText('Đang kiểm tra thanh toán...')).toBeTruthy();
+    expect(api.getBooking).toHaveBeenCalledTimes(1);
+    expect(api.fetchRecommendations).not.toHaveBeenCalled();
+
+    // Flush each poll separately so React commits and schedules the next one.
+    await act(async () => { await vi.advanceTimersByTimeAsync(5); });
+    expect(screen.getByText('Đang kiểm tra thanh toán...')).toBeTruthy();
+    expect(api.getBooking).toHaveBeenCalledTimes(2);
+    expect(api.fetchRecommendations).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(5); });
+    expect(screen.getByText('Đặt chỗ thành công!')).toBeTruthy();
+    expect(api.getBooking).toHaveBeenCalledTimes(3);
+    expect(api.fetchRecommendations).toHaveBeenCalledWith(
+      expect.objectContaining({ k: 4, destination: 'Nha Trang' }));
     expect(travel.markJustBooked).toHaveBeenCalled();
     expect(travel.refreshCart).toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(5); });
+    expect(api.getBooking).toHaveBeenCalledTimes(3);
   });
 
   it('tells the customer the money arrived while the booking is still being confirmed', async () => {

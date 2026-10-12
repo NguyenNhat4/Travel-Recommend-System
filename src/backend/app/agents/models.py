@@ -84,6 +84,12 @@ class FareQuestion(StrictModel):
     cheaper: bool = Field(default=False, description="Hỏi còn vé rẻ hơn mức vừa báo không.")
     kind_unclear: bool = Field(default=False,
                                description="Hỏi giá 'vé' mà không rõ vé máy bay, phòng khách sạn hay vé tham quan.")
+    day: date | None = Field(default=None, description="Ngày bay người dùng hỏi ('ngày 20/10', 'thứ 7 này'), tính theo today.")
+    time_of_day: Literal["early", "morning", "afternoon", "evening"] | None = Field(
+        default=None, description="Giờ bay muốn: early = đi sớm/sáng sớm, morning, afternoon, evening = tối/muộn.")
+    why: bool = Field(default=False, description="Hỏi vì sao vé vừa báo đắt (hoặc rẻ).")
+    availability: bool = Field(default=False,
+                               description="Hỏi ngày nào có, ngày nào không có chuyến, mở bán tới khi nào.")
 
 
 class TurnRoute(StrictModel):
@@ -111,11 +117,61 @@ class TurnRoute(StrictModel):
         description="Thành phố/điểm đến mà tin nhắn nói tới, kể cả khi chỉ nhắc lại qua ngữ cảnh ('ở đó', 'chỗ đó').")
     focus: Literal["hotels", "sights"] | None = Field(
         default=None, description="Tin nhắn chỉ hỏi về chỗ ở (hotels) hoặc chỉ về chỗ chơi (sights).")
-    price: Literal["asks", "cheap"] | None = Field(
-        default=None, description="asks: hỏi giá, phí, có mất tiền không; cheap: muốn lựa chọn giá rẻ.")
+    price: Literal["asks", "cheap", "dear"] | None = Field(
+        default=None, description="asks: hỏi giá, phí, có mất tiền không; cheap: muốn lựa chọn giá rẻ; "
+                                  "dear: hỏi chỗ đắt nhất, sang nhất.")
+    form_request: bool = Field(
+        default=False, description="true khi người dùng xin form/bảng để tự điền thông tin chuyến ('cho mình cái form').")
     other_questions: list[str] = Field(
         default_factory=list, max_length=3,
         description="Câu hỏi khác trong cùng tin nhắn chưa thuộc nhãn đã chọn, viết lại ngắn như lời người dùng.")
+
+
+class Job(StrictModel):
+    """Read-only work requested by the orchestrator; product identifiers stay in code."""
+    kind: Literal["explore", "fare"]
+    intent: Literal["new", "more", "about_shown", "cheaper", "dearer"] = "new"
+    refers_to: list[str] = Field(default_factory=list, max_length=40)
+    continue_from: int | None = Field(default=None, ge=1)
+    replaces: int | None = Field(default=None, ge=1)
+    destination: str | None = Field(default=None, max_length=150)
+    taxonomy: Literal["attraction", "hotel", "combo", "golf"] | None = None
+    query: str | None = Field(default=None, max_length=500)
+    near: str | None = Field(default=None, max_length=150)
+    sort: Literal["relevance", "price_asc", "price_desc"] = "relevance"
+    fare: FareQuestion | None = None
+
+
+class Pending(StrictModel):
+    kind: Literal["explore", "fare"]
+    goal: str = Field(max_length=300)
+
+
+class Question(StrictModel):
+    about: Literal["destination", "trip_kind", "which_place", "other"]
+
+
+class PlanOffer(StrictModel):
+    destination: str = Field(max_length=150)
+    text: str = Field(max_length=300)
+
+
+class OrchestratorTurn(StrictModel):
+    action: Literal["answer", "ask", "plan", "execute"]
+    jobs: list[Job] = Field(default_factory=list, max_length=3)
+    pending: list[Pending] = Field(default_factory=list, max_length=3)
+    fare_only: bool = False
+    title: str | None = Field(default=None, max_length=200)
+    message: str | None = Field(default=None, max_length=2000)
+    refers_to: list[str] = Field(default_factory=list, max_length=40)
+    cards: list[str] = Field(default_factory=list, max_length=20)
+    question: Question | None = None
+    offer: PlanOffer | None = None
+    suggestions: list[str] = Field(default_factory=list, max_length=6)
+    plan_reason: Literal["accepts_offer", "asks_plan", "trip_details", "form"] | None = None
+    rejected: list[str] = Field(default_factory=list, max_length=40)
+    declines_offer: bool = False
+    stop: bool = False
 
 
 class Extraction(StrictModel):

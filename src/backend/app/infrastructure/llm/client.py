@@ -84,3 +84,49 @@ def build_chat_model(settings: Settings) -> Any | None:
         "No LLM API key found. Set GEMINI_API_KEY, OPENAI_API_KEY or ANTHROPIC_API_KEY in .env, "
         "or set ITINERARY_USE_LLM=false to run without an LLM. See .env.example."
     )
+
+
+class StructuredOrchestratorModel:
+    """Force native JSON-schema output for OpenAI; never use function calling for the orchestrator."""
+    def __init__(self, model):
+        self.model = model
+
+    def with_structured_output(self, schema):
+        return self.model.with_structured_output(schema, method="json_schema", strict=True)
+
+    def bind_tools(self, tools, *, tool_choice=None):
+        raise RuntimeError("The orchestrator uses JSON schema decisions, not function tools")
+
+
+def build_orchestrator_model(settings: Settings, shared_model: Any | None) -> Any | None:
+    """Build the explicitly selected provider/model; the composition root handles safe fallback."""
+    if settings.itinerary_orchestrator != "on" or not settings.itinerary_use_llm or not settings.itinerary_orchestrator_model:
+        return shared_model
+    provider = settings.itinerary_orchestrator_provider
+    model = settings.itinerary_orchestrator_model
+    temperature = settings.itinerary_llm_temperature
+    if provider == "openai":
+        if not settings.openai_api_key:
+            raise RuntimeError("Orchestrator OpenAI key is not configured")
+        from langchain_openai import ChatOpenAI
+        kwargs = {"model": model, "api_key": settings.openai_api_key, "max_retries": 0}
+        effort = settings.itinerary_orchestrator_reasoning_effort
+        if model.startswith("gpt-6.1-sol") and effort in ("none", "minimal"):
+            raise RuntimeError("GPT-6.1 Sol does not support none/minimal reasoning")
+        if effort:
+            kwargs["reasoning_effort"] = effort
+        # Reasoning models reject sampling parameters; measure effort/latency separately in B12.
+        if not model.startswith(("gpt-6", "gpt-5", "o1", "o3", "o4")):
+            kwargs["temperature"] = temperature
+        return StructuredOrchestratorModel(ChatOpenAI(**kwargs))
+    if provider == "gemini":
+        if not settings.gemini_api_key:
+            raise RuntimeError("Orchestrator Gemini key is not configured")
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        return ChatGoogleGenerativeAI(model=model, google_api_key=settings.gemini_api_key, temperature=temperature)
+    if provider == "anthropic":
+        if not settings.anthropic_api_key:
+            raise RuntimeError("Orchestrator Anthropic key is not configured")
+        from langchain_anthropic import ChatAnthropic
+        return ChatAnthropic(model=model, api_key=settings.anthropic_api_key, temperature=temperature)
+    raise RuntimeError("Set ITINERARY_ORCHESTRATOR_PROVIDER explicitly when selecting a model")

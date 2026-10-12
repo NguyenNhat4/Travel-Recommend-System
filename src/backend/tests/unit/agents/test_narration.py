@@ -64,8 +64,10 @@ class RenderTests(unittest.TestCase):
         text = update['response']['message']
         self.assertEqual(reason, 'llm')
         self.assertTrue(text.startswith('**Một ngày khám phá Ninh Bình**\nMình ghi nhận đổi ngày đi thành 15/10/2026.'))
-        self.assertIn('[Full-Day Ninh Binh Tour](product:t1) (850.000 ₫/người)', text)
-        self.assertIn('tổng 1.700.000 ₫ so với 1.000.000 ₫', text)
+        self.assertIn('[Full-Day Ninh Binh Tour](product:t1)', text)
+        self.assertNotIn('850.000', text)
+        self.assertNotIn('1.700.000', text)
+        self.assertNotIn('[[', text)
         self.assertEqual(update['response']['itinerary']['title'], 'Một ngày khám phá Ninh Bình')
 
     def test_a_leading_bold_title_from_the_model_is_not_duplicated(self):
@@ -180,17 +182,17 @@ class StayRoomsTests(unittest.TestCase):
     def test_the_price_placeholder_of_a_hotel_carries_the_rooms(self):
         update, reason = narrated(self.rooms(5), '**Nơi nghỉ**\n• [ks](product:h1) — [[price:h1]]\n[x](product:t1)')
         self.assertEqual(reason, 'llm')
-        self.assertIn('[Old Quarter Hotel](product:h1) — 600.000 ₫/đêm × 5 phòng', update['response']['message'])
+        self.assertIn('[Old Quarter Hotel](product:h1)', update['response']['message'])
 
     def test_the_rule_based_reply_carries_the_rooms(self):
         current = self.rooms(5)
-        self.assertIn('[Old Quarter Hotel](product:h1) — 1 đêm · 600.000 ₫/đêm × 5 phòng',
+        self.assertIn('[Old Quarter Hotel](product:h1) — 1 đêm',
                       narration.fallback_message(current, current['response']))
 
     def test_one_room_is_not_mentioned(self):
         current = self.rooms(1)
         text = narration.fallback_message(current, current['response'])
-        self.assertIn('600.000 ₫/đêm', text)
+        self.assertNotIn('600.000 ₫/đêm', text)
         self.assertNotIn('phòng', text.split('**Nơi nghỉ**')[1].split('**Ngày')[0])
 
 
@@ -199,9 +201,9 @@ class FallbackTests(unittest.TestCase):
         current = state(stay=HOTEL)
         text = narration.fallback_message(current, current['response'])
         for part in ('**Lịch trình 1 ngày ở Hà Nội**', 'Mình ghi nhận đổi ngày đi thành 15/10/2026',
-                     '**Nơi nghỉ**', '[Old Quarter Hotel](product:h1) — 1 đêm · 600.000 ₫/đêm',
-                     '**Ngày 1 · 15/10/2026**', '• Cả ngày — [Full-Day Ninh Binh Tour](product:t1) · 850.000 ₫/người',
-                     '**Chi phí dự kiến**', 'vượt ngân sách 1.000.000 ₫', '**Lưu ý**', 'khung lịch trình bên phải'):
+                     '**Nơi nghỉ**', '[Old Quarter Hotel](product:h1) — 1 đêm',
+                     '**Ngày 1 · 15/10/2026**', '• Cả ngày — [Full-Day Ninh Binh Tour](product:t1)',
+                     '**Lưu ý**', 'khung lịch trình bên phải'):
             self.assertIn(part, text)
         self.assertEqual(validation.answer_text({**current['response'], 'message': text}), text)
 
@@ -244,13 +246,13 @@ class NoStayTests(unittest.TestCase):
         text = narrated(current, 'Một ngày ở Hà Nội.\n\n**Ngày 1 · 15/10/2026**\n'
                                  '• Cả ngày — [Tour](product:t1) ([[price:t1]]): đi sớm.\n\n'
                                  '**Chi phí dự kiến**\n• [[total]]')[0]['response']['message']
-        self.assertIn(f"**Chưa có khách sạn**\n{NO_STAY['message']}\n\n**Chi phí dự kiến**", text)
+        self.assertIn(f"**Chưa có khách sạn**\n{NO_STAY['message']}", text)
 
     def test_the_rule_based_reply_has_the_reason_too(self):
         current = state()
         current['response']['warnings'].append(NO_STAY)
         text = narration.fallback_message(current, current['response'])
-        self.assertIn(f"**Chưa có khách sạn**\n{NO_STAY['message']}\n\n**Chi phí dự kiến**", text)
+        self.assertIn(f"**Chưa có khách sạn**\n{NO_STAY['message']}", text)
 
     def test_the_llm_is_told_the_system_explains_the_missing_stay(self):
         current = state()
@@ -271,13 +273,13 @@ class PlanCriteriaTests(unittest.TestCase):
         text = narrated(current, 'Một ngày ở Hà Nội.\n\n**Ngày 1 · 15/10/2026**\n'
                                  '• Cả ngày — [Tour](product:t1) ([[price:t1]]): đi sớm.\n\n'
                                  '**Chi phí dự kiến**\n• [[total]]')[0]['response']['message']
-        self.assertIn(f"**Cách mình xếp lịch**\n{CRITERIA['message']}\n\n**Chi phí dự kiến**", text)
+        self.assertIn(f"**Cách mình xếp lịch**\n{CRITERIA['message']}", text)
 
     def test_the_rule_based_reply_has_the_criteria_too(self):
         current = state()
         current['response']['warnings'].append(CRITERIA)
         text = narration.fallback_message(current, current['response'])
-        self.assertIn(f"**Cách mình xếp lịch**\n{CRITERIA['message']}\n\n**Chi phí dự kiến**", text)
+        self.assertIn(f"**Cách mình xếp lịch**\n{CRITERIA['message']}", text)
 
     def test_the_llm_is_told_the_system_states_the_criteria(self):
         current = state()
@@ -335,7 +337,7 @@ class NodeTests(unittest.TestCase):
 
     def test_model_failure_uses_the_rule_based_reply(self):
         update = nodes.narrate_node(state(), llm=self.llm(error=RuntimeError('provider down')))
-        self.assertIn('**Chi phí dự kiến**', update['response']['message'])
+        self.assertNotIn('**Chi phí dự kiến**', update['response']['message'])
         self.assertEqual(update['events'][0]['metadata']['reason'], 'llm_failed')
 
     def test_async_timeout_uses_the_rule_based_reply(self):

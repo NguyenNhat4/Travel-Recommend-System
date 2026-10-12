@@ -60,7 +60,8 @@ export function WidgetComposer({ value, onChange, onSend, busy, onStop, initial 
         className="block max-h-48 min-h-12 w-full resize-none bg-transparent px-1 py-2 text-base leading-relaxed text-slate-800 outline-none placeholder:text-slate-500"
       />
       <div className="mt-2 flex items-center justify-between gap-3">
-        <span className="flex items-center gap-1.5 text-xs text-slate-500">
+        {/* Gợi ý phím tắt chỉ có nghĩa với bàn phím: ẩn trên màn hẹp (điện thoại). */}
+        <span className={`${initial ? 'flex' : 'hidden sm:flex'} items-center gap-1.5 text-xs text-slate-500`}>
           {initial ? <><Sparkles className="h-3.5 w-3.5 text-ai-600" aria-hidden="true" /> Lên lịch trình cùng AI</> : canStop ? 'Esc để dừng' : 'Enter để gửi · Shift+Enter xuống dòng'}
         </span>
         {/* `key` riêng: nếu dùng chung một nút DOM, bấm Dừng làm busy=false và nút đổi thành type=submit ngay trong lượt click → form gửi luôn chữ đang gõ. */}

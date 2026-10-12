@@ -75,6 +75,7 @@ resource "google_compute_instance" "bastion" {
   zone         = var.bastion_zone
   machine_type = var.bastion_machine_type
   tags         = [local.bastion_tag]
+  # Không gắn lịch tắt/bật: staging-ha chạy 24/7 (xác nhận 2026-10-12). Policy ở scheduler.tf giữ lại nhưng không gắn vào VM.
 
   boot_disk {
     initialize_params {

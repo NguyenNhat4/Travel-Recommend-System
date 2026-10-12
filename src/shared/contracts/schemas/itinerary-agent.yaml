@@ -609,6 +609,15 @@ ItineraryCompleted:
       - $ref: ../openapi.yaml#/components/schemas/SearchResultsByTaxonomy
     stayOptions:
       $ref: ../openapi.yaml#/components/schemas/ItineraryStayOptions
+    suggestions:
+      type: array
+      maxItems: 3
+      description: >-
+        Tuỳ chọn (1.25.0, FR-AGT-06). Câu yêu cầu gửi được nguyên văn làm lượt chat kế tiếp, cùng ngữ nghĩa với
+        `ItineraryNeedsClarification.suggestions`. Ví dụ lịch tham khảo khi ngày đi chưa mở bán: nút "Đi Phú Quốc 3 ngày
+        từ ngày 28/10/2026" để lập lại lịch đặt được ngay.
+      items:
+        type: string
     warnings:
       type: array
       items:
@@ -672,8 +681,9 @@ ItineraryNeedsClarification:
           type: array
           minItems: 1
           description: >-
-            Ô hiển thị theo thứ tự. `interests` (1.24.0, FR-AGT-06): ô sở thích khách sạn chọn nhiều, không bắt buộc;
-            lựa chọn lấy từ `interestOptions`, lựa chọn đã tích sẵn nằm trong `defaults.interests`.
+            Ô hiển thị theo thứ tự. `interests` (1.24.0, FR-AGT-06; 1.26.0 AC-AGT-01): không bắt buộc, gồm các lựa
+            chọn cố định trong `interestOptions` (chọn nhiều, tích sẵn theo `defaults.interests`) và một ô tự nhập tối
+            đa 150 ký tự, điền sẵn bằng phần `defaults.interests` không thuộc `interestOptions`.
           items:
             type: string
             enum:
@@ -690,13 +700,16 @@ ItineraryNeedsClarification:
           type: string
           format: date
           description: Ngày khởi hành sớm nhất được phép chọn; hôm nay theo giờ Việt Nam.
+        autoOpen:
+          type: boolean
+          description: Tuỳ chọn (1.26.0). Mở ngay khi người dùng trực tiếp xin form; mặc định chỉ hiện nút mở.
         interestOptions:
           type: array
           maxItems: 8
           description: >-
             Tuỳ chọn (1.24.0, FR-AGT-06). Nhãn sở thích khách sạn đã có dữ liệu (ví dụ "Hồ bơi", "Phù hợp trẻ nhỏ"). Sở
             thích là ưu tiên khi tìm khách sạn, không loại khách sạn thiếu dữ liệu tiện ích. Client ghép lựa chọn vào câu
-            xác nhận ("ưu tiên khách sạn có Hồ bơi, Phù hợp trẻ nhỏ").
+            xác nhận ("ưu tiên khách sạn có Hồ bơi, Phù hợp trẻ nhỏ"); nội dung ô tự nhập đi sau đó (1.26.0).
           items:
             type: string
     suggestions:
@@ -716,6 +729,10 @@ ItineraryNeedsClarification:
         sản phẩm thật lấy từ Search của chính lượt này, nhóm theo loại, tối đa 4 mỗi loại. `question` nhắc từng sản
         phẩm bằng link `[Tên](product:<productId>)` với `productId` có trong đây; client đặt thẻ ngay sau dòng đầu tiên
         nhắc sản phẩm, như lời diễn giải lịch trình. Không có trường này thì lượt hỏi lại như trước.
+        Từ 1.25.0 còn có ở lượt hỏi giá vé máy bay (FR-AGT-07): `flight` là các chuyến một chiều thật của tuyến được hỏi,
+        lấy từ catalog (danh sách chuyến của tuyến), tối đa 4, chuyến `question` nêu đầu tiên đứng đầu (thường mỗi
+        chuyến một ngày bay; hỏi một ngày cụ thể thì có thể nhiều chuyến cùng ngày). Client gom các chuyến này thành một
+        hàng thẻ ngày–giá đặt tại dòng đầu tiên nhắc chuyến, mỗi thẻ mở trang vé máy bay của đúng tuyến và ngày bay đó.
       allOf:
       - $ref: ../openapi.yaml#/components/schemas/SearchResultsByTaxonomy
     metadata:

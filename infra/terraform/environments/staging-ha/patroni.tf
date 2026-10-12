@@ -73,6 +73,7 @@ resource "google_compute_instance" "patroni" {
   zone         = each.value.zone
   tags         = [local.patroni_tag]
   labels       = { component = "database", role = each.value.role == "db" ? "patroni" : "etcd-witness" }
+  # Không gắn lịch tắt/bật: staging-ha chạy 24/7 (xác nhận 2026-10-12). Policy ở scheduler.tf giữ lại nhưng không gắn vào VM.
 
   # Đổi startup script (ví dụ đổi image Patroni) chỉ chạy lại khi VM khởi động lại; làm có chủ đích theo runbook,
   # từng node một, replica trước. Terraform không tự dừng VM để cập nhật.

@@ -91,9 +91,17 @@ describe('floating assistant opening', () => {
     const details = screen.getByRole('button', { name: 'Thêm thông tin chuyến đi' });
     fireEvent.click(details);
     expect(details.getAttribute('aria-expanded')).toBe('true');
-    await screen.findByRole('button', { name: 'Hội An' });
-    fireEvent.click(screen.getByRole('button', { name: 'Tạo lịch trình' }));
-    expect(mocks.sendMessage).toHaveBeenCalledWith('Tôi chọn đi Hội An trong 3 ngày cho gia đình có trẻ nhỏ, ưu tiên nghỉ dưỡng sang trọng.');
+    const confirm = screen.getByRole('button', { name: 'Xác nhận' });
+    // Không chọn sẵn điểm đến hay ngày đi: chưa chọn thì chưa gửi được.
+    const destination = await screen.findByRole('button', { name: 'Hội An' });
+    expect(destination.getAttribute('aria-pressed')).toBe('false');
+    expect(confirm.hasAttribute('disabled')).toBe(true);
+    fireEvent.click(destination);
+    fireEvent.change(screen.getByLabelText('Ngày khởi hành'), { target: { value: '2099-01-02' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Hồ bơi' }));
+    fireEvent.click(confirm);
+    expect(mocks.sendMessage).toHaveBeenCalledWith(
+      'Lên lịch trình 1 ngày tại Hội An, bắt đầu từ ngày 02/01/2099, cho 1 người lớn, ưu tiên khách sạn có Hồ bơi.');
   });
 
   it('keeps an entry-point draft when expanded and when closed then reopened', () => {
@@ -153,6 +161,20 @@ describe('floating assistant opening', () => {
     open();
     fireEvent.click(screen.getByRole('button', { name: 'Đi Hà Nội 3 ngày, không cần khách sạn' }));
     expect(mocks.sendMessage).toHaveBeenCalledWith('Đi Hà Nội 3 ngày, không cần khách sạn');
+  });
+
+  it('shows suggestion chips on a COMPLETED answer too (contract 1.25.0)', () => {
+    const response = { status: 'COMPLETED' as const, conversationId: 'c1', message: 'Lịch tham khảo Phú Quốc 3 ngày.',
+      warnings: [], intent: { destination: 'Phú Quốc', days: 1, party: { type: 'SOLO', adults: 1, children: 0 }, budget: null },
+      itinerary: { days: [{ day: 1, slots: [] }], currency: 'VND', estimatedTotal: null, budgetStatus: 'UNKNOWN' },
+      suggestions: ['Đi Phú Quốc 3 ngày từ ngày 28/10/2026'] };
+    mocks.state = { ...mocks.state, transcript: [
+      { id: 'user-1', sender: 'user', text: 'Phú Quốc 3 ngày', createdAt: 1 },
+      { id: 'assistant-1', sender: 'assistant', text: response.message, response: response as never, createdAt: 2 },
+    ] };
+    open();
+    fireEvent.click(screen.getByRole('button', { name: 'Đi Phú Quốc 3 ngày từ ngày 28/10/2026' }));
+    expect(mocks.sendMessage).toHaveBeenCalledWith('Đi Phú Quốc 3 ngày từ ngày 28/10/2026');
   });
 
   it('drops the chips once a later message exists', () => {

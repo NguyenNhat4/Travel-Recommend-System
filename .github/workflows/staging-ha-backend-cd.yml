@@ -1,8 +1,9 @@
 name: Staging-HA Backend CD
 
 # CD backend lên MIG vota-ha-app (staging-ha). Build image nằm ở staging-ha-backend-build.yml (gọi qua workflow_call,
-# không xếp hàng). Job deploy gộp apply, verify và rollback thành MỘT job để khoá concurrency `staging-ha-app` giữ suốt
-# cả ba bước; nếu tách verify ra job khác thì deploy của run khác có thể apply xen giữa lúc verify.
+# không xếp hàng). Job deploy gộp apply, roll, verify và rollback thành MỘT job.
+# Khoá concurrency `staging-ha-app` (dùng chung với workflow còn lại) giữ suốt apply, roll, verify và rollback, nên hai deploy không
+# chạy chồng. slot-deploy.sh còn dùng flock trên từng VM như lớp bảo vệ thứ hai (vd. dispatch tay từ nhánh khác).
 # Frontend cùng MIG và cùng Terraform state, nên image frontend lấy từ last-good, không build lại ở đây.
 # Không gián đoạn: Terraform chỉ đổi template (MIG OPPORTUNISTIC, không thay VM); image trên VM đổi tại chỗ bằng
 # scripts/roll-staging-ha-app-slots.sh (slot blue/green + proxy cục bộ, xem infra/terraform/environments/staging-ha/slot-deploy.sh).
@@ -55,6 +56,7 @@ jobs:
     needs: build
     runs-on: [self-hosted, vota-staging-ha]
     # Khoá dùng chung với Staging-HA Frontend CD. Đặt ở job chứ không ở workflow để job build không phải chờ.
+    # GitHub chỉ giữ MỘT job chờ trong nhóm: job chờ cũ hơn bị huỷ khi có job mới vào.
     concurrency:
       group: staging-ha-app
       cancel-in-progress: false

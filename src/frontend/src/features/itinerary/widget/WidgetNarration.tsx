@@ -1,15 +1,19 @@
+import { WidgetComboCard } from './WidgetComboCard';
 import React from 'react';
 import { AssistantText, parseAssistantText } from '../../../components/assistant/inlineBold';
 import { ProductCard } from '../../../components/common/ProductCard';
 import type { ItineraryFlightItem, Product } from '../../../types/travel';
 import { isFreeToVisit } from './widgetPlan';
 import { WidgetFlightCard } from './WidgetFlightCard';
+import { WidgetFareDays, isFareFlight } from './WidgetFareDays';
 import type { CartAddState } from './useWidgetCart';
 
 export type NarrationBlock =
   | { kind: 'text'; text: string }
   | { kind: 'card'; productId: string }
-  | { kind: 'slot' };
+  | { kind: 'slot' }
+  /** Hàng ô ngày–giá của lượt hỏi giá vé; `productId` là chuyến được nhắc đầu tiên (ô đầu). */
+  | { kind: 'fares'; productId: string };
 
 const HEADING = /^\*\*[^*]+\*\*$/;
 
@@ -20,14 +24,19 @@ const HEADING = /^\*\*[^*]+\*\*$/;
  * `slotIds` (khách sạn của hàng thẻ "Phương án khác", AC-AGT-04 chốt 2026-10-08): mục chứa dòng đầu tiên nhắc một trong
  * các khách sạn này là mục "Nơi nghỉ"; mọi dòng nhắc chúng trong mục đó bỏ đi, thay bằng đúng một khối `slot` ở chỗ dòng
  * đầu. Các mục khác (ngày) giữ nguyên chữ, và các khách sạn này không có thẻ gọn.
+ *
+ * `fareIds` (chuyến bay của lượt hỏi giá vé, contract 1.25.0): không có thẻ riêng; cả nhóm thành đúng một khối `fares`
+ * ngay sau dòng đầu tiên nhắc một trong các chuyến này.
  */
 export function narrationBlocks(
   text: string,
   isKnown: (productId: string) => boolean,
   slotIds: ReadonlySet<string> = new Set(),
+  fareIds: ReadonlySet<string> = new Set(),
 ): NarrationBlock[] {
   const blocks: NarrationBlock[] = [];
   const shown = new Set<string>();
+  let faresPlaced = false;
   let buffer: string[] = [];
   let slot: 'before' | 'inside' | 'after' = 'before';
   const flush = () => {
@@ -47,15 +56,19 @@ export function narrationBlocks(
     }
     if (!buffer.length && blocks[blocks.length - 1]?.kind !== 'text' && blocks.length && !line.trim()) continue;
     buffer.push(line);
-    const fresh: string[] = [];
+    const fresh: NarrationBlock[] = [];
     for (const part of parts) {
       if (part.kind !== 'product' || shown.has(part.productId) || slotIds.has(part.productId) || !isKnown(part.productId)) continue;
       shown.add(part.productId);
-      fresh.push(part.productId);
+      if (!fareIds.has(part.productId)) fresh.push({ kind: 'card', productId: part.productId });
+      else if (!faresPlaced) {
+        faresPlaced = true;
+        fresh.push({ kind: 'fares', productId: part.productId });
+      }
     }
     if (!fresh.length) continue;
     flush();
-    for (const productId of fresh) blocks.push({ kind: 'card', productId });
+    blocks.push(...fresh);
   }
   flush();
   return blocks;
@@ -81,26 +94,39 @@ interface WidgetNarrationProps {
   /** "Đặt ngay" của vé; chỉ vé có trong `cartItems` của lịch mới có nút. */
   onBookNow?: (productId: string) => void;
   bookableIds?: ReadonlySet<string>;
+  /** Bấm một ô ngày–giá: sang trang vé máy bay trong tab này (nơi gọi đóng widget). */
+  onLeave?: () => void;
 }
 
 /** Lời diễn giải lịch trình trong bong bóng chat, kèm thẻ gọn của từng sản phẩm. */
 export function WidgetNarration({ text, products, onOpen, quickAddIds, onQuickAdd, cartAddStates, stays, flights, onBookNow,
-  bookableIds }: WidgetNarrationProps) {
+  bookableIds, onLeave }: WidgetNarrationProps) {
   const known = (productId: string) => Object.prototype.hasOwnProperty.call(products, productId);
   const slotIds = stays?.ids ?? new Set<string>();
+  // Chuyến bay không phải chặng của lịch (lượt hỏi giá vé): gom thành một hàng ô ngày–giá thay vì từng thẻ gọn. Tên
+  // chuyến trong chữ là chữ thường (`carded`) vì vé không có trang chi tiết; ô ngày mới là chỗ bấm.
+  const legIds = new Set((flights ?? []).map((flight) => flight.productId));
+  const fareIds = Object.keys(products)
+    .filter((productId) => !legIds.has(productId) && !slotIds.has(productId) && isFareFlight(products[productId]));
   // Sản phẩm có thẻ thì tên không cần link nữa; id lạ và khách sạn của hàng thẻ (không có thẻ gọn) vẫn là link.
   const carded = new Set(Object.keys(products).filter((productId) => !slotIds.has(productId)));
   // Sản phẩm của response mà lời diễn giải không nhắc (ví dụ ứng viên của FALLBACK) có thẻ ở cuối bong bóng.
-  const blocks = narrationBlocks(text, known, slotIds);
+  const blocks = narrationBlocks(text, known, slotIds, new Set(fareIds));
   const cited = new Set(blocks.flatMap((block) => (block.kind === 'card' ? [block.productId] : [])));
   for (const productId of Object.keys(products)) {
-    if (!cited.has(productId) && !slotIds.has(productId)) blocks.push({ kind: 'card', productId });
+    if (!cited.has(productId) && !slotIds.has(productId) && !fareIds.includes(productId)) blocks.push({ kind: 'card', productId });
   }
+  if (fareIds.length && !blocks.some((block) => block.kind === 'fares')) blocks.push({ kind: 'fares', productId: fareIds[0] });
   if (stays && !blocks.some((block) => block.kind === 'slot')) blocks.push({ kind: 'slot' });
   return (
     <>
       {blocks.map((block, index) => {
         if (block.kind === 'slot') return <React.Fragment key={index}>{stays?.node}</React.Fragment>;
+        if (block.kind === 'fares') {
+          // Ô đầu là chuyến lời trả lời nêu; các ngày khác giữ thứ tự của response.
+          const ordered = [block.productId, ...fareIds.filter((productId) => productId !== block.productId)];
+          return <WidgetFareDays key={index} products={ordered.map((productId) => products[productId])} onNavigate={onLeave} />;
+        }
         if (block.kind === 'text') {
           return (
             <NarrationText key={index} text={block.text} onOpen={onOpen} carded={carded} />
@@ -116,6 +142,12 @@ export function WidgetNarration({ text, products, onOpen, quickAddIds, onQuickAd
             </div>
           );
         }
+        if (product.taxonomy === 'combo') return <div key={index} className="my-4 whitespace-normal">
+          <WidgetComboCard product={product} peers={Object.values(products)} onOpen={() => onOpen(product.id)}
+            onBook={onBookNow && bookableIds?.has(product.id) ? () => onBookNow(product.id) : undefined}
+            onAdd={onQuickAdd && quickAddIds?.has(product.id) ? () => onQuickAdd(product.id) : undefined}
+            addState={cartAddStates?.[product.id]} />
+        </div>;
         return (
           <div key={index} className="my-4 whitespace-normal">
             <ProductCard

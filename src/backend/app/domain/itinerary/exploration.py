@@ -28,6 +28,9 @@ ASKED = "asked"
 NEAR = "near"
 #: Người dùng muốn chỗ rẻ: thẻ sau thẻ rẻ nhất, cũng thuộc nhóm giá thấp (`cheapest_cards`).
 LOW_PRICE = "low_price"
+#: Người dùng hỏi chỗ đắt nhất, sang nhất: thẻ đầu đắt nhất, các thẻ sau cũng thuộc nhóm giá cao (`dearest_cards`).
+DEAREST = "dearest"
+HIGH_PRICE = "high_price"
 #: "Gần" tính theo đường chim bay; xa hơn thì không gọi là gần nữa.
 NEAR_KM = 3.0
 
@@ -147,6 +150,15 @@ def cheapest_cards(products: list[Product], limit: int) -> list[dict]:
     `CHEAPEST`, các thẻ sau `LOW_PRICE`. Mỗi nơi tối đa một thẻ (`distinct_places`)."""
     priced = sorted((product for product in distinct_places(products) if price(product) is not None), key=price)
     return [{"product": product, "reasons": [CHEAPEST if index == 0 else LOW_PRICE]}
+            for index, product in enumerate(priced[:limit])]
+
+
+def dearest_cards(products: list[Product], limit: int) -> list[dict]:
+    """Người dùng hỏi chỗ đắt nhất ("ks nào đắt nhất", "sang nhất"): các nơi có giá, đắt nhất trước; thẻ đầu lý do
+    `DEAREST`, các thẻ sau `HIGH_PRICE`."""
+    priced = sorted((product for product in distinct_places(products) if price(product) is not None),
+                    key=lambda product: -price(product))
+    return [{"product": product, "reasons": [DEAREST if index == 0 else HIGH_PRICE]}
             for index, product in enumerate(priced[:limit])]
 
 

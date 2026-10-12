@@ -70,6 +70,7 @@ resource "google_compute_instance" "crawler" {
   machine_type              = var.crawler_machine_type
   tags                      = [local.crawler_tag]
   allow_stopping_for_update = true
+  # Không gắn lịch tắt/bật: staging-ha chạy 24/7 (xác nhận 2026-10-12). Policy ở scheduler.tf giữ lại nhưng không gắn vào VM.
 
   boot_disk {
     initialize_params {

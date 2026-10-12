@@ -727,6 +727,14 @@ class DefaultCategoryFillTests(unittest.TestCase):
                                             [search(taxonomy='hotel')])
         self.assertEqual({call['args'].get('taxonomy') for call in plan}, {'hotel', 'attraction'})
 
+    def test_a_planned_search_of_an_excluded_category_is_dropped_not_fatal(self):
+        # Snapshot X01 12/10: "đổi chuyến bay" loại flight, planner vẫn search vé máy bay → từng thành 503.
+        plan = tool_planning.validated_plan(self._state(exclude_taxonomies=['flight']),
+                                            [search(taxonomy='flight'), search(taxonomy='hotel')])
+        self.assertEqual({call['args'].get('taxonomy') for call in plan}, {'hotel', 'attraction'})
+        only = tool_planning.validated_plan(self._state(exclude_taxonomies=['flight']), [search(taxonomy='flight')])
+        self.assertNotIn('flight', {call['args'].get('taxonomy') for call in only})
+
     def test_missing_destination_does_not_crash_the_fill(self):
         plan = tool_planning.validated_plan({'intent': {}, 'constraints': {}}, [REC], require_recommendations=True)
         self.assertEqual(names(plan), ['get_recommendations'])

@@ -39,6 +39,8 @@ SUMMARY_ATTRIBUTE_KEYS = frozenset({"oceanView", "privateBeach", "pool", "ticket
                                     "airline", "flightNumber", "departureAt", "arrivalAt", "departureTimeLocal",
                                     "arrivalTimeLocal", "nonstop", "tripType", "returnDate", "returnFlight",
                                     "originCity", "destinationCity", "originAirport", "destinationAirport",
+                                    # Hạng ghế và giá minh hoạ: thẻ vé ghi "Thương gia", "giá minh hoạ" (chốt 2026-10-11).
+                                    "cabinClass", "simulated",
                                     # Toạ độ sân bay đi của chặng về: bản đồ vẽ chặng ra sân bay (chốt 2026-10-09).
                                     "originLatitude", "originLongitude"})
 # Flights and combos have no confirmed slot mapping, so they can be retrieved but never scheduled.
