@@ -11,6 +11,7 @@ Hai nhóm:
 from __future__ import annotations
 
 import hashlib
+import logging
 
 from fastapi import APIRouter, Depends, Request, Response, status
 
@@ -19,6 +20,7 @@ from src.backend.app.api.deps import (
     current_principal,
     get_auth_use_case,
     get_token_verifier,
+    get_warm_recommendations,
     require_service_token,
 )
 from src.backend.app.api.v1.schemas.auth import (
@@ -33,6 +35,9 @@ from src.backend.app.api.v1.schemas.auth import (
     UpdateProfileRequest,
 )
 from src.backend.app.application.auth.principal import AuthPrincipal
+from src.backend.app.core.logging_config import log_event
+
+logger = logging.getLogger("uvicorn.error")
 
 router = APIRouter(tags=["auth"])
 well_known_router = APIRouter(tags=["auth"])
@@ -41,6 +46,17 @@ well_known_router = APIRouter(tags=["auth"])
 def _ua_hash(request: Request) -> str | None:
     ua = request.headers.get("user-agent")
     return "sha256:" + hashlib.sha256(ua.encode("utf-8")).hexdigest() if ua else None
+
+
+def _warm_home(warm, outcome) -> None:
+    """Đăng nhập thành công: tính trước gợi ý trang chủ vào cache (PRD architecture §4). Chỉ gửi việc vào pool riêng,
+    không chờ; lỗi ở đây không được làm hỏng đăng nhập."""
+    if warm is None:
+        return
+    try:
+        warm(outcome.user.cdp_user_id)
+    except Exception as exc:
+        log_event(logger, "recsys.cache.warm", "WARNING", outcome="failed", error_kind=type(exc).__name__)
 
 
 @router.post("/auth/register", status_code=status.HTTP_201_CREATED, response_model=AuthResponse)
@@ -52,9 +68,10 @@ async def register(body: RegisterRequest, ip: str = Depends(client_ip),
 
 @router.post("/auth/login", response_model=AuthResponse)
 async def login(body: LoginRequest, request: Request, ip: str = Depends(client_ip),
-                use_case=Depends(get_auth_use_case("authenticate_user"))):
+                use_case=Depends(get_auth_use_case("authenticate_user")), warm=Depends(get_warm_recommendations)):
     outcome = await use_case(email=body.email, password=body.password, client_ip=ip,
                              user_agent_hash=_ua_hash(request))
+    _warm_home(warm, outcome)
     return AuthResponse.of(outcome)
 
 
@@ -77,9 +94,11 @@ async def update_me(body: UpdateProfileRequest, principal: AuthPrincipal = Depen
 @router.post("/auth/session", response_model=SessionResponse, response_model_exclude_none=True,
              dependencies=[Depends(require_service_token)])
 async def create_session(body: SessionRequest, request: Request, ip: str = Depends(client_ip),
-                         use_case=Depends(get_auth_use_case("authenticate_user"))):
+                         use_case=Depends(get_auth_use_case("authenticate_user")),
+                         warm=Depends(get_warm_recommendations)):
     outcome = await use_case(email=body.email, password=body.password, client_ip=ip,
                              user_agent_hash=_ua_hash(request), with_session=True)
+    _warm_home(warm, outcome)
     return SessionResponse.of(outcome)
 
 

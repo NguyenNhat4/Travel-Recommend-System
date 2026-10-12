@@ -79,6 +79,7 @@ from src.backend.app.application.recommendation import (
     CachePolicy,
     RecommendationCache,
     RecommendForUser,
+    WarmRecommendations,
     source_digest,
 )
 from src.backend.app.application.search import SearchProducts, SimilarProducts, SuggestProducts
@@ -838,6 +839,13 @@ async def lifespan(app: FastAPI):
             recsys_io = ThreadPoolExecutor(max_workers=settings.recommend_io_workers, thread_name_prefix="recsys-io")
             stack.callback(recsys_io.shutdown, wait=False, cancel_futures=True)
         recommend_cache = build_recommendation_cache(settings, stack)
+        # Làm ấm cache gợi ý sau đăng nhập trên pool riêng 2 thread, tách khỏi `recsys-io` mà engine dùng bên trong (việc
+        # trong một pool chờ việc gửi vào chính pool đó thì khoá chết khi pool đầy).
+        app.state.warm_recommendations = None
+        if recommend_cache is not None:
+            warm_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="recsys-warm")
+            stack.callback(warm_pool.shutdown, wait=False, cancel_futures=True)
+            app.state.warm_recommendations = WarmRecommendations(lambda: getattr(app.state, "recommend", None), warm_pool)
         recsys = RecsysRefresher(app, settings,
                                  build=functools.partial(build_recsys, recommend_executor=recsys_io,
                                                          recommend_cache=recommend_cache),

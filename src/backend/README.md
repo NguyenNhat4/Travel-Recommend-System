@@ -31,7 +31,8 @@ RecSys embed bằng `intfloat/multilingual-e5-small` (384 chiều) chạy local 
 - **Cache kết quả trên Redis** (`RECOMMEND_CACHE_REDIS_URL`, DB index riêng, `RECOMMEND_CACHE_TTL_SECONDS` mặc định 900; trống = tắt):
   - Khoá chứa dấu vân tay toàn bộ event vừa đọc từ CDP, nên event mới luôn tính lại.
   - Redis lỗi hoặc chậm quá 100 ms thì tính trực tiếp.
-- **Log:** `recsys.recommend` có `stage_ms`, `cache`, `events_read`.
+- **Làm ấm sau đăng nhập:** khi cache bật, `/auth/login` và `/auth/session` thành công thì tính trước đúng request của trang chủ (`k=4`, không destination). Việc chạy trên pool riêng 2 thread, không làm chậm đăng nhập.
+- **Log:** `recsys.recommend` có `stage_ms`, `cache`, `events_read`; làm ấm ghi `recsys.cache.warm`.
 
 Endpoint hiện có (prefix `/api/v1`): `GET /search/suggestions` (`q`, `limit` ≤ 10; gợi ý tức thì khi gõ, khớp chữ trên catalog trong bộ nhớ, không embed, không ghi event; FR-SRC-05) · `GET|POST /search` (`q`/`query`, `taxonomy`, `destination`, `limit`, `offset`;
 ở `ITINERARY_DATA_MODE=http`, adapter đổi tham số tool `query` thành `q`) · `GET /similar/{productId}?k=` · `GET /recommendations?k=&destination=`

@@ -1,12 +1,14 @@
 """Composition root nối pool `recsys-io` (RECOMMEND_IO_WORKERS) và cache gợi ý trên Redis (RECOMMEND_CACHE_REDIS_URL,
 PRD architecture §4) vào `RecommendForUser` (main.build_recsys, main.build_recommendation_cache), 2026-10-12."""
+import asyncio
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
+from unittest.mock import patch
 
-from src.backend.app.application.recommendation import RecommendationCache
+from src.backend.app.application.recommendation import RecommendationCache, WarmRecommendations
 from src.backend.app.core.config import Settings
-from src.backend.app.main import build_recommendation_cache, build_recsys
+from src.backend.app.main import app, build_recommendation_cache, build_recsys, lifespan
 from src.backend.tests.conftest import FakeEmbedder
 from src.backend.tests.fakes.in_memory_vector_store import InMemoryVectorStore
 from src.backend.tests.fakes.jsonl_cdp_reader import JsonlCdpReader
@@ -91,3 +93,15 @@ def test_url_builds_a_redis_cache_closed_with_the_app(monkeypatch):
         assert isinstance(cache, RecommendationCache) and cache.policy.ttl_seconds == 600 and cache.namespace
         assert built["url"] == "redis://:pw@cache:6379/4" and not built["store"].closed
     assert built["store"].closed
+
+
+def test_lifespan_wires_login_warming_only_when_the_cache_is_on():
+    async def warm_after_startup():
+        async with lifespan(app):
+            return app.state.warm_recommendations
+
+    with patch("src.backend.app.main.build_recommendation_cache", return_value=None):
+        assert asyncio.run(warm_after_startup()) is None
+    cache = RecommendationCache(InMemoryRecommendationCacheStore())
+    with patch("src.backend.app.main.build_recommendation_cache", return_value=cache):
+        assert isinstance(asyncio.run(warm_after_startup()), WarmRecommendations)
