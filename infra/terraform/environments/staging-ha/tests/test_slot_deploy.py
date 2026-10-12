@@ -153,12 +153,15 @@ class WiringWithTerraformAndCd(unittest.TestCase):
         self.assertIn('"maxUnavailable":{"fixed":3}', PIN)
 
 
-class NoWorkflowConcurrency(unittest.TestCase):
-    """Bỏ khoá concurrency staging-ha-app (2026-10-12): an toàn khi chạy chồng nằm ở khoá state Terraform và flock trên VM."""
+class SerialisedDeploys(unittest.TestCase):
+    """Deploy không chạy chồng: khoá concurrency ở workflow (lớp 1) và flock trên VM (lớp 2)."""
 
-    def test_cd_workflows_have_no_concurrency_group(self):
+    def test_cd_deploy_jobs_share_one_concurrency_group(self):
         for kind, text in WORKFLOWS.items():
-            self.assertNotRegex(text, r"(?m)^\s+concurrency:", kind)
+            deploy = text[text.index("  deploy:\n"):]
+            self.assertRegex(deploy, r"concurrency:\n\s+group: staging-ha-app\n\s+cancel-in-progress: false", kind)
+            # khoá nằm ở job deploy, không ở workflow (job build không phải chờ)
+            self.assertNotRegex(text[:text.index("  deploy:\n")], r"(?m)^concurrency:", kind)
 
     def test_slot_script_serialises_runs_on_one_vm(self):
         self.assertIn("flock -w 1800 9", SCRIPT)
