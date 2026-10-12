@@ -124,7 +124,7 @@ EVENT_FIELDS: dict[str, set[str]] = {
     "auth.mfa.verify": {"outcome", "user_id_hash"},
     "search.run": {"mode", "query_text", "result_count", "engine_ms", "degraded", "total"},
     "search.embed.failed": {"error_kind"},
-    "recsys.recommend": {"persona", "branch", "result_count", "duration_ms"},
+    "recsys.recommend": {"persona", "branch", "result_count", "duration_ms", "cache", "stage_ms", "events_read"},
     "recsys.fallback": {"reason", "persona"},
     "recsys.explore_fill": {"filled"},
     "cart.item.add": {"product_id", "quantity", "using_date", "owner_kind"},

@@ -11,6 +11,7 @@ import numpy as np
 from src.backend.app.application.ports import CdpHistoryReader, UnitIndex, VectorSearchPort
 from src.backend.app.application.ports.cdp_client import CdpUnavailableError
 from src.backend.app.application.search import hit
+from src.backend.app.application.search.use_cases import StageTimer
 from src.backend.app.core.logging_config import log_event
 from src.backend.app.domain.recommendation import (Popularity, Purchase, ResolvedEvent, ScoreContext, build_profile, explain,
                                                    infer_origin, mmr_select, score_candidates)
@@ -55,6 +56,18 @@ def _cap_per_taxonomy(order: Iterable[int], taxonomy: Sequence, k: int, cap: int
         seen[t] += 1
         out.append(i)
     return out
+
+
+def _with_stages(result: dict, stages: StageTimer, events_read: int | None = None) -> dict:
+    """Gắn thời gian từng bước (ms nguyên) và số event đã đọc vào `diagnostics` để đo trên log.
+
+    Hai khoá này chỉ dành cho engine: `responses.recommendation_response` bỏ chúng khỏi payload (không đổi contract) và
+    ghi vào log `recsys.recommend`."""
+    diagnostics = result.setdefault("diagnostics", {})
+    diagnostics["stageMs"] = stages.ms
+    if events_read is not None:
+        diagnostics["eventsRead"] = events_read
+    return result
 
 
 def _ts(x) -> float:
@@ -183,9 +196,8 @@ class RecommendForUser:
     def __call__(self, cdp_user_id: str | None, k: int = 5, now: datetime | None = None,
                  events: list[dict] | None = None, destination: str | None = None) -> dict:
         now = now or datetime.now(timezone.utc)
-        t0 = now.timestamp()
-        idx = self.index
-        base = {"generatedAt": now.isoformat(), "modelVersion": idx.model_version}
+        stages = StageTimer()
+        base = {"generatedAt": now.isoformat(), "modelVersion": self.index.model_version}
         try:
             raw = events if events is not None else (self.cdp.events_for_user(cdp_user_id) if cdp_user_id else [])
         except CdpUnavailableError as exc:
@@ -193,8 +205,19 @@ class RecommendForUser:
             # (hop-dong-tich-hop-cdp.md §6, §8).
             log_event(logger, "recsys.fallback", "WARNING", reason="cdp_unavailable",
                       message=f"recommend.cdp_unavailable reason={type(exc.__cause__ or exc).__name__}; fallback popular")
-            return {**base, **self._cold_start(k, now, destination)}
+            stages.lap("cdp")
+            result = {**base, **self._cold_start(k, now, destination)}
+            stages.lap("coldStart")
+            return _with_stages(result, stages)
+        stages.lap("cdp")
+        return _with_stages(self._rank(raw, k, now, destination, base, stages), stages, events_read=len(raw))
 
+    def _rank(self, raw: list[dict], k: int, now: datetime, destination: str | None, base: dict,
+              stages: StageTimer) -> dict:
+        """Xếp hạng trên lịch sử đã đọc. Gọi `build_profile`, `score_candidates`, `mmr_select`, `explore_fill` và
+        `_LocalSpace` qua tên toàn cục của module: harness bench (`src/evaluation/recsys_bench`) thay chúng theo tên."""
+        t0 = now.timestamp()
+        idx = self.index
         units = {e.get("productId") or "": idx.resolve(e.get("productId") or "") for e in raw}
         stored = self.vectors.vectors(sorted({idx.units[i].product_id for i in units.values() if i is not None}))
         space = _LocalSpace(idx, self.vectors.dimension)
@@ -209,9 +232,12 @@ class RecommendForUser:
                                           using_date=_using_date(e.get("usingDate"))))
         # trip đang mở xét theo usingDate (FR-REC-02, 01/10/2026): "hôm nay" theo giờ Việt Nam vì usingDate là ngày địa phương
         profile = build_profile(resolved, space.E, space.taxonomy, space.destination, today=local_today(now))
+        stages.lap("history")
 
         if not profile.trips:
-            return {**base, **self._cold_start(k, now, destination)}
+            result = {**base, **self._cold_start(k, now, destination)}
+            stages.lap("coldStart")
+            return result
 
         # candidate mask
         if profile.active_trip is not None:
@@ -249,6 +275,7 @@ class RecommendForUser:
                 local = space.local[g] if g in space.local else space.add(g, vec)
                 if local not in cand:
                     cand.append(local)
+        stages.lap("candidates")
         pop = np.array([pop_global.get(g, 0.0) for g in space.glob], dtype=np.float32)
         E = space.E
         # FR-REC-04 (09/10): điểm xuất phát của chuyến bay khách xem / đặt gần nhất; route bay khác điểm xuất phát bị hạ / loại
@@ -264,8 +291,11 @@ class RecommendForUser:
         cap_dest = self.max_per_destination if profile.active_trip is None and destination is None else None
         chosen = mmr_select(score, E, cand, space.taxonomy, k, max_per_vertical=self.max_per_vertical,
                             destination=space.destination if cap_dest else None, max_per_destination=cap_dest)
+        stages.lap("rank")
         if not chosen:
-            return {**base, **self._cold_start(k, now, destination)}
+            result = {**base, **self._cold_start(k, now, destination)}
+            stages.lap("coldStart")
+            return result
 
         # Ô khám phá (FR-REC-02, 09/10): chỉ khi có chuyến mở và còn ô trống; món tại X không bị thay, chiến lược và
         # nextVertical tính trên món tại X. Request khoá `destination` vẫn lấp (khách thấy cả hai, spec §4.7).
@@ -277,6 +307,7 @@ class RecommendForUser:
             if explore:
                 log_event(logger, "recsys.explore_fill", "INFO", filled=len(explore),
                           message=f"recommend.explore_fill filled={len(explore)}")
+        stages.lap("explore")
         E = space.E   # space lớn thêm sau ô khám phá; `score` chỉ phủ ứng viên cũ nên món khám phá chấm bằng cos(u_long)
 
         recs = []
@@ -285,13 +316,14 @@ class RecommendForUser:
         for rank, j in enumerate(explore, len(chosen) + 1):
             recs.append(hit(idx, space.glob[j], float(E[j] @ profile.u_long), rank=rank,
                             because=self._because(profile, j, E, space, long_term=True)))
-        from collections import Counter
-        return {**base, "strategy": profile.strategy, "destination": dest,
-                "nextVertical": str(Counter(idx.taxonomy[space.glob[j]] for j in chosen).most_common(1)[0][0]) if chosen else None,
-                "recommendations": recs, "sections": [],
-                "diagnostics": {"eventsUsed": profile.n_events, "coldStart": profile.n_events < 3,
-                                "excludedVerticals": sorted(map(str, done)), "trips": len(profile.trips),
-                                "exploreFilled": len(explore)}}
+        result = {**base, "strategy": profile.strategy, "destination": dest,
+                  "nextVertical": str(Counter(idx.taxonomy[space.glob[j]] for j in chosen).most_common(1)[0][0]) if chosen else None,
+                  "recommendations": recs, "sections": [],
+                  "diagnostics": {"eventsUsed": profile.n_events, "coldStart": profile.n_events < 3,
+                                  "excludedVerticals": sorted(map(str, done)), "trips": len(profile.trips),
+                                  "exploreFilled": len(explore)}}
+        stages.lap("build")
+        return result
 
     @staticmethod
     def _because(profile, j: int, E: np.ndarray, space: _LocalSpace, long_term: bool = False) -> list[dict]:
