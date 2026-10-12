@@ -8,31 +8,33 @@ from urllib.parse import quote
 
 from .textutil import fold
 
-# Tên chuẩn → các cách viết thường gặp (so khớp không dấu, theo ranh giới từ).
+# Tên chuẩn → các cách viết thường gặp (so khớp không dấu, theo ranh giới từ). Gồm cả địa danh riêng hay có trong tên tour
+# (Pù Luông, Lan Hạ, DMZ, Sơn Đoòng…, thêm 12/10/2026) để tour không mang tên tỉnh vẫn về đúng điểm đến.
 # Thứ tự trong dict không quan trọng: xem cách chọn khi một chuỗi khớp nhiều alias trong normalise_destination().
 DESTINATION_ALIASES: dict[str, list[str]] = {
     "Nha Trang": ["nha trang", "cam ranh", "hon tre", "hon tam", "vinwonders nha trang", "bai dai cam ranh", "khanh hoa"],
     "Phú Quốc": ["phu quoc", "duong dong", "an thoi", "ganh dau", "bai truong", "ham ninh", "cua can", "grand world", "kien giang"],
     "Hạ Long": ["ha long", "halong", "bai chay", "tuan chau", "hon gai", "quang ninh"],
-    "Hội An": ["hoi an", "nam hoi an", "cua dai", "an bang", "thang binh", "thang an", "duy xuyen", "dien ban", "quang nam"],
+    "Hội An": ["hoi an", "nam hoi an", "cua dai", "an bang", "thang binh", "thang an", "duy xuyen", "dien ban", "quang nam",
+               "cham island", "cu lao cham", "my son sanctuary", "thanh dia my son"],
     "Đà Nẵng": ["da nang", "danang", "son tra", "ngu hanh son", "my khe", "ba na", "bana hills", "hai chau", "lien chieu", "thanh khe", "hoa vang"],
     "Hà Nội": ["ha noi", "hanoi", "hoan kiem", "ba dinh", "tay ho", "long bien", "cau giay", "dong da", "hai ba trung", "times city", "ocean park", "gia lam"],
     "TP. Hồ Chí Minh": ["ho chi minh", "tp hcm", "hcmc", "sai gon", "saigon", "thu duc", "binh thanh", "phu nhuan", "tan binh", "go vap", "can gio", "district 1", "quan 1"],
     "Đà Lạt": ["da lat", "dalat", "lam dong"],
-    "Sa Pa": ["sa pa", "sapa", "lao cai"],
+    "Sa Pa": ["sa pa", "sapa", "lao cai", "fansipan", "cat cat"],
     "Huế": ["hue", "thua thien", "lang co"],
     "Quy Nhơn": ["quy nhon", "nhon ly", "ky co", "binh dinh"],
     "Phan Thiết": ["phan thiet", "mui ne", "ham tien", "ke ga", "binh thuan"],
     "Vũng Tàu": ["vung tau", "ba ria", "long hai", "ho tram"],
     "Côn Đảo": ["con dao", "con son"],
-    "Cần Thơ": ["can tho"],
+    "Cần Thơ": ["can tho", "cai rang"],
     "Hải Phòng": ["hai phong", "do son", "vinhomes imperia"],
     "Ninh Bình": ["ninh binh", "trang an", "tam coc", "hoa lu", "bai dinh"],
     "Quảng Bình": ["quang binh", "dong hoi"],
     "Nghệ An": ["nghe an", "cua lo", "cua hoi", "thanh pho vinh", "tp vinh"],
     "Hà Tĩnh": ["ha tinh", "cua sot", "thien cam"],
     "Bắc Ninh": ["bac ninh"],
-    "Hà Giang": ["ha giang", "dong van", "meo vac"],
+    "Hà Giang": ["ha giang", "dong van", "meo vac", "ma pi leng", "lung cu"],
     "Mộc Châu": ["moc chau"],
     "Tam Đảo": ["tam dao"],
     "Tuy Hòa": ["tuy hoa", "phu yen"],
@@ -40,15 +42,15 @@ DESTINATION_ALIASES: dict[str, list[str]] = {
     "Quảng Ngãi": ["quang ngai"],
     "Buôn Ma Thuột": ["buon ma thuot", "dak lak"],
     "Hà Nam": ["ha nam", "tam chuc"],
-    "Thanh Hóa": ["thanh hoa"],
+    "Thanh Hóa": ["thanh hoa", "pu luong"],
     "Mai Châu": ["mai chau", "hoa binh"],
     "Cao Bằng": ["cao bang", "ban gioc"],
     "Rạch Giá": ["rach gia"],
-    "Châu Đốc": ["chau doc", "an giang"],
+    "Châu Đốc": ["chau doc", "an giang", "tra su"],
     # Mở rộng 19/09/2026
     "Pleiku": ["pleiku", "gia lai"],
     "Kon Tum": ["kon tum", "mang den"],
-    "Tây Ninh": ["tay ninh", "nui ba den"],
+    "Tây Ninh": ["tay ninh", "nui ba den", "ba den", "black virgin"],
     "Cà Mau": ["ca mau", "dat mui"],
     "Bến Tre": ["ben tre"],
     "Mỹ Tho": ["my tho", "tien giang", "cai be"],
@@ -56,18 +58,18 @@ DESTINATION_ALIASES: dict[str, list[str]] = {
     "Bạc Liêu": ["bac lieu"],
     "Điện Biên": ["dien bien", "thanh pho dien bien phu", "tp dien bien phu"],  # "Điện Biên Phủ" một mình là tên đường ở mọi thành phố
     "Lạng Sơn": ["lang son", "dong dang"],
-    "Sơn La": ["son la"],
+    "Sơn La": ["son la", "ta xua"],
     "Biên Hòa": ["bien hoa", "dong nai"],
     "Vĩnh Long": ["vinh long"],
     "Đồng Tháp": ["dong thap", "sa dec", "cao lanh"],
-    "Quảng Trị": ["quang tri", "dong ha"],
+    "Quảng Trị": ["quang tri", "dong ha", "dmz", "vinh moc", "khe sanh", "hien luong"],
     # Điểm đến nhỏ chỉ cào từ Booking (19/09/2026). Chỉ dùng tên riêng ít trùng tên phường/xã.
-    "Cát Bà": ["cat ba"],
+    "Cát Bà": ["cat ba", "lan ha"],
     "Lý Sơn": ["ly son"],
     "Sầm Sơn": ["sam son"],
     "Hà Tiên": ["ha tien"],
     "Bảo Lộc": ["bao loc"],
-    "Phong Nha": ["phong nha"],
+    "Phong Nha": ["phong nha", "paradise cave", "son doong", "ke bang"],
     "Vân Đồn": ["van don"],
     "Mù Cang Chải": ["mu cang chai", "yen bai"],
     "Thái Nguyên": ["thai nguyen"],
@@ -213,6 +215,7 @@ DESTINATION_CENTERS: dict[str, tuple[float, float]] = {
     "Tam Kỳ": (15.5736, 108.4740),
     "Gia Nghĩa": (12.0037, 107.6876),
     "Thái Bình": (20.4463, 106.3366),
+    "Tuyên Quang": (21.8167, 105.2167),  # TP. Tuyên Quang (Wikipedia, 12/10/2026); Vinpearl Onsen (Mỹ Lâm) cách ~13 km
 }
 
 # Bán kính hợp lý quanh tâm (km). Xa hơn thì toạ độ (hoặc chính điểm đến) đáng ngờ. Rộng hơn mặc định khi alias

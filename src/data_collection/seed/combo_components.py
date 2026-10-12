@@ -390,6 +390,11 @@ def sync(conn, on: bool | None = None, as_of: date | None = None, dry_run: bool 
                   "item_product_id": i["item_product_id"] and str(i["item_product_id"])} for i in cursor.fetchall()]
     result = plan(rows, items, as_of, on)
     before = {r["product_id"]: r for r in rows}
+    for product in result.products.values():
+        # Tuyến bay mô phỏng: ảnh đã có trên DB (ảnh thành phố đến, đặt 12/10/2026) thắng ảnh combo (thường trống).
+        old = before.get(product["product_id"])
+        if product["taxonomy"] == "flight" and old and old.get("image_url"):
+            product["image_url"] = old["image_url"]
     changes = [r for r in result.products.values() if r["product_id"] not in before
                or any(before[r["product_id"]][c] != r[c] for c in MUTABLE)]
     stored = {(i["combo_product_id"], i["position"]): i for i in items}
