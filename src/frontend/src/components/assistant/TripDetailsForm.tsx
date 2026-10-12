@@ -21,6 +21,35 @@ const PARTY_LABELS: Record<string, string> = {
   solo: 'Độc hành', couple: 'Cặp đôi', family_with_kids: 'Gia đình có trẻ nhỏ', friends: 'Nhóm bạn',
 };
 
+/** Hôm nay theo giờ Việt Nam (`yyyy-mm-dd`), khớp `startDateMin` của backend; không dùng giờ UTC của máy. */
+export function vietnamToday(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }).format(now);
+}
+
+function addDays(isoDate: string, days: number): string {
+  const date = new Date(`${isoDate}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+/** `yyyy-mm-dd` thành `dd/mm/yyyy`, cách viết ngày người dùng và trợ lý cùng dùng. */
+function displayDate(isoDate: string): string {
+  const [year, month, day] = isoDate.split('-');
+  return `${day}/${month}/${year}`;
+}
+
+/** Hai nút chọn nhanh ngày đi: thứ Bảy gần nhất từ hôm nay (kể cả hôm nay) và thứ Bảy tuần sau. */
+function quickStartDates(today: string): { label: string; value: string }[] {
+  const weekday = new Date(`${today}T00:00:00Z`).getUTCDay();
+  const saturday = addDays(today, (6 - weekday + 7) % 7);
+  const short = (value: string) => displayDate(value).slice(0, 5);
+  const next = addDays(saturday, 7);
+  return [
+    { label: `Thứ 7 này (${short(saturday)})`, value: saturday },
+    { label: `Thứ 7 tuần sau (${short(next)})`, value: next },
+  ];
+}
+
 function formatBudget(value: number): string {
   return `${(value / 1_000_000).toLocaleString('vi-VN', { maximumFractionDigits: 1 })} triệu`;
 }
@@ -32,7 +61,7 @@ function formatBudget(value: number): string {
 export function tripDetailsPrompt(intent: TripIntent, interestOptions: readonly string[] = [], note = ''): string {
   const parts: string[] = [];
   parts.push(`Lên lịch trình ${intent.days ?? MIN_DAYS} ngày tại ${intent.destination ?? 'điểm đến bạn chọn'}`);
-  if (intent.startDate) parts.push(`bắt đầu từ ngày ${intent.startDate}`);
+  if (intent.startDate) parts.push(`bắt đầu từ ngày ${displayDate(intent.startDate)}`);
   if (intent.party) {
     const { adults, children } = intent.party;
     const partyText = children > 0 ? `${adults} người lớn và ${children} trẻ em` : `${adults} người lớn`;
@@ -126,7 +155,7 @@ export function TripDetailsForm({
   const [typedDestination, setTypedDestination] = useState(false);
   const requestRef = useRef<AbortController | null>(null);
   const titleId = useId();
-  const today = form.startDateMin ?? new Date().toISOString().slice(0, 10);
+  const today = form.startDateMin ?? vietnamToday();
 
   const load = useCallback(() => {
     requestRef.current?.abort();
@@ -168,9 +197,19 @@ export function TripDetailsForm({
     setIntent((prev) => ({ ...prev, budget: parsed && parsed > 0 ? parsed : null }));
   };
 
+  // Form gửi đúng những gì đang hiện: số ngày và số người luôn có giá trị trên stepper nên luôn đi trong câu yêu cầu;
+  // ngày đi không tự điền, người dùng phải chọn (cùng điểm đến) mới xác nhận được.
+  const missingDestination = form.fields.includes('destination') && !intent.destination?.trim();
+  const missingDate = form.fields.includes('startDate') && !intent.startDate;
   const confirm = (event: React.FormEvent) => {
     event.preventDefault();
-    onConfirm(tripDetailsPrompt(intent, interestOptions, form.fields.includes('interests') ? note : ''));
+    if (missingDestination || missingDate) return;
+    const shown: TripIntent = {
+      ...intent,
+      days: form.fields.includes('days') ? intent.days ?? MIN_DAYS : intent.days,
+      party: form.fields.includes('party') ? intent.party ?? { type: null, adults: 1, children: 0 } : intent.party,
+    };
+    onConfirm(tripDetailsPrompt(shown, interestOptions, form.fields.includes('interests') ? note : ''));
   };
 
   const chipClass = (selected: boolean) => `min-h-9 rounded-lg border px-2.5 py-1 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ai-500 focus-visible:ring-offset-2 ${
@@ -241,11 +280,21 @@ export function TripDetailsForm({
         )}
 
         {form.fields.includes('startDate') && (
-          <fieldset className="flex items-center justify-between gap-3">
-            <legend className="text-xs font-bold text-slate-700">Ngày khởi hành</legend>
-            <input type="date" value={intent.startDate ?? today} min={today} disabled={disabled}
-              onChange={(event) => setStartDate(event.target.value)}
-              className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs outline-hidden focus:ring-1 focus:ring-ai-500" />
+          <fieldset className="space-y-1.5">
+            <legend className="mb-1.5 flex items-center gap-1.5 text-xs font-bold text-slate-700">
+              <Calendar className="h-3.5 w-3.5 text-ai-600" aria-hidden="true" /> Ngày khởi hành
+            </legend>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {quickStartDates(today).map((option) => (
+                <button key={option.value} type="button" disabled={disabled} aria-pressed={intent.startDate === option.value}
+                  onClick={() => setStartDate(option.value)} className={chipClass(intent.startDate === option.value)}>
+                  {option.label}
+                </button>
+              ))}
+              <input type="date" value={intent.startDate ?? ''} min={today} required disabled={disabled} aria-label="Ngày khởi hành"
+                onChange={(event) => { if (event.target.value) setStartDate(event.target.value); }}
+                className="min-h-9 rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm outline-hidden focus:ring-1 focus:ring-ai-500" />
+            </div>
           </fieldset>
         )}
 
@@ -289,7 +338,7 @@ export function TripDetailsForm({
         {form.fields.includes('origin') && (
           <fieldset className="space-y-1.5">
             <legend className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
-              <PlaneTakeoff className="h-3.5 w-3.5 text-ai-600" aria-hidden="true" /> Nơi đi (không bắt buộc)
+              <PlaneTakeoff className="h-3.5 w-3.5 text-ai-600" aria-hidden="true" /> Nơi đi (để thêm vé máy bay)
             </legend>
             <div className="flex items-center gap-1.5">
               <input type="text" disabled={disabled} value={intent.origin ?? ''} aria-label="Nơi đi"
@@ -318,7 +367,12 @@ export function TripDetailsForm({
           selected={intent.interests ?? []} onToggle={toggleInterest} note={note} onNote={setNote}
           disabled={disabled} chipClass={chipClass} />}
 
-        <button type="submit" disabled={disabled} className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-ai-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-ai-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ai-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300">
+        {(missingDestination || missingDate) && (
+          <p className="text-xs text-slate-600">
+            Chọn {[missingDestination && 'điểm đến', missingDate && 'ngày khởi hành'].filter(Boolean).join(' và ')} để lập lịch.
+          </p>
+        )}
+        <button type="submit" disabled={disabled || missingDestination || missingDate} className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-ai-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-ai-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ai-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300">
           <Send className="h-3.5 w-3.5" aria-hidden="true" /> Xác nhận
         </button>
       </form>

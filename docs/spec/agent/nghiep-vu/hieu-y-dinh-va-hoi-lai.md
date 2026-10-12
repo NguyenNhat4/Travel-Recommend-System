@@ -83,7 +83,7 @@ flowchart TD
 - **Form gợi ý** (`clarificationForm`) gồm 7 ô: điểm đến, số ngày, ngày đi, số người, ngân sách, nơi đi, sở thích (chọn
   nhiều).
   - Giá trị người dùng đã nói luôn thắng giá trị gợi ý.
-  - Gợi ý mặc định: 1 ngày, 2 người lớn, ngày đi hôm nay (`startDateMin` = hôm nay), điểm đến nhiều sản phẩm nhất.
+  - Gợi ý mặc định: 1 ngày, 2 người lớn. Ngày đi và điểm đến người dùng chưa nói thì để trống (`startDateMin` = hôm nay); form chỉ xác nhận được khi đã chọn đủ hai ô này (cập nhật 2026-10-12).
   - Không kèm form khi đang hỏi chọn điểm đến theo loại nơi.
 - **"Đổi sang chỗ khác" chưa nêu nơi mới:** hỏi "đổi sang đâu" kèm 3 nút "Đổi sang <nơi>", không form.
 - **Đếm vòng hỏi** (`clarification_rounds`) chỉ tăng khi còn thiếu điểm đến/số ngày.

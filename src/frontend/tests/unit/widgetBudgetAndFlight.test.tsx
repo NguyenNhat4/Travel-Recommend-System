@@ -68,7 +68,10 @@ describe('WidgetFlightCard', () => {
     expect(screen.getByText('Chiều về')).toBeTruthy();
     expect(screen.getByText("1h00'")).toBeTruthy();
     expect(screen.getByText('1.730.362 ₫')).toBeTruthy();
-    expect(screen.getByText(/\/khách × 2/)).toBeTruthy();
+    expect(screen.getByText(/\/khách × 2 khách/)).toBeTruthy();
+    // Giờ bay đã ở ô giờ lớn; dòng chiều chỉ ghi số hiệu, không lặp lại giờ.
+    expect(screen.getByText('VN1823')).toBeTruthy();
+    expect(screen.queryByText(/VN1823 · 08:00/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Đặt ngay' }));
     expect(onBookNow).toHaveBeenCalledOnce();
   });

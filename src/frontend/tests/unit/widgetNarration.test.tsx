@@ -52,6 +52,7 @@ describe('WidgetNarration', () => {
     expect(screen.getByText('Đài Quan Sát LOTTE Hanoi Sky')).toBeTruthy();   // tên catalog, không phải nhãn link
     expect(screen.getByText('4.4/5')).toBeTruthy();
     expect(screen.getByText(/13\.246 đánh giá/)).toBeTruthy();
+    expect(screen.queryByText('4.4')).toBeNull();                              // điểm chỉ hiện một lần
     expect(screen.getByText('Tham quan tự do')).toBeTruthy();
     expect(screen.getByText('58 P. Quốc Tử Giám, Hà Nội')).toBeTruthy();
     expect(screen.queryByText(/Nơi lạ/)).toBeTruthy();                         // id lạ: chỉ còn chữ, không có thẻ
@@ -81,6 +82,8 @@ describe('WidgetNarration', () => {
       quickAddIds={new Set(['lotte'])} onQuickAdd={onQuickAdd} />);
     const add = screen.getAllByRole('button', { name: /Thêm/ });
     expect(add).toHaveLength(1);
+    expect(add[0].getAttribute('aria-label')).toBe('Thêm Đài Quan Sát LOTTE Hanoi Sky vào giỏ');
+    expect(add[0].textContent).toBe('Thêm vào giỏ');
     fireEvent.click(add[0]);
     expect(onQuickAdd).toHaveBeenCalledWith('lotte');
     expect(onOpen).not.toHaveBeenCalled();

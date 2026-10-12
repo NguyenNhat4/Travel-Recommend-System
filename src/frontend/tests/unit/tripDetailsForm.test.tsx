@@ -70,6 +70,44 @@ describe('TripDetailsForm', () => {
   });
 });
 
+describe('TripDetailsForm shows exactly what it sends', () => {
+  const originalFetch = global.fetch;
+  const unknownForm: ClarificationForm = {
+    fields: ['destination', 'days', 'startDate', 'party'],
+    defaults: { destination: null, startDate: null, days: null, party: null, budget: null, interests: [], pace: null },
+    startDateMin: '2026-10-12',
+  };
+
+  afterEach(() => {
+    cleanup();
+    global.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  it('leaves an unknown start date empty and blocks confirming until a destination and date are chosen', async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200,
+      json: async () => ({ destinations: [{ destination: 'Đà Nẵng', productCount: 9 }] }) });
+    const onConfirm = vi.fn();
+    render(<TripDetailsForm form={unknownForm} onConfirm={onConfirm} />);
+
+    const dateInput = document.querySelector('input[type="date"]') as HTMLInputElement;
+    expect(dateInput.value).toBe('');
+    const confirm = screen.getByRole('button', { name: 'Xác nhận' });
+    expect(confirm.hasAttribute('disabled')).toBe(true);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Đà Nẵng' }));
+    expect(confirm.hasAttribute('disabled')).toBe(true);
+    // 12/10/2026 là thứ Hai: "Thứ 7 này" là 17/10, "Thứ 7 tuần sau" là 24/10.
+    expect(screen.getByRole('button', { name: 'Thứ 7 tuần sau (24/10)' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Thứ 7 này (17/10)' }));
+    expect(dateInput.value).toBe('2026-10-17');
+    fireEvent.click(confirm);
+
+    // Số ngày và số người đang hiện trên form (1 ngày, 1 người lớn) cũng có trong câu gửi đi.
+    expect(onConfirm).toHaveBeenCalledWith('Lên lịch trình 1 ngày tại Đà Nẵng, bắt đầu từ ngày 17/10/2026, cho 1 người lớn.');
+  });
+});
+
 describe('tripDetailsPrompt', () => {
   it('builds a complete natural-language request from the intent', () => {
     const prompt = tripDetailsPrompt({
@@ -83,7 +121,7 @@ describe('tripDetailsPrompt', () => {
     });
 
     expect(prompt).toBe(
-      'Lên lịch trình 3 ngày tại Đà Nẵng, bắt đầu từ ngày 2026-10-01, cho 2 người lớn và 1 trẻ em, ngân sách khoảng 5 triệu.',
+      'Lên lịch trình 3 ngày tại Đà Nẵng, bắt đầu từ ngày 01/10/2026, cho 2 người lớn và 1 trẻ em, ngân sách khoảng 5 triệu.',
     );
   });
 

@@ -419,7 +419,8 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         form = response['clarificationForm']
         self.assertEqual(form['defaults']['destination'], 'Đà Nẵng')
         self.assertEqual(form['defaults']['days'], 3)
-        self.assertIsNotNone(form['defaults']['startDate'])
+        # Người dùng chưa nói ngày: form để trống ngày đi, không tự điền hôm nay (review UX 12/10).
+        self.assertIsNone(form['defaults']['startDate'])
         self.assertIsNotNone(form['defaults']['party'])
         self.assertFalse([call for call in clients.calls[explored_calls:] if call in ('search', 'rec')])
 
@@ -573,7 +574,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(today.strftime('%d/%m/%Y'), prompt)
 
     async def test_a_past_date_is_named_on_the_form_round_even_without_destination_and_days(self):
-        # "di ngay 28 thang9" khi hôm nay là sau ngày đó: câu phải nêu ngày đã qua, form vẫn hiện và điền hôm nay.
+        # "di ngay 28 thang9" khi hôm nay là sau ngày đó: câu phải nêu ngày đã qua, form vẫn hiện, ngày đi để trống.
         from datetime import timedelta
         from src.backend.app.agents.steps.classification import vietnam_today
         today = vietnam_today()
@@ -585,7 +586,10 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(response['question'].startswith('**Ngày khởi hành không hợp lệ**\n'))
         self.assertEqual(response['missingFields'][:2], ['destination', 'days'])
         self.assertIn('startDate', response['missingFields'])
-        self.assertEqual(response['clarificationForm']['defaults']['startDate'], today.isoformat())
+        self.assertIsNone(response['clarificationForm']['defaults']['startDate'])
+        self.assertEqual(response['clarificationForm']['startDateMin'], today.isoformat())
+        # Chưa biết điểm đến thì không chọn sẵn một điểm của catalog.
+        self.assertIsNone(response['clarificationForm']['defaults']['destination'])
         self.assertIn('form_shown: true', llm.prompts['ConversationalAnswer'])
         self.assertFalse(clients.calls)
 
@@ -1139,6 +1143,9 @@ class FlightTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response['itinerary']['estimatedTotal'], 3_800_000 + 200_000)
         self.assertIn('**Vé máy bay**', response['message'])
         self.assertIn('(product:VJ1)', response['message'])
+        # Ngày, giờ, bay thẳng đã ở thẻ vé ngay sau dòng này (user-flow §4.2): dòng chữ chỉ nêu chặng và tên chuyến.
+        flight_line = next(line for line in response['message'].splitlines() if '(product:VJ1)' in line)
+        self.assertTrue(flight_line.endswith('(product:VJ1)'), flight_line)
         self.assertFalse([w for w in response['warnings'] if w['code'].startswith('FLIGHT_')])
         self.assertEqual(result['validation_issues'], [])
 

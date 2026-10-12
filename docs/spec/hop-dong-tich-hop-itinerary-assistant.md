@@ -474,11 +474,12 @@ Backend đếm `clarification_rounds` theo hội thoại (0, 1, 2…), chỉ tă
   ```
 
   `clarificationForm.fields` liệt kê mọi trường bắt buộc của chuyến đi (không chỉ trường còn thiếu), để người dùng sửa lại cả
-  những gì đã nói nếu muốn. `defaults` ưu tiên giá trị người dùng đã cung cấp; trường còn lại dùng gợi ý: `days` = 1,
-  `startDate` = hôm nay theo giờ Việt Nam (không được sớm hơn `startDateMin`), `party` = 2 người lớn, `budget` = `null`
-  (không giới hạn), `destination` = điểm đến đầu tiên trong `supported_destinations` nếu hội thoại đã từng gọi tool.
+  những gì đã nói nếu muốn. `defaults` ưu tiên giá trị người dùng đã cung cấp; trường còn lại: `days` = 1, `party` = 2
+  người lớn (stepper luôn hiện một số và form gửi đúng số đang hiện), `budget` = `null` (không giới hạn); `startDate` và
+  `destination` người dùng chưa nói thì để `null`, không tự điền hôm nay hay một điểm của catalog (cập nhật 2026-10-12,
+  review UX: form hiện sẵn ngày hôm nay làm người dùng tưởng đã chọn). Ngày đã qua cũng để `null`.
   Frontend tự nạp danh sách điểm đến cho ô chọn (`GET /destinations`, chỉ hiện vài điểm đến tiêu biểu, không đổ hết catalog)
-  và chặn tại chỗ: số ngày trong 1–7, `startDate ≥ startDateMin`. Bấm xác nhận dựng một câu yêu cầu hoàn chỉnh và **gửi
+  và chặn tại chỗ: số ngày trong 1–7, `startDate ≥ startDateMin`, chưa chọn điểm đến hoặc ngày đi thì chưa xác nhận được. Bấm xác nhận dựng một câu yêu cầu hoàn chỉnh và **gửi
   ngay** như một lượt chat bình thường (không dùng `intentOverride`). `suggestedValues` giữ nguyên hành vi cũ, không đổi.
 
 **Giá trị không hợp lệ thì hỏi lại (đề xuất `docs/prd/update-archive/2026-09-30-bao-loi-dau-vao-khong-hop-le.md`, đã áp dụng; thay `2026-09-30-hoi-lai-khi-ngay-di-da-qua.md`).**
@@ -502,7 +503,7 @@ trước. Ngày đi quá xa (ngoài cửa sổ mở bán) không thuộc nhóm n
 - **Gợi ý theo trường:** ngày đi → "chọn từ hôm nay (dd/mm/yyyy) trở đi"; điểm đến → danh sách điểm đến hỗ trợ (kèm
   `suggestedValues.destination`); số ngày → khoảng 1–7 (kèm `suggestedValues.days`); số người/ngân sách → giá trị tối thiểu hợp lệ.
 - **Còn thiếu điểm đến/số ngày:** câu vẫn nêu giá trị sai (ví dụ "di ngay 28 thang9" khi hôm nay là 30/9); `clarification_rounds`
-  vẫn tăng và từ vòng 2 vẫn kèm `clarificationForm` (điền sẵn hôm nay, không dùng ngày đã qua).
+  vẫn tăng và từ vòng 2 vẫn kèm `clarificationForm` (ô ngày đi để trống, không dùng ngày đã qua).
 - Số người lớn rất lớn hay ngân sách rất cao vẫn hợp lệ theo contract và vẫn lập lịch.
 - Ngày năm cũ LLM trích (ví dụ "20/9" thành 2023-09-20) vẫn sửa về năm nay trước khi kiểm, nên "20/9" nói vào ngày 30/9 là ngày
   đã qua và bị hỏi lại, không tự đẩy sang năm sau.

@@ -633,6 +633,14 @@ export const ItineraryMap: React.FC<ItineraryMapProps> = ({
 
   const pinActions = selectedPoint?.product && itemActions ? itemActions(selectedPoint.product) : null;
 
+  const legendModes = [...new Map(routeResults
+    .filter((result) => result.status === 'routed')
+    .map((result) => getTransitVisual(result.mode))
+    .map((transit) => [transit.emoji, transit] as const)).values()];
+  const legendPoints = getAllPoints().filter((point) => visibleOn(point, filterDay));
+  const legendHasStay = legendPoints.some((point) => point.type === 'stay');
+  const legendHasAirport = legendPoints.some((point) => point.type === 'airport');
+
   return (
     <div className={`relative flex flex-col h-full bg-slate-50 overflow-hidden ${className}`}>
       {/* Top Map Control Bar */}
@@ -697,47 +705,37 @@ export const ItineraryMap: React.FC<ItineraryMapProps> = ({
         </div>
       )}
 
-      {/* Map Legend (Bottom-Left) */}
+      {/* Chú thích (góc dưới trái): chỉ các phương tiện có trên đường đang vẽ và các loại ghim đang hiện. */}
+      {(legendModes.length > 0 || legendHasStay || legendHasAirport) && (
       <div className="absolute bottom-4 left-4 z-[1000] p-2.5 bg-white/95 backdrop-blur-xs rounded-xl shadow-md border border-slate-200 text-[11px] text-slate-600 space-y-1.5 hidden md:block max-w-[210px]">
         <div className="font-bold text-slate-800 flex items-center gap-1">
           <Layers className="w-3 h-3 text-brand-600" />
-          <span>Phương tiện & Lộ trình</span>
+          <span>Chú thích</span>
         </div>
-        <div className="grid grid-cols-2 gap-1.5 pt-0.5 text-[10px]">
-          <div className="flex items-center gap-1.5">
-            <span>🚗</span>
-            <span>Ô tô / Taxi</span>
+        {legendModes.length > 0 && (
+          <div className="grid grid-cols-2 gap-1.5 pt-0.5 text-[10px]">
+            {legendModes.map((transit) => (
+              <div key={transit.type + transit.emoji} className="flex items-center gap-1.5">
+                <span>{transit.emoji}</span>
+                <span>{transit.type === 'plane' ? 'Xe sân bay' : transit.label}</span>
+              </div>
+            ))}
           </div>
-          <div className="flex items-center gap-1.5">
-            <span>🚤</span>
-            <span>Cano / Biển</span>
+        )}
+        {legendHasStay && (
+          <div className="pt-1 border-t border-slate-100 flex items-center gap-1.5 text-[10px] text-slate-500">
+            <span className="w-2.5 h-2.5 rounded-full bg-brand-600 inline-block shrink-0"></span>
+            <span>Nơi nghỉ</span>
           </div>
-          <div className="flex items-center gap-1.5">
-            <span>🚡</span>
-            <span>Cáp treo</span>
+        )}
+        {legendHasAirport && (
+          <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
+            <span className="w-2.5 h-2.5 rounded-full bg-slate-800 inline-block shrink-0"></span>
+            <span>Sân bay</span>
           </div>
-          <div className="flex items-center gap-1.5">
-            <span>🚶</span>
-            <span>Đi bộ</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span>🚲</span>
-            <span>Xe đạp</span>
-          </div>
-          <div className="flex items-center gap-1.5 col-span-2">
-            <span>✈️</span>
-            <span>Xe sân bay</span>
-          </div>
-        </div>
-        <div className="pt-1 border-t border-slate-100 flex items-center gap-1.5 text-[10px] text-slate-500">
-          <span className="w-2.5 h-2.5 rounded-full bg-brand-600 inline-block shrink-0"></span>
-          <span>Chỗ nghỉ cố định</span>
-        </div>
-        <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
-          <span className="w-2.5 h-2.5 rounded-full bg-slate-800 inline-block shrink-0"></span>
-          <span>Sân bay</span>
-        </div>
+        )}
       </div>
+      )}
 
       {/* Active Selected Point Detail Card (Bottom or Floating) */}
       {selectedPoint && (

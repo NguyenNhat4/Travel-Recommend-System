@@ -231,20 +231,12 @@ def _with_offers(state: dict, body: str, offers) -> str:
 
 
 def _flights_block(state: dict, response: dict) -> str | None:
-    """Mục "Vé máy bay" dựng bằng luật (AC-AGT-02): từng vé kèm ngày, giờ, giá × số khách; hoặc lý do chưa có vé."""
-    language = state.get("language", "vi")
-    lines = []
-    for leg in response["itinerary"].get("flights", []):
-        product, attributes = leg["product"], leg["product"].get("attributes", {})
-        when = display_date(leg["date"]) + (f" – {display_date(leg['returnDate'])}" if leg.get("returnDate") else "")
-        bits = [when]
-        clock = attributes.get("departureTimeLocal") or str(attributes.get("departureAt") or "")[11:16]
-        if clock:
-            bits.append(clock)
-        if attributes.get("nonstop") is True:
-            bits.append(message(state, "flight_nonstop"))
+    """Mục "Vé máy bay" dựng bằng luật (AC-AGT-02): mỗi chặng một dòng kèm tên chuyến, hoặc lý do chưa có vé.
 
-        lines.append(f"• {message(state, 'flight_' + leg['direction'])} — {product_link(product)} · {' · '.join(bits)}")
+    Ngày, giờ, bay thẳng và giá nằm ở thẻ vé hiện ngay sau dòng này (user-flow §4.2), nên dòng chữ không nhắc lại.
+    """
+    lines = [f"• {message(state, 'flight_' + leg['direction'])} — {product_link(leg['product'])}"
+             for leg in response["itinerary"].get("flights", [])]
     lines += [warning["message"] for warning in response.get("warnings", [])
               if str(warning.get("code", "")).startswith("FLIGHT_")]
     return f"**{message(state, 'section_flights')}**\n" + "\n".join(lines) if lines else None

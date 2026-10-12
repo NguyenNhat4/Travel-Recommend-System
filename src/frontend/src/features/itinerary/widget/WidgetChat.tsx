@@ -70,8 +70,10 @@ export function WidgetChat({ widget }: { widget: FloatingWidgetController }) {
                 {message.plan?.budgetSummary && (
                   <WidgetBudget summary={message.plan.budgetSummary} days={message.plan.intent.days} />
                 )}
+                {/* Dưới lg cột lịch trình và bản đồ chưa có (PRD user-flow §4.2: giao diện mobile ngoài phạm vi), nên không
+                    hiện nút không làm gì; đề xuất `docs/prd/update/2026-10-12-lich-trinh-ban-do-man-hep.md`. */}
                 {message.plan && !isExpanded && (
-                  <button onClick={() => setIsExpanded(true)} className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-ai-600 hover:bg-ai-50">
+                  <button onClick={() => setIsExpanded(true)} className="mt-3 hidden lg:flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-ai-600 hover:bg-ai-50">
                     <Sparkles className="h-4 w-4" aria-hidden="true" />Xem lộ trình & Bản đồ song song<Maximize2 className="h-4 w-4" aria-hidden="true" />
                   </button>
                 )}

@@ -237,10 +237,8 @@ MESSAGES = {
                          "hai cách xếp gần ngang nhau thì mình chọn cách rẻ hơn.",
         "plan_criteria_change": "Các điểm nằm ở hai khu cách xa nhau, nên từ đêm {night} bạn chuyển từ {first} sang "
                                 "{second}: đỡ đi lại hơn nhiều so với ở một chỗ cả chuyến.",
-        "plan_criteria_budget": "Mình chọn điểm, ghép các ngày và chọn nơi ở để tổng quãng đường bạn phải đi là ít "
-                                "nhất mà tổng chi phí vẫn nằm trong ngân sách của bạn; nếu hai cách xếp gần ngang nhau "
-                                "thì mình chọn cách rẻ hơn, và nếu không cách nào vừa ngân sách thì mình chọn cách rẻ "
-                                "nhất.",
+        "plan_criteria_budget": "Mình xếp để tổng quãng đường ít nhất mà vẫn trong ngân sách của bạn; hai "
+                                "cách gần ngang nhau thì chọn cách rẻ hơn, không cách nào vừa thì chọn cách rẻ nhất.",
         "stay_nights_range": "Đêm {first}–{last}",
         "stay_night_single": "Đêm {first}",
         "options_total": "Lịch trên: đi lại ≈{km} km cả chuyến.",
@@ -621,10 +619,8 @@ MESSAGES = {
                          "short as possible; when two arrangements are about as short, I chose the cheaper one.",
         "plan_criteria_change": "The places sit in two areas far apart, so from night {night} you move from {first} to "
                                 "{second}: much less travel than staying in one place.",
-        "plan_criteria_budget": "I picked the places, grouped the days and chose where to stay so that your total "
-                                "travel is as short as possible while the total cost stays within your budget; when "
-                                "two arrangements are about as short, I chose the cheaper one, and when none fits the "
-                                "budget, I chose the cheapest.",
+        "plan_criteria_budget": "I kept your total travel as short as possible within your budget; when two plans "
+                                "are about as short I chose the cheaper one, and when none fits, the cheapest.",
         "stay_nights_range": "Nights {first}–{last}",
         "stay_night_single": "Night {first}",
         "options_total": "The plan above: ≈{km} km of travel for the whole trip.",

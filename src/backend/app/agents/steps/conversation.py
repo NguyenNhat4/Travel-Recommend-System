@@ -27,23 +27,22 @@ DEFAULT_FORM_PARTY = {"type": None, "adults": 2, "children": 0}
 
 
 def clarification_form(state: dict) -> dict:
-    """Form đã điền sẵn gợi ý, gửi kèm khi hỏi bằng câu chữ một lượt vẫn chưa đủ thông tin.
+    """Form đã điền sẵn thông tin đã biết, gửi kèm khi hỏi bằng câu chữ một lượt vẫn chưa đủ thông tin.
 
-    Giá trị người dùng đã nói luôn thắng giá trị gợi ý. `destination` để `None` khi hội thoại chưa từng
-    gọi tool (chưa có danh sách catalog); frontend tự nạp danh sách điểm đến cho ô chọn.
+    Giá trị người dùng đã nói luôn thắng giá trị gợi ý. Số ngày và số người có giá trị gợi ý vì stepper luôn hiện một số
+    và form gửi đúng số đang hiện. Điểm đến và ngày đi người dùng chưa nói thì để `None`: không chọn sẵn một điểm của
+    catalog hay ngày hôm nay mà người dùng chưa chọn (review UX 12/10); ngày đã qua cũng để trống. Frontend tự nạp danh
+    sách điểm đến cho ô chọn và chỉ cho xác nhận khi đã chọn đủ hai ô này.
     """
     today = vietnam_today().isoformat()
     known = {key: value for key, value in (state.get("intent") or {}).items() if value is not None}
     defaults = {**empty_intent(), **deepcopy(known)}
     if defaults.get("days") is None:
         defaults["days"] = DEFAULT_FORM_DAYS
-    if not defaults.get("startDate") or defaults["startDate"] < today:
-        defaults["startDate"] = today
+    if defaults.get("startDate") and defaults["startDate"] < today:
+        defaults["startDate"] = None
     if defaults.get("party") is None:
         defaults["party"] = deepcopy(DEFAULT_FORM_PARTY)
-    if defaults.get("destination") is None:
-        supported = state.get("supported_destinations") or []
-        defaults["destination"] = supported[0] if supported else None
     defaults["interests"] = _form_interests(defaults)
     return {"fields": [*FORM_FIELDS, "interests"], "defaults": defaults, "startDateMin": today,
             "interestOptions": preferences.labels(), "autoOpen": bool(state.get("form_request"))}

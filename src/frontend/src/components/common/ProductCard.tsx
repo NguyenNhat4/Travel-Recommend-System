@@ -5,7 +5,7 @@ import { PriceTag } from './PriceTag';
 import { useTravel } from '../../context/TravelContext';
 import { flightProductHref } from '../../features/flights/results/flightHref';
 import { placeholderImage } from '../../services/catalog';
-import { MapPin, Star, Plus, ArrowRight, ExternalLink, Loader2, Check } from 'lucide-react';
+import { MapPin, Star, ShoppingCart, ArrowRight, ExternalLink, Loader2, Check } from 'lucide-react';
 
 interface ProductCardProps {
   product: Product;
@@ -150,7 +150,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                   ✨ Hợp với bạn
                 </span>
               )}
-              {product.aggregateRating && (
+              {/* `showRatingAndAddress` có dòng "x/5 · n đánh giá" dưới tên rồi, không hiện điểm lần thứ hai. */}
+              {product.aggregateRating && !showRatingAndAddress && (
                 <span className="flex items-center text-[11px] font-medium text-amber-600">
                   <Star className="w-3 h-3 fill-amber-400 text-amber-400 mr-0.5" />
                   {product.aggregateRating.score}
@@ -195,6 +196,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             <button
               disabled={Boolean(quickAddState)}
               aria-busy={quickAddState === 'adding'}
+              aria-label={quickAddState ? undefined : `Thêm ${product.name} vào giỏ`}
               onClick={(e) => {
                 e.stopPropagation();
                 onQuickAdd(product);
@@ -202,8 +204,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({
               className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md border transition-colors disabled:cursor-default ${quickAddState === 'added' ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-brand-700 bg-brand-50 hover:bg-brand-100 border-brand-200'}`}
             >
               {quickAddState === 'adding' ? <Loader2 className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-                : quickAddState === 'added' ? <Check className="w-3.5 h-3.5" aria-hidden="true" /> : <Plus className="w-3.5 h-3.5" aria-hidden="true" />}
-              <span aria-live="polite">{quickAddState === 'adding' ? 'Đang thêm…' : quickAddState === 'added' ? 'Đã thêm' : 'Thêm'}</span>
+                : quickAddState === 'added' ? <Check className="w-3.5 h-3.5" aria-hidden="true" /> : <ShoppingCart className="w-3.5 h-3.5" aria-hidden="true" />}
+              <span aria-live="polite" className="whitespace-nowrap">{quickAddState === 'adding' ? 'Đang thêm…' : quickAddState === 'added' ? 'Đã thêm vào giỏ' : 'Thêm vào giỏ'}</span>
             </button>
           )}
           {openInNewTab && (
