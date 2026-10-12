@@ -53,6 +53,22 @@ def test_offline_prod_engine_matches_production_path_for_every_fixture_user(worl
     assert any(r.http_ids for r in rows) and all(len(r.http_ids) <= 5 for r in rows)
 
 
+def test_compare_user_caps_history_like_production(world):
+    """Khách có hơn 500 event: production đọc 500 event mới nhất (cdp §6), harness cũng phải cắt như vậy mới trùng."""
+    from datetime import timedelta
+
+    from src.evaluation.recsys_bench.tests.conftest import ev
+    views = [ev("heavy", "product_view", "A1" if i % 2 else "C1",
+                (AS_OF - timedelta(minutes=i + 1)).isoformat().replace("+00:00", "Z")) for i in range(520)]
+    events = make_events() + views
+    engine = OfflineEngine(world["index"], world["vectors"], [e for e in events if e["eventName"] == "purchase"],
+                           candidate_k=200, mode="prod")
+    http_like = _production_response(world, events, "heavy", AS_OF)
+    row = P.compare_user("heavy", http_like, engine, views, k=5)
+    assert row.equal, (row.fields_http, row.fields_offline)
+    assert http_like["diagnostics"]["eventsRead"] == 500
+
+
 def test_popularity_now_anchors_offline_popularity_table(world):
     """Production neo bảng phổ biến ở lúc khởi động; harness nhận mốc đó qua `popularity_now` thay vì generatedAt."""
     from datetime import timedelta

@@ -9,7 +9,7 @@ from typing import Iterable, Sequence
 import numpy as np
 
 from src.backend.app.application.ports import CdpHistoryReader, UnitIndex, VectorSearchPort
-from src.backend.app.application.ports.cdp_client import CdpUnavailableError
+from src.backend.app.application.ports.cdp_client import HISTORY_MAX_EVENTS, CdpUnavailableError
 from src.backend.app.application.search import hit
 from src.backend.app.application.search.use_cases import StageTimer
 from src.backend.app.core.logging_config import log_event
@@ -199,7 +199,10 @@ class RecommendForUser:
         stages = StageTimer()
         base = {"generatedAt": now.isoformat(), "modelVersion": self.index.model_version}
         try:
-            raw = events if events is not None else (self.cdp.events_for_user(cdp_user_id) if cdp_user_id else [])
+            # Đường đọc CDP tối đa 500 event (cdp §6); cắt cả ở đây cho adapter sau này (HttpCdpClient). Đường `events=`
+            # (harness bench) giữ nguyên để baseline không đổi.
+            raw = events if events is not None else (
+                self.cdp.events_for_user(cdp_user_id)[:HISTORY_MAX_EVENTS] if cdp_user_id else [])
         except CdpUnavailableError as exc:
             # CDP sập/timeout vẫn trả 200 popular; chỉ lỗi CDP mới log WARNING, không log cdp_user_id
             # (hop-dong-tich-hop-cdp.md §6, §8).
