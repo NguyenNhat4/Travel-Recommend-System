@@ -353,6 +353,8 @@ GET /api/v1/products?destination=Nha%20Trang&taxonomy=hotel&sort=popular&limit=2
 
 Không có `parentProductId` thì chỉ trả **tầng cha** (search unit của `catalog.product_meta`: property, route, taxonomy không phân tầng), cùng tập với `/search`. Có `parentProductId` thì trả các **tầng con** của sản phẩm đó — đơn vị đặt chỗ mà Web thêm vào giỏ (FR-CAT-02: không đặt trên property, đặt qua hạng phòng); `sort=popular` với tầng con xếp theo giá tăng dần. Cha không tồn tại hoặc không có con → `results: []`.
 
+**Bộ nhớ đệm HTTP:** áp dụng cho cả ba endpoint catalog công khai: `GET /products`, `GET /products/{id}` và `GET /products/{id}/similar`. Response `200` có `Cache-Control: public, max-age=60, s-maxage=300`. Use case không đọc người dùng nên kết quả giống nhau cho mọi người: trình duyệt giữ 60 giây, lớp cache trung gian giữ 5 phút để giảm tải origin. Lỗi (`400`, `404`, `409`, `503`) không có header này. Cùng quy ước với `GET /search/suggestions` trong `hop-dong-tich-hop-search-recommendation.md`. Trên response được cache, `requestId` trong body (`GET /products` và `/similar`) và header `X-Request-ID` là của request đã tạo bản cache, không phải của lần gọi hiện tại; lượt trúng cache không có log tương ứng.
+
 `sort=popular` dùng baseline độ phổ biến theo số lượt `purchase` trong `events` (90 ngày, cùng số liệu RecSys dựng lúc khởi động qua `CdpHistoryReader`); hoà điểm thì sản phẩm gợi ý được (`is_recommendable`) và có giá đứng trước. Đây là nguồn dữ liệu cho section "Phổ biến tại các điểm đến Việt Nam" ở Home (`docs/product.md` §4.1.2 ④), section phải **luôn render được** kể cả khi `/recommendations` lỗi.
 
 ### 4.2. Chi tiết sản phẩm

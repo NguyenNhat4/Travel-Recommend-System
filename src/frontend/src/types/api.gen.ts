@@ -170,7 +170,7 @@ export interface paths {
         };
         /**
          * Danh sách sản phẩm
-         * @description Không có parentProductId: chỉ trả tầng cha (search unit — property, route và taxonomy không phân tầng), giống /search và /recommendations. Có parentProductId: trả các sản phẩm tầng con (hạng phòng, chuyến bay cụ thể) của sản phẩm cha đó, là đơn vị đặt chỗ mà Web thêm vào giỏ; sort=popular với tầng con xếp theo giá tăng dần. parentProductId không có trong catalog hoặc không có tầng con thì trả results rỗng.
+         * @description Không có parentProductId: chỉ trả tầng cha (search unit — property, route và taxonomy không phân tầng), giống /search và /recommendations. Có parentProductId: trả các sản phẩm tầng con (hạng phòng, chuyến bay cụ thể) của sản phẩm cha đó, là đơn vị đặt chỗ mà Web thêm vào giỏ; sort=popular với tầng con xếp theo giá tăng dần. parentProductId không có trong catalog hoặc không có tầng con thì trả results rỗng. Response 200 có `Cache-Control: public, max-age=60, s-maxage=300`: danh mục không đọc người dùng nên giống nhau cho mọi người, trình duyệt giữ 60 giây và lớp cache trung gian giữ 5 phút. Lỗi 400 không có header này.
          */
         get: operations["listProducts"];
         put?: never;
@@ -188,7 +188,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Chi tiết sản phẩm */
+        /**
+         * Chi tiết sản phẩm
+         * @description Response 200 có `Cache-Control: public, max-age=60, s-maxage=300` (chi tiết không đọc người dùng). 404 không có header này.
+         */
         get: operations["getProduct"];
         put?: never;
         post?: never;
@@ -205,7 +208,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Sản phẩm tương tự theo độ gần vector sản phẩm */
+        /**
+         * Sản phẩm tương tự theo độ gần vector sản phẩm
+         * @description Response 200 có `Cache-Control: public, max-age=60, s-maxage=300` (vector và danh sách tương tự không đọc người dùng). 400, 404, 409 và 503 không có header này.
+         */
         get: operations["getSimilarProducts"];
         put?: never;
         post?: never;
@@ -981,6 +987,7 @@ export interface components {
             total: number;
             limit: number;
             offset: number;
+            /** @description Id của request đã tạo bản cache khi response được cache (`Cache-Control: public`). Lượt trúng cache không đến backend nên không có log tương ứng; không dùng giá trị này để truy vết lượt đó. */
             requestId: string;
         };
         SimilarProductsResponse: {
@@ -996,6 +1003,7 @@ export interface components {
             strategy: "same_taxonomy" | "cross_taxonomy";
             results: components["schemas"]["ScoredProduct"][];
             diagnostics?: components["schemas"]["EngineDiagnostics"];
+            /** @description Id của request đã tạo bản cache khi response được cache (`Cache-Control: public`). Lượt trúng cache không đến backend nên không có log tương ứng; không dùng giá trị này để truy vết lượt đó. */
             requestId: string;
         };
         DestinationListResponse: {
