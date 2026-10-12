@@ -2,8 +2,7 @@
 
 import React, { useId } from 'react';
 import { ArrowRight } from 'lucide-react';
-import { PREVIEW_LIMIT, SEARCH_GROUPS, searchCacheKey, searchGroupApi, type TabGroup } from '../../services/search';
-import { useInView } from '../../hooks/useInView';
+import { SEARCH_GROUPS, searchShelfApi, shelfCacheKey, type TabGroup } from '../../services/search';
 import { useLazySection } from '../../hooks/useLazySection';
 import { ProductCard } from '../common/ProductCard';
 import { HScroller } from './HScroller';
@@ -15,39 +14,30 @@ interface GroupShelfProps {
   query: string;
   destination: string | null;
   tripQuery: string;
-  /** Tổng của nhóm từ `searchOverviewApi`, dùng khi hàng chưa tải xong. */
-  total?: number;
-  /** true: chỉ tải khi hàng gần vào vùng nhìn (các hàng dưới màn hình đầu). */
-  lazy: boolean;
   onSeeAll: (group: TabGroup) => void;
 }
 
 /**
- * Một hàng của tab "Tất cả": chỉ `PREVIEW_LIMIT` mục đầu của nhóm, cuộn ngang. Kết quả nằm trong bộ đệm của
- * `useLazySection`; danh sách đầy đủ chỉ tải khi người dùng bấm "Xem tất cả" (tab của nhóm).
+ * Một hàng của tab "Tất cả": chỉ `PREVIEW_LIMIT` mục đầu của nhóm, cuộn ngang. Cùng request và khóa bộ đệm với số
+ * trên tab (`searchOverviewApi`), nên ba hàng tải cùng lúc với số tab và số ở hàng luôn bằng số trên tab. Danh sách
+ * đầy đủ chỉ tải khi người dùng bấm "Xem tất cả" (tab của nhóm).
  */
-export const GroupShelf: React.FC<GroupShelfProps> = ({ group, query, destination, tripQuery, total, lazy, onSeeAll }) => {
+export const GroupShelf: React.FC<GroupShelfProps> = ({ group, query, destination, tripQuery, onSeeAll }) => {
   const headingId = useId();
-  const [ref, inView] = useInView<HTMLDivElement>();
-  const key = searchCacheKey('group', query, destination, group, PREVIEW_LIMIT, 0);
-  const section = useLazySection(
-    key,
-    () => searchGroupApi(query, group, { destination, limit: PREVIEW_LIMIT, offset: 0 }),
-    { enabled: !lazy || inView },
-  );
+  const section = useLazySection(shelfCacheKey(query, destination, group), () => searchShelfApi(query, group, destination));
   const items = section.data?.items ?? [];
-  const count = section.data?.total ?? total ?? items.length;
+  const count = section.data?.total ?? 0;
   const settled = !section.loading && !section.error;
 
   // Nhóm không có kết quả thì không chiếm chỗ ở "Tất cả".
   if (settled && section.data && items.length === 0) return null;
 
   return (
-    <section ref={ref} aria-labelledby={headingId} className="space-y-3">
+    <section aria-labelledby={headingId} className="space-y-3">
       <div className="flex items-baseline justify-between gap-4">
         <h2 id={headingId} className="text-lg font-black text-slate-900">
           {SEARCH_GROUPS[group].label}
-          <span className="ml-2 text-xs font-medium text-slate-500">{count} kết quả</span>
+          {section.data && <span className="ml-2 text-xs font-medium text-slate-500">{count} kết quả</span>}
         </h2>
         <button type="button" onClick={() => onSeeAll(group)} className="inline-flex cursor-pointer items-center gap-1 text-sm font-semibold text-brand-600 hover:text-brand-700">
           Xem tất cả <ArrowRight className="h-4 w-4" aria-hidden="true" />
