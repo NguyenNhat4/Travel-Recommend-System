@@ -5,7 +5,7 @@ import functools
 import logging
 from collections import Counter
 from concurrent.futures import Executor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from time import perf_counter
 from typing import Any, Callable, Iterable, Sequence
@@ -14,6 +14,7 @@ import numpy as np
 
 from src.backend.app.application.ports import CdpHistoryReader, UnitIndex, VectorSearchPort
 from src.backend.app.application.ports.cdp_client import HISTORY_MAX_EVENTS, CdpUnavailableError
+from src.backend.app.application.recommendation.cache import RecommendationCache, engine_version
 from src.backend.app.application.search import hit
 from src.backend.app.application.search.use_cases import StageTimer
 from src.backend.app.core.logging_config import log_event
@@ -221,6 +222,19 @@ class RecommendForUser:
     # Pool cho các lượt kho vector độc lập (ANN ngắn hạn, ANN dài hạn, vector của món phổ biến) chạy song song; kết quả
     # ghép đúng thứ tự cũ nên output y hệt. None = tuần tự (harness bench, test, `RECOMMEND_IO_WORKERS=0`).
     executor: Executor | None = None
+    # Cache kết quả trên kho dùng chung (Redis, PRD architecture §4, chốt 2026-10-12). Chỉ bật khi có cả cache lẫn phiên bản
+    # catalog (`WeaviateVectorStore.version`); None = tính mỗi request như trước (harness bench, test, URL Redis trống).
+    cache: RecommendationCache | None = None
+    catalog_version: str | None = None
+    _engine_version: str | None = field(default=None, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if self.cache is not None and self.catalog_version:
+            self._engine_version = engine_version(self)   # một lần mỗi lần nạp lại (engine dựng mới mỗi 900 s)
+
+    @property
+    def cache_enabled(self) -> bool:
+        return self.cache is not None and self._engine_version is not None
 
     def __call__(self, cdp_user_id: str | None, k: int = 5, now: datetime | None = None,
                  events: list[dict] | None = None, destination: str | None = None) -> dict:
@@ -242,7 +256,23 @@ class RecommendForUser:
             stages.lap("coldStart")
             return _with_stages(result, stages)
         stages.lap("cdp")
-        return _with_stages(self._rank(raw, k, now, destination, base, stages), stages, events_read=len(raw))
+        if not (self.cache_enabled and cdp_user_id and events is None):   # khách vãng lai và đường `events=` không cache
+            return _with_stages(self._rank(raw, k, now, destination, base, stages), stages, events_read=len(raw))
+        # Khoá có dấu vân tay của chính lịch sử vừa đọc: event mới cho khoá mới, không bao giờ trả kết quả của lịch sử cũ.
+        # Frontend huỷ request thì thread này vẫn tính xong và ghi cache, để lần "Thử lại" trúng.
+        key = self.cache.key(engine_version=self._engine_version, cdp_user_id=cdp_user_id, k=k, destination=destination,
+                             today=local_today(now), events=raw)
+
+        def compute() -> dict:
+            stages.lap("cache")
+            return self._rank(raw, k, now, destination, base, stages)
+
+        result, outcome = self.cache.get_or_compute(key, compute)
+        stages.lap("cache")
+        diagnostics = result.setdefault("diagnostics", {})
+        diagnostics["userVectorCacheHit"] = outcome in ("hit", "wait_hit")
+        diagnostics["cacheOutcome"] = outcome
+        return _with_stages(result, stages, events_read=len(raw))
 
     def _rank(self, raw: list[dict], k: int, now: datetime, destination: str | None, base: dict,
               stages: StageTimer) -> dict:
