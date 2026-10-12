@@ -41,11 +41,27 @@ hằng ngày).
   02:15) / 646 passed / 27 skipped; sửa test xong, `test_fresh_monitor.py` 27 passed.
 - Monitor production sau khi ghi: `schedule.time 08:35 file`, `run.maxHours 15.0 file`, `crawl.maxHours 14.0 file`.
 
+## Kiểm tra trước PR test/newcrawl → release-mvp-v2 (12/10)
+
+- Merge `origin/release-mvp-v2` (afe3a294, gồm PR #139) vào `test/newcrawl`: không xung đột. So với release, PR chỉ đổi `db/`,
+  `docs/`, `history/`, `src/data_collection/`; không đụng backend, frontend, contract, workflow, infra.
+- `pytest data_collection/tests` (cây đã merge): 648 passed, 27 skipped.
+- Các bước của CI crawler: `compileall src/data_collection` OK; `bash -n` ba script + `scripts/tests/test-install-vota-cron.sh`:
+  passed. Script trong `monitor_ui/index.html` parse OK. `validate_contract.py`: PASS.
+- Migration trên hai Postgres 18 tạm: (a) initdb từ `db/init` mới, (b) initdb từ `db/init` của release rồi `run.py` áp 0010.
+  Hai bên giống hệt nhau về view, cột, constraint, index (`catalog`, `app`, `cdp`) và đều ghi nhận đủ 10 migration. Chạy
+  `run.py` lần hai là no-op. `db/init/01_vota.sql` byte-identical với `db/vota_schema.sql`. `db/verify.sql` chạy không lỗi
+  cú pháp (DB rỗng).
+- sha256 của `0010_combo_only_va_price_share.sql` bằng checksum đã ghi trên production (`app.schema_migrations`, áp 09/10), nên
+  bước migration của CD sẽ bỏ qua, không lỗi checksum.
+- Không chạy: `tests/integration/test_local_postgres_adapters.py` (cần DB đã seed, CI cũng skip); test backend (code backend
+  giống hệt release).
+
 ## Còn lại / rủi ro
 
 - Cron chỉ tick mỗi 15 phút (:00/:15/:30/:45), nên lượt theo lịch bắt đầu thật khoảng 08:45.
 - Lượt bấm tay từ monitor chạy **bên trong container monitor**. CD crawler (`scripts/deploy-staging-ha-crawler.sh`) chạy
   `docker rm -f vota-fresh-catalog-monitor` nên giết luôn lượt đó: lượt `full-20261012T033631Z-3480` mất tiến trình lúc 10:46:44,
   ngay khi CD của PR #139 khởi động lại monitor (03:47:04Z). Chưa sửa, cần người dùng quyết định cách xử lý.
-- Worktree còn thay đổi chưa commit của task monitor khác (`monitor.py`, `monitor_ui/index.html`, `test_monitor_progress.py`,
-  `history/2026-10-09-monitor-buoc-con-chua-ghi-so-lieu.md`), không thuộc entry này.
+- Thay đổi monitor của task khác (`history/2026-10-09-monitor-buoc-con-chua-ghi-so-lieu.md`) được commit riêng ngay trước
+  commit này, không thuộc entry này.
