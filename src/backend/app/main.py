@@ -805,7 +805,7 @@ settings = get_settings()
 app = FastAPI(
     title=settings.app_name,
     description="Travel recommendation and itinerary API",
-    version="1.26.0",
+    version="1.26.1",
     lifespan=lifespan,
 )
 
