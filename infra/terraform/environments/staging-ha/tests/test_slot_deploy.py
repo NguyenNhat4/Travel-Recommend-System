@@ -59,6 +59,20 @@ class Proxy(unittest.TestCase):
         seconds = int(re.search(r"worker_shutdown_timeout\s+(\d+)s;", SCRIPT).group(1))
         self.assertGreaterEqual(seconds, 100)
 
+    def test_reload_names_the_config_so_nginx_finds_its_pid_file(self):
+        # Lỗi thật 2026-10-12: `nginx -s reload` không kèm -c tìm /run/nginx.pid (config đặt pid /tmp/nginx.pid) và lỗi.
+        self.assertIn("pid /tmp/nginx.pid;", SCRIPT)
+        for line in re.findall(r".*nginx .*-s reload.*", SCRIPT):
+            if line.lstrip().startswith("#"):
+                continue
+            self.assertRegex(line, r"nginx -c \"\$PROXY_DIR/nginx\.conf\" -s reload", line)
+
+    def test_failed_reload_puts_the_old_upstream_back(self):
+        deploy = SCRIPT[SCRIPT.index("mode_deploy() {"):]
+        branch = deploy[deploy.index("elif running vota-proxy; then"):deploy.index("log \"kiểm tra qua proxy")]
+        self.assertIn("if ! reload_proxy; then", branch)
+        self.assertLess(branch.index("if ! reload_proxy; then"), branch.index('slot_ports "$active"'))
+
     def test_switch_validates_config_before_reload(self):
         self.assertRegex(SCRIPT, r"nginx -t -c .*\n?.*nginx -s reload|nginx -t -c")
         self.assertIn("nginx -s reload", SCRIPT)

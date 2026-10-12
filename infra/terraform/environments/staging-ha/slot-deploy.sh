@@ -301,9 +301,10 @@ ensure_proxy() {
     -v "$PROXY_DIR:$PROXY_DIR:ro" "$PROXY_IMAGE" nginx -c "$PROXY_DIR/nginx.conf" -g 'daemon off;' >/dev/null
 }
 
-reload_proxy() {
-  docker exec vota-proxy nginx -t -c "$PROXY_DIR/nginx.conf" >/dev/null 2>&1 || die "cấu hình nginx không hợp lệ"
-  docker exec vota-proxy nginx -s reload >/dev/null
+reload_proxy() { # trả khác 0 nếu lỗi để caller đưa upstream về slot cũ
+  docker exec vota-proxy nginx -t -c "$PROXY_DIR/nginx.conf" >/dev/null 2>&1 || { log "cấu hình nginx không hợp lệ"; return 1; }
+  # Phải kèm -c: file pid do nginx.conf đặt (/tmp/nginx.pid); thiếu -c thì nginx tìm /run/nginx.pid và báo lỗi.
+  docker exec vota-proxy nginx -c "$PROXY_DIR/nginx.conf" -s reload >/dev/null 2>&1 || { log "nginx reload lỗi"; return 1; }
 }
 
 detect_active() { # blue|green nếu proxy đang trỏ slot đó; legacy nếu còn stack cũ; none nếu chưa có gì
@@ -444,7 +445,13 @@ mode_deploy() {
     migrate_from_legacy "$new"
   elif running vota-proxy; then
     write_upstream "$FRONTEND_PORT"
-    reload_proxy
+    if ! reload_proxy; then
+      log "reload proxy lỗi: đưa upstream về $active, bỏ slot $new"
+      slot_ports "$active"
+      write_upstream "$FRONTEND_PORT"
+      stop_slot "$new"
+      die "không đổi được proxy sang $new; $active vẫn phục vụ"
+    fi
   else
     write_upstream "$FRONTEND_PORT"
     ensure_proxy
@@ -456,7 +463,7 @@ mode_deploy() {
       log "proxy không ready với slot mới: đổi lại $active"
       slot_ports "$active"
       write_upstream "$FRONTEND_PORT"
-      reload_proxy
+      reload_proxy || log "cảnh báo: reload proxy về $active cũng lỗi"
       stop_slot "$new"
       die "proxy không ready sau khi đổi sang $new; đã đổi lại $active"
     fi
