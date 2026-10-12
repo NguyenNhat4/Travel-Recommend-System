@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import logging
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import Iterable, Sequence
 
 import numpy as np
 
@@ -35,6 +37,24 @@ def _warn_calibration_mismatch(model_version: str | None) -> None:
         _CALIBRATION_WARNED.add(key)
         log_event(logger, "recsys.next_trip_scoring.model_mismatch", "WARNING",
                   message=f"recommend.next_trip_scoring model={key} khác tag calibrate; dùng công thức 0,7/0,15/0,15")
+
+
+def _cap_per_taxonomy(order: Iterable[int], taxonomy: Sequence, k: int, cap: int | None) -> list[int]:
+    """Giữ thứ tự, tối đa `cap` món mỗi taxonomy, dừng khi đủ `k` món; `cap=None` là không giới hạn (harness eval).
+
+    Cold-start "tối đa 2 mỗi taxonomy" (search-recommendation §4.8, chốt 2026-10-12): lượt mua chuyến bay dồn về tuyến
+    nên không có trần thì 2 món đầu ở các điểm đến lớn đều là tuyến bay."""
+    out: list[int] = []
+    seen: Counter = Counter()
+    for i in order:
+        if len(out) >= k:
+            break
+        t = str(taxonomy[i])
+        if cap is not None and seen[t] >= cap:
+            continue
+        seen[t] += 1
+        out.append(i)
+    return out
 
 
 def _ts(x) -> float:
@@ -296,14 +316,20 @@ class RecommendForUser:
                         continue
                     seen.add(d["destination"])
                     sections.append({"title": title, **d, "products": self._top_products(d["destination"], k)})
+            per_taxonomy: Counter = Counter()  # danh sách phẳng ghép từ nhiều section cũng tối đa 2 món mỗi taxonomy
             for sec in sections:
                 for p in sec["products"]:
-                    if p["productId"] not in used and len(flat) < k:
-                        used.add(p["productId"]); flat.append({**p, "rank": len(flat) + 1})
+                    if p["productId"] in used or len(flat) >= k:
+                        continue
+                    if self.max_per_vertical is not None and per_taxonomy[p["taxonomy"]] >= self.max_per_vertical:
+                        continue
+                    used.add(p["productId"]); per_taxonomy[p["taxonomy"]] += 1
+                    flat.append({**p, "rank": len(flat) + 1})
         else:  # chưa có event → xếp theo reviewCount
             m = idx.mask(only_recommendable=True)
             order = sorted((i for i in range(len(idx.units)) if m[i]), key=lambda i: -(idx.units[i].attributes.get("reviewCount") or 0))
-            flat = [hit(idx, i, 0.0, rank=r, because=[]) for r, i in enumerate(order[:k], 1)]
+            chosen = _cap_per_taxonomy(order, idx.taxonomy, k, self.max_per_vertical)
+            flat = [hit(idx, i, 0.0, rank=r, because=[]) for r, i in enumerate(chosen, 1)]
         return {"strategy": "popular", "destination": destination, "nextVertical": None, "sections": sections, "recommendations": flat,
                 "diagnostics": {"eventsUsed": 0, "coldStart": True, "excludedVerticals": [],
                                 "popularitySource": "events" if self.popularity else "reviewCount"}}
@@ -314,4 +340,5 @@ class RecommendForUser:
         m = idx.mask(destination=destination, only_recommendable=True)
         ranked = sorted((i for i in range(len(idx.units)) if m[i]),
                         key=lambda i: (-scores.get(i, 0.0), -(idx.units[i].attributes.get("reviewCount") or 0)))
-        return [hit(idx, i, scores.get(i, 0.0), because=[]) for i in ranked[:k]]
+        chosen = _cap_per_taxonomy(ranked, idx.taxonomy, k, self.max_per_vertical)
+        return [hit(idx, i, scores.get(i, 0.0), because=[]) for i in chosen]

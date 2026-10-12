@@ -801,10 +801,16 @@ Số nghiên cứu (`eval-2026-10-08-recsys-g2-va-wp4.md`, `--how ulong`): hit@4
 **Cold start** (dưới 3 event) — fallback theo thứ tự:
 
 ```
-1. Có destination trong request → phổ biến nhất trong điểm đến đó
+1. Có destination trong request → phổ biến nhất trong điểm đến đó, tối đa 2 mỗi taxonomy
 2. Có profile.homeCity          → điểm đến phổ biến từ thành phố đó
 3. Còn lại                      → most-popular toàn hệ thống, tối đa 2 mỗi taxonomy
 ```
+
+Trần "tối đa 2 mỗi taxonomy" (`MAX_PER_VERTICAL`, chốt 2026-10-12) áp cho cả danh sách của từng điểm đến, danh sách phẳng
+ghép từ các section điểm đến, và nhánh xếp theo `reviewCount` khi chưa có bảng phổ biến. Lý do: lượt mua chuyến bay dồn về
+tuyến, nên khi không có trần thì 2–3 món đầu ở các điểm đến lớn đều là tuyến bay. Trần đi theo taxonomy của engine
+(golf là taxonomy riêng), khác các nhóm của `GET /products?diversify=taxonomy` (backend §4.1). Harness eval
+(`max_per_vertical=None`) không có trần.
 
 **Dormant** (chuyến gần nhất > 365 ngày, từ 09/10): vẫn dựng user vector như khách có lịch sử. `halfLifeDays × 3` và
 `lastDestination` của bản thiết kế ban đầu **không** cài — bench 09/10 (`src/evaluation/reports/eval-2026-10-09-recsys-cong-thuc-oph.md`)
