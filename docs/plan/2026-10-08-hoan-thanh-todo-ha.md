@@ -17,7 +17,7 @@
 | D5 | Quyền GCP: đã đủ | Xong |
 | D6 | Secret `vota-ha-backend-env` do người vận hành nạp | Có phiên bản 5–9; nội dung chưa kiểm |
 | R | Readiness HA: VM mất DB trả 503 để LB loại VM đó | Chốt (giữ hành vi HA) |
-| A | Di trú DB theo hướng A: lấy dữ liệu từ primary cũ `10.148.0.2` sang cụm HA | Chốt, chưa thực hiện |
+| A | Di trú DB theo hướng A: lấy dữ liệu từ primary cũ `10.148.0.2` sang cụm HA | Chốt; **đã thực hiện 2026-10-08** (cutover xong, `history/2026-10-08-phase3-di-tru-db.md`). Primary cũ và replica cũ đã `TERMINATED` (kiểm 2026-10-12) |
 | M | Quy tắc số máy: DB = 1 primary + 1 replica + 1 witness (3 máy); app = **min 1, max 2 VM** | Chốt; đang áp dụng |
 
 Lý do M: tổng máy DB hiện là 5 (3 HA + primary cũ + replica cũ của `staging`). Ngân sách kết nối với 4 VM app là 106 > `max_connections` 100 của primary cũ. Với 2 VM là 2 × 2 × 12 + 10 = 58, đạt.
@@ -57,7 +57,9 @@ Hệ quả đã chấp nhận: `min = 1` nghĩa là mất VM app duy nhất là 
 - [ ] Đo `boot_to_ready_seconds`; chỉnh ngưỡng alert theo số đo
 - [ ] Xác nhận nội dung secret `vota-ha-backend-env` (phiên bản 9) có đủ khoá theo `src/backend/app/core/config.py`
 
-### Phase 3 — di trú DB, hướng A: chưa bắt đầu
+### Phase 3 — di trú DB, hướng A: đã hoàn thành 2026-10-08 (§6)
+Checklist dưới giữ nguyên như lúc lập kế hoạch. Trạng thái thật: xem §6 và `history/2026-10-08-phase3-di-tru-db.md`.
+
 Điều kiện trước khi làm:
 - [ ] Người vận hành chọn thời điểm cửa sổ dừng ghi trên primary cũ `10.148.0.2`
 - [ ] Xác định VM chạy cron crawler (repo không ghi rõ tên)

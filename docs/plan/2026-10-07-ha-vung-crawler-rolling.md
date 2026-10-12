@@ -35,7 +35,7 @@ Các kiểm tra dưới đây chỉ đọc trạng thái của root/state `infra
 | App HA | Backend service `vota-ha-app` và MIG `vota-ha-app` | 3/3 VM healthy; không restart hoặc thay đổi app staging cũ |
 | Failover thật | Leader đã chuyển sang node `b`, node `a` quay lại làm replica | Thành công; chưa đủ mốc thời gian để công bố RTO chính xác trên GCP |
 | Dữ liệu | Đối chiếu `cdp.products` giữa primary cũ và leader HA | `old_rows=17679`, `ha_rows=17679`, `same=17522`, `different=157`, không thiếu dòng ở phía nào; hash `cdp.profiles` và `catalog.combo_items` khớp |
-| DNS/ghi | `db.vota.internal` vẫn trỏ `10.148.0.2`, primary staging cũ | Chưa cutover DNS, chưa mở ghi vào HA |
+| DNS/ghi | `db.vota.internal` vẫn trỏ `10.148.0.2`, primary staging cũ | Chưa cutover DNS, chưa mở ghi vào HA. **Cập nhật 2026-10-08:** đã cutover sang ILB `10.148.0.34` (xem `docs/plan/2026-10-08-hoan-thanh-todo-ha.md` §6) |
 
 Vì clone/đồng bộ được thực hiện theo một điểm thời gian và staging cũ vẫn có thể phát sinh ghi, do đó 157 dòng sản phẩm chưa khớp hoàn toàn, mà chưa được phép cutover DNS hoặc mở ghi vào HA. Hairpin từ node `a` vào ILB trả `in_recovery=true` là hành vi mong đợi vì node này là replica; tiêu chí nghiệm thu ILB được kiểm từ các HA app VM và health check leader-only.
 
