@@ -38,7 +38,7 @@ products = [json.loads(line) for line in open("products.jsonl", encoding="utf-8"
 | `available` | boolean | 100% | Nguồn có trả giá tại thời điểm crawl (điểm tham quan trip.com: địa điểm có trên trip.com, có thể chưa có giá). **Không phải xác nhận còn chỗ** |
 | `availableFrom` | date \| null | 94,9% | Vé/combo/golf Vinpearl: ngày bắt đầu bán (API Vinpearl). Vé máy bay: ngày bay sớm nhất trip.com liệt kê (giờ VN). Còn lại `null` |
 | `availableTo` | date \| null | 94,9% | Vé/combo/golf Vinpearl: ngày hết hạn bán (API Vinpearl). Vé máy bay: ngày bay muộn nhất trip.com liệt kê (giờ VN). Còn lại `null` |
-| `imageUrl` | URL \| null | 94,7% | Ảnh chính. Ảnh phụ ở `attributes.images`. Vé máy bay không có ảnh |
+| `imageUrl` | URL \| null | 94,7% | Ảnh chính. Ảnh phụ ở `attributes.images`. Vé máy bay: logo hãng của chặng đi (`collectors/airlines.py`, CDN Trip, từ 12/10/2026); tuyến bay: ảnh thành phố đến đặt trên DB (ảnh điểm tham quan nhiều đánh giá nhất của điểm đến), chuẩn hoá để trống |
 | `sourceRef` | string | 100% | `"<nguồn>:<loại>:<id>"`, ví dụ `vinpearl:tour:VW00466`. Truy ngược về bản ghi gốc |
 
 ### Bốn chỗ dễ hiểu sai
@@ -47,6 +47,8 @@ products = [json.loads(line) for line in open("products.jsonl", encoding="utf-8"
    Với vé máy bay: trip.com liệt kê chuyến này kèm giá ở các ngày trong `datesSeen`. Luồng đặt chỗ thật phải gọi lại nguồn.
 2. **`unitPrice = null` không phải là miễn phí.** 300 sản phẩm còn `null`; 300 là điểm trip.com (tham quan, golf)
    không hiện giá — **chưa rõ có bán vé hay không** (`attributes.ticketed` vắng mặt). Web cần trạng thái hiển thị riêng, không quy về 0 đồng.
+   Sân golf Trip có giá hiện hành trên nền tảng đặt tee time (golfscape.com) lấy giá đó, `fieldSources.unitPrice` ghi nguồn
+   (`src/data_collection/collectors/golf_prices.csv`, 12/10/2026); sân golf không tìm được giá vẫn `null`.
 3. **Giá là một lần hỏi giá tại một thời điểm.** Khách sạn: nhận phòng 2026-10-15, 1 đêm, 2 người lớn (9.095 sản phẩm; ngày khác: 2026-09-29, 2026-10-23, 2026-11-14, 2026-11-20). Vé máy bay: giá tham khảo theo ngày trip.com liệt kê. Đọc `priceDate` / `datesSeen` thay vì giả định.
 4. **`destination` ≠ `province`.** `destination` là nhãn du lịch dùng để lọc và gợi ý (Hội An, Sa Pa);
    `attributes.province` là đơn vị hành chính (Quảng Nam, Lào Cai).
@@ -65,7 +67,7 @@ products = [json.loads(line) for line in open("products.jsonl", encoding="utf-8"
 | `fieldSources` | object | 100% | Trường nào lấy từ nguồn nào, ví dụ `{"unitPrice": "booking.com", "description": "vinpearl"}` |
 | `sameAs` | array | 2% | `sourceRef` của các bản ghi cùng sản phẩm ở nguồn khác đã gộp vào dòng này |
 | `mergedInto` | string | mới | Chỉ có trong `cdp.products`, không có trong `products.jsonl`: `product_id` của dòng mà dòng này đã được gộp vào khi nạp DB (nạp theo phần hoặc lượt sau gộp trùng hai dòng đã nạp riêng); dòng mang khoá này có `available = false` và không được tra theo `sourceRef`/`sameAs` nữa. Hai dòng đã nạp cùng nhận một ref thì job giữ dòng ghi ref trong `sameAs`, gộp dòng kia và chuyển phòng con sang dòng giữ. Xem `docs/plan/2026-09-28-pipeline-chay-lien-tuc.md` (L4) |
-| `noBookableRoom` | boolean | mới | Chỉ có trong `cdp.products`, khách sạn tổng quan: job cào (và seed) đặt `true` kèm `available = false` khi không có hạng phòng con nào đặt được (PRD FR-CAT-02, chốt 06/10/2026). Có phòng đặt được trở lại thì job bỏ khoá và bật lại (trừ dòng đã gộp, giá quá hạn, ngoài cửa sổ) |
+| `noBookableRoom` | boolean | mới | Chỉ có trong `cdp.products`, khách sạn tổng quan: job cào (và seed) đặt `true` kèm `available = false` khi không có hạng phòng con nào đặt được (PRD FR-CAT-02, chốt 06/10/2026). Có phòng đặt được thì job bỏ khoá và bật lại (trừ dòng đã gộp, giá quá hạn, ngoài cửa sổ) — kể cả khách sạn tắt không có khoá này (nguồn không trả giá cho ngày hỏi); thiếu giá thì lấy giá hạng phòng rẻ nhất đang bán (12/10/2026) |
 | `windowClosed` | boolean | mới | Chỉ có trong `cdp.products`: job cào đặt `true` khi chính cửa sổ đặt chỗ 30 ngày tắt một dòng đang bán (giao rỗng, vd. vé tham quan hết thời gian bán; vé máy bay được dời ngày nên không dùng khoá này). Cửa sổ cuộn tới khoảng của dòng thì job bật lại và bỏ khoá này, trừ khi dòng không có giá, đã gộp (`mergedInto`) hoặc có `priceFreshness`. Lượt cào làm mới dòng thì bỏ khoá, `available` theo nguồn |
 | `brand` | string | 5% | Thương hiệu, chủ yếu là `Vinpearl` |
 | `comboOnly` | boolean | mới | Chỉ có trong `cdp.products`: sản phẩm thành phần combo mô phỏng (`sourceRef demo:combo:…`, `seed/combo_components.py`); view `catalog.product_meta` trả `is_search_unit = false`, `is_recommendable = false` — chỉ đặt qua combo (PRD data-model §3.1, chốt 09/10/2026) |

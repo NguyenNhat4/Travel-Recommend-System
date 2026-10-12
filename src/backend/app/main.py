@@ -94,7 +94,7 @@ from src.backend.app.infrastructure.cdp.local_cdp_client import LocalCdpClient
 from src.backend.app.infrastructure.cdp.postgres_cdp_reader import PostgresCdpReader
 from src.backend.app.infrastructure.clients.itinerary_fixture_clients import FixtureItineraryClients
 from src.backend.app.infrastructure.clients.itinerary_http_clients import ItineraryHttpClients
-from src.backend.app.infrastructure.llm import build_chat_model
+from src.backend.app.infrastructure.llm import build_chat_model, build_orchestrator_model
 from src.backend.app.infrastructure.telemetry.memory import InMemoryCallTelemetry
 from src.backend.app.infrastructure.payments.fake_gateway import FakeGateway
 from src.backend.app.infrastructure.payments.stripe_gateway import StripePaymentGateway
@@ -585,6 +585,11 @@ def _itinerary_runtime(app: FastAPI, settings: Settings, authorization: str | No
         archive=getattr(app.state, "itinerary_conversation_archive", None),
         tool_timeout_seconds=settings.itinerary_tool_timeout_seconds,
         llm_timeout_seconds=settings.itinerary_llm_timeout_seconds,
+        orchestrator_enabled=settings.itinerary_orchestrator == "on",
+        orchestrator_llm=getattr(app.state, "itinerary_orchestrator_llm", None),
+        # Leave a small part of the outer request budget for gatekeeping/finalize/store.
+        orchestrator_budget_seconds=max(0.1, settings.itinerary_request_timeout_seconds -
+                                        min(1.0, settings.itinerary_request_timeout_seconds / 10)),
     )
 
 
@@ -750,6 +755,12 @@ async def lifespan(app: FastAPI):
             logger.warning("startup.itinerary_llm.unavailable error=%s", exc)
         logger.info("startup.itinerary_llm.mode mode=%s", app.state.itinerary_llm_mode)
 
+        try:
+            app.state.itinerary_orchestrator_llm = build_orchestrator_model(settings, app.state.itinerary_llm)
+        except Exception as exc:
+            app.state.itinerary_orchestrator_llm = app.state.itinerary_llm
+            logger.warning("startup.itinerary_orchestrator.fallback errorType=%s", type(exc).__name__)
+
         # Recsys tách khỏi phần itinerary: chưa nạp được thì tắt recsys và thử lại sau, các route còn lại
         # (kể cả assistant chạy fixture) vẫn phục vụ được.
         logger.info("startup.recsys.start model=%s", settings.embed_model)
@@ -794,7 +805,7 @@ settings = get_settings()
 app = FastAPI(
     title=settings.app_name,
     description="Travel recommendation and itinerary API",
-    version="1.24.0",
+    version="1.26.1",
     lifespan=lifespan,
 )
 

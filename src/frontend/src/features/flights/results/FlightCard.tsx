@@ -12,6 +12,7 @@ interface FlightCardProps {
   chosen: FareOption | null;
   expanded: boolean;
   onToggleExpanded: () => void;
+  preferredFareId?: string | null;
   onPick: (option: FlightOption, fare: FareOption) => void;
   onClear: () => void;
 }
@@ -32,9 +33,11 @@ const TimeBox: React.FC<{ clock: string; tag: string; code: string }> = ({ clock
  * Một hành trình bay: giờ đi, giờ đến, hãng, thời lượng, hạng vé, giá và nút Chọn. Hành lý chỉ hiện khi nguồn có số liệu
  * (`null` là chưa biết, không hiện "0 kg"). Có từ hai hạng thì chọn hạng ngay trong thẻ, giá và nút theo hạng đó.
  */
-export const FlightCard: React.FC<FlightCardProps> = ({ option, chosen, expanded, onToggleExpanded, onPick, onClear }) => {
-  const [fareId, setFareId] = useState(option.fares[0].productId);
-  const fare = option.fares.find((f) => f.productId === (chosen?.productId ?? fareId)) ?? option.fares[0];
+export const FlightCard: React.FC<FlightCardProps> = ({ option, chosen, preferredFareId, expanded, onToggleExpanded, onPick, onClear }) => {
+  const defaultFare = option.fares.find((fare) => fare.productId === preferredFareId)
+    ?? [...option.fares].sort((a, b) => a.price - b.price)[0];
+  const [fareId, setFareId] = useState(defaultFare.productId);
+  const fare = option.fares.find((f) => f.productId === (chosen?.productId ?? fareId)) ?? defaultFare;
   const selected = chosen !== null;
   const detailId = `flight-detail-${option.key.replace(/[^a-zA-Z0-9]/g, '')}`;
   const stopLabel = option.nonstop === true ? 'Bay thẳng' : option.nonstop === false ? 'Có điểm dừng' : null;

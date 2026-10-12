@@ -69,6 +69,12 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(one['product_id'], str(uuid.uuid5(NAMESPACE, one['source_ref'])))
         self.assertEqual(a['simulatedFrom'], [self.real['product_id']])
 
+    def test_fill_flight_image_is_the_airline_logo_not_the_route_image(self):
+        """12/10/2026: vé mang logo hãng của chính vé; tuyến giữ ảnh thành phố đến."""
+        fills, _ = self.plan()
+        one = next(r for r in fills if r['attributes']['parentProductId'] == self.go['product_id'])
+        self.assertEqual(one['image_url'], 'https://pic.tripcdn.com/airline_logo/3x/vn.png')
+
     def test_round_trip_return_leg_comes_from_the_reverse_route(self):
         fills, _ = self.plan()
         rt = next(r for r in fills if r['attributes']['tripType'] == 'roundTrip'
@@ -178,6 +184,14 @@ class ReverseRouteTests(unittest.TestCase):
                                                  'departureTimeLocal': '08:00', 'durationMinutes': 130, 'price': 1_100_000.0}])
         self.assertEqual((rev['unit_price'], rev['source_ref'], a['simulated']), (1_100_000, 'demo:reverse:trip:route:PXU-HAN', True))
         self.assertEqual((rev['available_from'], rev['available_to']), (AS_OF, HI))
+        self.assertEqual(rev['image_url'], 'img')  # dòng mới: ảnh tuyến gốc
+
+    def test_reverse_route_keeps_the_image_already_in_the_db(self):
+        """Ảnh thành phố đến đặt trên DB (12/10/2026) không bị ảnh tuyến gốc (thành phố khác) ghi đè ở lần nạp sau."""
+        [rev] = sf.reverse_routes([self.go, self.flight], AS_OF, True)
+        stored = dict(rev, image_url='https://ak-d.tripcdn.com/images/pleiku.jpg')
+        [again] = sf.reverse_routes([self.go, self.flight, stored], AS_OF, True)
+        self.assertEqual(again['image_url'], 'https://ak-d.tripcdn.com/images/pleiku.jpg')
 
     def test_reverse_route_is_filled_and_feeds_round_trips_of_the_real_route(self):
         rows = [self.go, self.flight, *sf.reverse_routes([self.go, self.flight], AS_OF, True)]

@@ -9,6 +9,8 @@
       giống /search và /recommendations. Có parentProductId: trả các sản phẩm tầng con (hạng phòng, chuyến bay
       cụ thể) của sản phẩm cha đó, là đơn vị đặt chỗ mà Web thêm vào giỏ; sort=popular với tầng con xếp theo
       giá tăng dần. parentProductId không có trong catalog hoặc không có tầng con thì trả results rỗng.
+      Response 200 có `Cache-Control: public, max-age=60, s-maxage=300`: danh mục không đọc người dùng nên giống
+      nhau cho mọi người, trình duyệt giữ 60 giây và lớp cache trung gian giữ 5 phút. Lỗi 400 không có header này.
     security:
     - {}
     - bearerAuth: []
@@ -57,6 +59,9 @@
     - catalog
     operationId: getProduct
     summary: Chi tiết sản phẩm
+    description: >-
+      Response 200 có `Cache-Control: public, max-age=60, s-maxage=300` (chi tiết không đọc người dùng). 404 không có
+      header này.
     security:
     - {}
     - bearerAuth: []
@@ -80,6 +85,9 @@
     - catalog
     operationId: getSimilarProducts
     summary: Sản phẩm tương tự theo độ gần vector sản phẩm
+    description: >-
+      Response 200 có `Cache-Control: public, max-age=60, s-maxage=300` (vector và danh sách tương tự không đọc người
+      dùng). 400, 404, 409 và 503 không có header này.
     security:
     - {}
     - bearerAuth: []

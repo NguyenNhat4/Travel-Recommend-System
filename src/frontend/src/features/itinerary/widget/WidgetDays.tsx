@@ -137,6 +137,9 @@ export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
           actions={itemActions(flight.product.id)} focused={flight.product.id === focusedProductId} />
       );
       const stayTags = stayForThisDay?.product ? hotelTags(stayForThisDay.product) : [];
+      // Thẻ đầy đủ (ảnh, tag, ghi chú, nút đặt) chỉ ở ngày nhận phòng; các ngày sau chỉ một dòng nhắc nơi nghỉ để ngày
+      // nào cũng thấy hoạt động ngay, không lặp lại ảnh khách sạn chiếm nửa cột.
+      const isCheckInDay = dayItem.day === ((stayForThisDay && 'fromNight' in stayForThisDay ? stayForThisDay.fromNight : undefined) ?? 1);
 
       return (
         <div key={dayItem.day} className="space-y-4 pt-1">
@@ -150,8 +153,21 @@ export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
           {/* Vertical Timeline Track */}
           <div className="relative pl-6 sm:pl-7 border-l-2 border-dashed border-brand-200 ml-3.5 sm:ml-4 space-y-4 my-2">
             {flightsBefore.map(renderFlight)}
+            {stayForThisDay?.product && !isCheckInDay && (
+              <div className="relative">
+                <div className="absolute -left-[31px] sm:-left-[35px] top-2 w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-brand-600 text-white border-2 border-white shadow-xs flex items-center justify-center z-10">
+                  <Hotel className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                </div>
+                <button type="button" data-product-id={stayForThisDay.product.id}
+                  onClick={() => window.open(`/product/${stayForThisDay.product.id}`, '_blank', 'noopener,noreferrer')}
+                  className={`flex w-full items-center gap-2 rounded-xl border border-slate-100 bg-white px-3 py-2 text-left text-sm text-slate-700 hover:border-brand-200${focusRing(stayForThisDay.product.id)}`}>
+                  <span className="min-w-0 flex-1 truncate">Tiếp tục nghỉ tại <span className="font-semibold text-slate-900">{stayHotelName}</span></span>
+                  <ExternalLink className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
+                </button>
+              </div>
+            )}
             {/* Khách sạn lưu trú trong lộ trình ngày: ảnh, tag và ghi chú chỉ lấy từ dữ liệu sản phẩm thật */}
-            {stayForThisDay?.product && (
+            {stayForThisDay?.product && isCheckInDay && (
               <div className="relative group">
                 {/* Timeline Step Node với Icon Khách Sạn */}
                 <div className="absolute -left-[31px] sm:-left-[35px] top-3.5 w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-brand-600 text-white border-2 border-white shadow-xs flex items-center justify-center z-10">

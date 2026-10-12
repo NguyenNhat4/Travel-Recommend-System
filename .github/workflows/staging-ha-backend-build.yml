@@ -60,6 +60,13 @@ jobs:
           service_account: ${{ secrets.GCP_CI_SERVICE_ACCOUNT }}
           token_format: access_token
 
+      - name: Isolate Docker credentials per job
+        # Mọi runner chạy chung một VM và chung HOME (~/.docker/config.json). Bước `docker logout` ở cuối job khác xoá đăng nhập
+        # của job đang đẩy image: lỗi 403 "failed to fetch anonymous token" ngày 2026-10-12. Mỗi job dùng thư mục riêng.
+        run: |
+          mkdir -p "$RUNNER_TEMP/docker-config"
+          echo "DOCKER_CONFIG=$RUNNER_TEMP/docker-config" >> "$GITHUB_ENV"
+
       - name: Log in to Artifact Registry
         uses: docker/login-action@v3
         with:
