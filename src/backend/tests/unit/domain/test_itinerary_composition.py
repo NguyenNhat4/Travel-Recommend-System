@@ -176,6 +176,29 @@ class FlightWindowComposeTests(unittest.TestCase):
         self.assertEqual(validate_plan(plan, candidates, sources, trip, {}), [])
 
 
+    def test_a_full_day_tour_after_a_pre_dawn_arrival_renders_instead_of_failing(self):
+        # Chat thử 10/10: chuyến bay đêm hạ cánh rạng sáng ngày 2 vẫn để lại trọn ngày (`full_day`), tour cả ngày được
+        # xếp sau dòng "đến nơi" và `render_proposal` từng ném "full-day overlap" (cả lịch thành FALLBACK).
+        windows = {1: {'times': [], 'full_day': False, 'transfers': []},
+                   2: {'times': ['MORNING', 'AFTERNOON', 'EVENING'], 'full_day': True,
+                       'transfers': [('MORNING', 'ARRIVAL')]}}
+        candidates = catalog(product('tour', attributes={'durationMinutes': 600}))
+        trip, sources = intent(days=2), sources_for(candidates)
+        plan = render_proposal(compose_plan(candidates, sources, trip, windows), candidates, sources, trip)
+        day_two = [(s['activityType'], (s['product'] or {}).get('productId')) for s in plan['days'][1]['slots']]
+        self.assertEqual(day_two, [('TRANSFER', None), (None, 'tour')])
+        self.assertEqual(validate_plan(plan, candidates, sources, trip, {}), [])
+
+    def test_a_full_day_tour_still_cannot_share_its_day_with_another_activity(self):
+        candidates = catalog(product('tour', attributes={'durationMinutes': 600}), product('b'))
+        trip, sources = intent(days=1), sources_for(candidates)
+        proposal = {'stay_id': None, 'stays': [], 'slots': [
+            {'day': 1, 'note_kind': 'VISIT', 'activity_type': None, 'product_id': 'b', 'time': 'MORNING'},
+            {'day': 1, 'note_kind': 'VISIT', 'activity_type': None, 'product_id': 'tour', 'time': 'MORNING'}]}
+        with self.assertRaises(ValueError):
+            render_proposal(proposal, candidates, sources, trip)
+
+
 #: Một km theo vĩ độ, đủ chính xác cho test (haversine: 1° ≈ 111,19 km).
 KM = 1 / 111.19
 

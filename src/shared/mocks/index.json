@@ -455,6 +455,14 @@
       "method": "post",
       "path": "/assistant/itineraries",
       "status": 200,
+      "case": "needs-clarification-explore",
+      "file": "assistant/createItinerary.200-needs-clarification-explore.json"
+    },
+    {
+      "operationId": "createItinerary",
+      "method": "post",
+      "path": "/assistant/itineraries",
+      "status": 200,
       "case": "no-results",
       "file": "assistant/createItinerary.200-no-results.json"
     },

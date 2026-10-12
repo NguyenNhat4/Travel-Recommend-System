@@ -4,12 +4,17 @@
   python monitor.py                                   # http://127.0.0.1:8765 (dữ liệu: data/state, data/fresh_runs)
   python monitor.py --state-dir /data/state --run-root /data/fresh_runs --log-dir /logs   # trong container trên VM
 
-Chỉ nghe 127.0.0.1 và từ chối Host khác localhost (chống DNS rebinding); trên VM xem qua SSH tunnel:
+Mặc định chỉ nghe 127.0.0.1 và từ chối Host khác localhost (chống DNS rebinding); trên máy cá nhân xem qua SSH tunnel:
   ssh -L 8765:127.0.0.1:8765 <user>@<vm>
-Monitor đọc file của các lượt (không đọc DB), ghi đúng bốn thứ: settings.json (Cấu hình), stop.request (Dừng),
-live_control.json (tạm dừng / đổi delay từng nguồn khi lượt đang chạy) và tiến trình fresh_catalog.py khi bấm Chạy. Hai chỗ
-gọi ra ngoài, chỉ khi người vận hành bấm: đọc vector từ Weaviate và ô thử truy vấn (embed bằng e5-small, xếp hạng cosine trên
-vector của collection đích). Không bao giờ trả giá trị secret: biến kết nối chỉ báo đã đặt hay chưa.
+Công khai (staging): --host 0.0.0.0 --allow-public-host chấp nhận Host public, không có đăng nhập. Thêm --read-only thì chỉ
+phục vụ GET, mọi POST trả 405 (7 API điều khiển không dùng được). run_daily_docker.sh đặt các cờ này qua MONITOR_HOST, MONITOR_PUBLIC, MONITOR_READ_ONLY.
+
+Đọc: file của các lượt (state, run-root); DB đích qua tab DB (SQL chỉ đọc trong transaction read-only, SEED_DATABASE_URL
+hoặc CLOUD_SEED_DATABASE_URL theo DB_TARGET); backend qua GET /internal/calls (tab Realtime, tự làm mới).
+Ghi: settings.json (Cấu hình), stop.request (Dừng), live_control.json (tạm dừng / đổi delay từng nguồn khi lượt đang chạy),
+monitor-launch.log và tiến trình fresh_catalog.py khi bấm Chạy, và xoá các lượt cũ khi bấm "Xoá các lượt cũ hơn".
+Gọi Weaviate chỉ khi người vận hành bấm: đọc vector và ô thử truy vấn (embed bằng e5-small, xếp hạng cosine trên vector
+của collection đích). Không bao giờ trả giá trị secret: biến kết nối chỉ báo đã đặt hay chưa.
 """
 from __future__ import annotations
 
@@ -762,7 +767,11 @@ class FreshMonitor:
         import urllib.error
         import urllib.parse
         import urllib.request
-        base = os.environ.get("BACKEND_URL", "http://127.0.0.1:8000").rstrip("/")
+        raw = os.environ.get("BACKEND_URL")
+        if raw is not None and not raw.strip():  # BACKEND_URL được đặt nhưng trống: tắt realtime (staging-ha, không gọi gì)
+            return {"disabled": True, "reason": "BACKEND_URL trống: monitor này không đọc realtime từ backend",
+                    "lastSeq": 0, "startedAt": None, "catalog": {}, "summary": [], "events": [], "backend": None}
+        base = (raw or "http://127.0.0.1:8000").rstrip("/")
         query = urllib.parse.urlencode({"after": max(0, int(after)), "limit": max(1, min(int(limit), 1000))})
         try:
             with urllib.request.urlopen(f"{base}/internal/calls?{query}", timeout=5) as response:
@@ -2191,6 +2200,7 @@ def host_allowed(host_header: str, allow_public: bool = False) -> bool:
 class Handler(BaseHTTPRequestHandler):
     monitor: FreshMonitor
     allow_public_host = False
+    read_only = False  # --read-only: chỉ GET; mọi POST (điều khiển job, đổi cấu hình, xoá lượt) trả 405
     server_version = "VotaMonitor/2"
 
     def log_message(self, fmt, *args):  # im lặng: đây là công cụ nền
@@ -2335,6 +2345,8 @@ class Handler(BaseHTTPRequestHandler):
             return
 
     def do_POST(self):  # noqa: N802
+        if self.read_only:
+            return self._json({"error": "monitor đang chạy chỉ đọc"}, 405)
         if not self._host_ok() or self.headers.get("X-Requested-With") != "vota-monitor":
             return self._json({"error": "bị từ chối"}, 403)
         path = urlparse(self.path).path
@@ -2378,6 +2390,8 @@ def main(argv=None) -> int:
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--allow-public-host", action="store_true",
                     help="chấp nhận Host public; chỉ bật tạm thời vì UI có POST endpoint điều khiển job")
+    ap.add_argument("--read-only", action="store_true",
+                    help="chỉ phục vụ GET; từ chối mọi POST (dashboard công khai, không điều khiển được job)")
     ap.add_argument("--data-dir", type=Path, default=None,
                     help="thư mục dữ liệu chung chứa state/, fresh_runs/, logs/ (mặc định VOTA_DATA_DIR nếu có)")
     ap.add_argument("--state-dir", type=Path, default=None, help="mặc định CATALOG_STATE_DIR, rồi <data-dir>/state")
@@ -2397,9 +2411,10 @@ def main(argv=None) -> int:
                             else data_dir / "logs" if data_dir and (data_dir / "logs").is_dir() else None)
     Handler.monitor = FreshMonitor(state_dir.resolve(), run_root.resolve(), log_dir.resolve() if log_dir else None)
     Handler.allow_public_host = a.allow_public_host
+    Handler.read_only = a.read_only
     server = ThreadingHTTPServer((a.host, a.port), Handler)
     print(f"Monitor job cào: http://{a.host}:{a.port}  (state: {state_dir.resolve()}, lượt: {run_root.resolve()})"
-          " — Ctrl+C để dừng", flush=True)
+          + (" [chỉ đọc]" if a.read_only else "") + " — Ctrl+C để dừng", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

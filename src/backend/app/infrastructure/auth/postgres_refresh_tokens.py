@@ -15,11 +15,11 @@ import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 
-import psycopg
 from psycopg.rows import dict_row
 
 from src.backend.app.application.auth.errors import RefreshTokenInvalid, RefreshTokenReuse
 from src.backend.app.application.ports.auth import RotatedRefreshToken
+from src.backend.app.infrastructure.persistence.db_connection import connect_async
 
 
 def _digest(token: str) -> str:
@@ -36,7 +36,7 @@ class PostgresRefreshTokenStore:
         self._ttl = timedelta(seconds=ttl_seconds)
 
     async def _connect(self):
-        return await psycopg.AsyncConnection.connect(self._database_url, row_factory=dict_row)
+        return await connect_async(self._database_url, row_factory=dict_row)
 
     async def issue(self, *, user_id: str, session_id: str) -> str:
         token = _new_token()

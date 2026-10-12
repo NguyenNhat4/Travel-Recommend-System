@@ -64,6 +64,8 @@ Chỉ lượt trả 200 mới được lưu.
     ngân sách tính lại từ `estimatedTotal`; phương án còn lại chênh dưới 2 km bị bỏ; tối đa 3;
   - `constraints.specific_hotel` = tên khách sạn đêm 1 của phương án đã chọn, để các lượt sau giữ khách sạn đó;
   - grounding của lượt chọn: sản phẩm trong các lịch đã lưu phía server (đã kiểm với kết quả tool lúc `compose`);
+    khách sạn lưu kèm lịch giữ `priceAdults` của candidate, vì sản phẩm trong lịch chỉ là `summary` mà `finalize` cần
+    khoá này để tính lại số phòng (sửa 2026-10-09);
   - N không có lịch đã lưu (hội thoại cũ, số không tồn tại) thì câu đi như mọi câu khác (luồng `specific_hotel` cũ);
   - người dùng nêu thẳng tên khách sạn thì đi luồng `specific_hotel` sẵn có.
 - **Ràng buộc tồn tại qua các lượt** cho tới khi người dùng bỏ (`clear_fields`). Loại hàng mà Recommendation tạm loại thì

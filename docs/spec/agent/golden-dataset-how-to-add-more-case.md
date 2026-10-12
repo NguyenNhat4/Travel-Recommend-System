@@ -9,6 +9,7 @@ Dành cho người thêm hoặc sửa case trong `agent_test_cases_nhat.yaml`. L
 | Thành phần | Đường dẫn |
 |---|---|
 | Dataset | `src/evaluation/datasets/agent_test_cases_nhat.yaml` (nguồn: `src/evaluation/agent/agent-test-cases-nhat.md`) |
+| Dataset kịch bản | `src/evaluation/datasets/agent_scenarios_v5.yaml` (artifact "Kịch bản trợ lý V-OTA" bản 5 và lỗi chat thử 10/10; id `SC-*`) |
 | Runner | `src/evaluation/agent/golden.py` |
 | Test của dataset và bộ chấm | `src/evaluation/tests/test_golden.py` |
 | Biên bản | `src/evaluation/reports/eval-YYYY-MM-DD-agent-test-cases.md` |
@@ -99,6 +100,12 @@ Mọi khoá đều tuỳ chọn; runner chỉ kiểm khoá có mặt.
 | `toolsInclude` | Các tool này phải có trong `tool_plan` cuối của lượt (sau `validated_plan`; lời gọi bị server bỏ không tính) | `[get_similar_products]` |
 | `judge` | Danh sách tiêu chí cho LLM giám khảo (golden-run.md mục 4); mỗi tiêu chí không đạt là một finding `[judge]`. Chỉ dùng cho điều khó viết thành luật (lời giải thích, câu thông báo); điều kiểm được bằng luật thì dùng khoá khác | `["Câu trả lời cho người dùng biết ngày đi đã đổi"]` |
 | `formMatchesAnswer` | `true`: response có `clarificationForm`, và nếu câu trả lời nêu tên một điểm đến trong `suggestedValues.destination` thì form phải điền sẵn đúng điểm đến đó | `true` |
+| `textIncludes` | Mỗi chuỗi phải có trong câu trả lời (`question`/`message`/`error.message`); không phân biệt hoa thường. Dùng cho câu do code viết | `["vé tham quan"]` |
+| `phraseMaxCount` | Cụm (không phân biệt hoa thường) xuất hiện trong câu trả lời tối đa số lần đã cho | `{"được khen nhiều": 1}` |
+| `cardsMin` / `cardsMax` | Tổng số sản phẩm trong `searchResults` ít nhất / tối đa | `1` |
+| `cardTaxonomies` | Mọi thẻ trong `searchResults` thuộc các taxonomy này | `[hotel]` |
+| `suggestionsMin` | `suggestions` có ít nhất số nút này | `2` |
+| `warningsInclude` | Các `warnings[].code` này phải có | `[PRODUCT_NOT_ON_SALE_FOR_DATE]` |
 
 Giá trị hợp lệ:
 
