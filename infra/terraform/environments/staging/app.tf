@@ -61,6 +61,9 @@ resource "google_compute_instance" "app" {
       metadata_startup_script,
       labels,
       boot_disk,
+      # IP public (34.142.132.251) đã được gỡ khỏi VM này ngày 2026-10-12 và giữ cho bastion
+      # (infra/terraform/environments/staging-ha/bastion.tf). Không để plan gắn lại IP cho VM crawler.
+      network_interface[0].access_config,
     ]
   }
 }
