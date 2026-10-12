@@ -621,10 +621,12 @@ def substep_view(entry: dict) -> dict:
 def with_plan(views: list[dict], plan: tuple[str, ...], node_status: str) -> list[dict]:
     """Chuỗi bước con theo thứ tự `plan` (pipeline_graph.SUBSTEPS) để bước chưa chạy không bị ẩn: bước đã chạy giữ số liệu
     thật; bước chưa có số liệu là ô mờ (`planned`) mang trạng thái của ô lớn nếu ô chưa chạy (Chờ tới lượt / Không chạy /
-    Không thuộc lượt / Đã tắt), "waiting" nếu nằm sau bước con mới nhất của ô đang chạy, còn lại "notRun" (lượt này không
-    chạy bước con đó). Bước con ngoài kế hoạch (vd. index bị hoãn) giữ ở cuối."""
+    Không thuộc lượt / Đã tắt), "waiting" nếu nằm sau bước con mới nhất của ô đang chạy, "noData" nếu ô đã xong (ok /
+    partial) mà không ghi bước con nào (lượt trước khi job ghi số liệu bước con: bước con đã chạy, chỉ thiếu số liệu), còn
+    lại "notRun" (lượt này không chạy bước con đó). Bước con ngoài kế hoạch (vd. index bị hoãn) giữ ở cuối."""
     if not plan:
         return views
+    unrecorded = not views and node_status in ("ok", "partial")
     done = {v["name"] for v in views}
     reached = max((plan.index(v["name"]) for v in views if v["name"] in plan), default=-1)
     out = []
@@ -634,6 +636,8 @@ def with_plan(views: list[dict], plan: tuple[str, ...], node_status: str) -> lis
             continue
         if node_status in PENDING_STATUSES:
             status = node_status
+        elif unrecorded:
+            status = "noData"
         else:
             status = "waiting" if node_status in ("running", "draft") and index > reached else "notRun"
         out.append({**substep_view({"name": name, "status": status}), "planned": True})

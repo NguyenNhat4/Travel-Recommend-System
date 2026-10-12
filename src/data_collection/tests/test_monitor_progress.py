@@ -248,6 +248,13 @@ class GraphProgressTests(unittest.TestCase):
         self.assertEqual(nodes['validate']['status'], 'notRun')  # lượt kết thúc trước khi tới bước Kiểm tra
         self.assertEqual({s['status'] for s in nodes['validate']['substeps']}, {'notRun'})
 
+    def test_finished_step_without_recorded_substeps_says_no_data_not_not_run(self):
+        # lượt trước 08/10: Kiểm tra chạy xong nhưng job chưa ghi bước con → "Chưa ghi số liệu", không phải "Không chạy"
+        self.write([{'name': 'validate', 'status': 'ok', 'detail': {'products': 3578}}], status='ok')
+        chain = self.nodes()['validate']['substeps']
+        self.assertEqual([s['name'] for s in chain], list(graph.SUBSTEPS['validate']))
+        self.assertEqual({(s['status'], s['planned']) for s in chain}, {('noData', True)})
+
     def test_merge_tab_lists_the_planned_substeps_before_the_first_merge(self):
         self.write([], status='running')
         steps = self.monitor.substeps(RUN_ID, 'normalise')['steps']

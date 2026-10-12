@@ -132,7 +132,7 @@ const $=s=>document.querySelector(s), main=$('#main');
 const esc=v=>String(v??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const pretty=v=>`<pre>${esc(typeof v==='string'?v:JSON.stringify(v,null,2))}</pre>`;
 const labels={ok:'Xong',running:'Đang chạy',partial:'Chưa đủ dữ liệu',failed:'Thất bại',dead:'Mất tiến trình',stopped:'Đã dừng',error:'Lỗi',blocked:'Bị chặn',timeout:'Quá giờ',unknown:'Chưa rõ',
- waiting:'Chờ tới lượt',skipped:'Bị bỏ qua',notRun:'Không chạy',empty:'Không có dữ liệu',disabled:'Đã tắt',notInMode:'Không thuộc lượt',
+ waiting:'Chờ tới lượt',skipped:'Bị bỏ qua',notRun:'Không chạy',noData:'Chưa ghi số liệu',empty:'Không có dữ liệu',disabled:'Đã tắt',notInMode:'Không thuộc lượt',
  lost:'Mất nguồn',draft:'Đang gộp dần',embedded:'Nhúng mới',unchanged:'Giữ nguyên',deleted:'Đã xoá',orphan:'Mồ côi',pending:'Chưa nhúng',paused:'Tạm dừng'};
 const reasons={new:'sản phẩm mới',text:'text đổi',model:'đổi model',uuid:'dời id object'};
 const badge=v=>`<span class="status ${esc(v)}">${esc(labels[v]||v)}</span>`;
@@ -235,7 +235,7 @@ function subHtml(x,parent){// vào → ra (bớt = dòng bị lọc / gộp); b�
  const dropped=x.changed==null&&x.in!=null&&x.out!=null&&x.out<x.in?` <span class="wtext">(bớt ${num(x.in-x.out)})</span>`:'';
  const okt=x.ok!=null&&x.total?`<span class="pct">${x.percent}%</span> · ${num(x.ok)}/${num(x.total)} đạt`:'';
  const tip=[x.description,x.note,x.error].filter(Boolean).join('\n');
- return `<button type="button" class="sx${fillClass(x,x.status)}" data-subof="${esc(parent)}" data-sub="${esc(x.name)}" data-st="${esc(x.status)}"${x.planned?' data-planned':''}${fillAttrs(x,x.status)} title="${esc((x.planned?'Chưa có số liệu ở lượt này.\n':'')+(tip?tip+'\n':'')+'Bấm để xem log của bước này')}"><b>${esc(x.name)}</b><small>${esc(labels[x.status]||x.status)}${x.seconds!=null?` · ${esc(x.seconds)} s`:''}${x.ramMb!=null?` · RAM ${num(x.ramMb)} MB`:''}</small>${io?`<small>${io}${dropped}</small>`:''}${okt?`<small>${okt}</small>`:''}${x.note?`<small>${esc(x.note)}</small>`:''}${x.error?`<small class="minus">${esc(x.error)}</small>`:''}</button>`}
+ return `<button type="button" class="sx${fillClass(x,x.status)}" data-subof="${esc(parent)}" data-sub="${esc(x.name)}" data-st="${esc(x.status)}"${x.planned?' data-planned':''}${fillAttrs(x,x.status)} title="${esc((x.status==='noData'?'Bước con đã chạy cùng bước lớn, nhưng lượt này chạy trước khi job ghi số liệu từng bước con (từ 08/10/2026).\n':x.planned?'Chưa có số liệu ở lượt này.\n':'')+(tip?tip+'\n':'')+'Bấm để xem log của bước này')}"><b>${esc(x.name)}</b><small>${esc(labels[x.status]||x.status)}${x.seconds!=null?` · ${esc(x.seconds)} s`:''}${x.ramMb!=null?` · RAM ${num(x.ramMb)} MB`:''}</small>${io?`<small>${io}${dropped}</small>`:''}${okt?`<small>${okt}</small>`:''}${x.note?`<small>${esc(x.note)}</small>`:''}${x.error?`<small class="minus">${esc(x.error)}</small>`:''}</button>`}
 function chainHtml(n){return `<div class="chain" aria-label="Các bước bên trong ${esc(n.label)}">${n.substeps.map(x=>subHtml(x,n.id)).join('<span class="arr" aria-hidden="true">→</span>')}</div>`}
 const expandable=n=>S.view==='run'&&(n.substeps||[]).length>0;
 function nodeHtml(n){const bits=[];const secs=n.seconds??(n.status==='running'&&n.startedAt?Math.round((Date.now()-new Date(n.startedAt))/1000):null);if(secs!=null)bits.push(`${esc(secs)} s`);
