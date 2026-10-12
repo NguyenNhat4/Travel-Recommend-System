@@ -17,6 +17,7 @@ rồi bỏ qua phần recsys — các route còn lại vẫn phục vụ đượ
 from __future__ import annotations
 
 import asyncio
+import functools
 import threading
 from pathlib import Path
 import logging
@@ -174,10 +175,12 @@ def search_hypothesizer(settings):
     return _SEARCH_HYPOTHESIZERS[key]
 
 
-def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) -> dict:
+def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None, *,
+                 recommend_executor: Executor | None = None) -> dict:
     """Dựng engine recsys trên database đã seed.
 
-    Ba tham số override để test tiêm giả lập mà không cần Postgres hay tải model embedding.
+    Ba tham số override để test tiêm giả lập mà không cần Postgres hay tải model embedding. `recommend_executor` là pool
+    `recsys-io` của tiến trình (lifespan dựng một lần, dùng lại qua các lần nạp lại) cho các lượt Weaviate song song.
     """
     owns_embedder = False
     owns_vector_store = vector_store is None
@@ -320,6 +323,7 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
             explore_fill=settings.recommend_explore_fill,
             next_trip_scoring=settings.recommend_next_trip_scoring,
             max_per_destination=settings.recommend_max_per_destination or None,
+            executor=recommend_executor,
         ),
     }
 
@@ -768,7 +772,13 @@ async def lifespan(app: FastAPI):
             units = getattr(getattr(app.state, "index", None), "units", None)
             app.state.call_telemetry.set_catalog(len(units) if units is not None else None)
 
-        recsys = RecsysRefresher(app, settings, on_publish=publish_catalog)
+        # Pool riêng cho các lượt Weaviate song song của /recommendations; dùng lại qua các lần nạp lại (0 = tuần tự).
+        recsys_io = None
+        if settings.recommend_io_workers:
+            recsys_io = ThreadPoolExecutor(max_workers=settings.recommend_io_workers, thread_name_prefix="recsys-io")
+            stack.callback(recsys_io.shutdown, wait=False, cancel_futures=True)
+        recsys = RecsysRefresher(app, settings, build=functools.partial(build_recsys, recommend_executor=recsys_io),
+                                 on_publish=publish_catalog)
         if not await recsys.reload():
             publish_catalog()
         app.state.behaviour_tracker = BehaviourTracker(app.state.browse_event_recorder, app.state.product_lookup)

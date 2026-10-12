@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import contextvars
+import functools
 import logging
 from collections import Counter
+from concurrent.futures import Executor
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Iterable, Sequence
+from time import perf_counter
+from typing import Any, Callable, Iterable, Sequence
 
 import numpy as np
 
@@ -56,6 +60,28 @@ def _cap_per_taxonomy(order: Iterable[int], taxonomy: Sequence, k: int, cap: int
         seen[t] += 1
         out.append(i)
     return out
+
+
+def _timed(fn: Callable[..., Any], *args, **kwargs) -> tuple[Any, float]:
+    started = perf_counter()
+    value = fn(*args, **kwargs)
+    return value, perf_counter() - started
+
+
+class _Pending:
+    """Một lời gọi kho vector: có `executor` thì chạy ngay trên pool, không thì hoãn tới `result()` (tuần tự đúng thứ tự cũ).
+
+    Mỗi lời gọi chạy trong bản sao context của request (`copy_context().run`), để log trong adapter vẫn mang request ID.
+    `seconds` là thời gian của chính lời gọi, ghi vào `stageMs` sau khi có kết quả."""
+
+    def __init__(self, name: str, executor: Executor | None, fn: Callable[..., Any], *args, **kwargs):
+        self.name, self.seconds = name, 0.0
+        self._call = functools.partial(_timed, fn, *args, **kwargs)
+        self._future = executor.submit(contextvars.copy_context().run, self._call) if executor is not None else None
+
+    def result(self) -> Any:
+        value, self.seconds = self._future.result() if self._future is not None else self._call()
+        return value
 
 
 def _with_stages(result: dict, stages: StageTimer, events_read: int | None = None) -> dict:
@@ -192,6 +218,9 @@ class RecommendForUser:
     # công thức cũ + WARNING; tối đa `max_per_destination` món / điểm đến (None = tắt; không áp khi request khoá `destination`).
     next_trip_scoring: bool = True
     max_per_destination: int | None = MAX_PER_DESTINATION
+    # Pool cho các lượt kho vector độc lập (ANN ngắn hạn, ANN dài hạn, vector của món phổ biến) chạy song song; kết quả
+    # ghép đúng thứ tự cũ nên output y hệt. None = tuần tự (harness bench, test, `RECOMMEND_IO_WORKERS=0`).
+    executor: Executor | None = None
 
     def __call__(self, cdp_user_id: str | None, k: int = 5, now: datetime | None = None,
                  events: list[dict] | None = None, destination: str | None = None) -> dict:
@@ -261,17 +290,29 @@ class RecommendForUser:
         allowed = idx.allowed_ids(m)
         u_short = profile.active_trip.vec if profile.active_trip is not None else profile.u_long
         queries = [u_short] if profile.active_trip is None else [u_short, profile.u_long]
+        # Món phổ biến chỉ phụ thuộc `dest` và mask `m`, nên tính trước: lượt lấy vector của chúng chạy song song với ANN.
+        pop_global = self.popularity.unit_scores(dest) if self.popularity else {}
+        popular = [g for g in sorted(pop_global, key=lambda g: -pop_global[g]) if m[g]][: self.popular_k]
+        ann = [_Pending(name, self.executor, self.vectors.near_vector, q, allowed, self.candidate_k, with_vectors=True)
+               for name, q in zip(("annShort", "annLong"), queries)]
+        # Chạy song song thì lấy vector cho mọi món phổ biến chưa có trong lịch sử (tập lớn hơn lượt tuần tự); vòng ghép bên
+        # dưới kiểm `g in space.local` trước, nên món ANN đã thêm vẫn dùng vector của ANN và kết quả y hệt.
+        early = (_Pending("popularVectors", self.executor, self.vectors.vectors,
+                          [idx.units[g].product_id for g in popular if g not in space.local])
+                 if self.executor is not None else None)
         cand: list[int] = []
-        for q in queries:
-            for h in self.vectors.near_vector(q, allowed, self.candidate_k, with_vectors=True):
+        for task in ann:   # ghép đúng thứ tự cũ: ngắn hạn rồi dài hạn
+            for h in task.result():
                 if h.product_id in idx.idx and h.vector is not None:
                     local = space.add(idx.idx[h.product_id], h.vector)
                     if local not in cand:
                         cand.append(local)
 
-        pop_global = self.popularity.unit_scores(dest) if self.popularity else {}
-        popular = [g for g in sorted(pop_global, key=lambda g: -pop_global[g]) if m[g]][: self.popular_k]
-        fetched = self.vectors.vectors([idx.units[g].product_id for g in popular if g not in space.local])
+        popular_vectors = early or _Pending("popularVectors", None, self.vectors.vectors,
+                                            [idx.units[g].product_id for g in popular if g not in space.local])
+        fetched = popular_vectors.result()
+        for task in (*ann, popular_vectors):
+            stages.record(task.name, task.seconds)
         for g in popular:
             vec = fetched.get(idx.units[g].product_id)
             if g in space.local or vec is not None:
