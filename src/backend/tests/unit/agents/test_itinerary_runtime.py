@@ -371,7 +371,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         first = await self.run_graph(ScriptedLlm(extraction=Extraction(patch={'destination': 'Nha Trang', 'days': 3})),
                                      clients, state={'query': 'Đi Nha Trang 3 ngày', 'start_date_asked': False},
                                      store=store, owner='one')
-        self.assertNotIn('clarificationForm', first['response'])
+        self.assertFalse(first['response']['clarificationForm']['autoOpen'])  # AC-AGT-01: chỉ có nút mở form
 
         llm = ScriptedLlm(route='vague')
         second = await self.run_graph(llm, clients, store=store, owner='one',
@@ -408,7 +408,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         second = await turn('3 ngày', Extraction(patch={'days': 3}), conversation_id=cid)
         self.assertEqual(second['response']['status'], 'NEEDS_CLARIFICATION')
         self.assertEqual(second['response']['missingFields'], ['startDate', 'party', 'budget', 'origin'])
-        self.assertNotIn('clarificationForm', second['response'])
+        self.assertFalse(second['response']['clarificationForm']['autoOpen'])  # AC-AGT-01: chỉ có nút mở form
 
         # Extraction thô của LLM ở lượt này: patch rỗng, không đánh dấu chưa chốt ngày.
         third = await turn('không biết', Extraction(constraints={'exclude_products': [], 'clear_fields': []}),

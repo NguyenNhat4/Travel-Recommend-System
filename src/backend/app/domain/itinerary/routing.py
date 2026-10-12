@@ -263,6 +263,9 @@ def _stay_plans(hotels: list[Product], positions: dict[str, Point], activity_poi
 
     singles = nearest(activity_points, TOP_STAYS)
     singles += [h for h in cheapest(CHEAP_STAYS) if h not in singles]
+    premium = sorted((h for h in hotels if (h.get("attributes") or {}).get("starRating", 0) >= 4),
+                     key=_premium_order)
+    singles += [h for h in premium[:2] if h not in singles]
     plans = [[hotel] * nights for hotel in singles]
     if days_count < STAY_CHANGE_MIN_DAYS or nights < 2 * STAY_MIN_NIGHTS:
         return plans
@@ -398,63 +401,52 @@ def _signature(stays: list[Stay]) -> tuple:
     return tuple((s.product["productId"], s.nights) for s in stays)
 
 
+def _premium_order(product: Product) -> tuple:
+    rating = product.get("rating") or 0
+    reviews = product.get("reviewCount") or 0
+    stars = (product.get("attributes") or {}).get("starRating") or 0
+    return (0 if rating >= 4.5 and reviews >= 50 else 1, -rating, -reviews, -stars,
+            product.get("unitPrice") or float("inf"), product["productId"])
+
+
 def _options(route: Route, cash: tuple[int, int], sequences: list[list[Product]], solver: _Solver,
              scored: Callable[..., tuple[tuple, Route, tuple[int, int]]], budget_left: int | None) -> list[Option]:
-    """Phương án khác của lịch `route` trên cùng các điểm: chỉ đổi khách sạn (và cách ghép ngày theo khách sạn đó).
+    """Phương án đại diện cho giá, khoảng cách và cao cấp; giữ lịch đang chọn.
 
-    Lấy từ các lịch không bị lịch nào khác hơn cả về tiền lẫn km (km thật, không cộng phạt): phía gần hơn (bớt ít nhất
-    `OPTION_MIN_KM`, đắt hơn) lấy lịch rẻ nhất và lịch ít km nhất; phía rẻ hơn (đi thêm ít nhất `OPTION_MIN_KM`) lấy lịch
-    đi thêm ít nhất và lịch rẻ nhất. Chấm nhanh rồi giải chính xác các lịch được lấy; giá chưa rõ thì không có phương án.
+    Giữ cùng các hoạt động. Chỉ giải chính xác các phương án đại diện;
+    không tạo thẻ trùng khi một khách sạn thắng nhiều tiêu chí. AC-AGT-04, chốt 12/10.
     """
     if cash[0] or not route.stays:
         return []
     selected = [list(day) for day in route.days]
     solver.load([p for day in selected for p in day])
     main = _signature(route.stays)
-    pool: dict[tuple, tuple[float, int, list[Product]]] = {}
+    main_sequence = [stay.product for stay in route.stays for _ in range(stay.nights)]
+    pool = {main: (route.cost_km, cash[1], main_sequence)}
     for sequence in sequences:
         _, rough, rough_cash = scored(selected, sequence, exact=False)
-        signature = _signature(rough.stays)
-        if rough_cash[0] == 0 and signature != main and signature not in pool:
-            pool[signature] = (rough.cost_km, rough_cash[1], sequence)
-    ordered = sorted(pool.items(), key=lambda item: (item[1][1], item[1][0], item[0]))
-    frontier, best_km = [], float("inf")
-    for signature, (km, total, sequence) in ordered:
-        if km < best_km - _EPS:
-            frontier.append((km, total, sequence))
-            best_km = km
-
-    def sides(entries: list[tuple[float, int, list[Product]]], km: float, total: int):
-        closer = [e for e in entries if e[0] <= km - OPTION_MIN_KM and e[1] > total]
-        cheaper = [e for e in entries if e[1] < total and e[0] >= km + OPTION_MIN_KM]
-        return closer, cheaper
-
-    closer, cheaper = sides(frontier, route.cost_km, cash[1])
-    picked = []
-    for group, keys in ((closer, (lambda e: (e[1], e[0]), lambda e: (e[0], e[1]))),
-                        (cheaper, (lambda e: (e[0], e[1]), lambda e: (e[1], e[0])))):
-        for key in keys:
-            if group:
-                entry = min(group, key=key)
-                if all(entry[2] is not other[2] for other in picked):
-                    picked.append(entry)
-    exact = []
-    for _, _, sequence in picked:
-        _, solved, solved_cash = scored(selected, sequence, exact=True)
-        exact.append((solved.cost_km, solved_cash[1], solved))
-    closer, cheaper = sides(exact, route.cost_km, cash[1])
-    seen: set[tuple] = set()
+        if not rough_cash[0]:
+            pool.setdefault(_signature(rough.stays), (rough.cost_km, rough_cash[1], sequence))
+    entries = list(pool.values())
+    picks = [min(entries, key=lambda e: (e[1], e[0])), min(entries, key=lambda e: (e[0], e[1]))]
+    premium = [entry for entry in entries if all((p.get("attributes") or {}).get("starRating", 0) >= 4
+                                                for p in entry[2])]
+    if premium:
+        picks.append(min(premium, key=lambda e: max(_premium_order(p) for p in e[2])))
+    seen = {main}
     options = []
-    for km, total, solved in sorted(closer, key=lambda e: e[1]) + sorted(cheaper, key=lambda e: -e[1]):
+    for _, _, sequence in picks:
+        if _signature(_stays(sequence)) in seen:
+            continue
+        _, solved, solved_cash = scored(selected, sequence, exact=True)
         signature = _signature(solved.stays)
         if signature in seen:
             continue
         seen.add(signature)
+        total = solved_cash[1]
         over = total - budget_left if budget_left is not None and total > budget_left else None
-        options.append(Option(solved.stays, km - route.cost_km, total - cash[1], over, solved))
-    near = [o for o in options if o.km_delta < 0][:OPTIONS_PER_SIDE]
-    far = [o for o in options if o.km_delta > 0][:OPTIONS_PER_SIDE]
-    return (near + far)[:MAX_OPTIONS]
+        options.append(Option(solved.stays, solved.cost_km - route.cost_km, total - cash[1], over, solved))
+    return options[:MAX_OPTIONS]
 
 
 __all__ = ["Airports", "DayShape", "EXACT_LIMIT", "MAX_OPTIONS", "NO_AIRPORTS", "OPTION_MIN_KM", "Option", "Planned",

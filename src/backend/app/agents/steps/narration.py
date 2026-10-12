@@ -213,8 +213,7 @@ def _cost_line(state: dict, itinerary: dict) -> str:
 
 
 def _offers_block(state: dict, offers) -> str:
-    lines = [f"• {product_link(product)} — {message(state, 'offer_days', days=multi_day_span(product) or 2)} · "
-             f"{_price(state, product)}" for product in offers]
+    lines = [f"• {product_link(product)} — {message(state, 'offer_days', days=multi_day_span(product) or 2)}" for product in offers]
     return f"**{message(state, 'section_offers')}**\n" + "\n".join(lines) + f"\n{message(state, 'offers_question')}"
 
 
@@ -244,8 +243,7 @@ def _flights_block(state: dict, response: dict) -> str | None:
             bits.append(clock)
         if attributes.get("nonstop") is True:
             bits.append(message(state, "flight_nonstop"))
-        bits.append(message(state, "flight_passengers", price=_money(product["unitPrice"], language),
-                            count=leg["passengers"]))
+
         lines.append(f"• {message(state, 'flight_' + leg['direction'])} — {product_link(product)} · {' · '.join(bits)}")
     lines += [warning["message"] for warning in response.get("warnings", [])
               if str(warning.get("code", "")).startswith("FLIGHT_")]
@@ -285,15 +283,15 @@ def fallback_message(state: dict, response: dict) -> str:
     if len(stays) == 1:
         stay = stays[0]
         blocks.append(f"**{message(state, 'section_stay')}**\n• {product_link(stay['product'])} — "
-                      f"{message(state, 'stay_nights', nights=stay.get('nights', 1))} · {_stay_price(state, stay)}")
+                      f"{message(state, 'stay_nights', nights=stay.get('nights', 1))}")
     elif stays:
         # Đổi khách sạn giữa chuyến (AC-AGT-04): mỗi khách sạn một dòng, kèm các đêm ở đó.
         blocks.append(f"**{message(state, 'section_stay')}**\n" + "\n".join(
-            f"• {_nights_label(state, stay)} — {product_link(stay['product'])} · {_stay_price(state, stay)}"
+            f"• {_nights_label(state, stay)} — {product_link(stay['product'])}"
             for stay in stays))
     for day in itinerary.get("days", []):
         # Slot đã theo thứ tự buổi; dòng di chuyển ngày đến/ngày về (AC-AGT-02) in bằng ghi chú của nó.
-        lines = [f"• {_time_label(state, slot)} — " + (f"{product_link(slot['product'])} · {_price(state, slot['product'])}"
+        lines = [f"• {_time_label(state, slot)} — " + (f"{product_link(slot['product'])}"
                                                        if slot.get("product") else slot["note"])
                  for slot in day.get("slots", []) if slot.get("product") or slot.get("activityType") == "TRANSFER"]
         blocks.append(f"**{_day_heading(state, day)}**\n" + ("\n".join(lines) or message(state, "free_day")))
@@ -306,7 +304,8 @@ def fallback_message(state: dict, response: dict) -> str:
     criteria = _criteria_block(state, response)
     if criteria:
         blocks.append(criteria)
-    blocks.append(f"**{message(state, 'section_cost')}**\n{_cost_line(state, itinerary)}")
+    if itinerary.get("estimatedTotal") is None:
+        blocks.append(_cost_line(state, itinerary))
     blocks.append(f"**{message(state, 'section_notes')}**\n{message(state, 'narrate_notes')}\n"
                   f"{message(state, 'narrate_outro')}")
     return titled(itinerary.get("title") or _default_title(state), "\n\n".join(blocks))
@@ -382,7 +381,10 @@ def render(state: dict, response: dict, narration: ItineraryNarration) -> tuple[
 
     body = "\n".join(line.rstrip() for line in body.splitlines())
     body = PRODUCT_LINK.sub(lambda match: product_link(products[match.group(2)]), body)
-    body = PLACEHOLDER.sub(fill, body)
+    # Legacy models may still emit old placeholders; validate IDs above, then remove duplicated prices.
+    body = re.sub(r"\s*[·—,:]?\s*\(?" + PLACEHOLDER.pattern + r"\)?", "", body)
+    body = re.sub(r"(?m)^\*\*" + re.escape(message(state, "section_cost")) + r"[^\n]*\n(?:(?!^\*\*)[^\n]*(?:\n|$))*", "", body)
+    body = re.sub(r"vé tham quan tự do", "địa điểm tham quan", body, flags=re.I)
     missing = []
     for product_id, product in scheduled.items():
         if product_id in linked:

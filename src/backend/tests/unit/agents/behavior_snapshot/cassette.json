@@ -13,6 +13,11 @@
   ],
   "title": null
  },
+ "structured:ConversationalAnswer:074277b04bc86e318db86b93": {
+  "message": "Còn thiếu ngày khởi hành, ngân sách và nơi xuất phát. Bạn điều chỉnh thông tin gợi ý bên dưới rồi xác nhận nhé; mục nào chưa quyết định thì có thể để trống.",
+  "suggestions": [],
+  "title": "Bổ sung thông tin chuyến đi"
+ },
  "structured:ConversationalAnswer:09e31e337b748315442b09e0": {
   "message": "Bạn dự kiến ngân sách tổng khoảng bao nhiêu và sẽ khởi hành từ đâu? Hai thông tin này giúp mình chọn phương án phù hợp hơn; bạn có thể trả lời như “10 triệu, từ Hà Nội”.",
   "suggestions": [],
@@ -27,6 +32,11 @@
   "message": "Mình còn thiếu số ngày cho chuyến đi. Bạn điều chỉnh thông tin gợi ý bên dưới rồi xác nhận nhé.",
   "suggestions": [],
   "title": "Bổ sung số ngày đi"
+ },
+ "structured:ConversationalAnswer:171c5abe853087901b2f2a3d": {
+  "message": "Mình giữ chuyến Hà Nội 3 ngày nhé. Còn thiếu ngày đi, số người, ngân sách và điểm khởi hành; bạn chỉnh các thông tin gợi ý bên dưới rồi xác nhận nhé.",
+  "suggestions": [],
+  "title": "Điền thông tin chuyến đi"
  },
  "structured:ConversationalAnswer:1890913f305f32e278b56999": {
   "message": "Nghe thật thư thái đó! Bạn có thể chọn Phú Quốc hoặc Đà Lạt để bắt đầu xem nơi nào hợp với kỳ nghỉ nghỉ ngơi của mình hơn; nếu chưa biết muốn đi đâu cũng không sao. Bạn thích nghỉ bên biển hay ở nơi khí hậu mát mẻ?",
@@ -66,6 +76,11 @@
   "suggestions": [],
   "title": "Thông tin cho chuyến Sầm Sơn"
  },
+ "structured:ConversationalAnswer:4adf7e240298a22ac11ae544": {
+  "message": "Bạn chưa cho biết điểm khởi hành hiện tại; bạn muốn đổi sang đâu? Ví dụ: đi từ Đà Nẵng.",
+  "suggestions": [],
+  "title": "Đổi nơi khởi hành"
+ },
  "structured:ConversationalAnswer:5572dee64f5b48e71ed315b7": {
   "message": "Bạn dự định đi Hà Nội mấy ngày, khởi hành ngày nào, có bao nhiêu người lớn và trẻ em, ngân sách tổng khoảng bao nhiêu, và xuất phát từ đâu? Những mục chưa quyết định như ngày đi, số người hay ngân sách có thể để trống; ví dụ: 3 ngày, đi từ Huế. Có ưu tiên khách sạn nào không, chẳng hạn có hồ bơi hoặc phù hợp gia đình?",
   "suggestions": [],
@@ -100,6 +115,11 @@
   "message": "Bạn muốn đi Hà Nội mấy ngày, khởi hành ngày nào, có bao nhiêu người lớn và trẻ em, tổng ngân sách bao nhiêu, và đi từ đâu? Những thông tin này giúp mình lên lịch trình phù hợp; ngày đi, số người, ngân sách hoặc nơi khởi hành chưa chốt thì bạn có thể bỏ qua.",
   "suggestions": [],
   "title": "Cho mình biết chi tiết chuyến đi"
+ },
+ "structured:ConversationalAnswer:5ec2ebcfdafb9520b500115a": {
+  "message": "Còn thiếu ngày khởi hành, số người, ngân sách và nơi xuất phát. Bạn chỉnh các thông tin gợi ý bên dưới rồi xác nhận nhé; mục nào chưa quyết định thì có thể để trống.",
+  "suggestions": [],
+  "title": "Còn thiếu thông tin chuyến đi"
  },
  "structured:ConversationalAnswer:5f9c1189f976121535512e34": {
   "message": "Cuối tuần này bạn thích đi biển thư giãn hay khám phá thành phố? Chưa biết chọn đâu cũng không sao — mình có thể gợi ý Đà Nẵng hoặc Đà Lạt để bạn tham khảo.",
@@ -149,6 +169,11 @@
   "suggestions": [],
   "title": "Còn thiếu số ngày"
  },
+ "structured:ConversationalAnswer:886ed5fa3152220632a05269": {
+  "message": "Mình còn thiếu số ngày, ngày khởi hành, số người, ngân sách và nơi xuất phát. Bạn chỉnh các thông tin gợi ý trong biểu mẫu bên dưới rồi xác nhận nhé; chúng giúp mình lên lịch phù hợp với chuyến đi Sầm Sơn.",
+  "suggestions": [],
+  "title": "Còn thiếu thông tin chuyến đi"
+ },
  "structured:ConversationalAnswer:8a6264433c1484c4ba09dbf2": {
   "message": "Ngày khởi hành hiện tại là 11/10/2026. Bạn muốn đổi sang ngày nào? Ví dụ: 15/10/2026.",
   "suggestions": [],
@@ -163,6 +188,11 @@
   "message": "Bạn dự kiến ngân sách tổng cộng bao nhiêu và sẽ khởi hành từ đâu? Hai thông tin này giúp mình cân nhắc lịch trình phù hợp; ví dụ: 10 triệu, từ Hà Nội.",
   "suggestions": [],
   "title": "Ngân sách và nơi khởi hành"
+ },
+ "structured:ConversationalAnswer:95e4bfe25e4cbacef6c3f0e4": {
+  "message": "Còn thiếu ngày khởi hành, số người, ngân sách và nơi xuất phát. Bạn chỉnh các thông tin gợi ý bên dưới rồi xác nhận nhé; mục nào chưa quyết định thì có thể để trống.",
+  "suggestions": [],
+  "title": "Còn thiếu ngày đi và thông tin chuyến đi"
  },
  "structured:ConversationalAnswer:95ed6698cf77e909199b3005": {
   "message": "Đà Nẵng mình đã ghi nhận nhé! Bạn cho mình biết ngày khởi hành, số người lớn và trẻ em, cùng tổng ngân sách để chọn hoạt động phù hợp; nếu chưa quyết định khoản nào thì bạn có thể bỏ qua. Bạn cũng cho biết sẽ đi từ đâu, và nếu có thì chia sẻ sở thích khách sạn, chẳng hạn có hồ bơi hoặc phù hợp cho trẻ em.",
@@ -193,6 +223,16 @@
   "suggestions": [],
   "title": "Còn thiếu ngày đi và nơi xuất phát"
  },
+ "structured:ConversationalAnswer:aa3cbabce2dc4d55fc0781d1": {
+  "message": "Hiện chuyến đi đang ở Hà Nội; bạn muốn đổi sang đâu? Có thể chọn Nha Trang, Phú Quốc hoặc TP. Hồ Chí Minh, hoặc gõ bất kỳ địa điểm nào bạn muốn.",
+  "suggestions": [],
+  "title": "Đổi điểm đến"
+ },
+ "structured:ConversationalAnswer:aee80a7a8de446500c9731c9": {
+  "message": "Chuyến đi Huế còn thiếu số ngày. Bạn điều chỉnh thông tin gợi ý bên dưới rồi xác nhận nhé.",
+  "suggestions": [],
+  "title": "Bổ sung số ngày chuyến đi"
+ },
  "structured:ConversationalAnswer:b6b19ffcb8b001f11ebd7a96": {
   "message": "Mình còn thiếu ngày khởi hành, số người, ngân sách và nơi xuất phát để chuẩn bị lịch trình Đà Lạt phù hợp. Bạn có thể chỉnh các thông tin gợi ý bên dưới rồi xác nhận nhé.",
   "suggestions": [],
@@ -212,6 +252,11 @@
   "message": "Điểm đến hiện tại là Hà Nội. Bạn muốn đổi sang đâu? Ví dụ: Nha Trang, Phú Quốc hoặc TP. Hồ Chí Minh; bạn cũng có thể nhập bất kỳ địa điểm nào mình muốn.",
   "suggestions": [],
   "title": "Đổi điểm đến"
+ },
+ "structured:ConversationalAnswer:c2934c3e01932dfeb463e3fc": {
+  "message": "Bangkok chưa nằm trong các điểm đến mình có thể lên kế hoạch; hiện mình chỉ hỗ trợ chuyến đi trong Việt Nam. Bạn có thể chọn Hà Nội, Đà Nẵng hoặc điểm đến khác ở Việt Nam. Mình cũng cần ngày khởi hành, số người, ngân sách và nơi đi để chuẩn bị chuyến 3 ngày; hãy điều chỉnh thông tin bên dưới rồi xác nhận.",
+  "suggestions": [],
+  "title": "Điểm đến chưa hỗ trợ"
  },
  "structured:ConversationalAnswer:c2f652f271f0bee656d0eedc": {
   "message": "Ừ, vậy mình bỏ qua Nha Trang nhé. Bạn thích đi biển, lên vùng mát mẻ hay khám phá thành phố? Chưa biết muốn đi đâu cũng không sao.",
@@ -1430,6 +1475,210 @@
    }
   ]
  },
+ "structured:DuplicatePairs:5a6dc41a8c5e182d3f4d1c47": {
+  "pairs": [
+   {
+    "duplicate": true,
+    "ids": [
+     "0d926cc0-a22c-5e58-beff-9c8874e9c392",
+     "81f259e7-615f-5e27-b8f7-1bf67b22cb21"
+    ],
+    "reason": "Cùng loại vé chỉ tặng voucher ẩm thực/quà lưu niệm; khác hạng nhưng cùng trải nghiệm."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "0d926cc0-a22c-5e58-beff-9c8874e9c392",
+     "aefa524b-5bb6-5612-ac6a-5d2b105e6260"
+    ],
+    "reason": "Cùng loại vé chỉ tặng voucher ẩm thực/quà lưu niệm; khác hạng nhưng cùng trải nghiệm."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "0d926cc0-a22c-5e58-beff-9c8874e9c392",
+     "d03bbb16-77c0-5318-afff-4b1d58480b7a"
+    ],
+    "reason": "Cùng loại vé chỉ tặng voucher ẩm thực/quà lưu niệm; khác hạng nhưng cùng trải nghiệm."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "0d926cc0-a22c-5e58-beff-9c8874e9c392",
+     "e3a1d3bf-bde6-58e7-af8a-27098b1e60f7"
+    ],
+    "reason": "Cùng loại vé chỉ tặng voucher ẩm thực/quà lưu niệm; khác hạng nhưng cùng trải nghiệm."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "1784b8a2-8c03-567f-a27f-996f6976b1c8",
+     "cd1bbb38-e1fa-59c6-a7a0-0c5a2b1fed90"
+    ],
+    "reason": "Đều gồm trải nghiệm Aquafield và set ẩm thực, khác hạng vé."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "1784b8a2-8c03-567f-a27f-996f6976b1c8",
+     "d65600c7-c6ec-5557-ab94-1bc356a769a2"
+    ],
+    "reason": "Đều gồm trải nghiệm Aquafield và set ẩm thực, khác hạng vé."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "1784b8a2-8c03-567f-a27f-996f6976b1c8",
+     "3443cb1f-a958-53ee-aae6-a621e88b15ce"
+    ],
+    "reason": "Gói vé Văn Lang có bao gồm Aquafield và set ẩm thực như vé lẻ trải nghiệm này."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "1784b8a2-8c03-567f-a27f-996f6976b1c8",
+     "37c3940f-2fb1-5684-b456-5d91ee42ccbc"
+    ],
+    "reason": "Gói vé Thăng Long có bao gồm Aquafield và set ẩm thực như vé lẻ trải nghiệm này."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "1784b8a2-8c03-567f-a27f-996f6976b1c8",
+     "6dc7bc9d-5bbe-5c11-a162-528caea893cb"
+    ],
+    "reason": "Đều gồm trải nghiệm Aquafield và set ẩm thực, khác hạng vé."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "3443cb1f-a958-53ee-aae6-a621e88b15ce",
+     "37c3940f-2fb1-5684-b456-5d91ee42ccbc"
+    ],
+    "reason": "Cùng gói trải nghiệm Gondola, Aquafield và set ẩm thực, chỉ khác hạng vé."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "3443cb1f-a958-53ee-aae6-a621e88b15ce",
+     "6dc7bc9d-5bbe-5c11-a162-528caea893cb"
+    ],
+    "reason": "Cùng gói trải nghiệm Gondola, Aquafield và set ẩm thực, chỉ khác hạng vé."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "37c3940f-2fb1-5684-b456-5d91ee42ccbc",
+     "6dc7bc9d-5bbe-5c11-a162-528caea893cb"
+    ],
+    "reason": "Cùng gói trải nghiệm Gondola, Aquafield và set ẩm thực, chỉ khác hạng vé."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "3409adbc-b291-5072-9845-9b3d6958732a",
+     "5463024a-54e2-5fc8-b9b2-5c463d92887c"
+    ],
+    "reason": "Cùng vé trải nghiệm chèo thuyền Gondola và ẩm thực tại Vinpalace, chỉ khác hạng."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "3409adbc-b291-5072-9845-9b3d6958732a",
+     "8d849029-38ea-513d-9fd8-a9f5a9edac5f"
+    ],
+    "reason": "Cùng vé trải nghiệm chèo thuyền Gondola và ẩm thực tại Vinpalace, chỉ khác hạng."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "3409adbc-b291-5072-9845-9b3d6958732a",
+     "973e1fad-2650-55e1-aaf5-c0ea2521e775"
+    ],
+    "reason": "Cùng vé trải nghiệm chèo thuyền Gondola và ẩm thực tại Vinpalace, chỉ khác hạng."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "5463024a-54e2-5fc8-b9b2-5c463d92887c",
+     "8d849029-38ea-513d-9fd8-a9f5a9edac5f"
+    ],
+    "reason": "Cùng vé trải nghiệm chèo thuyền Gondola và ẩm thực tại Vinpalace, chỉ khác hạng."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "5463024a-54e2-5fc8-b9b2-5c463d92887c",
+     "973e1fad-2650-55e1-aaf5-c0ea2521e775"
+    ],
+    "reason": "Cùng vé trải nghiệm chèo thuyền Gondola và ẩm thực tại Vinpalace, chỉ khác hạng."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "8d849029-38ea-513d-9fd8-a9f5a9edac5f",
+     "973e1fad-2650-55e1-aaf5-c0ea2521e775"
+    ],
+    "reason": "Cùng vé trải nghiệm chèo thuyền Gondola và ẩm thực tại Vinpalace, chỉ khác hạng."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "3409adbc-b291-5072-9845-9b3d6958732a",
+     "83d01deb-945a-5cbb-85ec-2512155d7773"
+    ],
+    "reason": "Cả hai đều bao gồm trải nghiệm chèo thuyền Gondola; gói Văn Lang cũng có voucher ẩm thực."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "5463024a-54e2-5fc8-b9b2-5c463d92887c",
+     "83d01deb-945a-5cbb-85ec-2512155d7773"
+    ],
+    "reason": "Cả hai đều bao gồm trải nghiệm chèo thuyền Gondola; gói Văn Lang cũng có voucher ẩm thực."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "8d849029-38ea-513d-9fd8-a9f5a9edac5f",
+     "83d01deb-945a-5cbb-85ec-2512155d7773"
+    ],
+    "reason": "Cả hai đều bao gồm trải nghiệm chèo thuyền Gondola; gói Văn Lang cũng có voucher ẩm thực."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "973e1fad-2650-55e1-aaf5-c0ea2521e775",
+     "83d01deb-945a-5cbb-85ec-2512155d7773"
+    ],
+    "reason": "Cả hai đều bao gồm trải nghiệm chèo thuyền Gondola; gói Văn Lang cũng có voucher ẩm thực."
+   },
+   {
+    "duplicate": false,
+    "ids": [
+     "83d01deb-945a-5cbb-85ec-2512155d7773",
+     "d03bbb16-77c0-5318-afff-4b1d58480b7a"
+    ],
+    "reason": "Gói vé có trải nghiệm Gondola và voucher ẩm thực; vé Lạc Hồng chỉ có voucher, không cùng trải nghiệm."
+   },
+   {
+    "duplicate": false,
+    "ids": [
+     "83d01deb-945a-5cbb-85ec-2512155d7773",
+     "e3a1d3bf-bde6-58e7-af8a-27098b1e60f7"
+    ],
+    "reason": "Gói vé có trải nghiệm Gondola và voucher ẩm thực; vé Văn Lang chỉ có voucher, không cùng trải nghiệm."
+   },
+   {
+    "duplicate": false,
+    "ids": [
+     "83d01deb-945a-5cbb-85ec-2512155d7773",
+     "aefa524b-5bb6-5612-ac6a-5d2b105e6260"
+    ],
+    "reason": "Gói vé có trải nghiệm Gondola và voucher ẩm thực; vé Thăng Long chỉ có voucher, không cùng trải nghiệm."
+   }
+  ]
+ },
  "structured:DuplicatePairs:7a373e097def6be3ea9ac219": {
   "pairs": [
    {
@@ -1671,6 +1920,130 @@
  },
  "structured:DuplicatePairs:92e2b303a0ee336d59c20a1c": {
   "pairs": []
+ },
+ "structured:DuplicatePairs:9f02377be4e751bc68cf0981": {
+  "pairs": [
+   {
+    "duplicate": true,
+    "ids": [
+     "0e28c4cb-d53e-51a8-bd53-36a1edd5f4e8",
+     "1f4564f5-6a96-5f52-b70d-40e38db330a7"
+    ],
+    "reason": "Cùng vé vào Vinpearl Safari; một vé gồm thêm Fastpass và xe điện."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "0e28c4cb-d53e-51a8-bd53-36a1edd5f4e8",
+     "f58f09c9-c8bc-53c0-b5f5-d704dbc0b04e"
+    ],
+    "reason": "Đều là vé vào Vinpearl Safari, dù gói đầu có thêm tiện ích."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "1f4564f5-6a96-5f52-b70d-40e38db330a7",
+     "f58f09c9-c8bc-53c0-b5f5-d704dbc0b04e"
+    ],
+    "reason": "Cả hai đều là vé vào cửa Vinpearl Safari Phú Quốc."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "964b8c01-1db7-5f93-a048-61cb3f91ee2d",
+     "0e28c4cb-d53e-51a8-bd53-36a1edd5f4e8"
+    ],
+    "reason": "Tiện ích xe điện được tính trong gói vé vào Safari có xe điện."
+   },
+   {
+    "duplicate": false,
+    "ids": [
+     "964b8c01-1db7-5f93-a048-61cb3f91ee2d",
+     "1f4564f5-6a96-5f52-b70d-40e38db330a7"
+    ],
+    "reason": "Xe điện là tiện ích riêng tại cùng Vinpearl Safari, không phải trải nghiệm vé vào cửa."
+   },
+   {
+    "duplicate": false,
+    "ids": [
+     "964b8c01-1db7-5f93-a048-61cb3f91ee2d",
+     "f58f09c9-c8bc-53c0-b5f5-d704dbc0b04e"
+    ],
+    "reason": "Xe điện là tiện ích riêng, không phải cùng trải nghiệm với vé vào cửa tiêu chuẩn."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "9a697820-cde5-53b0-a426-5f4a4e701dcf",
+     "a750db7b-6d9d-5876-a646-352c41af6eb1"
+    ],
+    "reason": "Cùng trải nghiệm Tour Night Safari; một gói chỉ kèm thêm BBQ."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "9a697820-cde5-53b0-a426-5f4a4e701dcf",
+     "b38c926e-921a-5194-82ed-7918731bb92a"
+    ],
+    "reason": "Cùng Tour Night Safari, gói sau bổ sung BBQ trong rừng."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "a750db7b-6d9d-5876-a646-352c41af6eb1",
+     "b38c926e-921a-5194-82ed-7918731bb92a"
+    ],
+    "reason": "Cùng Tour Night Safari; gói sau có thêm BBQ."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "b6533809-4dcd-518c-bd37-b8959caa5637",
+     "733c5417-0de2-5d44-85b4-2860fd82af3e"
+    ],
+    "reason": "Cùng workshop Junior Zoo Keeper; mục đầu nêu thêm khu Rùa Con."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "89e1a07f-b7cc-5928-ad11-fabb1d3bc520",
+     "f540ef2f-f1de-54dc-a98d-c3cee180f0d4"
+    ],
+    "reason": "Gói Water Taxi + Bảo Tàng Gấu gồm vé Water Taxi lẻ."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "89e1a07f-b7cc-5928-ad11-fabb1d3bc520",
+     "bceffc48-8927-586f-b875-6c9712c44e70"
+    ],
+    "reason": "Gói Water Taxi + Bảo Tàng Gấu gồm vé Bảo Tàng Gấu lẻ."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "d80a614a-828c-511d-be30-d83d90e04d5a",
+     "f540ef2f-f1de-54dc-a98d-c3cee180f0d4"
+    ],
+    "reason": "Gói Water Taxi + Show Tinh Hoa Việt Nam gồm vé Water Taxi lẻ."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "84ac6fa0-f87b-5b96-8745-2b1fe1a13d34",
+     "d80a614a-828c-511d-be30-d83d90e04d5a"
+    ],
+    "reason": "Gói gồm vé xem cùng show Tinh Hoa Việt Nam."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "f540ef2f-f1de-54dc-a98d-c3cee180f0d4",
+     "d80a614a-828c-511d-be30-d83d90e04d5a"
+    ],
+    "reason": "Cùng trải nghiệm Water Taxi Venice; gói sau kèm thêm vé xem show."
+   }
+  ]
  },
  "structured:DuplicatePairs:af46952394a7eb05d0ecf2ed": {
   "pairs": [
@@ -2343,6 +2716,250 @@
    }
   ]
  },
+ "structured:DuplicatePairs:d465571092ae34837a7459a9": {
+  "pairs": [
+   {
+    "duplicate": true,
+    "ids": [
+     "0d926cc0-a22c-5e58-beff-9c8874e9c392",
+     "81f259e7-615f-5e27-b8f7-1bf67b22cb21"
+    ],
+    "reason": "Cùng loại vé chỉ khác hạng, đều gồm voucher ẩm thực/quà lưu niệm tại cùng điểm đến."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "0d926cc0-a22c-5e58-beff-9c8874e9c392",
+     "aefa524b-5bb6-5612-ac6a-5d2b105e6260"
+    ],
+    "reason": "Cùng loại vé chỉ khác hạng, đều gồm voucher ẩm thực/quà lưu niệm tại cùng điểm đến."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "0d926cc0-a22c-5e58-beff-9c8874e9c392",
+     "d03bbb16-77c0-5318-afff-4b1d58480b7a"
+    ],
+    "reason": "Cùng loại vé chỉ khác hạng, đều gồm voucher ẩm thực/quà lưu niệm tại cùng điểm đến."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "0d926cc0-a22c-5e58-beff-9c8874e9c392",
+     "e3a1d3bf-bde6-58e7-af8a-27098b1e60f7"
+    ],
+    "reason": "Cùng loại vé chỉ khác hạng, đều gồm voucher ẩm thực/quà lưu niệm tại cùng điểm đến."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "81f259e7-615f-5e27-b8f7-1bf67b22cb21",
+     "aefa524b-5bb6-5612-ac6a-5d2b105e6260"
+    ],
+    "reason": "Cùng loại vé chỉ khác hạng, đều gồm voucher ẩm thực/quà lưu niệm tại cùng điểm đến."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "81f259e7-615f-5e27-b8f7-1bf67b22cb21",
+     "d03bbb16-77c0-5318-afff-4b1d58480b7a"
+    ],
+    "reason": "Cùng loại vé chỉ khác hạng, đều gồm voucher ẩm thực/quà lưu niệm tại cùng điểm đến."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "81f259e7-615f-5e27-b8f7-1bf67b22cb21",
+     "e3a1d3bf-bde6-58e7-af8a-27098b1e60f7"
+    ],
+    "reason": "Cùng loại vé chỉ khác hạng, đều gồm voucher ẩm thực/quà lưu niệm tại cùng điểm đến."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "aefa524b-5bb6-5612-ac6a-5d2b105e6260",
+     "d03bbb16-77c0-5318-afff-4b1d58480b7a"
+    ],
+    "reason": "Cùng loại vé chỉ khác hạng, đều gồm voucher ẩm thực/quà lưu niệm tại cùng điểm đến."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "aefa524b-5bb6-5612-ac6a-5d2b105e6260",
+     "e3a1d3bf-bde6-58e7-af8a-27098b1e60f7"
+    ],
+    "reason": "Cùng loại vé chỉ khác hạng, đều gồm voucher ẩm thực/quà lưu niệm tại cùng điểm đến."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "d03bbb16-77c0-5318-afff-4b1d58480b7a",
+     "e3a1d3bf-bde6-58e7-af8a-27098b1e60f7"
+    ],
+    "reason": "Cùng loại vé chỉ khác hạng, đều gồm voucher ẩm thực/quà lưu niệm tại cùng điểm đến."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "1784b8a2-8c03-567f-a27f-996f6976b1c8",
+     "196bed3f-43b2-5723-b673-9970c82921ac"
+    ],
+    "reason": "Cùng gói trải nghiệm Aquafield và set ẩm thực, khác hạng vé."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "1784b8a2-8c03-567f-a27f-996f6976b1c8",
+     "3443cb1f-a958-53ee-aae6-a621e88b15ce"
+    ],
+    "reason": "Gói gồm Aquafield và set ẩm thực; vé kia bao gồm các trải nghiệm này cùng Gondola."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "1784b8a2-8c03-567f-a27f-996f6976b1c8",
+     "37c3940f-2fb1-5684-b456-5d91ee42ccbc"
+    ],
+    "reason": "Gói gồm Aquafield và set ẩm thực; vé kia bao gồm các trải nghiệm này cùng Gondola."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "1784b8a2-8c03-567f-a27f-996f6976b1c8",
+     "6dc7bc9d-5bbe-5c11-a162-528caea893cb"
+    ],
+    "reason": "Gói gồm Aquafield và set ẩm thực; vé kia bao gồm các trải nghiệm này cùng Gondola."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "1784b8a2-8c03-567f-a27f-996f6976b1c8",
+     "9943ca95-e175-58b8-871c-d5751ae716a5"
+    ],
+    "reason": "Gói cùng trải nghiệm Aquafield và set ẩm thực, khác hạng vé."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "1784b8a2-8c03-567f-a27f-996f6976b1c8",
+     "c5cb2efb-cac5-516f-be5c-4b739952a2a6"
+    ],
+    "reason": "Gói cùng trải nghiệm Aquafield và set ẩm thực, khác hạng vé."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "1784b8a2-8c03-567f-a27f-996f6976b1c8",
+     "cd1bbb38-e1fa-59c6-a7a0-0c5a2b1fed90"
+    ],
+    "reason": "Cùng gói trải nghiệm Aquafield và set ẩm thực, khác hạng vé."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "1784b8a2-8c03-567f-a27f-996f6976b1c8",
+     "d65600c7-c6ec-5557-ab94-1bc356a769a2"
+    ],
+    "reason": "Cùng gói trải nghiệm Aquafield và set ẩm thực, khác hạng vé."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "1784b8a2-8c03-567f-a27f-996f6976b1c8",
+     "fa2f9126-2c92-5980-adcd-1f45b7026b7d"
+    ],
+    "reason": "Cùng gói trải nghiệm Aquafield và set ẩm thực, khác hạng vé."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "196bed3f-43b2-5723-b673-9970c82921ac",
+     "3443cb1f-a958-53ee-aae6-a621e88b15ce"
+    ],
+    "reason": "Gói gồm Aquafield và set ẩm thực; vé kia bao gồm các trải nghiệm này cùng Gondola."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "196bed3f-43b2-5723-b673-9970c82921ac",
+     "37c3940f-2fb1-5684-b456-5d91ee42ccbc"
+    ],
+    "reason": "Gói gồm Aquafield và set ẩm thực; vé kia bao gồm các trải nghiệm này cùng Gondola."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "196bed3f-43b2-5723-b673-9970c82921ac",
+     "6dc7bc9d-5bbe-5c11-a162-528caea893cb"
+    ],
+    "reason": "Gói gồm Aquafield và set ẩm thực; vé kia bao gồm các trải nghiệm này cùng Gondola."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "196bed3f-43b2-5723-b673-9970c82921ac",
+     "9943ca95-e175-58b8-871c-d5751ae716a5"
+    ],
+    "reason": "Gói cùng trải nghiệm Aquafield và set ẩm thực, khác hạng vé."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "196bed3f-43b2-5723-b673-9970c82921ac",
+     "c5cb2efb-cac5-516f-be5c-4b739952a2a6"
+    ],
+    "reason": "Gói gồm Aquafield và set ẩm thực; vé kia bao gồm các trải nghiệm này cùng Gondola."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "196bed3f-43b2-5723-b673-9970c82921ac",
+     "cd1bbb38-e1fa-59c6-a7a0-0c5a2b1fed90"
+    ],
+    "reason": "Cùng gói trải nghiệm Aquafield và set ẩm thực, khác hạng vé."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "196bed3f-43b2-5723-b673-9970c82921ac",
+     "d65600c7-c6ec-5557-ab94-1bc356a769a2"
+    ],
+    "reason": "Cùng gói trải nghiệm Aquafield và set ẩm thực, khác hạng vé."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "196bed3f-43b2-5723-b673-9970c82921ac",
+     "fa2f9126-2c92-5980-adcd-1f45b7026b7d"
+    ],
+    "reason": "Gói cùng trải nghiệm Aquafield và set ẩm thực, khác hạng vé."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "3443cb1f-a958-53ee-aae6-a621e88b15ce",
+     "37c3940f-2fb1-5684-b456-5d91ee42ccbc"
+    ],
+    "reason": "Cùng gói Gondola, Aquafield và set ẩm thực, chỉ khác hạng vé."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "3443cb1f-a958-53ee-aae6-a621e88b15ce",
+     "6dc7bc9d-5bbe-5c11-a162-528caea893cb"
+    ],
+    "reason": "Cùng gói Gondola, Aquafield và set ẩm thực, chỉ khác hạng vé."
+   },
+   {
+    "duplicate": true,
+    "ids": [
+     "3443cb1f-a958-53ee-aae6-a621e88b15ce",
+     "9943ca95-e175-58b8-871c-d5751ae716a5"
+    ],
+    "reason": "Cùng các trải nghiệm Gondola, Aquafield và set ẩm thực, khác hạng vé."
+   }
+  ]
+ },
  "structured:DuplicatePairs:d8c09d8090dd5252176561a6": {
   "pairs": [
    {
@@ -2702,6 +3319,11 @@
   ],
   "title": "Đà Nẵng có gì vui"
  },
+ "structured:ExploreNarration:15bce8820c7364e805cd2e0f": {
+  "message": "Có, [Văn Miếu – Quốc Tử Giám](product:5a362894-57fd-58d1-8008-df79696a0adf) mở buổi tối 18:00–22:00. Dạo qua năm khoảng sân và ngắm hồ nước yên như gương trong không khí trầm mặc của di tích lịch sử.",
+  "suggestions": [],
+  "title": "Văn Miếu buổi tối"
+ },
  "structured:ExploreNarration:179cc2037774869ab279a0cf": {
   "message": "Ừ, mình đổi hướng hẳn sang Phú Quốc nhé—nhịp đảo thong thả, hợp để dành ngày cho biển và những buổi chiều ngắm trời chuyển màu.\n[ Bảo tàng Gấu Teddy](product:65425369-19ac-5225-88c1-bf6f1d33c38d) là một điểm tham quan mang màu sắc vui nhộn, thích hợp nếu bạn muốn xen một điểm dừng nhẹ nhàng vào chuyến đi.\n[hòn Thơm](product:903db93c-c1ce-51f9-a7b5-cd37ef79c07f) có thể hợp với bạn thích cảnh đêm và muốn đổi không khí sau một ngày ngoài trời.\n[HL Melody Boutique Hotel](product:2de664bf-48cb-5aee-b120-51db4f72f911) có phòng gia đình, bếp chung và khu ngồi ngoài trời, tiện để nghỉ ngơi rồi thong thả khám phá quanh Bãi Khem.\n[Sunset Marina Hotel](product:004c745b-3caf-52cd-9348-a548b65c7dc0) cho bạn bước thẳng ra biển, rồi thư giãn bên hồ bơi hoặc trên sân hiên khi chiều xuống; hợp làm chỗ nghỉ dưỡng ven biển.",
   "suggestions": [
@@ -2891,6 +3513,15 @@
    "Đổi hướng sang Huế"
   ],
   "title": "Thêm điểm dạo Hà Nội"
+ },
+ "structured:ExploreNarration:9eb7f2e8d793ec1816fe21cc": {
+  "message": "Đà Lạt mang nhịp ngày chậm rãi giữa những con dốc và rừng thông; một buổi rong chơi có thể vừa lạ mắt, vừa đủ chút hồi hộp.\n[Biệt thự Hằng Nga](product:d1ba38d3-5f72-50d4-a994-aa7fcf2f62c6) là điểm tham quan nổi tiếng với kiến trúc khác thường, hợp với bạn thích khám phá những nơi có dáng vẻ độc đáo.\nNếu muốn đổi sang cảm giác mạnh, [Xe Trượt Thác Datanla New Alpine](product:a3e8c852-c16c-5851-8408-317b323b753b) đưa bạn lướt xuyên rừng và ngắm thác Datanla trên đường trượt, hợp cho buổi đi chơi năng động.\n[ Saffron Boutique Hotel](product:28862dc5-12a4-55b5-a184-3f551141c610) có khu vườn yên tĩnh, dịch vụ phòng và lễ tân suốt ngày đêm, là chỗ nghỉ tiện làm căn cứ khám phá thành phố. Một số phòng có tầm nhìn ra phố; bạn thích không gian nghỉ ngơi riêng tư có thể cân nhắc nơi này.\nVới bữa sáng mang đi và nhà hàng trong khuôn viên, [Le Recit Boutique Hotel de Dalat](product:393d3bb6-0672-5d6c-8a67-d0893afe44a0) hợp làm điểm nghỉ thoải mái sau một ngày dạo phố; khách sạn cũng có Wi‑Fi trong phòng.",
+  "suggestions": [
+   "Lên lịch Đà Lạt 3 ngày",
+   "Tìm khách sạn có hồ bơi ở Đà Lạt",
+   "Đổi hướng sang Hội An"
+  ],
+  "title": "Đà Lạt có gì đáng thử"
  },
  "structured:ExploreNarration:9fa0a63244785c632d6f4a21": {
   "message": "Hà Nội có nhịp phố vừa rộn ràng vừa thong thả; khi chiều xuống, ánh đèn soi lên mặt hồ và những công trình cổ khiến một vòng dạo bộ cũng thành kỷ niệm.\n[Hồ Hoàn Kiếm](product:e3cdb42b-a97c-500c-9d0a-ea3564b70e1d) là điểm dạo giữa lòng thành phố, nơi mặt nước và hàng cây đổi sắc theo ánh sáng. Ghé lúc chạng vạng để ngắm cảnh đêm, hợp với những ai muốn bắt đầu chuyến khám phá bằng một bước chân nhẹ nhàng.\n[Nhà Thờ Lớn Hà Nội](product:52b74dc8-4ae0-56ea-92d1-8f646ed2a032) mang dáng vẻ lịch sử giữa phố phường, càng nổi bật khi đèn tối lên. Đây là điểm dừng hợp cho người thích ngắm kiến trúc và thong thả cảm nhận không khí Hà Nội về đêm.\n[Luxury Backpackers](product:d4ca3e73-fe41-55c8-9ee2-7b8fbcad6e7c) là lựa chọn lưu trú tiện dụng nếu bạn muốn khám phá thành phố bằng xe đạp hoặc xen kẽ những buổi đi bộ đường dài. Wi-Fi và dịch vụ hỗ trợ đặt vé giúp những ngày rong ruổi dễ sắp xếp hơn.\n[Proverb Hotel Hanoi](product:6e72536d-316f-5eaf-8383-661059964a5f) đem đến một chốn nghỉ thư thái với hồ bơi ngoài trời, spa và phòng xông hơi sau ngày dạo phố. Bữa sáng buffet cùng phòng nhìn ra thành phố khiến nơi đây hợp làm điểm tựa thoải mái cho chuyến đi.",
@@ -3462,6 +4093,41 @@
   "skipped_details": [],
   "start_date_undecided": false
  },
+ "structured:Extraction:28cdb3e59a6d18c5a4bf84cd": {
+  "change_without_value": [],
+  "conflict": false,
+  "constraints": {
+   "children_ages": null,
+   "clear_fields": [],
+   "exclude_products": [],
+   "exclude_taxonomies": null,
+   "hotel_attributes": null,
+   "hotel_price_max": null,
+   "hotel_price_unit": null,
+   "party_type_hint": null,
+   "price_strict": null,
+   "require_flight": null,
+   "require_hotel": null,
+   "specific_activity": null,
+   "specific_hotel": null,
+   "star_rating_min": null,
+   "unverified_requirements": null
+  },
+  "destination_kind": null,
+  "end_date": null,
+  "patch": {
+   "budget": null,
+   "days": null,
+   "destination": null,
+   "interests": null,
+   "origin": null,
+   "pace": null,
+   "party": null,
+   "startDate": null
+  },
+  "skipped_details": [],
+  "start_date_undecided": false
+ },
  "structured:Extraction:2965c7a2323fd15ba7e4aaa0": {
   "change_without_value": [],
   "conflict": false,
@@ -3695,6 +4361,41 @@
   "skipped_details": [],
   "start_date_undecided": false
  },
+ "structured:Extraction:4643e3d64ff272294a2c8dc1": {
+  "change_without_value": [],
+  "conflict": false,
+  "constraints": {
+   "children_ages": null,
+   "clear_fields": [],
+   "exclude_products": [],
+   "exclude_taxonomies": null,
+   "hotel_attributes": null,
+   "hotel_price_max": null,
+   "hotel_price_unit": null,
+   "party_type_hint": null,
+   "price_strict": null,
+   "require_flight": null,
+   "require_hotel": null,
+   "specific_activity": null,
+   "specific_hotel": null,
+   "star_rating_min": null,
+   "unverified_requirements": null
+  },
+  "destination_kind": null,
+  "end_date": null,
+  "patch": {
+   "budget": null,
+   "days": null,
+   "destination": null,
+   "interests": null,
+   "origin": null,
+   "pace": null,
+   "party": null,
+   "startDate": "2026-10-17"
+  },
+  "skipped_details": [],
+  "start_date_undecided": false
+ },
  "structured:Extraction:4afee0e9a5bab8684917b5f8": {
   "change_without_value": [],
   "conflict": false,
@@ -3763,6 +4464,43 @@
    "startDate": null
   },
   "skipped_details": [],
+  "start_date_undecided": false
+ },
+ "structured:Extraction:508b033bf40a5a946666f9ba": {
+  "change_without_value": [],
+  "conflict": false,
+  "constraints": {
+   "children_ages": null,
+   "clear_fields": [],
+   "exclude_products": null,
+   "exclude_taxonomies": null,
+   "hotel_attributes": null,
+   "hotel_price_max": null,
+   "hotel_price_unit": null,
+   "party_type_hint": null,
+   "price_strict": null,
+   "require_flight": null,
+   "require_hotel": null,
+   "specific_activity": null,
+   "specific_hotel": null,
+   "star_rating_min": null,
+   "unverified_requirements": null
+  },
+  "destination_kind": null,
+  "end_date": null,
+  "patch": {
+   "budget": null,
+   "days": null,
+   "destination": null,
+   "interests": null,
+   "origin": "sg",
+   "pace": null,
+   "party": null,
+   "startDate": null
+  },
+  "skipped_details": [
+   "budget"
+  ],
   "start_date_undecided": false
  },
  "structured:Extraction:5bc6cbca2b8f63f80d1d4434": {
@@ -4580,6 +5318,45 @@
   "skipped_details": [],
   "start_date_undecided": false
  },
+ "structured:Extraction:9b0b406a3792c9ab1d7563d3": {
+  "change_without_value": [],
+  "conflict": false,
+  "constraints": {
+   "children_ages": null,
+   "clear_fields": [],
+   "exclude_products": [],
+   "exclude_taxonomies": null,
+   "hotel_attributes": null,
+   "hotel_price_max": null,
+   "hotel_price_unit": null,
+   "party_type_hint": null,
+   "price_strict": null,
+   "require_flight": null,
+   "require_hotel": null,
+   "specific_activity": null,
+   "specific_hotel": null,
+   "star_rating_min": null,
+   "unverified_requirements": null
+  },
+  "destination_kind": null,
+  "end_date": null,
+  "patch": {
+   "budget": null,
+   "days": null,
+   "destination": null,
+   "interests": null,
+   "origin": null,
+   "pace": null,
+   "party": {
+    "adults": 2,
+    "children": 0,
+    "type": "COUPLE"
+   },
+   "startDate": null
+  },
+  "skipped_details": [],
+  "start_date_undecided": false
+ },
  "structured:Extraction:9dee3d40f6b4962ef88491f0": {
   "change_without_value": [],
   "conflict": false,
@@ -4783,6 +5560,41 @@
    "budget": null,
    "days": null,
    "destination": null,
+   "interests": null,
+   "origin": null,
+   "pace": null,
+   "party": null,
+   "startDate": null
+  },
+  "skipped_details": [],
+  "start_date_undecided": false
+ },
+ "structured:Extraction:bb45775a624b2601552e9176": {
+  "change_without_value": [],
+  "conflict": false,
+  "constraints": {
+   "children_ages": null,
+   "clear_fields": [],
+   "exclude_products": [],
+   "exclude_taxonomies": null,
+   "hotel_attributes": null,
+   "hotel_price_max": null,
+   "hotel_price_unit": null,
+   "party_type_hint": null,
+   "price_strict": null,
+   "require_flight": null,
+   "require_hotel": null,
+   "specific_activity": null,
+   "specific_hotel": null,
+   "star_rating_min": null,
+   "unverified_requirements": null
+  },
+  "destination_kind": null,
+  "end_date": null,
+  "patch": {
+   "budget": null,
+   "days": null,
+   "destination": "Huế",
    "interests": null,
    "origin": null,
    "pace": null,
@@ -5475,13 +6287,74 @@
   "skipped_details": [],
   "start_date_undecided": false
  },
+ "structured:Extraction:f72a8699e295b075397218d0": {
+  "change_without_value": [],
+  "conflict": false,
+  "constraints": {
+   "children_ages": null,
+   "clear_fields": [],
+   "exclude_products": [],
+   "exclude_taxonomies": [
+    "flight"
+   ],
+   "hotel_attributes": null,
+   "hotel_price_max": null,
+   "hotel_price_unit": null,
+   "party_type_hint": null,
+   "price_strict": null,
+   "require_flight": null,
+   "require_hotel": null,
+   "specific_activity": null,
+   "specific_hotel": null,
+   "star_rating_min": null,
+   "unverified_requirements": null
+  },
+  "destination_kind": null,
+  "end_date": null,
+  "patch": {
+   "budget": null,
+   "days": null,
+   "destination": null,
+   "interests": null,
+   "origin": null,
+   "pace": null,
+   "party": null,
+   "startDate": null
+  },
+  "skipped_details": [],
+  "start_date_undecided": false
+ },
+ "structured:ItineraryNarration:00de177d9dd526cbfacd676e": {
+  "message": "Mình gợi ý lịch Hà Nội 2 ngày cho hai người lớn, bắt đầu từ 24/10/2026.\n\n**Nơi nghỉ**\n• Đêm 1 — [Sky Home](product:731d340f-6d95-547b-9913-7a4987d8d746): có thời gian nghỉ ngơi, thư giãn sau ngày khám phá.\n\n**Ngày 1 · 24/10/2026**\n• Buổi sáng — [Ninh Binh Caves, Rivers, and Temples Day Tour from Hanoi](product:a43c64a5-dbf4-52c9-a42b-3d89df99fe75): dành buổi đầu cho hành trình tham quan hang động, sông và đền theo khung giờ đề xuất.\n\n**Ngày 2 · 25/10/2026**\n• Buổi sáng — [VinWonders Wave Park HSSV Vé vào cửa tiêu chuẩn Công viên Sóng + Voucher Ẩm thực 50.000 VNĐ](product:8502838d-c878-5c42-875a-1b330f4938ed): bắt đầu ngày với hoạt động ở Công viên Sóng.\n• Buổi chiều — [VinWonders Water Park HSSV Vé vào cửa tiêu chuẩn Công viên Nước + Voucher Ẩm thực 50.000 VNĐ](product:d1acac80-8933-5d93-931f-9c4b4f9f75c9): tiếp nối buổi sáng bằng thời gian ở Công viên Nước.\n\nBạn chạm vào tên sản phẩm để xem chi tiết ở bảng lịch trình bên phải; cần đổi ngày, chỗ nghỉ hay hoạt động thì cứ nhắn mình nhé.",
+  "title": "Hai ngày khám phá Hà Nội"
+ },
+ "structured:ItineraryNarration:12dfabb9316d497beb2b5244": {
+  "message": "Mình sắp xếp chuyến Nha Trang 6 ngày cho hai người, với những buổi tham quan theo lịch trình hiện tại.\n\n**Nơi nghỉ**\n• 5 đêm — [AQua Hotel & Spa](product:080a7f5e-57d5-5381-9f1d-5ca4efeb61c6): dành thời gian nghỉ ngơi và thư giãn giữa các ngày vui chơi.\n\n**Ngày 1 · 14/10/2026**\n• Buổi chiều — Di chuyển từ sân bay, nhận phòng.\n\n**Ngày 2 · 15/10/2026**\n• Buổi sáng — [Vinpearl Harbour - Cáp treo + Vé VinWonders Nha Trang (sau 16h) + Xông hơi Aquafield không giới hạn](product:6a3f1f74-4873-5aa8-ba8a-f0a8c06c4912): mở đầu bằng trải nghiệm vui chơi và thư giãn theo khung giờ đề xuất.\n\n**Ngày 3 · 16/10/2026**\n• Buổi sáng — [Vinpearl Harbour - Cáp treo + Vé VinWonders Nha Trang (sau 16h)](product:b62ed860-5939-5893-93ce-8777ceb37e2b): tiếp tục dành thời gian khám phá VinWonders theo khung giờ đề xuất.\n\n**Ngày 4 · 17/10/2026**\n• Buổi sáng — [-30% Người địa phương - Vé Vào Cửa VinWonders Nha Trang Tiêu Chuẩn](product:f66f2d7d-3953-5e9d-b315-159ef4b0a98a): thêm một buổi vui chơi tại VinWonders với vé tiêu chuẩn.\n\n**Ngày 5 · 18/10/2026**\n• Buổi sáng — [Wonder Ngon - Vé VinWonders Nha Trang Tiêu Chuẩn | Tặng Voucher ẩm thực](product:f7326191-f373-5fbd-a5fd-cf61a58d0e9d): tiếp nối nhịp vui chơi với lựa chọn có kèm voucher ẩm thực.\n\n**Ngày 6 · 19/10/2026**\n• Buổi sáng — [Aquafield - Xông hơi chuẩn Hàn không giới hạn + Vui chơi VinWonders Nha Trang](product:f7996538-5748-5bf5-ba2b-73a92dec04ea): khép lại chuyến đi bằng thời gian vui chơi kết hợp thư giãn.\n\n**Lưu ý**\n• Chuyến bay được trình bày riêng; các khung giờ tham quan là khung giờ đề xuất.\n\nBạn chạm vào tên sản phẩm để xem chi tiết ở khung lịch trình bên phải, rồi nhắn mình nếu muốn đổi ngày, khách sạn hoặc hoạt động nhé.",
+  "title": "Sáu ngày khám phá Nha Trang"
+ },
  "structured:ItineraryNarration:1d32c9687465959858fefdf8": {
   "message": "Mình gửi bạn lịch trình Đà Lạt 2 ngày cho 2 người lớn, khởi hành ngày 24/10/2026.\n\n**Nơi nghỉ**\n• Đêm 1 — [Xóm nhà lá homestay](product:0b8c6671-d231-57a2-8343-1e949e3aaa64) ([[price:0b8c6671-d231-57a2-8343-1e949e3aaa64]]): dành thời gian nghỉ ngơi, thư giãn giữa hai ngày tham quan.\n\n**Ngày 1 · 24/10/2026**\n• Buổi sáng — [Full Day Car Tour Dalat (Min 4 guest)](product:0d3bc490-b485-576a-a020-f2f16e960d02) ([[price:0d3bc490-b485-576a-a020-f2f16e960d02]]): chọn tour tham quan theo khung giờ đề xuất để mở đầu chuyến đi bằng một ngày khám phá Đà Lạt.\n\n**Ngày 2 · 25/10/2026**\n• Buổi sáng — [Da Lat Highlights Highlands Heritage and Natural Wonders Tour](product:e9de8329-effc-5acf-acd7-20b3e70994e0) ([[price:e9de8329-effc-5acf-acd7-20b3e70994e0]]): tiếp nối ngày đầu với các điểm nhấn về di sản cao nguyên và thiên nhiên.\n\n**Chi phí dự kiến**\n• Tổng dự kiến [[total]] — đang cao hơn ngân sách [[budget]]. Bạn có thể nhờ mình đổi một hoạt động hoặc điều chỉnh ngân sách.\n\n**Lưu ý**\n• Giá chỉ mang tính tham khảo.\n\nBạn chạm vào tên sản phẩm để xem chi tiết ở bảng lịch trình bên phải; cứ nhắn mình nếu muốn đổi ngày, chỗ nghỉ hoặc hoạt động nhé.",
   "title": "Khám phá Đà Lạt hai ngày"
  },
+ "structured:ItineraryNarration:251be65fc0939c23c33f857e": {
+  "message": "Mình lên lịch một ngày ở Hà Nội cho hai người, bắt đầu 23/10/2026.\n\n**Nơi nghỉ**\n• Nghỉ một đêm tại [Luxury Backpackers](product:d4ca3e73-fe41-55c8-9ee2-7b8fbcad6e7c), để hai bạn có thời gian thư giãn.\n\n**Ngày 1 · 23/10/2026**\n• Buổi sáng — [Ninh Binh Caves, Rivers, and Temples Day Tour from Hanoi](product:a43c64a5-dbf4-52c9-a42b-3d89df99fe75): chuyến tham quan theo khung giờ đề xuất, phù hợp để dành buổi sáng khám phá hang động, sông nước và đền chùa.\n\n**Lưu ý**\n• Lịch trình hiện vượt ngân sách dự kiến; nếu bạn muốn, mình có thể tìm phương án tiết kiệm hơn.\n\nBạn chạm vào tên sản phẩm để xem chi tiết ở bảng lịch trình bên phải; nếu muốn, bạn có thể nhờ mình đổi ngày, nơi nghỉ hoặc hoạt động.",
+  "title": "Một ngày khám phá Hà Nội"
+ },
+ "structured:ItineraryNarration:28d29a052b27083bcf75c595": {
+  "message": "Mình gợi ý lịch trình Phú Quốc 3 ngày cho 2 người, từ 20/10/2026.\n\n**Nơi nghỉ**\n• Cả 2 đêm tại [Sheraton Phu Quoc Long Beach Resort](product:12c8adcb-d3ee-5939-adfe-739617529327), dành thời gian nghỉ ngơi và thư giãn giữa chuyến đi.\n\n**Ngày 1 · 20/10/2026**\n• Buổi sáng — [Tiện ích Xe Buggy + Tặng Kem - VinWonders Phú Quốc *](product:0b86427f-3041-5b21-9d50-6e321f82f1f3): bắt đầu chuyến đi với hoạt động tham quan theo khung giờ đề xuất.\n\n**Ngày 2 · 21/10/2026**\n• Buổi sáng — [VinWonders Phú Quốc](product:8a4c5920-55c2-5370-b2e5-01956c3e7288): dành riêng buổi sáng để tiếp tục khám phá điểm đến này với nhịp độ thoải mái.\n\n**Ngày 3 · 22/10/2026**\n• Buổi sáng — [Bãi Dài](product:4ab922b0-7947-506a-85e6-a246d46bb83c): dạo chơi, khám phá bãi biển trước hoạt động buổi chiều.\n• Buổi chiều — [Grand World Phú Quốc - Vé đi thuyền Venice (Water Taxi)](product:f540ef2f-f1de-54dc-a98d-c3cee180f0d4): khép lại hành trình bằng chuyến thuyền theo khung giờ đề xuất.\n\n**Lưu ý**\n• Bạn có thể chạm vào tên từng sản phẩm để xem chi tiết ở bảng lịch trình bên phải, rồi nhắn mình nếu muốn đổi ngày, nơi nghỉ hoặc hoạt động.",
+  "title": "Ba ngày khám phá Phú Quốc"
+ },
+ "structured:ItineraryNarration:2b7f8b1be665637e6f5cef5b": {
+  "message": "Mình gợi ý chuyến Phú Quốc 3 ngày cho hai người lớn, khởi hành từ Nha Trang.\n\n**Nơi nghỉ**\n• Hai đêm nghỉ ngơi, thư giãn tại [Wyndham Grand Phu Quoc](product:c4caa527-db7a-57e4-8579-f5824f3f5a1d).\n\n**Ngày 1 · 15/10/2026**\n• Buổi sáng — [Bãi Dài](product:4ab922b0-7947-506a-85e6-a246d46bb83c): thong thả dạo và khám phá bãi biển, mở đầu chuyến đi bằng nhịp nhẹ nhàng.\n• Buổi chiều — [Grand World Phú Quốc - Tour Phú Quốc Trọn Vị](product:08649e74-253a-5a3e-be91-f402ef656873): tiếp tục buổi chiều với hành trình tham quan theo khung giờ gợi ý.\n\n**Ngày 2 · 16/10/2026**\n• Buổi sáng — [Grand World Phú Quốc - Bảo Tàng Gấu Teddy Bear Museum](product:bceffc48-8927-586f-b875-6c9712c44e70): bắt đầu ngày với điểm tham quan trong nhà.\n• Buổi chiều — [Grand World Phú Quốc - Workshop Sắc Việt Cổ Phong](product:e8ab3320-a527-51fe-aac4-7842b35e6180): nối tiếp bằng hoạt động workshop để đổi nhịp sau buổi sáng tham quan.\n\n**Ngày 3 · 17/10/2026**\n• Buổi sáng — [Grand World Phú Quốc - Vé đi thuyền Venice (Water Taxi)](product:f540ef2f-f1de-54dc-a98d-c3cee180f0d4): dành buổi sáng trải nghiệm đi thuyền.\n• Buổi chiều — [Grand World Phú Quốc - Workshop Tinh Hoa Làng Nghề](product:f84d5dc5-ff58-53f9-8e54-49e975aea0e4): khép lại hành trình bằng một buổi workshop.\n\nBạn chạm vào tên sản phẩm để xem chi tiết ở khung lịch trình bên phải; nếu muốn, cứ nhắn mình đổi ngày, nơi nghỉ hoặc hoạt động nhé.",
+  "title": "Ba ngày khám phá Phú Quốc"
+ },
  "structured:ItineraryNarration:2dc720c8990ec0967c7aa4fa": {
   "message": "Mình sắp xếp chuyến Hà Nội 3 ngày cho hai người lớn, khởi hành từ Đà Nẵng.\n\n**Ngày 1 · 13/11/2026**\n• Buổi sáng — [36 Phố Phường Hà Nội](product:0b5a7308-6f3a-5d48-8492-20684978f2d4) ([[price:0b5a7308-6f3a-5d48-8492-20684978f2d4]]): tham quan tự do theo khung giờ đề xuất, thong thả làm quen với nhịp phố.\n• Buổi chiều — [Nhà Thờ Lớn Hà Nội](product:52b74dc8-4ae0-56ea-92d1-8f646ed2a032) ([[price:52b74dc8-4ae0-56ea-92d1-8f646ed2a032]]): tiếp tục dạo chơi và ngắm kiến trúc theo nhịp riêng.\n\n**Ngày 2 · 14/11/2026**\n• Buổi sáng — [Chùa Trấn Quốc](product:512c46c4-4ebc-5262-aec4-6eec86faa88a) ([[price:512c46c4-4ebc-5262-aec4-6eec86faa88a]]): một buổi tham quan tự do nhẹ nhàng.\n• Buổi chiều — [Hoàng Thành Thăng Long](product:7b80f570-d640-590c-b8a7-ef397c2d8d89) ([[price:7b80f570-d640-590c-b8a7-ef397c2d8d89]]): nối tiếp ngày khám phá bằng một điểm tham quan tự do.\n\n**Ngày 3 · 15/11/2026**\n• Buổi sáng — [Lăng Chủ tịch Hồ Chí Minh](product:a75c1f08-246c-5681-8ad7-991780fb5473) ([[price:a75c1f08-246c-5681-8ad7-991780fb5473]]): tham quan tự do theo khung giờ đề xuất.\n• Buổi chiều — [Quảng trường Ba Đình](product:fbb5cdde-2e3e-57ba-a433-7ca13a5bc5ef) ([[price:fbb5cdde-2e3e-57ba-a433-7ca13a5bc5ef]]): khép lại hành trình bằng buổi dạo chơi và chụp ảnh theo nhịp riêng.\n\n**Chi phí dự kiến**\n• Tổng dự kiến [[total]], trong ngân sách [[budget]] bạn đặt ra.\n\n**Lưu ý**\n• Các điểm trên là tham quan tự do, bạn có thể thong thả dạo chơi, chụp ảnh và tận hưởng theo ý mình.\n\nBạn chạm vào tên sản phẩm để xem chi tiết ở khung lịch trình bên phải; nếu muốn, bạn có thể nhờ mình đổi ngày hoặc hoạt động.",
   "title": "Ba ngày khám phá Hà Nội"
+ },
+ "structured:ItineraryNarration:2dcd5a8b9e2605615d421d52": {
+  "message": "Mình gợi ý chuyến Phú Quốc 3 ngày cho 4 người lớn, kết hợp nghỉ dưỡng và trải nghiệm các trò chơi ở VinWonders.\n\n**Nơi nghỉ**\n• Nghỉ 2 đêm tại [Sheraton Phu Quoc Long Beach Resort](product:12c8adcb-d3ee-5939-adfe-739617529327) để có thời gian thư giãn giữa những ngày vui chơi.\n\n**Ngày 1 · 16/10/2026**\n• Buổi sáng — [Tiện ích Xe Buggy + Tặng Kem - VinWonders Phú Quốc *](product:0b86427f-3041-5b21-9d50-6e321f82f1f3): bắt đầu bằng trải nghiệm tham quan theo khung giờ đề xuất, làm quen với khu vui chơi.\n\n**Ngày 2 · 17/10/2026**\n• Buổi sáng — [VinWonders Phú Quốc - Fastpass Game Ngôi Làng Chiến Binh (1 lượt)](product:0183a1bf-416c-558b-a612-0d4d1c0d947c): dành buổi sáng cho một lượt chơi theo khung giờ đề xuất.\n• Buổi chiều — [VinWonders Phú Quốc - Fastpass Game Lời Nguyền Ác Long (1 lượt)](product:21ce625f-ca09-5002-b11a-9108d37851ba): tiếp tục với một trò chơi khác, chia trải nghiệm thành hai nhịp trong ngày.\n\n**Ngày 3 · 18/10/2026**\n• Buổi sáng — [VinWonders Phú Quốc - Fastpass Game Vòng Xoay Thời Gian (1 lượt)](product:6bd400e7-0c93-5424-9c4d-8ff121b6f1e1): chọn một lượt chơi buổi sáng theo khung giờ đề xuất.\n• Buổi chiều — [VinWonders Phú Quốc - Fastpass Game Núi Lửa Kinh Hoàng (1 lượt)](product:ba1ad137-87cc-5953-94a4-d1623f3b5700): khép lại lịch trình bằng thêm một trò chơi vào buổi chiều.\n\nBạn chạm vào tên sản phẩm để xem chi tiết ở bảng lịch trình bên phải; nếu muốn, bạn có thể nhờ mình đổi ngày, nơi nghỉ hoặc hoạt động nhé.",
+  "title": "Ba ngày vui chơi ở Phú Quốc"
  },
  "structured:ItineraryNarration:2e58bb73a58fef89cf9f3177": {
   "message": "Mình gợi ý lịch trình Phú Quốc 3 ngày cho hai người lớn, với nhịp đi chơi thong thả và xen kẽ những trải nghiệm biển đảo, nghệ thuật.\n\n**Ngày 1 · 20/11/2026**\n• Buổi sáng — [Bãi tắm Sao](product:038b5827-7afd-5974-ae2b-6781173c6014) ([[price:038b5827-7afd-5974-ae2b-6781173c6014]]): tham quan tự do, thong thả dạo bãi biển, chụp ảnh và tận hưởng thiên nhiên theo nhịp riêng; khởi đầu nhẹ nhàng cho chuyến đi.\n• Buổi chiều — [Cáp Treo Hòn Thơm](product:fdb01f88-87d1-5cfb-8b99-121a2c4f5a49) ([[price:fdb01f88-87d1-5cfb-8b99-121a2c4f5a49]]): ngắm biển xanh, rừng nguyên sơ và Hòn Thơm từ nhiều góc độ, nối tiếp ngày đầu bằng trải nghiệm ngắm cảnh.\n\n**Ngày 2 · 21/11/2026**\n• Buổi sáng — [Cầu Hôn Phú Quốc](product:0e8529e5-7c74-5bcd-9121-6dfcae46cd78) ([[price:0e8529e5-7c74-5bcd-9121-6dfcae46cd78]]): khám phá kiến trúc giàu cảm xúc, lấy cảm hứng từ câu chuyện và hình tượng tình yêu Đông – Tây.\n• Buổi chiều — [Show diễn Kiss Of The Sea - Phú Quốc (Nụ hôn của Biển cả)](product:af51cef4-69ed-5193-8a0b-c5a46c1f3100) ([[price:af51cef4-69ed-5193-8a0b-c5a46c1f3100]]): khép lại ngày bằng chương trình nghệ thuật đa giác quan, kết hợp ánh sáng, âm nhạc và biểu diễn sân khấu.\n\n**Ngày 3 · 22/11/2026**\n• Buổi sáng — [hòn Thơm](product:903db93c-c1ce-51f9-a7b5-cd37ef79c07f) ([[price:903db93c-c1ce-51f9-a7b5-cd37ef79c07f]]): tham quan tự do, dành buổi cuối để dạo chơi, chụp ảnh và ngắm cảnh theo tốc độ của hai bạn.\n\n**Chi phí dự kiến**\n• Tổng tham khảo: [[total]]. Trong ngân sách [[budget]] của bạn.\n\n**Lưu ý**\n• Mình chưa đưa phần lưu trú vào lịch trình.\n\nBạn chạm vào tên sản phẩm để xem chi tiết trong bảng lịch trình bên phải; có thể nhờ mình đổi ngày, khách sạn hoặc hoạt động nhé.",
@@ -5490,6 +6363,14 @@
  "structured:ItineraryNarration:2f63752e2b66a9cf782c473a": {
   "message": "Mình gợi ý chuyến Hà Nội 3 ngày cho hai người, khởi hành từ TP. Hồ Chí Minh.\n\n**Nơi nghỉ**\n• Hai đêm tại [Luxury Backpackers](product:d4ca3e73-fe41-55c8-9ee2-7b8fbcad6e7c) ([[price:d4ca3e73-fe41-55c8-9ee2-7b8fbcad6e7c]]): dành thời gian nghỉ ngơi, thư giãn sau hành trình.\n\n**Ngày 1 · 17/10/2026**\n• Buổi tối — Di chuyển từ sân bay, nhận phòng.\n\n**Ngày 2 · 18/10/2026**\n• Buổi sáng — [Ninh Binh Caves, Rivers, and Temples Day Tour from Hanoi](product:a43c64a5-dbf4-52c9-a42b-3d89df99fe75) ([[price:a43c64a5-dbf4-52c9-a42b-3d89df99fe75]]): dành buổi sáng cho chuyến tham quan, tạo điểm nhấn khám phá trước ngày cuối nhẹ nhàng hơn.\n\n**Ngày 3 · 19/10/2026**\n• Buổi sáng — [Nhà Thờ Lớn Hà Nội](product:52b74dc8-4ae0-56ea-92d1-8f646ed2a032) ([[price:52b74dc8-4ae0-56ea-92d1-8f646ed2a032]]): tham quan tự do, thong thả dạo quanh và chụp ảnh.\n• Buổi chiều — [Hoàng Thành Thăng Long](product:7b80f570-d640-590c-b8a7-ef397c2d8d89) ([[price:7b80f570-d640-590c-b8a7-ef397c2d8d89]]): tiếp tục khám phá tự do theo nhịp riêng; cả hai điểm tham quan tự do giúp chuyến đi nhẹ nhàng về chi phí.\n\n**Chi phí dự kiến**\n• Tổng dự kiến: [[total]]. Bạn chưa có ngân sách để mình đối chiếu; các mức giá chỉ để tham khảo.\n\n**Lưu ý**\n• Chạm vào tên sản phẩm để xem chi tiết trong bảng lịch trình bên phải; bạn có thể nhờ mình đổi ngày, nơi nghỉ hoặc hoạt động.",
   "title": "Hà Nội thong thả ba ngày"
+ },
+ "structured:ItineraryNarration:3ac4ee6735149c69df20d684": {
+  "message": "Mình gợi ý chuyến Hà Nội 3 ngày cho hai người, khởi hành từ TP. Hồ Chí Minh.\n\n**Nơi nghỉ**\n• Nghỉ 2 đêm tại [Luxury Backpackers](product:d4ca3e73-fe41-55c8-9ee2-7b8fbcad6e7c), dành thời gian thư giãn giữa các hoạt động.\n\n**Ngày 1 · 17/10/2026**\n• Buổi tối — Di chuyển từ sân bay, nhận phòng.\n\n**Ngày 2 · 18/10/2026**\n• Buổi sáng — [Ninh Binh Caves, Rivers, and Temples Day Tour from Hanoi](product:a43c64a5-dbf4-52c9-a42b-3d89df99fe75): dành buổi sáng khám phá hang động, sông nước và đền chùa trong chuyến đi từ Hà Nội.\n\n**Ngày 3 · 19/10/2026**\n• Buổi sáng — [Vé Hạng Non Sông Gấm Vóc | Tặng Voucher Ẩm thực / Quà lưu niệm](product:81f259e7-615f-5e27-b8f7-1bf67b22cb21): bắt đầu ngày bằng hoạt động tham quan theo khung giờ đề xuất.\n• Buổi chiều — [VinWonders Wave Park & Water Park HSSV Vé vào cửa tiêu chuẩn 2 công viên + Voucher Ẩm thực 50.000 VNĐ](product:4d92c636-eced-5edc-98c0-1a7996abed51): nối tiếp lịch trình bằng buổi vui chơi tại hai công viên.\n\nBạn có thể chạm vào tên sản phẩm để xem chi tiết ở bảng lịch trình bên phải; nếu muốn, cứ nhắn mình đổi ngày, nơi nghỉ hoặc hoạt động nhé.",
+  "title": "Khám phá Hà Nội và vui chơi"
+ },
+ "structured:ItineraryNarration:3f1fc87abff492891734b76d": {
+  "message": "Mình gợi ý lịch trình Hà Nội 3 ngày cho hai người lớn, khởi hành từ Đà Nẵng.\n\n**Ngày 1 · 13/11/2026**\n• Buổi sáng — [36 Phố Phường Hà Nội](product:0b5a7308-6f3a-5d48-8492-20684978f2d4): Bắt đầu bằng những con phố đặc trưng để thong thả khám phá Hà Nội.\n• Buổi chiều — [Nhà Thờ Lớn Hà Nội](product:52b74dc8-4ae0-56ea-92d1-8f646ed2a032): Tiếp tục với một điểm tham quan nổi bật, vừa đủ nhịp sau buổi sáng dạo phố.\n\n**Ngày 2 · 14/11/2026**\n• Buổi sáng — [Chùa Trấn Quốc](product:512c46c4-4ebc-5262-aec4-6eec86faa88a): Dành buổi sáng khám phá ngôi chùa, tạo nhịp thư thả cho ngày thứ hai.\n• Buổi chiều — [Hoàng Thành Thăng Long](product:7b80f570-d640-590c-b8a7-ef397c2d8d89): Chuyển sang tìm hiểu một dấu ấn lịch sử của Hà Nội.\n\n**Ngày 3 · 15/11/2026**\n• Buổi sáng — [Lăng Chủ tịch Hồ Chí Minh](product:a75c1f08-246c-5681-8ad7-991780fb5473): Ghé thăm một địa danh mang ý nghĩa đặc biệt trong hành trình.\n• Buổi chiều — [Quảng trường Ba Đình](product:fbb5cdde-2e3e-57ba-a433-7ca13a5bc5ef): Khép lại chuyến đi tại không gian gắn liền với khu vực Lăng.\n\nBạn chạm vào tên sản phẩm để xem chi tiết trong bảng lịch trình bên phải; nếu muốn, cứ nhắn mình đổi ngày, khách sạn hoặc hoạt động nhé.",
+  "title": "Ba ngày khám phá Hà Nội"
  },
  "structured:ItineraryNarration:535e6bd5465e456ab20b1e9a": {
   "message": "Mình gợi ý lịch Hà Nội 3 ngày cho hai người lớn, từ 16/10/2026.\n\n**Nơi nghỉ**\n• Hai đêm tại [AA Luxury Housing](product:87a1543b-200d-56c2-bf39-56debc2be551) ([[price:87a1543b-200d-56c2-bf39-56debc2be551]]): có thời gian nghỉ ngơi, thư giãn giữa các ngày tham quan.\n\n**Ngày 1 · 16/10/2026**\n• Buổi sáng — [Vé Hạng Cổ Loa | Trải nghiệm Aquafield & Set Ẩm thực](product:1784b8a2-8c03-567f-a27f-996f6976b1c8) ([[price:1784b8a2-8c03-567f-a27f-996f6976b1c8]]): bắt đầu bằng trải nghiệm theo khung giờ đề xuất.\n• Buổi chiều — [Vé Hạng Non Sông Gấm Vóc | Tặng Voucher Ẩm thực / Quà lưu niệm](product:81f259e7-615f-5e27-b8f7-1bf67b22cb21) ([[price:81f259e7-615f-5e27-b8f7-1bf67b22cb21]]): tiếp tục tham quan theo khung giờ đề xuất.\n\n**Ngày 2 · 17/10/2026**\n• Buổi sáng — [Vé Hạng Non Sông Gấm Vóc | Trải nghiệm chèo thuyền Gondola & Ẩm thực tại Vinpalace](product:973e1fad-2650-55e1-aaf5-c0ea2521e775) ([[price:973e1fad-2650-55e1-aaf5-c0ea2521e775]]): dành buổi sáng cho trải nghiệm chèo thuyền và ẩm thực.\n• Buổi chiều — [Vé Hạng Thăng Long | Tặng Voucher Ẩm thực / Quà lưu niệm](product:aefa524b-5bb6-5612-ac6a-5d2b105e6260) ([[price:aefa524b-5bb6-5612-ac6a-5d2b105e6260]]): nối tiếp ngày tham quan bằng một khung giờ khác.\n\n**Ngày 3 · 18/10/2026**\n• Buổi sáng — [Vé Hạng Non Sông Gấm Vóc | Trải nghiệm Aquafield & Set Ẩm thực](product:fa2f9126-2c92-5980-adcd-1f45b7026b7d) ([[price:fa2f9126-2c92-5980-adcd-1f45b7026b7d]]): thêm một trải nghiệm Aquafield vào buổi sáng.\n• Buổi chiều — [VinWonders Water Park HSSV Vé vào cửa tiêu chuẩn Công viên Nước + Voucher Ẩm thực 50.000 VNĐ](product:d1acac80-8933-5d93-931f-9c4b4f9f75c9) ([[price:d1acac80-8933-5d93-931f-9c4b4f9f75c9]]): khép lại lịch trình bằng hoạt động công viên nước.\n\n**Chi phí dự kiến**\n• Tổng dự kiến [[total]], nằm trong ngân sách [[budget]]. Giá chỉ mang tính tham khảo.\n\n**Lưu ý**\n• Bạn bấm tên sản phẩm để xem chi tiết trong bảng lịch trình bên phải; có thể nhờ mình đổi ngày, nơi nghỉ hoặc hoạt động.",
@@ -5507,6 +6388,10 @@
   "message": "Mình gợi ý lịch trình 3 ngày ở Phú Quốc cho 4 người lớn, từ 16/10/2026.\n\n**Nơi nghỉ**\n• Hai đêm nghỉ ngơi, thư giãn tại [Sheraton Phu Quoc Long Beach Resort](product:12c8adcb-d3ee-5939-adfe-739617529327) ([[price:12c8adcb-d3ee-5939-adfe-739617529327]]).\n\n**Ngày 1 · 16/10/2026**\n• Buổi sáng — [Tiện ích Xe Buggy + Tặng Kem - VinWonders Phú Quốc *](product:0b86427f-3041-5b21-9d50-6e321f82f1f3) ([[price:0b86427f-3041-5b21-9d50-6e321f82f1f3]]): bắt đầu hành trình bằng buổi tham quan theo khung giờ đề xuất.\n\n**Ngày 2 · 17/10/2026**\n• Buổi sáng — [VinWonders Phú Quốc - Fastpass Game Ngôi Làng Chiến Binh (1 lượt)](product:0183a1bf-416c-558b-a612-0d4d1c0d947c) ([[price:0183a1bf-416c-558b-a612-0d4d1c0d947c]]): dành buổi sáng cho một lượt trò chơi.\n• Buổi chiều — [VinWonders Phú Quốc - Fastpass Game Lời Nguyền Ác Long (1 lượt)](product:21ce625f-ca09-5002-b11a-9108d37851ba) ([[price:21ce625f-ca09-5002-b11a-9108d37851ba]]): nối tiếp ngày vui chơi với thêm một lượt vào buổi chiều.\n\n**Ngày 3 · 18/10/2026**\n• Buổi sáng — [VinWonders Phú Quốc - Fastpass Game Vòng Xoay Thời Gian (1 lượt)](product:6bd400e7-0c93-5424-9c4d-8ff121b6f1e1) ([[price:6bd400e7-0c93-5424-9c4d-8ff121b6f1e1]]): mở đầu ngày cuối bằng một lượt trò chơi.\n• Buổi chiều — [VinWonders Phú Quốc - Fastpass Game Núi Lửa Kinh Hoàng (1 lượt)](product:ba1ad137-87cc-5953-94a4-d1623f3b5700) ([[price:ba1ad137-87cc-5953-94a4-d1623f3b5700]]): khép lại lịch trình bằng lượt chơi buổi chiều.\n\n**Chi phí dự kiến**\n• Tổng tham khảo: [[total]]. Chưa có ngân sách để đối chiếu.\n\n**Lưu ý**\n• Giá chỉ để tham khảo; lịch trình chưa xác nhận đặt chỗ.\n\nBạn có thể chạm vào tên sản phẩm để xem chi tiết trong bảng lịch trình bên phải, hoặc nhờ mình đổi ngày, nơi nghỉ hay hoạt động nhé.",
   "title": "Ba ngày vui chơi ở Phú Quốc"
  },
+ "structured:ItineraryNarration:77373fc512f3d8bb75043967": {
+  "message": "Mình lên lịch 3 ngày ở Phú Quốc cho hai người lớn, bắt đầu từ 11/10/2026.\n\n**Nơi nghỉ**\n• Hai đêm tại [Wyndham Grand Phu Quoc](product:c4caa527-db7a-57e4-8579-f5824f3f5a1d), dành thời gian nghỉ ngơi và thư giãn sau những buổi khám phá.\n\n**Ngày 1 · 11/10/2026**\n• Buổi sáng — [Safari Adventure - 05 trạm tương tác động vật + Đóng dấu hộ chiếu](product:4d74e680-5a04-52ae-82e8-e161d3c2bcf6): mở đầu bằng các trạm tương tác theo khung giờ đề xuất.\n• Buổi chiều — [Vinpearl Safari Phú Quốc - Junior Zoo Keeper - Workshop nhân viên vườn thú nhí (Khu Rùa Con)](product:733c5417-0de2-5d44-85b4-2860fd82af3e): tiếp nối ngày khám phá động vật bằng một workshop tại Khu Rùa Con.\n\n**Ngày 2 · 12/10/2026**\n• Buổi sáng — [Tiện ích Xe điện - Vinpearl Safari Phú Quốc](product:964b8c01-1db7-5f93-a048-61cb3f91ee2d): bắt đầu ngày với tiện ích xe điện tại Safari.\n• Buổi chiều — [Vinpearl Safari Phú Quốc - Fastpass Bus Tour Nhốt Người Thả Thú (1 lượt)](product:9a697820-cde5-53b0-a426-5f4a4e701dcf): tiếp nối buổi sáng bằng tour xe buýt theo khung giờ đề xuất.\n\n**Ngày 3 · 13/10/2026**\n• Buổi sáng — [Vinpearl Safari Phú Quốc - Tour Night Safari](product:a750db7b-6d9d-5876-a646-352c41af6eb1): dành buổi sáng cho tour theo khung giờ đề xuất.\n• Buổi chiều — [Vinpearl Safari Phú Quốc - Vé Vào Cửa + Mũ Thú độc quyền + Tặng Voucher Ẩm Thực](product:ff6e5a68-6638-5010-9362-cfd8efd07078): khép lại lịch trình bằng lượt vào cửa và voucher ẩm thực.\n\nBạn chạm vào tên sản phẩm để xem chi tiết ở bảng lịch trình bên phải; nếu muốn, bạn có thể nhờ mình đổi ngày, chỗ nghỉ hoặc hoạt động.",
+  "title": "Ba ngày khám phá Safari Phú Quốc"
+ },
  "structured:ItineraryNarration:78e096d322d100e047f83b72": {
   "message": "Mình gợi ý chuyến Phú Quốc 3 ngày cho 2 người, từ 20/10/2026.\n\n**Nơi nghỉ**\n• Đêm 1–2 — [Sheraton Phu Quoc Long Beach Resort](product:12c8adcb-d3ee-5939-adfe-739617529327) ([[price:12c8adcb-d3ee-5939-adfe-739617529327]]): dành thời gian nghỉ ngơi và thư giãn giữa chuyến đi.\n\n**Ngày 1 · 20/10/2026**\n• Buổi sáng — [Tiện ích Xe Buggy + Tặng Kem - VinWonders Phú Quốc *](product:0b86427f-3041-5b21-9d50-6e321f82f1f3) ([[price:0b86427f-3041-5b21-9d50-6e321f82f1f3]]): bắt đầu hành trình bằng một buổi tham quan theo khung giờ đề xuất.\n\n**Ngày 2 · 21/10/2026**\n• Buổi sáng — [VinWonders Phú Quốc](product:8a4c5920-55c2-5370-b2e5-01956c3e7288) ([[price:8a4c5920-55c2-5370-b2e5-01956c3e7288]]): dành buổi sáng cho điểm vui chơi chính, tiếp nối nhịp khám phá từ ngày đầu.\n\n**Ngày 3 · 22/10/2026**\n• Buổi sáng — [Bãi Dài](product:4ab922b0-7947-506a-85e6-a246d46bb83c) ([[price:4ab922b0-7947-506a-85e6-a246d46bb83c]]): tham quan tự do, thong thả dạo chơi và chụp ảnh; đây cũng là cách nhẹ nhàng để tiết kiệm chi phí.\n• Buổi chiều — [Grand World Phú Quốc - Vé đi thuyền Venice (Water Taxi)](product:f540ef2f-f1de-54dc-a98d-c3cee180f0d4) ([[price:f540ef2f-f1de-54dc-a98d-c3cee180f0d4]]): khép lại chuyến đi bằng trải nghiệm đi thuyền sau buổi sáng thư thả.\n\n**Chi phí dự kiến**\n• Tổng dự kiến: [[total]]. Chưa có ngân sách để đối chiếu.\n\n**Lưu ý**\n• Bạn chạm vào tên sản phẩm để xem chi tiết trong bảng lịch trình bên phải; cứ nhắn mình nếu muốn đổi ngày, nơi nghỉ hoặc hoạt động nhé.",
   "title": "Ba ngày vui chơi Phú Quốc"
@@ -5519,6 +6404,10 @@
   "message": "Mình sắp xếp chuyến Nha Trang 6 ngày cho hai người lớn, kết hợp nghỉ ngơi và trải nghiệm biển, thư giãn.\n\n**Nơi nghỉ**\n• Đêm 1–5 — [M&C Hotel Nha Trang](product:5210a8ac-a021-5391-bc75-62779abcf7c4) ([[price:5210a8ac-a021-5391-bc75-62779abcf7c4]]): dành thời gian nghỉ ngơi, thư giãn xuyên suốt chuyến đi.\n\n**Ngày 1 · 14/10/2026**\n• Buổi chiều — Di chuyển từ sân bay, nhận phòng.\n\n**Ngày 2 · 15/10/2026**\n• Buổi sáng — [Nha Trang Passport - Tour snorkeling + Ăn trưa & Tắm bùn Hòn Tằm + Vinpearl Harbour + Tata Show (01 ngày)](product:2f65cda9-6e28-5d63-a6ae-4962e7eb7597) ([[price:2f65cda9-6e28-5d63-a6ae-4962e7eb7597]]): một ngày gom nhiều trải nghiệm biển và thư giãn, phù hợp để bắt nhịp chuyến đi sau ngày nhận phòng.\n\n**Ngày 3 · 16/10/2026**\n• Buổi sáng — [Bùn khoáng nóng I-Resort Nha Trang](product:7d948862-7d2a-5e72-a02f-466fb2137e24) ([[price:7d948862-7d2a-5e72-a02f-466fb2137e24]]): tiếp nối nhịp thư thái hôm trước với trải nghiệm bùn khoáng.\n\n**Ngày 4 · 17/10/2026**\n• Buổi sáng — [Hòn Tằm](product:b6f0c5a5-e334-5d8c-92b8-147aa4fa50da) ([[price:b6f0c5a5-e334-5d8c-92b8-147aa4fa50da]]): dành buổi sáng cho điểm đến biển này sau ngày thư giãn ở I-Resort.\n\n**Ngày 5 · 18/10/2026**\n• Thời gian tự do để nghỉ ngơi hoặc tự khám phá theo nhịp của hai bạn.\n\n**Ngày 6 · 19/10/2026**\n• Thời gian tự do để thư thả trước khi khép lại chuyến đi.\n\n**Chi phí dự kiến**\n• Tổng chuyến đi: [[total]]. Trong ngân sách [[budget]] bạn đặt ra.\n\n**Lưu ý**\n• Giá chỉ mang tính tham khảo. Chạm vào tên sản phẩm để xem chi tiết ở bảng lịch trình bên phải; bạn có thể nhờ mình đổi ngày, khách sạn hoặc hoạt động.",
   "title": "Sáu ngày thư giãn ở Nha Trang"
  },
+ "structured:ItineraryNarration:88bf0caa7622380fd19e877a": {
+  "message": "Mình gửi bạn lịch trình Hà Nội 1 ngày cho 2 người lớn.\n\n**Nơi nghỉ**\n• 1 đêm — [Luxury Backpackers](product:d4ca3e73-fe41-55c8-9ee2-7b8fbcad6e7c): dành thời gian nghỉ ngơi và thư giãn.\n\n**Ngày 1 · 24/10/2026**\n• Buổi sáng — [Ninh Binh Caves, Rivers, and Temples Day Tour from Hanoi](product:a43c64a5-dbf4-52c9-a42b-3d89df99fe75): chuyến tham quan theo khung giờ đề xuất, phù hợp để dành buổi sáng khám phá các hang động, sông và đền ở Ninh Bình.\n\nBạn có thể chạm vào tên sản phẩm để xem chi tiết trong bảng lịch trình bên phải; nếu muốn, cứ nhắn mình đổi ngày, nơi nghỉ hoặc hoạt động nhé.",
+  "title": "Một ngày khám phá Hà Nội"
+ },
  "structured:ItineraryNarration:93050e2602ef0200fa67463a": {
   "message": "Mình lên lịch một ngày ở Hà Nội cho hai người lớn, bắt đầu ngày 23/10/2026.\n\n**Nơi nghỉ**\n• Đêm 1 — [Luxury Backpackers](product:d4ca3e73-fe41-55c8-9ee2-7b8fbcad6e7c) ([[price:d4ca3e73-fe41-55c8-9ee2-7b8fbcad6e7c]]): Dành thời gian nghỉ ngơi và thư giãn sau ngày đi chơi.\n\n**Ngày 1 · 23/10/2026**\n• Buổi sáng — [Ninh Binh Caves, Rivers, and Temples Day Tour from Hanoi](product:a43c64a5-dbf4-52c9-a42b-3d89df99fe75) ([[price:a43c64a5-dbf4-52c9-a42b-3d89df99fe75]]): Chuyến tham quan theo khung giờ đề xuất, phù hợp để dành buổi sáng khám phá hang động, sông và đền chùa.\n\n**Chi phí dự kiến**\n• Tổng dự kiến: [[total]], cao hơn ngân sách [[budget]]. Bạn có thể nhờ mình đổi một hoạt động hoặc điều chỉnh ngân sách.\n\n**Lưu ý**\n• Bạn hãy chạm vào tên sản phẩm để xem chi tiết ở bảng lịch trình bên phải; có thể nhờ mình đổi ngày, nơi nghỉ hoặc hoạt động nhé.",
   "title": "Một ngày khám phá Hà Nội"
@@ -5527,17 +6416,37 @@
   "message": "Mình lên kế hoạch nghỉ dưỡng ở Đà Nẵng trong 3 ngày cho 2 người lớn, ưu tiên thư giãn và nghỉ ngơi.\n\n**Nơi nghỉ**\n• Đêm 1–2 — [The Backpacker Hostel and spa](product:f7b8a85f-ca92-5c5d-b4b7-20b8f71c571b) ([[price:f7b8a85f-ca92-5c5d-b4b7-20b8f71c571b]]): dành thời gian nghỉ ngơi, thư giãn trong suốt chuyến đi.\n\n**Ngày 1 · 24/10/2026**\n• Chưa có hoạt động được thêm, bạn có thể nghỉ ngơi hoặc tự do sắp xếp ngày đầu.\n\n**Ngày 2 · 25/10/2026**\n• Chưa có hoạt động được thêm, bạn có thể dành ngày này để thư giãn theo nhịp riêng.\n\n**Ngày 3 · 26/10/2026**\n• Chưa có hoạt động được thêm, bạn có thể nghỉ ngơi hoặc tự do sắp xếp trước khi kết thúc chuyến đi.\n\n**Chi phí dự kiến**\n• Tổng dự kiến: [[total]]. Bạn chưa đặt ngân sách nên mình chưa thể đối chiếu mức chi phí.\n\n**Lưu ý**\n• Giá chỉ để tham khảo.\n\nBạn chạm vào tên nơi nghỉ để xem chi tiết trong khung lịch trình bên phải; có thể nhờ mình đổi ngày, khách sạn hoặc hoạt động nhé.",
   "title": "Nghỉ dưỡng Đà Nẵng 3 ngày"
  },
+ "structured:ItineraryNarration:9a2875bfacc1ec67dcbda691": {
+  "message": "Mình sắp xếp chuyến Đà Lạt 2 ngày cho hai người lớn, khởi hành ngày 24/10/2026.\n\n**Nơi nghỉ**\n• Một đêm tại [Xóm nhà lá homestay](product:0b8c6671-d231-57a2-8343-1e949e3aaa64), hợp để nghỉ ngơi và thư giãn giữa hành trình.\n\n**Ngày 1 · 24/10/2026**\n• Buổi sáng — [Full Day Car Tour Dalat (Min 4 guest)](product:0d3bc490-b485-576a-a020-f2f16e960d02): lịch gợi ý dành trọn ngày khám phá Đà Lạt, phù hợp để bắt đầu chuyến đi bằng một nhịp tham quan liền mạch.\n\n**Ngày 2 · 25/10/2026**\n• Buổi sáng — [Da Lat Highlights Highlands Heritage and Natural Wonders Tour](product:e9de8329-effc-5acf-acd7-20b3e70994e0): tiếp tục tìm hiểu các điểm nổi bật về di sản cao nguyên và thiên nhiên trong ngày cuối.\n\n**Lưu ý**\n• Kế hoạch hiện vượt ngân sách dự kiến; bạn có thể yêu cầu mình tìm phương án tiết kiệm hơn.\n\nBạn chạm vào tên sản phẩm để xem chi tiết ở khung lịch trình bên phải, hoặc nhắn mình đổi ngày, chỗ nghỉ hay hoạt động nhé.",
+  "title": "Hai ngày khám phá Đà Lạt"
+ },
  "structured:ItineraryNarration:a932661fd01edb0a3dcbe2bb": {
   "message": "Mình gợi ý chuyến Nha Trang 6 ngày cho hai người, với khách sạn khác và nhiều ngày vui chơi tại VinWonders.\n\n**Nơi nghỉ**\n• Đêm 1–5 — [AQua Hotel & Spa](product:080a7f5e-57d5-5381-9f1d-5ca4efeb61c6) ([[price:080a7f5e-57d5-5381-9f1d-5ca4efeb61c6]]): có thời gian nghỉ ngơi, thư giãn giữa những ngày tham quan.\n\n**Ngày 1 · 14/10/2026**\n• Buổi chiều — Di chuyển từ sân bay, nhận phòng.\n\n**Ngày 2 · 15/10/2026**\n• Buổi sáng — [Vinpearl Harbour - Cáp treo + Vé VinWonders Nha Trang (sau 16h) + Xông hơi Aquafield không giới hạn](product:6a3f1f74-4873-5aa8-ba8a-f0a8c06c4912) ([[price:6a3f1f74-4873-5aa8-ba8a-f0a8c06c4912]]): vé theo khung giờ đề xuất mở đầu ngày vui chơi.\n\n**Ngày 3 · 16/10/2026**\n• Buổi sáng — [Vinpearl Harbour - Cáp treo + Vé VinWonders Nha Trang (sau 16h)](product:b62ed860-5939-5893-93ce-8777ceb37e2b) ([[price:b62ed860-5939-5893-93ce-8777ceb37e2b]]): tiếp tục khám phá VinWonders theo khung giờ đề xuất.\n\n**Ngày 4 · 17/10/2026**\n• Buổi sáng — [-30% Người địa phương - Vé Vào Cửa VinWonders Nha Trang Tiêu Chuẩn](product:f66f2d7d-3953-5e9d-b315-159ef4b0a98a) ([[price:f66f2d7d-3953-5e9d-b315-159ef4b0a98a]]): thêm một ngày vui chơi với vé tiêu chuẩn.\n\n**Ngày 5 · 18/10/2026**\n• Buổi sáng — [Wonder Ngon - Vé VinWonders Nha Trang Tiêu Chuẩn | Tặng Voucher ẩm thực](product:f7326191-f373-5fbd-a5fd-cf61a58d0e9d) ([[price:f7326191-f373-5fbd-a5fd-cf61a58d0e9d]]): tiếp tục lịch vui chơi, kèm voucher ẩm thực theo tên vé.\n\n**Ngày 6 · 19/10/2026**\n• Buổi sáng — [Aquafield - Xông hơi chuẩn Hàn không giới hạn + Vui chơi VinWonders Nha Trang](product:f7996538-5748-5bf5-ba2b-73a92dec04ea) ([[price:f7996538-5748-5bf5-ba2b-73a92dec04ea]]): khép lại chuyến đi bằng xông hơi và vui chơi.\n\n**Chi phí dự kiến**\n• Tổng dự kiến [[total]], nằm trong ngân sách [[budget]]. Giá chỉ để tham khảo.\n\n**Lưu ý**\n• Bạn chạm vào tên sản phẩm để xem chi tiết trong bảng lịch trình bên phải; có thể nhắn mình đổi ngày, khách sạn hoặc hoạt động nhé.",
   "title": "Sáu ngày vui chơi Nha Trang"
+ },
+ "structured:ItineraryNarration:b6dd58458692369de9df2fda": {
+  "message": "Mình đổi sang khách sạn rẻ hơn và giữ các hoạt động trong lịch trình Hà Nội 2 ngày cho hai người nhé.\n\n**Nơi nghỉ**\n• Đêm 1 — [HB Apartment Pho Hue](product:39549520-f8bb-5d6b-9207-0dd7c855b919): dành thời gian nghỉ ngơi, thư giãn giữa hai ngày khám phá.\n\n**Ngày 1 · 24/10/2026**\n• Buổi sáng — [Ninh Binh Caves, Rivers, and Temples Day Tour from Hanoi](product:a43c64a5-dbf4-52c9-a42b-3d89df99fe75): chuyến tham quan theo khung giờ đề xuất mở đầu hành trình bằng cảnh hang động, sông nước và đền chùa.\n\n**Ngày 2 · 25/10/2026**\n• Buổi sáng — [VinWonders Wave Park HSSV Vé vào cửa tiêu chuẩn Công viên Sóng + Voucher Ẩm thực 50.000 VNĐ](product:8502838d-c878-5c42-875a-1b330f4938ed): bắt đầu ngày với hoạt động ở công viên sóng.\n• Buổi chiều — [VinWonders Water Park HSSV Vé vào cửa tiêu chuẩn Công viên Nước + Voucher Ẩm thực 50.000 VNĐ](product:d1acac80-8933-5d93-931f-9c4b4f9f75c9): tiếp nối buổi sáng bằng thời gian ở công viên nước.\n\nBạn chạm vào tên sản phẩm để xem chi tiết ở khung lịch trình bên phải, hoặc nhắn mình đổi ngày, khách sạn hay hoạt động nhé.",
+  "title": "Hà Nội hai ngày thư thả"
  },
  "structured:ItineraryNarration:baa200f86d357bd3314b57c0": {
   "message": "Mình lên lịch 3 ngày ở Phú Quốc cho hai người lớn, bắt đầu từ 11/10/2026.\n\n**Nơi nghỉ**\n• Hai đêm tại [Wyndham Grand Phu Quoc](product:c4caa527-db7a-57e4-8579-f5824f3f5a1d) ([[price:c4caa527-db7a-57e4-8579-f5824f3f5a1d]]), dành thời gian nghỉ ngơi và thư giãn.\n\n**Ngày 1 · 11/10/2026**\n• Buổi sáng — [Safari Adventure - 05 trạm tương tác động vật + Đóng dấu hộ chiếu](product:4d74e680-5a04-52ae-82e8-e161d3c2bcf6) ([[price:4d74e680-5a04-52ae-82e8-e161d3c2bcf6]]): mở đầu bằng hoạt động tương tác theo khung giờ đề xuất.\n• Buổi chiều — [Vinpearl Safari Phú Quốc - Junior Zoo Keeper - Workshop nhân viên vườn thú nhí (Khu Rùa Con)](product:733c5417-0de2-5d44-85b4-2860fd82af3e) ([[price:733c5417-0de2-5d44-85b4-2860fd82af3e]]): tiếp nối chủ đề động vật bằng workshop theo khung giờ đề xuất.\n\n**Ngày 2 · 12/10/2026**\n• Buổi sáng — [Tiện ích Xe điện - Vinpearl Safari Phú Quốc](product:964b8c01-1db7-5f93-a048-61cb3f91ee2d) ([[price:964b8c01-1db7-5f93-a048-61cb3f91ee2d]]): bắt đầu ngày với tiện ích xe điện theo khung giờ đề xuất.\n• Buổi chiều — [Vinpearl Safari Phú Quốc - Fastpass Bus Tour Nhốt Người Thả Thú (1 lượt)](product:9a697820-cde5-53b0-a426-5f4a4e701dcf) ([[price:9a697820-cde5-53b0-a426-5f4a4e701dcf]]): khép lại ngày bằng chuyến bus tour theo khung giờ đề xuất.\n\n**Ngày 3 · 13/10/2026**\n• Buổi sáng — [Vinpearl Safari Phú Quốc - Tour Night Safari](product:a750db7b-6d9d-5876-a646-352c41af6eb1) ([[price:a750db7b-6d9d-5876-a646-352c41af6eb1]]): dành buổi sáng cho tour theo khung giờ đề xuất.\n• Buổi chiều — [Vinpearl Safari Phú Quốc - Vé Vào Cửa + Mũ Thú độc quyền + Tặng Voucher Ẩm Thực](product:ff6e5a68-6638-5010-9362-cfd8efd07078) ([[price:ff6e5a68-6638-5010-9362-cfd8efd07078]]): tiếp nối lịch trình với vé vào cửa theo khung giờ đề xuất.\n\n**Chi phí dự kiến**\n• Tổng dự kiến: [[total]]. Bạn chưa có ngân sách để đối chiếu; giá chỉ mang tính tham khảo.\n\n**Lưu ý**\n• Lịch tham quan theo các khung giờ đề xuất; giá tham khảo và chưa xác nhận đặt dịch vụ.\n\nBạn có thể chạm vào tên sản phẩm để xem chi tiết ở bảng lịch trình bên phải, rồi nhờ mình đổi ngày, chỗ nghỉ hoặc hoạt động nhé.",
   "title": "Ba ngày khám phá Phú Quốc"
  },
+ "structured:ItineraryNarration:bc380df7109f94e8fef071c4": {
+  "message": "Mình sắp xếp chuyến Nha Trang 6 ngày cho hai người lớn, với nhịp đi chơi xen kẽ thời gian nghỉ ngơi.\n\n**Nơi nghỉ**\n• Nghỉ 5 đêm tại [M&C Hotel Nha Trang](product:5210a8ac-a021-5391-bc75-62779abcf7c4), dành thời gian thư giãn giữa các ngày khám phá.\n\n**Ngày 1 · 14/10/2026**\n• Buổi chiều — Di chuyển từ sân bay, nhận phòng.\n\n**Ngày 2 · 15/10/2026**\n• Buổi sáng — [Nha Trang Passport - Tour snorkeling + Ăn trưa & Tắm bùn Hòn Tằm + Vinpearl Harbour + Tata Show (01 ngày)](product:2f65cda9-6e28-5d63-a6ae-4962e7eb7597): một ngày trải nghiệm nhiều hoạt động theo khung giờ đề xuất, hợp để bắt đầu khám phá Nha Trang.\n\n**Ngày 3 · 16/10/2026**\n• Buổi sáng — [Bùn khoáng nóng I-Resort Nha Trang](product:7d948862-7d2a-5e72-a02f-466fb2137e24): dành buổi sáng thư giãn với trải nghiệm bùn khoáng sau ngày đi chơi.\n\n**Ngày 4 · 17/10/2026**\n• Buổi sáng — [Hòn Tằm](product:b6f0c5a5-e334-5d8c-92b8-147aa4fa50da): dành một buổi khám phá đảo, tiếp nối nhịp thư giãn của chuyến đi.\n\n**Ngày 5 · 18/10/2026**\n• Thời gian tự do để nghỉ ngơi hoặc tự khám phá theo nhịp riêng.\n\n**Ngày 6 · 19/10/2026**\n• Thời gian tự do để nghỉ ngơi hoặc tự khám phá theo nhịp riêng.\n\nBạn có thể chạm vào tên sản phẩm để xem chi tiết ở khung lịch trình bên phải, hoặc nhắn mình đổi ngày, nơi nghỉ hay hoạt động nhé.",
+  "title": "Sáu ngày thư giãn ở Nha Trang"
+ },
  "structured:ItineraryNarration:be0860a0b770077a18e04dbf": {
   "message": " ",
   "title": null
+ },
+ "structured:ItineraryNarration:cde74a6be650612f0875a572": {
+  "message": "Mình lên lịch nghỉ dưỡng 3 ngày ở Đà Nẵng cho 2 người lớn, ưu tiên thư giãn và nghỉ ngơi.\n\n**Nơi nghỉ**\n• 2 đêm tại [The Backpacker Hostel and spa](product:f7b8a85f-ca92-5c5d-b4b7-20b8f71c571b), dành thời gian nghỉ ngơi và thư giãn.\n\n**Ngày 1 · 24/10/2026**\n• Chưa xếp hoạt động, bạn có thể thong thả nghỉ ngơi.\n\n**Ngày 2 · 25/10/2026**\n• Chưa xếp hoạt động, giữ nhịp ngày nhẹ nhàng để thư giãn.\n\n**Ngày 3 · 26/10/2026**\n• Chưa xếp hoạt động, bạn có thể nghỉ ngơi theo ý mình.\n\nBạn chạm vào tên nơi nghỉ để xem chi tiết ở bảng lịch trình bên phải nhé; mình có thể đổi ngày, nơi nghỉ hoặc hoạt động theo ý bạn.",
+  "title": "Nghỉ dưỡng Đà Nẵng 3 ngày"
+ },
+ "structured:ItineraryNarration:ceaba66379ca18dc8f1cade2": {
+  "message": "Mình sắp xếp chuyến Phú Quốc 3 ngày cho hai người, với nhịp vui chơi tập trung tại VinWonders.\n\n**Nơi nghỉ**\n• Cả 2 đêm — [Tai Tri Guest House](product:6f14469a-627c-5db4-9b7d-7c29121ae16a): dành thời gian nghỉ ngơi và thư giãn giữa các ngày tham quan.\n\n**Ngày 1 · 15/10/2026**\n• Buổi sáng — [Tiện ích Xe Buggy + Tặng Kem - VinWonders Phú Quốc *](product:0b86427f-3041-5b21-9d50-6e321f82f1f3): bắt đầu chuyến đi bằng tiện ích tại VinWonders theo khung giờ đề xuất.\n\n**Ngày 2 · 16/10/2026**\n• Buổi sáng — [VinWonders Phú Quốc](product:8a4c5920-55c2-5370-b2e5-01956c3e7288): dành buổi sáng cho điểm vui chơi chính, tiếp nối hoạt động ngày đầu.\n\n**Ngày 3 · 17/10/2026**\n• Buổi sáng — [VinWonders Phú Quốc - Fastpass Game Ngôi Làng Chiến Binh (1 lượt)](product:0183a1bf-416c-558b-a612-0d4d1c0d947c): chọn một lượt chơi buổi sáng để mở đầu ngày cuối.\n• Buổi chiều — [VinWonders Phú Quốc - Fastpass Game Lời Nguyền Ác Long (1 lượt)](product:21ce625f-ca09-5002-b11a-9108d37851ba): tiếp nối buổi sáng bằng thêm một lượt chơi, khép lại lịch trình tại VinWonders.\n\nBạn chạm vào tên sản phẩm để xem chi tiết ở khung lịch trình bên phải; nếu muốn, cứ nhắn mình đổi ngày, khách sạn hoặc hoạt động nhé.",
+  "title": "Ba ngày vui chơi ở Phú Quốc"
  },
  "structured:ItineraryNarration:d708cee87952417c402e7e47": {
   "message": "Mình đã đổi sang chỗ nghỉ khác cho chuyến Hà Nội 2 ngày của hai bạn.\n\n**Nơi nghỉ**\n• Đêm 1 — [HB Apartment Pho Hue](product:39549520-f8bb-5d6b-9207-0dd7c855b919) ([[price:39549520-f8bb-5d6b-9207-0dd7c855b919]]): dành thời gian nghỉ ngơi, thư giãn giữa hai ngày khám phá.\n\n**Ngày 1 · 24/10/2026**\n• Buổi sáng — [Ninh Binh Caves, Rivers, and Temples Day Tour from Hanoi](product:a43c64a5-dbf4-52c9-a42b-3d89df99fe75) ([[price:a43c64a5-dbf4-52c9-a42b-3d89df99fe75]]): chuyến tham quan theo khung giờ đề xuất, mở đầu hành trình bằng một ngày khám phá bên ngoài Hà Nội.\n\n**Ngày 2 · 25/10/2026**\n• Buổi sáng — [VinWonders Wave Park HSSV Vé vào cửa tiêu chuẩn Công viên Sóng + Voucher Ẩm thực 50.000 VNĐ](product:8502838d-c878-5c42-875a-1b330f4938ed) ([[price:8502838d-c878-5c42-875a-1b330f4938ed]]): bắt đầu ngày với hoạt động ở Công viên Sóng.\n• Buổi chiều — [VinWonders Water Park HSSV Vé vào cửa tiêu chuẩn Công viên Nước + Voucher Ẩm thực 50.000 VNĐ](product:d1acac80-8933-5d93-931f-9c4b4f9f75c9) ([[price:d1acac80-8933-5d93-931f-9c4b4f9f75c9]]): tiếp nối buổi sáng bằng thời gian vui chơi tại Công viên Nước.\n\n**Chi phí dự kiến**\n• Tổng dự kiến [[total]], nằm trong ngân sách [[budget]].\n\n**Lưu ý**\n• Giá chỉ mang tính tham khảo. Chạm vào tên sản phẩm để xem chi tiết trong bảng lịch trình bên phải; bạn có thể nhờ mình đổi ngày, khách sạn hoặc hoạt động.",
@@ -5550,6 +6459,26 @@
  "structured:ItineraryNarration:da22aaa1b2cd6de7787e0d89": {
   "message": "Mình gợi ý chuyến Phú Quốc 3 ngày cho hai người, khởi hành từ Nha Trang.\n\n**Nơi nghỉ**\n• Hai đêm tại [Peppercorn Beach Resort](product:5e3ed50c-88e2-5a94-b9cf-86b080139120) ([[price:5e3ed50c-88e2-5a94-b9cf-86b080139120]]), dành thời gian nghỉ ngơi và thư giãn.\n\n**Ngày 1 · 15/10/2026**\n• Buổi sáng — [Tiện ích Xe Buggy + Tặng Kem - VinWonders Phú Quốc *](product:0b86427f-3041-5b21-9d50-6e321f82f1f3) ([[price:0b86427f-3041-5b21-9d50-6e321f82f1f3]]): khởi đầu bằng hoạt động tham quan theo khung giờ đề xuất.\n\n**Ngày 2 · 16/10/2026**\n• Buổi sáng — [VinWonders Phú Quốc - Workshop Nhà Hải Dương Học Nhí](product:3401cc29-ec82-5b32-8e00-52031d4f96ae) ([[price:3401cc29-ec82-5b32-8e00-52031d4f96ae]]): dành buổi sáng cho workshop theo khung giờ đề xuất.\n• Buổi chiều — [VinWonders Phú Quốc - Fastpass Game Núi Lửa Kinh Hoàng (1 lượt)](product:ba1ad137-87cc-5953-94a4-d1623f3b5700) ([[price:ba1ad137-87cc-5953-94a4-d1623f3b5700]]): tiếp nối ngày vui chơi với một lượt trải nghiệm theo khung giờ đề xuất.\n\n**Ngày 3 · 17/10/2026**\n• Buổi sáng — [Grand World Phú Quốc - Bảo Tàng Gấu Teddy Bear Museum](product:bceffc48-8927-586f-b875-6c9712c44e70) ([[price:bceffc48-8927-586f-b875-6c9712c44e70]]): bắt đầu ngày với điểm tham quan theo khung giờ đề xuất.\n• Buổi chiều — [Grand World Phú Quốc - Vé đi thuyền Venice (Water Taxi)](product:f540ef2f-f1de-54dc-a98d-c3cee180f0d4) ([[price:f540ef2f-f1de-54dc-a98d-c3cee180f0d4]]): khép lại lịch trình bằng chuyến thuyền theo khung giờ đề xuất.\n\n**Chi phí dự kiến**\n• Tổng dự kiến [[total]], nằm trong ngân sách [[budget]].\n\n**Lưu ý**\n• Giá chỉ để tham khảo; bạn có thể chạm vào tên sản phẩm để xem chi tiết ở khung lịch trình bên phải, rồi nhắn mình nếu muốn đổi ngày, khách sạn hoặc hoạt động.",
   "title": "Ba ngày vui chơi Phú Quốc"
+ },
+ "structured:ItineraryNarration:db4005f62d6a9ac7e27c5782": {
+  "message": "Mình gợi ý chuyến Hà Nội 3 ngày cho hai người, khởi hành 17/10/2026.\n\n**Nơi nghỉ**\n• Hai đêm tại [Luxury Backpackers](product:d4ca3e73-fe41-55c8-9ee2-7b8fbcad6e7c), có thời gian nghỉ ngơi và thư giãn giữa hành trình.\n\n**Ngày 1 · 17/10/2026**\n• Buổi sáng — [Ninh Binh Caves, Rivers, and Temples Day Tour from Hanoi](product:a43c64a5-dbf4-52c9-a42b-3d89df99fe75): dành trọn buổi sáng cho chuyến tham quan theo khung giờ đề xuất.\n\n**Ngày 2 · 18/10/2026**\n• Buổi sáng — [Nhà Thờ Lớn Hà Nội](product:52b74dc8-4ae0-56ea-92d1-8f646ed2a032): ghé thăm một địa điểm đặc trưng của Hà Nội trước khi tiếp tục lịch trình.\n• Buổi chiều — [Hanoi Sightseeing Bus](product:b8bc7bb1-1a3b-5bbe-a4d9-cfba48511230): tiếp nối ngày khám phá bằng hoạt động tham quan theo khung giờ đề xuất.\n\n**Ngày 3 · 19/10/2026**\n• Buổi sáng — [Hoàng Thành Thăng Long](product:7b80f570-d640-590c-b8a7-ef397c2d8d89): bắt đầu ngày với điểm tham quan mang dấu ấn lịch sử.\n• Buổi chiều — [Văn Miếu – Quốc Tử Giám](product:5a362894-57fd-58d1-8008-df79696a0adf): khép lại hành trình bằng một điểm đến văn hóa, lịch sử.\n\nBạn chạm vào tên sản phẩm để xem chi tiết ở khung lịch trình bên phải; cũng có thể nhờ mình đổi ngày, nơi nghỉ hoặc hoạt động nhé.",
+  "title": "Ba ngày khám phá Hà Nội"
+ },
+ "structured:ItineraryNarration:dc83bf90a83ede7090bdb98d": {
+  "message": "Mình gợi ý lịch trình Phú Quốc 3 ngày cho hai người, khởi hành từ Hà Nội.\n\n**Ngày 1 · 20/11/2026**\n• Buổi sáng — [Bãi tắm Sao](product:038b5827-7afd-5974-ae2b-6781173c6014): Bắt đầu chuyến đi bằng khoảng thời gian thong thả bên bãi biển, hợp để tận hưởng vẻ đẹp tự nhiên của đảo.\n• Buổi chiều — [Cáp Treo Hòn Thơm](product:fdb01f88-87d1-5cfb-8b99-121a2c4f5a49): Ngắm biển xanh, rừng và Hòn Thơm từ trên cao, nối tiếp một ngày khám phá thiên nhiên.\n\n**Ngày 2 · 21/11/2026**\n• Buổi sáng — [Cầu Hôn Phú Quốc](product:0e8529e5-7c74-5bcd-9121-6dfcae46cd78): Dành buổi sáng cho công trình giàu cảm xúc, kết hợp cảm hứng kiến trúc Đông – Tây.\n• Buổi chiều — [Show diễn Kiss Of The Sea - Phú Quốc (Nụ hôn của Biển cả)](product:af51cef4-69ed-5193-8a0b-c5a46c1f3100): Khép lại ngày bằng trải nghiệm sân khấu đa giác quan với ánh sáng, âm nhạc và trình diễn nghệ thuật.\n\n**Ngày 3 · 22/11/2026**\n• Buổi sáng — [hòn Thơm](product:903db93c-c1ce-51f9-a7b5-cd37ef79c07f): Dành buổi cuối để tự do khám phá và tận hưởng cảnh quan đảo.\n\nBạn có thể chạm vào tên sản phẩm để xem chi tiết ở khung lịch trình bên phải; cứ nhắn mình nếu muốn đổi ngày hoặc hoạt động.",
+  "title": "Ba ngày khám phá Phú Quốc"
+ },
+ "structured:ItineraryNarration:e27d9c371d95737144e0cedb": {
+  "message": "Mình gợi ý chuyến Nha Trang 2 ngày cho 2 người lớn, khởi hành ngày 18/10/2026.\n\n**Nơi nghỉ**\n• Nghỉ 1 đêm tại [Nha Trang Marriott Resort & Spa, Hon Tre Island](product:24921f04-dbbb-5af8-b8c5-90b9b6a5d77a) để dành thời gian thư giãn giữa chuyến đi.\n\n**Ngày 1 · 18/10/2026**\n• Buổi sáng — [ -30% Người địa phương - Vé Vào Cửa VinWonders Nha Trang Tiêu Chuẩn](product:f66f2d7d-3953-5e9d-b315-159ef4b0a98a): bắt đầu ngày với hoạt động tham quan theo khung giờ đề xuất.\n\n**Ngày 2 · 19/10/2026**\n• Buổi sáng — [VinWonders Nha Trang - Fastpass Game Tata World River Adventure (01 lượt)](product:4219cec0-8c60-5f31-b1cd-a20fb39473e4): thêm một trải nghiệm tại VinWonders sau ngày khám phá đầu tiên.\n• Buổi chiều — [VinWonders Tuyên Quang - Vé Vào Cửa Tiêu Chuẩn](product:5c14d228-4607-5f6f-ae75-24d5c2b33915): lịch trình gợi ý tham quan tiếp theo vào buổi chiều.\n\nBạn chạm vào tên sản phẩm để xem chi tiết ở bảng lịch trình bên phải, hoặc nhắn mình nếu muốn đổi ngày, nơi nghỉ hay hoạt động nhé.",
+  "title": "Khám phá Nha Trang 2 ngày"
+ },
+ "structured:ItineraryNarration:e30ba103d8e0f773b926f450": {
+  "message": "Mình gợi ý lịch 3 ngày ở Hà Nội cho hai người lớn, từ 16/10/2026, với nhịp tham quan sáng và chiều xen kẽ.\n\n**Nơi nghỉ**\n• Nghỉ 2 đêm tại [AA Luxury Housing](product:87a1543b-200d-56c2-bf39-56debc2be551), dành thời gian thư giãn giữa các buổi vui chơi.\n\n**Ngày 1 · 16/10/2026**\n• Buổi sáng — [Vé Hạng Cổ Loa | Trải nghiệm Aquafield & Set Ẩm thực](product:1784b8a2-8c03-567f-a27f-996f6976b1c8): bắt đầu chuyến đi bằng trải nghiệm tham quan kết hợp thư giãn và ẩm thực.\n• Buổi chiều — [Vé Hạng Non Sông Gấm Vóc | Tặng Voucher Ẩm thực / Quà lưu niệm](product:81f259e7-615f-5e27-b8f7-1bf67b22cb21): tiếp nối ngày đầu với một lựa chọn tham quan có kèm voucher.\n\n**Ngày 2 · 17/10/2026**\n• Buổi sáng — [Vé Hạng Non Sông Gấm Vóc | Trải nghiệm chèo thuyền Gondola & Ẩm thực tại Vinpalace](product:973e1fad-2650-55e1-aaf5-c0ea2521e775): dành buổi sáng cho trải nghiệm chèo thuyền và ẩm thực.\n• Buổi chiều — [Vé Hạng Thăng Long | Tặng Voucher Ẩm thực / Quà lưu niệm](product:aefa524b-5bb6-5612-ac6a-5d2b105e6260): khép lại ngày tham quan bằng lựa chọn có thêm voucher ẩm thực hoặc quà lưu niệm.\n\n**Ngày 3 · 18/10/2026**\n• Buổi sáng — [Vé Hạng Non Sông Gấm Vóc | Trải nghiệm Aquafield & Set Ẩm thực](product:fa2f9126-2c92-5980-adcd-1f45b7026b7d): phù hợp để thư giãn và dùng bữa trước buổi vui chơi tiếp theo.\n• Buổi chiều — [VinWonders Water Park HSSV Vé vào cửa tiêu chuẩn Công viên Nước + Voucher Ẩm thực 50.000 VNĐ](product:d1acac80-8933-5d93-931f-9c4b4f9f75c9): kết thúc hành trình bằng buổi chiều ở công viên nước.\n\nBạn chạm vào tên sản phẩm để xem chi tiết ở khung lịch trình bên phải; nếu muốn, mình có thể đổi ngày, nơi nghỉ hoặc hoạt động.",
+  "title": "Ba ngày vui chơi ở Hà Nội"
+ },
+ "structured:ItineraryNarration:f674472f4f38cc4fedeb3a07": {
+  "message": "Mình gợi ý chuyến Đà Nẵng 3 ngày cho hai người, từ 18/10/2026.\n\n**Nơi nghỉ**\n• Nghỉ hai đêm tại [Amanda Boutique Hotel](product:f2bb0f65-da11-54f4-b6d5-45e228b6abc1), để có thời gian thư giãn giữa chuyến đi.\n\n**Ngày 1 · 18/10/2026**\n• Buổi sáng — Di chuyển từ sân bay, nhận phòng.\n\n**Ngày 2 · 19/10/2026**\n• Buổi sáng — [Sun World Bà Nà Hills](product:83bedc1a-2aed-5464-b0c3-8d89091ff43c): dành buổi sáng cho điểm tham quan này theo khung giờ đề xuất, tạo một ngày khám phá trọn vẹn.\n\n**Ngày 3 · 20/10/2026**\n• Buổi tối — Ra sân bay.\n\nBạn có thể chạm vào tên sản phẩm để xem chi tiết ở bảng lịch trình bên phải; cứ nhắn mình nếu muốn đổi ngày, nơi nghỉ hoặc hoạt động nhé.",
+  "title": "Ba ngày thư thả ở Đà Nẵng"
  },
  "structured:ItineraryNarration:ff2edb15a06432636e411c37": {
   "message": "Mình gợi ý chuyến Hà Nội 2 ngày cho hai người lớn, với một ngày khám phá Ninh Bình và một ngày vui chơi ở các công viên nước.\n\n**Nơi nghỉ**\n• Đêm 1 — [Sky Home](product:731d340f-6d95-547b-9913-7a4987d8d746) ([[price:731d340f-6d95-547b-9913-7a4987d8d746]]): nghỉ ngơi thư giãn sau ngày tham quan.\n\n**Ngày 1 · 24/10/2026**\n• Buổi sáng — [Ninh Binh Caves, Rivers, and Temples Day Tour from Hanoi](product:a43c64a5-dbf4-52c9-a42b-3d89df99fe75) ([[price:a43c64a5-dbf4-52c9-a42b-3d89df99fe75]]): tour hang động, sông và đền phù hợp để dành trọn buổi cho trải nghiệm khám phá; chiều tối có thời gian nghỉ ngơi.\n\n**Ngày 2 · 25/10/2026**\n• Buổi sáng — [VinWonders Wave Park HSSV Vé vào cửa tiêu chuẩn Công viên Sóng + Voucher Ẩm thực 50.000 VNĐ](product:8502838d-c878-5c42-875a-1b330f4938ed) ([[price:8502838d-c878-5c42-875a-1b330f4938ed]]): bắt đầu ngày với hoạt động vui chơi ở Công viên Sóng.\n• Buổi chiều — [VinWonders Water Park HSSV Vé vào cửa tiêu chuẩn Công viên Nước + Voucher Ẩm thực 50.000 VNĐ](product:d1acac80-8933-5d93-931f-9c4b4f9f75c9) ([[price:d1acac80-8933-5d93-931f-9c4b4f9f75c9]]): nối tiếp buổi sáng bằng trải nghiệm tại Công viên Nước.\n\n**Chi phí dự kiến**\n• Tổng dự kiến: [[total]], nằm trong ngân sách [[budget]].\n\n**Lưu ý**\n• Giá chỉ mang tính tham khảo.\n\nBạn chạm vào tên sản phẩm để xem chi tiết trong bảng lịch trình bên phải; có thể nhờ mình đổi ngày, chỗ nghỉ hoặc hoạt động.",
@@ -5565,6 +6494,17 @@
   "plan_request": false,
   "price": null,
   "route": "conversation"
+ },
+ "structured:TurnRoute:01189c97250942b5f54e2511": {
+  "city": "Huế",
+  "fare": null,
+  "focus": null,
+  "form_request": false,
+  "other_questions": [],
+  "place": null,
+  "plan_request": false,
+  "price": null,
+  "route": "travel"
  },
  "structured:TurnRoute:03b12d26566fded6f994e02a": {
   "city": null,
@@ -5930,6 +6870,17 @@
   "price": null,
   "route": "explore"
  },
+ "structured:TurnRoute:2e2b8653a9650811d68afa23": {
+  "city": null,
+  "fare": null,
+  "focus": null,
+  "form_request": false,
+  "other_questions": [],
+  "place": null,
+  "plan_request": false,
+  "price": null,
+  "route": "travel"
+ },
  "structured:TurnRoute:2e77446fcd5faca8cd9de113": {
   "city": null,
   "fare": null,
@@ -6234,6 +7185,30 @@
   "plan_request": false,
   "price": null,
   "route": "travel"
+ },
+ "structured:TurnRoute:45559531e719777d111dbe26": {
+  "city": null,
+  "fare": {
+   "anywhere": false,
+   "availability": false,
+   "cheaper": false,
+   "day": null,
+   "dearest": false,
+   "destination": "Nha Trang",
+   "kind_unclear": false,
+   "origin": "Phú Quốc",
+   "other_days": false,
+   "return_leg": true,
+   "time_of_day": null,
+   "why": false
+  },
+  "focus": null,
+  "form_request": false,
+  "other_questions": [],
+  "place": null,
+  "plan_request": false,
+  "price": null,
+  "route": "fare"
  },
  "structured:TurnRoute:456809154498939522faaaa7": {
   "city": null,
@@ -6581,6 +7556,17 @@
   "price": null,
   "route": "fare"
  },
+ "structured:TurnRoute:65eebefd5e953ccedb356881": {
+  "city": null,
+  "fare": null,
+  "focus": null,
+  "form_request": false,
+  "other_questions": [],
+  "place": null,
+  "plan_request": false,
+  "price": null,
+  "route": "travel"
+ },
  "structured:TurnRoute:67c0cce5b5b6b4d676683725": {
   "city": "Phú Quốc",
   "fare": null,
@@ -6717,6 +7703,17 @@
   "price": null,
   "route": "explore"
  },
+ "structured:TurnRoute:7dbbc3a512777d2df16c1b6e": {
+  "city": null,
+  "fare": null,
+  "focus": null,
+  "form_request": false,
+  "other_questions": [],
+  "place": null,
+  "plan_request": false,
+  "price": null,
+  "route": "travel"
+ },
  "structured:TurnRoute:7e5b63ddab1eef4bb46409af": {
   "city": null,
   "fare": null,
@@ -6773,6 +7770,28 @@
   "plan_request": false,
   "price": null,
   "route": "fare"
+ },
+ "structured:TurnRoute:88b56a3c4f3c49211e9be9c1": {
+  "city": "Đà Lạt",
+  "fare": null,
+  "focus": null,
+  "form_request": false,
+  "other_questions": [],
+  "place": null,
+  "plan_request": false,
+  "price": null,
+  "route": "explore"
+ },
+ "structured:TurnRoute:88d41acace1e6b22adf4361a": {
+  "city": null,
+  "fare": null,
+  "focus": null,
+  "form_request": false,
+  "other_questions": [],
+  "place": null,
+  "plan_request": false,
+  "price": null,
+  "route": "travel"
  },
  "structured:TurnRoute:8a718a60ebc212b309bcc614": {
   "city": null,
@@ -6852,6 +7871,30 @@
   "plan_request": false,
   "price": null,
   "route": "travel"
+ },
+ "structured:TurnRoute:93283af4d18fd525a65da34b": {
+  "city": "Phú Quốc",
+  "fare": {
+   "anywhere": false,
+   "availability": false,
+   "cheaper": false,
+   "day": null,
+   "dearest": false,
+   "destination": "Phú Quốc",
+   "kind_unclear": false,
+   "origin": null,
+   "other_days": false,
+   "return_leg": true,
+   "time_of_day": null,
+   "why": false
+  },
+  "focus": null,
+  "form_request": false,
+  "other_questions": [],
+  "place": null,
+  "plan_request": false,
+  "price": null,
+  "route": "fare"
  },
  "structured:TurnRoute:934b20d641cb6108720f1d09": {
   "city": "Hà Nội",
@@ -6975,6 +8018,30 @@
   "plan_request": false,
   "price": null,
   "route": "travel"
+ },
+ "structured:TurnRoute:abe35a2c2702f51b2863e507": {
+  "city": null,
+  "fare": {
+   "anywhere": false,
+   "availability": false,
+   "cheaper": false,
+   "day": null,
+   "dearest": false,
+   "destination": "Nha Trang",
+   "kind_unclear": false,
+   "origin": "Phú Quốc",
+   "other_days": false,
+   "return_leg": true,
+   "time_of_day": null,
+   "why": false
+  },
+  "focus": null,
+  "form_request": false,
+  "other_questions": [],
+  "place": null,
+  "plan_request": false,
+  "price": null,
+  "route": "fare"
  },
  "structured:TurnRoute:ad0a9064775a0e4bd1ddba52": {
   "city": null,
@@ -7170,6 +8237,17 @@
   "other_questions": [],
   "place": null,
   "plan_request": true,
+  "price": null,
+  "route": "travel"
+ },
+ "structured:TurnRoute:bc1ddc2d0aefe563f727d7dc": {
+  "city": null,
+  "fare": null,
+  "focus": null,
+  "form_request": false,
+  "other_questions": [],
+  "place": null,
+  "plan_request": false,
   "price": null,
   "route": "travel"
  },
@@ -7378,6 +8456,30 @@
    "day": null,
    "dearest": false,
    "destination": "Hà Nội",
+   "kind_unclear": false,
+   "origin": null,
+   "other_days": false,
+   "return_leg": true,
+   "time_of_day": null,
+   "why": false
+  },
+  "focus": null,
+  "form_request": false,
+  "other_questions": [],
+  "place": null,
+  "plan_request": false,
+  "price": null,
+  "route": "fare"
+ },
+ "structured:TurnRoute:d43aa4378c807b51b3250e3c": {
+  "city": "Phú Quốc",
+  "fare": {
+   "anywhere": false,
+   "availability": false,
+   "cheaper": false,
+   "day": null,
+   "dearest": false,
+   "destination": "Phú Quốc",
    "kind_unclear": false,
    "origin": null,
    "other_days": false,
@@ -8192,6 +9294,63 @@
    }
   ]
  },
+ "tools:8a8574c49a967831d650c34b": {
+  "tool_calls": [
+   {
+    "args": {
+     "availableOnly": true,
+     "destination": "Phú Quốc",
+     "origin": "Nha Trang",
+     "query": "vé máy bay",
+     "taxonomy": "flight",
+     "travelContext": {
+      "checkIn": "2026-10-15",
+      "guests": {
+       "adults": 2
+      }
+     }
+    },
+    "id": "call_qjN59r50fwEPAhiTctc3poNj",
+    "name": "search_products",
+    "type": "tool_call"
+   },
+   {
+    "args": {
+     "availableOnly": true,
+     "destination": "Phú Quốc",
+     "query": "nhà nghỉ phù hợp cặp đôi Tai Tri Guest House",
+     "taxonomy": "hotel",
+     "travelContext": {
+      "checkIn": "2026-10-15",
+      "checkOut": "2026-10-18",
+      "guests": {
+       "adults": 2
+      }
+     }
+    },
+    "id": "call_PdSxMGShjGbAfydCkhcUx0gy",
+    "name": "search_products",
+    "type": "tool_call"
+   },
+   {
+    "args": {
+     "availableOnly": true,
+     "destination": "Phú Quốc",
+     "query": "tham quan trải nghiệm văn hóa và vui chơi",
+     "taxonomy": "attraction",
+     "travelContext": {
+      "checkIn": "2026-10-15",
+      "guests": {
+       "adults": 2
+      }
+     }
+    },
+    "id": "call_KPuktFfzxTDcP5Fiw6PV6O07",
+    "name": "search_products",
+    "type": "tool_call"
+   }
+  ]
+ },
  "tools:8bbd974b45005a6e09dcd4a5": {
   "tool_calls": [
    {
@@ -8229,6 +9388,34 @@
    }
   ]
  },
+ "tools:8e0acf0a308e71dbb90c5531": {
+  "tool_calls": [
+   {
+    "args": {
+     "availableOnly": true,
+     "destination": "Hà Nội",
+     "limit": 5,
+     "query": "khách sạn nghỉ dưỡng phù hợp cặp đôi",
+     "taxonomy": "hotel"
+    },
+    "id": "call_l5A5Wo4q0CuUvwWTJ8oiDW2n",
+    "name": "search_products",
+    "type": "tool_call"
+   },
+   {
+    "args": {
+     "availableOnly": true,
+     "destination": "Hà Nội",
+     "limit": 5,
+     "query": "tham quan khám phá văn hóa và thắng cảnh",
+     "taxonomy": "attraction"
+    },
+    "id": "call_jhzjtYvnuM0tMmwTWK99Jz4k",
+    "name": "search_products",
+    "type": "tool_call"
+   }
+  ]
+ },
  "tools:a83a9d130534ddb00455eb44": {
   "tool_calls": [
    {
@@ -8260,6 +9447,61 @@
      }
     },
     "id": "call_Up1EFX4UkkxDpdgDUdEP7PDk",
+    "name": "search_products",
+    "type": "tool_call"
+   }
+  ]
+ },
+ "tools:a8b118c48a0aba2c0176fade": {
+  "tool_calls": [
+   {
+    "args": {
+     "availableOnly": true,
+     "destination": "Hà Nội",
+     "query": "khách sạn tiện nghi lưu trú cho cặp đôi",
+     "taxonomy": "hotel",
+     "travelContext": {
+      "checkIn": "2026-10-17",
+      "guests": {
+       "adults": 2
+      }
+     }
+    },
+    "id": "call_rK282WrSpk841fvBoMmdH5Qj",
+    "name": "search_products",
+    "type": "tool_call"
+   },
+   {
+    "args": {
+     "availableOnly": true,
+     "destination": "Hà Nội",
+     "query": "tham quan danh thắng và trải nghiệm văn hóa",
+     "taxonomy": "attraction",
+     "travelContext": {
+      "checkIn": "2026-10-17",
+      "guests": {
+       "adults": 2
+      }
+     }
+    },
+    "id": "call_gBuY3HbAbyedAlc4p8PHgY7e",
+    "name": "search_products",
+    "type": "tool_call"
+   },
+   {
+    "args": {
+     "availableOnly": true,
+     "destination": "Hà Nội",
+     "origin": "Thành phố Hồ Chí Minh",
+     "query": "vé máy bay từ Thành phố Hồ Chí Minh đến Hà Nội",
+     "taxonomy": "flight",
+     "travelContext": {
+      "guests": {
+       "adults": 2
+      }
+     }
+    },
+    "id": "call_Fn9weoRPRYEie7cLGjBkiPha",
     "name": "search_products",
     "type": "tool_call"
    }

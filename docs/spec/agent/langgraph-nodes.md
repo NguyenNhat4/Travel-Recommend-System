@@ -137,8 +137,9 @@ Khi đã đồng ý lập lịch:
 
 - **Sở thích khách sạn** (hồ bơi, phù hợp trẻ nhỏ, view biển, có bữa sáng, spa; `domain/itinerary/preferences.py`) là
   **ưu tiên**: nằm trong `intent.interests`, không trong `constraints.hotel_attributes` (bộ lọc bắt buộc; catalog thật chỉ ghi
-  tiện ích dạng chuỗi nên cờ bắt buộc sẽ loại gần hết khách sạn). Câu hỏi gộp mời nói sở thích; form có ô `interests` chọn
-  nhiều (`interestOptions`, tích sẵn "Phù hợp trẻ nhỏ" khi có trẻ em); câu "ưu tiên …" được `extract` giữ mềm. Sở thích vào câu
+  tiện ích dạng chuỗi nên cờ bắt buộc sẽ loại gần hết khách sạn). Câu hỏi gộp mời nói sở thích; form có ô `interests` gồm
+  5 lựa chọn cố định (`interestOptions`, tích sẵn "Phù hợp trẻ nhỏ" khi có trẻ em) và một ô tự nhập tối đa 150 ký tự (chốt
+  12/10); câu "ưu tiên …" và phần tự nhập đi trong câu xác nhận, `extract` đọc như mọi tin nhắn và giữ mềm. Sở thích vào câu
   tìm khách sạn (`search_hints`) và lọc mềm ở `evaluate` (chỉ bỏ khách sạn không hợp khi còn ít nhất 3 khách sạn hợp).
 - **Ngày đã chọn không có chuyến bay:** câu cảnh báo vé nêu thêm tối đa 2 ngày gần nhất có vé, giữ số ngày của chuyến, ngày
   đủ hai chiều trước (`domain/itinerary/flights.nearest_dates`, dữ liệu là chuyến `flight_options` đã tải, không tra thêm).

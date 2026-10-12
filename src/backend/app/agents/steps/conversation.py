@@ -46,7 +46,7 @@ def clarification_form(state: dict) -> dict:
         defaults["destination"] = supported[0] if supported else None
     defaults["interests"] = _form_interests(defaults)
     return {"fields": [*FORM_FIELDS, "interests"], "defaults": defaults, "startDateMin": today,
-            "interestOptions": preferences.labels()}
+            "interestOptions": preferences.labels(), "autoOpen": bool(state.get("form_request"))}
 
 
 def _form_interests(intent: dict) -> list[str]:
@@ -87,7 +87,7 @@ def _form_shown(state: dict) -> bool:
         return True
     if reason == "suggest_form":
         return True
-    return state.get("clarification_rounds", 0) >= 2 and bool({"destination", "days"} & set(state.get("missing_fields") or []))
+    return bool({"destination", "days", "startDate", "party"} & set(state.get("missing_fields") or []))
 
 
 def invalid_title(state: dict) -> str:

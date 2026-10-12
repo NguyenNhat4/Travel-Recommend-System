@@ -557,9 +557,10 @@ không hỏi thông tin chuyến và không gửi `clarificationForm`:
 - Đồng ý lập lịch: câu xin lập lịch, nút lập lịch, sửa form/chip, "ok" sau lời mời, hoặc câu có thông tin chuyến ngoài điểm
   đến ("Hà Nội 3 ngày"). Sau đó đi luồng hỏi gộp và form như trên. Đổi sang nơi khác ngay sau lời mời ("Thôi, Hà Nội thì
   sao?") không phải đồng ý: trợ lý khám phá nơi mới.
-- Form có ô `interests` (sở thích khách sạn, chọn nhiều, không bắt buộc) với lựa chọn trong `clarificationForm.interestOptions`;
-  Web ghép lựa chọn vào câu xác nhận "ưu tiên khách sạn có …". Sở thích là ưu tiên khi tìm khách sạn, không loại khách sạn
-  thiếu dữ liệu tiện ích.
+- Form có ô `interests` (không bắt buộc; contract 1.26.0, AC-AGT-01 chốt 12/10): 5 lựa chọn cố định trong
+  `clarificationForm.interestOptions` (chọn nhiều) và một ô tự nhập tối đa 150 ký tự; không có nút AI. Web ghép lựa chọn
+  vào câu xác nhận "ưu tiên khách sạn có …", phần tự nhập đi sau đó. Sở thích là ưu tiên khi tìm khách sạn, không loại
+  khách sạn thiếu dữ liệu tiện ích.
 - Nơi người dùng chê ("chán, Đà Nẵng đi rồi") không được gợi ý lại trong hội thoại, kể cả trong `suggestions`.
 - Sau khi có lịch, "đổi khách sạn" chưa nói hướng thì trả `NEEDS_CLARIFICATION` liệt kê các phương án khách sạn đã tính, kèm
   `suggestions` "Lấy phương án N: …" (gửi lại câu này là đổi ngay như `selectStayOption`). "Đổi chuyến bay" thì liệt kê chuyến

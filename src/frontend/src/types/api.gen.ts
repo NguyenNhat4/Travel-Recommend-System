@@ -2068,7 +2068,7 @@ export interface components {
             };
             /** @description Form gợi ý hiển thị trong khung chat khi hỏi bằng câu chữ một lượt vẫn chưa đủ thông tin. */
             clarificationForm?: {
-                /** @description Ô hiển thị theo thứ tự. `interests` (1.24.0, FR-AGT-06): ô sở thích khách sạn chọn nhiều, không bắt buộc; lựa chọn lấy từ `interestOptions`, lựa chọn đã tích sẵn nằm trong `defaults.interests`. */
+                /** @description Ô hiển thị theo thứ tự. `interests` (1.24.0, FR-AGT-06; 1.26.0 AC-AGT-01): không bắt buộc, gồm các lựa chọn cố định trong `interestOptions` (chọn nhiều, tích sẵn theo `defaults.interests`) và một ô tự nhập tối đa 150 ký tự, điền sẵn bằng phần `defaults.interests` không thuộc `interestOptions`. */
                 fields: ("destination" | "days" | "startDate" | "party" | "budget" | "origin" | "interests")[];
                 defaults: components["schemas"]["TripIntent"];
                 /**
@@ -2076,7 +2076,9 @@ export interface components {
                  * @description Ngày khởi hành sớm nhất được phép chọn; hôm nay theo giờ Việt Nam.
                  */
                 startDateMin?: string;
-                /** @description Tuỳ chọn (1.24.0, FR-AGT-06). Nhãn sở thích khách sạn đã có dữ liệu (ví dụ "Hồ bơi", "Phù hợp trẻ nhỏ"). Sở thích là ưu tiên khi tìm khách sạn, không loại khách sạn thiếu dữ liệu tiện ích. Client ghép lựa chọn vào câu xác nhận ("ưu tiên khách sạn có Hồ bơi, Phù hợp trẻ nhỏ"). */
+                /** @description Tuỳ chọn (1.26.0). Mở ngay khi người dùng trực tiếp xin form; mặc định chỉ hiện nút mở. */
+                autoOpen?: boolean;
+                /** @description Tuỳ chọn (1.24.0, FR-AGT-06). Nhãn sở thích khách sạn đã có dữ liệu (ví dụ "Hồ bơi", "Phù hợp trẻ nhỏ"). Sở thích là ưu tiên khi tìm khách sạn, không loại khách sạn thiếu dữ liệu tiện ích. Client ghép lựa chọn vào câu xác nhận ("ưu tiên khách sạn có Hồ bơi, Phù hợp trẻ nhỏ"); nội dung ô tự nhập đi sau đó (1.26.0). */
                 interestOptions?: string[];
             };
             /** @description Tuỳ chọn (1.13.0). Câu yêu cầu gửi được nguyên văn làm lượt chat kế tiếp, cùng ngữ nghĩa với `ItineraryNoResults.suggestions`. Có khi điều kiện bắt buộc (khách sạn, khách sạn hoặc hoạt động cụ thể) không có sản phẩm nào đáp ứng, ví dụ ngày khởi hành gần nhất còn bán hoặc lập lịch không cần khách sạn. Từ 1.24.0 còn có ở lượt trò chuyện và khám phá (FR-AGT-06): tối đa 3 nút theo các hướng khác nhau (đi tiếp như lập lịch, xem sâu, đổi hướng), không lặp nút của lượt trước. */

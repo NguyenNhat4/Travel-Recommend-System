@@ -165,13 +165,13 @@ describe('TripDetailsForm departure city (AC-AGT-02, AC-AGT-03)', () => {
   });
 });
 
-describe('hotel preferences (contract 1.24.0, FR-AGT-06)', () => {
+describe('trip preferences: fixed options and a note (contract 1.26.0, AC-AGT-01)', () => {
   const originalFetch = global.fetch;
   const form: ClarificationForm = {
     ...baseForm,
     fields: [...baseForm.fields, 'interests'],
-    defaults: { ...baseForm.defaults, interests: ['Phù hợp trẻ nhỏ'] },
-    interestOptions: ['Hồ bơi', 'Phù hợp trẻ nhỏ', 'Spa'],
+    defaults: { ...baseForm.defaults, interests: ['Phù hợp trẻ nhỏ', 'ẩm thực'] },
+    interestOptions: ['Hồ bơi', 'Phù hợp trẻ nhỏ', 'View biển', 'Có bữa sáng', 'Spa'],
   };
 
   afterEach(() => {
@@ -179,20 +179,26 @@ describe('hotel preferences (contract 1.24.0, FR-AGT-06)', () => {
     global.fetch = originalFetch;
   });
 
-  it('shows the options with the prefilled ones ticked and adds the choice to the prompt', () => {
-    global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ destinations: [] }) });
+  it('ticks known options, keeps other known interests in the note and sends both without calling the AI', () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ destinations: [] }) });
+    global.fetch = fetchMock;
     const onConfirm = vi.fn();
     render(<TripDetailsForm form={form} onConfirm={onConfirm} />);
-
     expect(screen.getByRole('button', { name: 'Phù hợp trẻ nhỏ' }).getAttribute('aria-pressed')).toBe('true');
+    const note = screen.getByLabelText('Mong muốn khác') as HTMLInputElement;
+    expect(note.value).toBe('ẩm thực');
+    expect(note.maxLength).toBe(150);
+    expect(screen.queryByRole('button', { name: /Viết bằng AI/ })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Hồ bơi' }));
+    fireEvent.change(note, { target: { value: 'gần chợ đêm,   đi chậm' } });
     fireEvent.click(screen.getByRole('button', { name: 'Xác nhận' }));
-
-    expect(onConfirm).toHaveBeenCalledWith(expect.stringContaining('ưu tiên khách sạn có Phù hợp trẻ nhỏ, Hồ bơi'));
+    expect(onConfirm).toHaveBeenCalledWith(expect.stringMatching(/ưu tiên khách sạn có Phù hợp trẻ nhỏ, Hồ bơi\. Gần chợ đêm, đi chậm$/));
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('preferences'))).toBe(false);
   });
 
-  it('leaves the prompt without preferences when none is ticked, and ignores other interests', () => {
-    const prompt = tripDetailsPrompt({ ...baseForm.defaults, interests: ['ẩm thực'] }, ['Hồ bơi']);
-    expect(prompt).not.toContain('ưu tiên');
+  it('builds the prompt from options only, and ignores interests outside the options without a note', () => {
+    const prompt = tripDetailsPrompt({ ...baseForm.defaults, interests: ['Spa', 'ẩm thực'] }, ['Spa'], '  ');
+    expect(prompt).toContain('ưu tiên khách sạn có Spa.');
+    expect(prompt).not.toContain('ẩm thực');
   });
 });

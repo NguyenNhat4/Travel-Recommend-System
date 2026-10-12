@@ -430,7 +430,7 @@ class ExploreFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('attraction', result['response']['searchResults'])
         self.assertIn('hồ bơi', result['response']['question'])
 
-    async def test_yes_after_the_offer_starts_planning_with_one_question_and_no_form(self):
+    async def test_yes_after_the_offer_starts_planning_with_one_question_and_a_closed_form(self):
         store = InMemoryConversationStore()
         clients = self.clients()
         first = await self.run_graph(ExploringLlm(route='explore', extraction=Extraction(patch={'destination': 'Hà Nội'})),
@@ -447,7 +447,8 @@ class ExploreFlowTests(unittest.IsolatedAsyncioTestCase):
                                    owner='u', state={'query': 'ok', 'conversation_id': cid})
         self.assertTrue(yes['plan_consent'])
         self.assertEqual(yes['response']['status'], 'NEEDS_CLARIFICATION')
-        self.assertNotIn('clarificationForm', yes['response'])
+        # AC-AGT-01 chốt 12/10: chỉ kèm nút mở form, form không tự mở.
+        self.assertFalse(yes['response']['clarificationForm']['autoOpen'])
         self.assertIn('days', yes['response']['missingFields'])
 
     async def test_not_knowing_twice_lets_the_assistant_pick_and_explore_a_place(self):

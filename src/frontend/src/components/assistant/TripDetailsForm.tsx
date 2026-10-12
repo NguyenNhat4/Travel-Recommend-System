@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { Calendar, LocateFixed, Loader2, MapPin, PlaneTakeoff, RotateCcw, Send, Sparkles, Users, Wallet } from 'lucide-react';
+import { Calendar, LocateFixed, Loader2, MapPin, PlaneTakeoff, RotateCcw, Send, Users, Wallet } from 'lucide-react';
 import { listDestinations } from '../../services/destinations';
 import { listDepartureAirports, nearestDepartureCity } from '../../services/flights';
+import { TripPreferenceFields } from './TripPreferenceFields';
 import type { components } from '../../types/api.gen';
 
 type TripIntent = components['schemas']['TripIntent'];
@@ -25,10 +26,10 @@ function formatBudget(value: number): string {
 }
 
 /**
- * Câu yêu cầu hoàn chỉnh dựng từ form; đặt vào ô nhập để người dùng đọc lại, sửa rồi mới gửi. Sở thích khách sạn chọn
- * trong form (`interestOptions`, contract 1.24.0) đứng cuối câu sau chữ "ưu tiên": backend coi đó là ưu tiên, không bắt buộc.
+ * Câu yêu cầu hoàn chỉnh dựng từ form. Lựa chọn sở thích cố định (`interestOptions`) đứng sau chữ "ưu tiên": backend coi
+ * là ưu tiên, không bắt buộc. Mong muốn tự nhập (AC-AGT-01, chốt 12/10) đi sau cùng, bước hiểu yêu cầu đọc như mọi tin nhắn.
  */
-export function tripDetailsPrompt(intent: TripIntent, interestOptions: readonly string[] = []): string {
+export function tripDetailsPrompt(intent: TripIntent, interestOptions: readonly string[] = [], note = ''): string {
   const parts: string[] = [];
   parts.push(`Lên lịch trình ${intent.days ?? MIN_DAYS} ngày tại ${intent.destination ?? 'điểm đến bạn chọn'}`);
   if (intent.startDate) parts.push(`bắt đầu từ ngày ${intent.startDate}`);
@@ -41,7 +42,9 @@ export function tripDetailsPrompt(intent: TripIntent, interestOptions: readonly 
   if (intent.origin?.trim()) parts.push(`đi từ ${intent.origin.trim()}`);
   const preferred = (intent.interests ?? []).filter((value) => interestOptions.includes(value));
   if (preferred.length > 0) parts.push(`ưu tiên khách sạn có ${preferred.join(', ')}`);
-  return `${parts.join(', ')}.`;
+  const sentence = `${parts.join(', ')}.`;
+  const extra = note.trim().replace(/\s+/g, ' ');
+  return extra ? `${sentence} ${extra.charAt(0).toUpperCase()}${extra.slice(1)}` : sentence;
 }
 
 type LocateState = 'idle' | 'locating' | 'denied' | 'failed';
@@ -57,32 +60,46 @@ const LOCATE_MESSAGE: Record<Exclude<LocateState, 'idle' | 'locating'>, string> 
  */
 function useDepartureFromLocation(onCity: (city: string) => void) {
   const [state, setState] = useState<LocateState>('idle');
+  const [cities, setCities] = useState<string[]>([]);
+  const airports = useRef<ReturnType<typeof listDepartureAirports> | null>(null);
+  const generation = useRef(0);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancel = useCallback(() => {
+    generation.current += 1;
+    if (timer.current) clearTimeout(timer.current);
+    setState('idle');
+  }, []);
+  useEffect(() => {
+    const controller = new AbortController();
+    const pending = listDepartureAirports(controller.signal);
+    airports.current = pending;
+    void pending.then((items) => { if (!controller.signal.aborted) setCities([...new Set(items.map((item) => item.city))]); }).catch(() => {
+      airports.current = null;
+    });
+    return () => { controller.abort(); generation.current += 1; if (timer.current) clearTimeout(timer.current); };
+  }, []);
   const locate = useCallback(() => {
-    if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      setState('failed');
-      return;
-    }
+    const token = ++generation.current;
+    if (typeof navigator === 'undefined' || !navigator.geolocation) { setState('failed'); return; }
     setState('locating');
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-        void listDepartureAirports()
-          .then((airports) => {
-            const city = nearestDepartureCity({ latitude, longitude }, airports);
-            if (city) {
-              onCity(city);
-              setState('idle');
-            } else {
-              setState('failed');
-            }
-          })
-          .catch(() => setState('failed'));
-      },
-      (error) => setState(error.code === error.PERMISSION_DENIED ? 'denied' : 'failed'),
-      { enableHighAccuracy: false, timeout: 10_000, maximumAge: 600_000 },
-    );
+    const finish = (next: LocateState) => {
+      if (generation.current !== token) return;
+      generation.current += 1;
+      if (timer.current) clearTimeout(timer.current);
+      setState(next);
+    };
+    timer.current = setTimeout(() => finish('failed'), 5_000);
+    navigator.geolocation.getCurrentPosition((position) => {
+      const pending = airports.current ?? listDepartureAirports();
+      void pending.then((items) => {
+        if (generation.current !== token) return;
+        const city = nearestDepartureCity(position.coords, items);
+        if (city) { onCity(city); finish('idle'); } else finish('failed');
+      }).catch(() => finish('failed'));
+    }, (error) => finish(error.code === error.PERMISSION_DENIED ? 'denied' : 'failed'),
+    { enableHighAccuracy: false, timeout: 5_000, maximumAge: 600_000 });
   }, [onCity]);
-  return { state, locate };
+  return { state, locate, cancel, cities };
 }
 
 export function TripDetailsForm({
@@ -97,6 +114,14 @@ export function TripDetailsForm({
   const [options, setOptions] = useState<string[]>([]);
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'empty' | 'error'>('loading');
   const [intent, setIntent] = useState<TripIntent>(form.defaults);
+  const interestOptions = form.interestOptions ?? [];
+  // Sở thích đã biết ngoài các lựa chọn cố định điền sẵn vào ô tự nhập để không mất khi xác nhận.
+  const [note, setNote] = useState(() => (form.defaults.interests ?? [])
+    .filter((value) => !(form.interestOptions ?? []).includes(value)).join(', '));
+  const toggleInterest = (option: string) => setIntent((prev) => {
+    const current = prev.interests ?? [];
+    return { ...prev, interests: current.includes(option) ? current.filter((value) => value !== option) : [...current, option] };
+  });
   // Điểm đến đến từ ô gõ hay từ chip: ô gõ chỉ hiện chữ người dùng tự gõ, chọn chip thì ô để trống (hiện placeholder).
   const [typedDestination, setTypedDestination] = useState(false);
   const requestRef = useRef<AbortController | null>(null);
@@ -143,15 +168,9 @@ export function TripDetailsForm({
     setIntent((prev) => ({ ...prev, budget: parsed && parsed > 0 ? parsed : null }));
   };
 
-  const interestOptions = form.interestOptions ?? [];
-  const toggleInterest = (label: string) => setIntent((prev) => {
-    const current = prev.interests ?? [];
-    return { ...prev, interests: current.includes(label) ? current.filter((value) => value !== label) : [...current, label] };
-  });
-
   const confirm = (event: React.FormEvent) => {
     event.preventDefault();
-    onConfirm(tripDetailsPrompt(intent, interestOptions));
+    onConfirm(tripDetailsPrompt(intent, interestOptions, form.fields.includes('interests') ? note : ''));
   };
 
   const chipClass = (selected: boolean) => `min-h-9 rounded-lg border px-2.5 py-1 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ai-500 focus-visible:ring-offset-2 ${
@@ -274,7 +293,7 @@ export function TripDetailsForm({
             </legend>
             <div className="flex items-center gap-1.5">
               <input type="text" disabled={disabled} value={intent.origin ?? ''} aria-label="Nơi đi"
-                onChange={(event) => setOrigin(event.target.value)}
+                onChange={(event) => { departure.cancel(); setOrigin(event.target.value); }}
                 placeholder="Để thêm vé máy bay, ví dụ Hà Nội"
                 className="min-w-0 flex-1 rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs outline-hidden focus:ring-1 focus:ring-ai-500" />
               <button type="button" disabled={disabled || departure.state === 'locating'} onClick={departure.locate}
@@ -282,33 +301,22 @@ export function TripDetailsForm({
                 {departure.state === 'locating'
                   ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
                   : <LocateFixed className="h-3.5 w-3.5" aria-hidden="true" />}
-                Dùng vị trí hiện tại
+                {departure.state === 'locating' ? 'Đang xác định nơi đi…' : 'Dùng vị trí hiện tại'}
               </button>
             </div>
             {(departure.state === 'denied' || departure.state === 'failed') && (
-              <p role="status" className="text-xs text-slate-500">{LOCATE_MESSAGE[departure.state]}</p>
+              <div className="space-y-2">
+                <p role="status" className="text-xs text-slate-500">{LOCATE_MESSAGE[departure.state]}</p>
+                <div className="flex flex-wrap gap-1.5">{departure.cities.slice(0, 3).map((city) => <button key={city} type="button" disabled={disabled}
+                  onClick={() => { departure.cancel(); setOrigin(city); }} className={chipClass(intent.origin === city)}>{city}</button>)}</div>
+              </div>
             )}
           </fieldset>
         )}
 
-        {form.fields.includes('interests') && interestOptions.length > 0 && (
-          <fieldset>
-            <legend className="mb-1.5 flex items-center gap-1.5 text-xs font-bold text-slate-700">
-              <Sparkles className="h-3.5 w-3.5 text-ai-600" aria-hidden="true" /> Sở thích nơi ở (không bắt buộc)
-            </legend>
-            <div className="flex flex-wrap gap-1.5" aria-label="Sở thích nơi ở">
-              {interestOptions.map((label) => {
-                const selected = (intent.interests ?? []).includes(label);
-                return (
-                  <button key={label} type="button" disabled={disabled} aria-pressed={selected}
-                    onClick={() => toggleInterest(label)} className={chipClass(selected)}>
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
-          </fieldset>
-        )}
+        {form.fields.includes('interests') && <TripPreferenceFields options={interestOptions}
+          selected={intent.interests ?? []} onToggle={toggleInterest} note={note} onNote={setNote}
+          disabled={disabled} chipClass={chipClass} />}
 
         <button type="submit" disabled={disabled} className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-ai-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-ai-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ai-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300">
           <Send className="h-3.5 w-3.5" aria-hidden="true" /> Xác nhận

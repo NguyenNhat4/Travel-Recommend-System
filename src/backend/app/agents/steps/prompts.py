@@ -294,23 +294,16 @@ the next item. Use only facts from the payload (note, durationMinutes, taxonomy,
 hours, distances, travel times, menus or other facts.
 Shape of one day (placeholders, not real data):
 **Ngày 1 · 15/10/2026**
-• Buổi sáng — [<name>](product:<productId>) ([[price:<productId>]]): <why this fits the morning and the party>
-• Buổi chiều — [<name>](product:<productId>) ([[price:<productId>]]): <how it follows the morning>
+• Buổi sáng — [<name>](product:<productId>): <why this fits the morning and the party>
+• Buổi chiều — [<name>](product:<productId>): <how it follows the morning>
 Grounding rules, strict:
 - Mention a product ONLY as a link [name](product:<productId>) with a productId from `itinerary`, and mention every
   product of the itinerary in its own section. Never name any other hotel, tour, restaurant or attraction.
-- Never write a money amount or a number with a currency. Right after each product link write its price as
-  ([[price:<productId>]]). In **Chi phí dự kiến** write [[total]] for the itinerary total and [[budget]] for the
-  user's budget, never a figure of your own.
-- total_known tells whether [[total]] can be shown. When total_known is true you MUST show the total and compare it
-  with the budget using budgetStatus: WITHIN_BUDGET fits, OVER_BUDGET is above it (say so kindly and suggest asking to
-  swap an item or change the budget), NO_BUDGET has no budget to compare, so only show the total. Only when
-  total_known is false say warmly that you have not added a single total because some items have no price yet, and
-  invite the user to check each ticketed price in the panel; never guess a figure.
-- An item with free_to_visit true is a place the user simply goes to and explores (tham quan tự do): present it as a
-  spot to stroll, take photos and enjoy at their own pace, a nice way to ease the budget. Its [[price:<productId>]]
-  shows "tham quan tự do"; never say its price is missing or being updated. It costs nothing in [[total]]. A stay with price_known false has its
-  price being updated.
+- Never repeat product prices, totals or the numeric budget in prose: they are already on the product cards and
+  budget summary. Do not use [[price:...]], [[total]] or [[budget]], and do not write a cost section.
+- free_to_visit items are places to visit, stroll or explore. Describe the actual place; never call it a ticket
+  or a "vé tham quan tự do". Do not claim a ticketed venue is free.
+- If budgetStatus is OVER_BUDGET you may explain the tradeoff without numbers and invite a cheaper option.
 - Never claim anything is booked, paid, reserved, confirmed or available for sure; prices are for reference only.
 `consider_separately` lists multi-day passes or tours that were NOT put in the plan because they span several days.
 The system adds its own section about them, asking the user whether to add one; do not mention them, link them or
@@ -326,7 +319,7 @@ there are none; do not mention flights, airlines or plane tickets, and do not wr
 When criteria_shown_separately is true the system adds its own section explaining how the plan was arranged (nearby
 places grouped to keep the total travel short, the hotel or hotels chosen near them); do not write that section or
 restate it, and never claim distances or travel times.
-Always include the **Chi phí dự kiến** section, even when the total is not known.
+Do not include **Chi phí dự kiến**: the budget summary below already shows it.
 An item with activityType TRANSFER is the airport transfer the system placed by the flight times on the arrival or
 departure day: write it as one line with its time and its note, add no flight detail and no activity around it.
 `stays` lists the hotels by night (from_night, nights). With one stay, write one line for it. With two stays the user

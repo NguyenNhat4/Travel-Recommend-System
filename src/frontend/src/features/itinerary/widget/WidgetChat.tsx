@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { isCartEligible } from '../../../services/booking';
 import Image from 'next/image';
 import { AlertCircle, Maximize2, RotateCcw, Sparkles } from 'lucide-react';
@@ -77,7 +77,7 @@ export function WidgetChat({ widget }: { widget: FloatingWidgetController }) {
                 )}
                 {/* Chỉ hiện form ở tin nhắn mới nhất: người dùng xác nhận thì lượt sau đã có câu trả lời khác. */}
                 {message.clarificationForm && message.id === lastMessageId && (
-                  <TripDetailsForm form={message.clarificationForm} onConfirm={handleConfirmTripDetails} disabled={isRunning} />
+                  <TripFormFollowup form={message.clarificationForm} onConfirm={handleConfirmTripDetails} disabled={isRunning} />
                 )}
                 {message.suggestions && message.id === lastMessageId && (
                   <SuggestionChips suggestions={message.suggestions} onSelect={handleSendMessage} disabled={isRunning} />
@@ -120,4 +120,17 @@ export function WidgetChat({ widget }: { widget: FloatingWidgetController }) {
       )}
     </div>
   );
+}
+
+
+function TripFormFollowup(props: React.ComponentProps<typeof TripDetailsForm>) {
+  const [open, setOpen] = useState(props.form.autoOpen === true);
+  const [visited, setVisited] = useState(props.form.autoOpen === true);
+  return <div className="mt-3">
+    <button type="button" aria-expanded={open} disabled={props.disabled} onClick={() => { setVisited(true); setOpen((value) => !value); }}
+      className="min-h-11 rounded-xl border border-ai-200 bg-ai-50 px-4 text-sm font-semibold text-ai-700 hover:bg-ai-100 disabled:opacity-50">
+      {open ? 'Thu gọn thông tin chuyến đi' : 'Điền thông tin chuyến đi'}
+    </button>
+    <div hidden={!open}>{visited && <TripDetailsForm {...props} />}</div>
+  </div>;
 }

@@ -1,5 +1,7 @@
 'use client';
 
+import { useSearchParams } from 'next/navigation';
+
 import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { AlertCircle, Loader2, Search } from 'lucide-react';
@@ -41,6 +43,7 @@ const Notice: React.FC<{ tone?: 'info' | 'warn'; children: React.ReactNode }> = 
  */
 export const FlightResultsView: React.FC<{ search: FlightSearch; notice?: string | null }> = ({ search, notice }) => {
   const { origin, destination, trip } = search;
+  const preferredFareId = useSearchParams()?.get('fare');
   const { startBooking } = useTravel();
   const today = todayVN();
   const adults = trip.adults ?? 1;
@@ -231,6 +234,7 @@ export const FlightResultsView: React.FC<{ search: FlightSearch; notice?: string
           <div className="flex flex-col gap-3.5">
             {visible.map((option) => (
               <FlightCard key={option.key} option={option} expanded={expanded.has(option.key)}
+                preferredFareId={preferredFareId}
                 chosen={chosen[step]?.option.key === option.key ? chosen[step]!.fare : null}
                 onToggleExpanded={() => setExpanded((prev) => { const next = new Set(prev); if (!next.delete(option.key)) next.add(option.key); return next; })}
                 onPick={choose} onClear={clearChoice} />

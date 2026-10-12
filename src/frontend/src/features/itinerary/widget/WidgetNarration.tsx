@@ -1,3 +1,4 @@
+import { WidgetComboCard } from './WidgetComboCard';
 import React from 'react';
 import { AssistantText, parseAssistantText } from '../../../components/assistant/inlineBold';
 import { ProductCard } from '../../../components/common/ProductCard';
@@ -141,6 +142,12 @@ export function WidgetNarration({ text, products, onOpen, quickAddIds, onQuickAd
             </div>
           );
         }
+        if (product.taxonomy === 'combo') return <div key={index} className="my-4 whitespace-normal">
+          <WidgetComboCard product={product} peers={Object.values(products)} onOpen={() => onOpen(product.id)}
+            onBook={onBookNow && bookableIds?.has(product.id) ? () => onBookNow(product.id) : undefined}
+            onAdd={onQuickAdd && quickAddIds?.has(product.id) ? () => onQuickAdd(product.id) : undefined}
+            addState={cartAddStates?.[product.id]} />
+        </div>;
         return (
           <div key={index} className="my-4 whitespace-normal">
             <ProductCard

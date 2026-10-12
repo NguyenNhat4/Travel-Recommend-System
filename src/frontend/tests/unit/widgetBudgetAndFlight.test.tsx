@@ -116,7 +116,7 @@ describe('budget summary', () => {
     expect(screen.getByText('3N2Đ')).toBeTruthy();
     expect(screen.getByText('5.378.000 ₫')).toBeTruthy();
     expect(screen.getByText('Vé máy bay')).toBeTruthy();
-    expect(screen.getByText('Vui chơi')).toBeTruthy();
+    expect(screen.queryByText('Vui chơi')).toBeNull();
     expect(screen.getByText('Vượt ngân sách')).toBeTruthy();
     expect(screen.queryByText(/Ăn uống/)).toBeNull();
     // Nhóm bằng 0 có dòng nhưng không có đoạn trên thanh.
