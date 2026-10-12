@@ -9,7 +9,9 @@
 - Phạm vi: backend (recommendation, catalog), contract, frontend (trang chủ), infra (biến môi trường Redis), docs
 - Nhánh: `fix/recommendation` (tạo từ `origin/release-mvp-v2` bab57fa5)
 - Đề xuất PRD liên quan: `docs/prd/update-archive/2026-10-12-cache-goi-y-tren-redis.md` (đã chốt, tqanh123, 2026-10-12; đã áp dụng vào PRD)
-- Trạng thái: đang làm (đề xuất đã áp dụng vào PRD; các giai đoạn code làm theo thứ tự bên dưới)
+- Trạng thái: đang làm
+  - Xong: đề xuất áp dụng vào PRD; contract 1.25.0; `/products` trộn theo nhóm loại; kệ Phổ biến ở trang chủ; spec kệ Phổ biến và timeout.
+  - Còn: cold-start tối đa 2 mỗi taxonomy; giai đoạn 2 (làm nhanh lượt tính); giai đoạn 3 (cache Redis).
 
 ## Bối cảnh
 
