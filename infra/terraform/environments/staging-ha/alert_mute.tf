@@ -29,6 +29,7 @@ resource "google_cloud_scheduler_job" "alert_mute_on" {
   schedule  = var.alert_mute_start_schedule
   time_zone = var.ops_schedule_timezone
 
+  # Thử lại khi PATCH lỗi tạm thời. Lỗi cuối cùng được đếm bởi google_logging_metric.ha_alert_mute_job_failed.
   # Khai báo đúng giá trị mặc định đang có trên job, để plan không đòi xóa retry_config (drift provider, 2026-10-12).
   retry_config {
     retry_count          = 3
@@ -57,6 +58,7 @@ resource "google_cloud_scheduler_job" "alert_mute_off" {
   schedule  = var.alert_mute_end_schedule
   time_zone = var.ops_schedule_timezone
 
+  # Thử lại khi PATCH lỗi tạm thời. Nếu lượt bật lại thất bại, kênh HA tắt tới 23:55 hôm sau: đây là lý do cần alert riêng.
   # Khai báo đúng giá trị mặc định đang có trên job, để plan không đòi xóa retry_config (drift provider, 2026-10-12).
   retry_config {
     retry_count          = 3
@@ -77,4 +79,57 @@ resource "google_cloud_scheduler_job" "alert_mute_off" {
   }
 
   depends_on = [google_project_service.cloudscheduler, google_project_iam_member.scheduler_ops, google_service_account_iam_member.scheduler_token_creator]
+}
+
+# Kênh luôn bật cho cảnh báo "job mute lỗi". Không đưa vào kênh bị mute, không có ignore_changes = [enabled].
+resource "google_monitoring_notification_channel" "email_always" {
+  for_each     = toset(var.alert_emails)
+  display_name = "${var.name_prefix} HA ${each.value} (luôn bật)"
+  type         = "email"
+
+  labels = {
+    email_address = each.value
+  }
+}
+
+# Đếm lượt chạy lỗi (mức ERROR trở lên) của hai job mute. Log của Cloud Scheduler: resource.type=cloud_scheduler_job.
+resource "google_logging_metric" "ha_alert_mute_job_failed" {
+  name   = "${var.name_prefix}_alert_mute_job_failed"
+  filter = "resource.type=\"cloud_scheduler_job\" AND (resource.labels.job_id=\"${var.name_prefix}-alert-mute-on\" OR resource.labels.job_id=\"${var.name_prefix}-alert-mute-off\") AND severity>=ERROR"
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+  }
+}
+
+resource "google_monitoring_alert_policy" "mute_job_failed" {
+  display_name          = "${var.name_prefix} HA: job bật/tắt mute cảnh báo lỗi"
+  combiner              = "OR"
+  notification_channels = concat([for c in google_monitoring_notification_channel.email_always : c.id], var.notification_channel_ids)
+
+  conditions {
+    display_name = "Lượt bật/tắt mute lỗi (sau retry)"
+    condition_threshold {
+      filter          = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.ha_alert_mute_job_failed.name}\" resource.type=\"cloud_scheduler_job\""
+      comparison      = "COMPARISON_GT"
+      threshold_value = 0
+      duration        = "0s"
+
+      aggregations {
+        alignment_period   = "300s"
+        per_series_aligner = "ALIGN_SUM"
+      }
+    }
+  }
+
+  alert_strategy {
+    auto_close = "1800s"
+  }
+
+  documentation {
+    content   = "Job Cloud Scheduler bật/tắt kênh cảnh báo HA lỗi. Nếu lượt tắt lúc 08:35 hôm nay thất bại, kênh HA có thể vẫn tắt tới 23:55: bật kênh tay (Monitoring > Notification channels) hoặc chạy lại job."
+    mime_type = "text/markdown"
+  }
 }

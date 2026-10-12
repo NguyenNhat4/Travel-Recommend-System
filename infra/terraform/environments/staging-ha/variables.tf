@@ -334,9 +334,15 @@ variable "db_client_tags" {
 
 # --- Cảnh báo job cào (chạy bằng cron trên VM) ---
 variable "crawler_alerts_enabled" {
-  description = "Bật cảnh báo catalog không đổi / job không chạy / lượt thất bại (cron trên VM phát catalog.freshness từ bản crawler mới). Chỉ bật SAU KHI crawler bản có catalog.freshness đã deploy, nếu không cảnh báo vắng mặt kêu giả."
+  description = "Bật cảnh báo job không chạy (heartbeat catalog.due, phát ở mỗi tick cron) và lượt cào thất bại (run.end status=failed). Cả hai đã kiểm trên log thật (2026-10-12)."
   type        = bool
   default     = true
+}
+
+variable "crawler_late_alert_enabled" {
+  description = "Bật cảnh báo catalog quá hạn (catalog.freshness state=late). Chỉ bật SAU KHI bản crawler có sửa freshness trong nhánh due (src/data_collection/fresh_catalog.py) đã build và deploy; bản đang chạy chưa phát dòng này đều mỗi tick."
+  type        = bool
+  default     = false
 }
 
 variable "origin_tls_enabled" {

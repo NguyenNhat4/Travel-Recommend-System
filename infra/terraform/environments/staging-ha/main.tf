@@ -1,4 +1,19 @@
 locals {
+  # Agent và collector giám sát đưa vào metadata (không nhúng vào startup.sh.tftpl, vì template đó dùng templatefile
+  # và script có thể chứa ${ ). Startup script đọc các key này và cài như VM staging cũ (infra/monitoring).
+  monitoring_dir = "${path.module}/../../../monitoring"
+  monitoring_metadata = {
+    vota-mon-install      = file("${local.monitoring_dir}/install-vota-docker-event-watcher.sh")
+    vota-mon-ops-agent    = file("${local.monitoring_dir}/ops-agent-staging.yaml")
+    vota-mon-logrotate    = file("${local.monitoring_dir}/vota-monitoring-logrotate.conf")
+    vota-mon-watcher-py   = file("${local.monitoring_dir}/vota-docker-event-watcher.py")
+    vota-mon-watcher-unit = file("${local.monitoring_dir}/vota-docker-event-watcher.service")
+    vota-mon-disk-py      = file("${local.monitoring_dir}/vota-container-disk-collector.py")
+    vota-mon-disk-unit    = file("${local.monitoring_dir}/vota-container-disk-collector.service")
+    vota-mon-stats-py     = file("${local.monitoring_dir}/vota-container-stats-collector.py")
+    vota-mon-stats-unit   = file("${local.monitoring_dir}/vota-container-stats-collector.service")
+  }
+
   registry_host = split("/", var.backend_image)[0]
   # The host-network compose used by the single staging VM, plus resource limits for the HA tier.
   compose = file("${path.module}/compose.ha.yml")
@@ -21,6 +36,11 @@ resource "google_compute_instance_template" "app" {
   name_prefix  = "${var.name_prefix}-app-"
   machine_type = var.machine_type
   tags         = ["${var.name_prefix}-app"]
+  # Nhãn nhóm để lọc VM của MIG theo nhãn (metadata.user_labels.group), không chỉ theo tên VM.
+  labels = {
+    group = "${var.name_prefix}-app"
+    role  = "app"
+  }
 
   disk {
     source_image = var.boot_image
@@ -45,10 +65,10 @@ resource "google_compute_instance_template" "app" {
     enable_integrity_monitoring = true
   }
 
-  metadata = {
+  metadata = merge(local.monitoring_metadata, {
     startup-script         = local.startup
     google-logging-enabled = "true"
-  }
+  })
 
   depends_on = [
     google_secret_manager_secret_iam_member.backend_env_reader,
