@@ -174,7 +174,8 @@ Trợ lý lập lịch trình không phải là một chuỗi prompt đơn giả
 stateDiagram-v2
     [*] --> ClassifyTurn: Người dùng gửi yêu cầu
     ClassifyTurn --> Converse: Trò chuyện / ngoài phạm vi (đặt chỗ, chèn lệnh) / tin nhắn rác, tục tĩu (luật tất định, không gọi LLM)
-    Converse --> [*]: Trả lời hoặc từ chối, không gọi tool
+    ClassifyTurn --> Converse: Người dùng không muốn đi/lên lịch nữa ("không đi nữa"): cảm ơn, hẹn gặp lại, không form, giữ chuyến đang lên
+    Converse --> [*]: Trả lời, chào tạm biệt hoặc từ chối, không gọi tool
     ClassifyTurn --> AnalyzeIntent: Yêu cầu du lịch
     ClassifyTurn --> SuggestForm: Câu trả lời không thêm được thông tin ("không biết") khi còn thiếu điểm đến/số ngày/ngày đi/số người
     AnalyzeIntent --> CheckClarification: Trích xuất thông tin (Điểm đến, Nơi đi, Ngày, Số người, Ngân sách)

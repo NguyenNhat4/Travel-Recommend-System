@@ -52,7 +52,7 @@ POST /api/v1/assistant/itineraries hoặc /stream
   -> agents/nodes.py                   hàm của từng node (luật chi tiết ở agents/steps/)
        intake -> classify
          |- thiếu dữ liệu -> clarify -> finalize
-         |- hội thoại/refusal -> converse -> finalize
+         |- hội thoại/không muốn đi nữa/refusal -> converse -> finalize
          `- đủ dữ liệu -> tool -> evaluate
                               |- candidate hợp lệ -> filter -> compose -> narrate -> finalize
                               |     (filter: luật cùng tên + LLM chỉ ra cặp điểm tham quan trùng)

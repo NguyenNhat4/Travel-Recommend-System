@@ -17,11 +17,16 @@ Thứ tự kiểm trong `classify`; bước nào khớp thì dừng ở đó:
 4. **LLM gắn một nhãn:**
    - `travel` → đi `extract`;
    - `vague` → nếu đã có lượt trước và còn thiếu trường bắt buộc thì hỏi lại kèm form, không thì như `travel`;
+   - `stop` → người dùng không muốn đi hoặc không muốn lên lịch nữa ("ko đi nữa", "thôi huỷ lịch trình"): `converse` cảm
+     ơn, hẹn gặp lại; không form, không hỏi thêm, không nút; chuyến đang lên giữ nguyên, chỉ bỏ lời mời lập lịch đang chờ
+     (AC-AGT-01, chốt 2026-10-12);
    - `conversation` → trò chuyện;
    - `out_of_scope` → từ chối 400.
 
-`out_of_scope` gồm đặt chỗ, thanh toán, giỏ hàng, huỷ/đổi đơn đã có, chèn lệnh, đòi secret. "Không đi nữa", "đổi ngày"
-vẫn là `travel`. Luật guardrail chi tiết: [../langgraph-nodes.md](../langgraph-nodes.md) mục Guardrail.
+`out_of_scope` gồm đặt chỗ, thanh toán, giỏ hàng, huỷ/đổi đơn đã có, chèn lệnh, đòi secret. "Đổi ngày", "không đổi nữa",
+"không đi Đà Nẵng nữa" (chê một nơi) vẫn là `travel`; "không đi nữa" là `stop`, không phải huỷ đơn. Nối lại sau khi dừng
+("thôi đi tiếp") là `travel` trên chuyến đã giữ. Luật guardrail chi tiết: [../langgraph-nodes.md](../langgraph-nodes.md)
+mục Guardrail.
 
 ## Trường của chuyến đi
 

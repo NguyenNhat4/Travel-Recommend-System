@@ -91,12 +91,14 @@ class TurnRoute(StrictModel):
 
     `explore` (FR-AGT-06): hỏi một điểm đến có gì, khách sạn, điểm tham quan ở đó, khi chưa xin lập lịch.
     `fare`: hỏi giá hoặc giờ vé máy bay, trả lời bằng luật ở nhánh giá vé (`fare` chứa nơi đi, nơi đến…).
+    `stop` (AC-AGT-01, chốt 2026-10-12): người dùng không muốn đi hoặc không muốn lên lịch nữa ("ko đi nữa"); `converse`
+    cảm ơn, hẹn gặp lại, không hỏi thêm, chuyến đang lên giữ nguyên.
     `plan_request`: người dùng xin lập lịch hoặc đồng ý lời mời lập lịch; luật trong `classification.plan_consented`
     nhận các câu đồng ý ngắn trước, LLM chỉ bổ sung cho cách nói khác.
     Các trường còn lại chỉ là cách LLM hiểu câu chữ (tên nơi, thành phố, loại nơi, có hỏi giá không); code đối chiếu với
     catalog rồi mới dùng, không trường nào là dữ liệu sản phẩm.
     """
-    route: Literal["travel", "explore", "fare", "vague", "conversation", "out_of_scope"]
+    route: Literal["travel", "explore", "fare", "vague", "stop", "conversation", "out_of_scope"]
     plan_request: bool = Field(
         default=False,
         description="true khi tin nhắn xin lập lịch trình/kế hoạch, hoặc đồng ý lời mời lập lịch của trợ lý.")

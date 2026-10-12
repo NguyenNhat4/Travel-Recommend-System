@@ -81,6 +81,24 @@ class RouteTests(unittest.TestCase):
         for result in (first, second, third):
             self.assertNotIn('clarification_reason', result)
 
+    def test_not_wanting_to_travel_any_more_says_goodbye_and_keeps_the_trip(self):
+        # Báo lỗi 12/10/2026 (AC-AGT-01, chốt 2026-10-12): "ko đi nữa" đi `extract` rồi hiện form; giờ `converse` cảm ơn, hẹn
+        # gặp lại. Không hỏi gì, không nút, bỏ lời mời đang chờ; chuyến và việc đã đồng ý lập lịch giữ để nối lại.
+        for consent in (True, False):
+            with self.subTest(plan_consent=consent):
+                state = {**self.vague_state(days=None), 'query': 'ko đi nữa', 'plan_consent': consent,
+                         'pending_offer': {'destination': 'Đà Nẵng'}, 'clarification_reason': 'suggest_form',
+                         'clarification_rounds': 3}
+                result = route_result(state, TurnRoute(route='stop', place='Văn Miếu', city='Hà Nội'))
+                self.assertEqual(result['decision'], 'simple')
+                self.assertEqual(result['interaction_type'], 'stop')
+                self.assertFalse(result['refusal'])
+                self.assertEqual(result['missing_fields'], [])
+                self.assertIsNone(result['clarification_reason'])
+                self.assertIsNone(result['pending_offer'])
+                for key in ('intent', 'plan_consent', 'explore_place', 'offer_suggestions', 'clarification_rounds'):
+                    self.assertNotIn(key, result)
+
     def test_postponing_a_plan_offer_drops_the_offer_without_a_form(self):
         state = {**intake_node({'query': 'để sau'}), 'pending_offer': {'destination': 'Hà Nội'},
                  'intent': {**empty_intent(), 'destination': 'Hà Nội'}}
@@ -117,10 +135,18 @@ class ClassifyPromptTests(unittest.TestCase):
         self.assertNotIn('Return only the label', CLASSIFY_PROMPT)
         self.assertIn('Set `route`', CLASSIFY_PROMPT)
 
-    def test_dropping_or_vaguely_changing_the_trip_is_travel(self):
-        travel = CLASSIFY_PROMPT.split('conversation:')[0]
-        for phrase in ('đổi ngày', 'ngày nào cũng được', 'không đi nữa'):
+    def test_vaguely_changing_or_resuming_the_trip_is_travel(self):
+        travel = CLASSIFY_PROMPT.split('travel:')[1].split('\nexplore:')[0]
+        for phrase in ('đổi ngày', 'đi tiếp'):
             self.assertIn(phrase, travel)
+        self.assertNotIn('không đi nữa', travel)
+
+    def test_not_wanting_to_travel_any_more_has_its_own_label(self):
+        # Báo lỗi 12/10/2026: "ko đi nữa" là `travel` nên hiện form (AC-AGT-01, chốt 2026-10-12).
+        stop = CLASSIFY_PROMPT.split('\nstop:')[1].split('\nconversation:')[0]
+        for phrase in ('không đi nữa', 'ko đi du lịch nữa', 'huỷ chuyến', 'không đổi nữa', 'để sau'):
+            self.assertIn(phrase, stop)
+        self.assertIn('exactly one of the seven labels', CLASSIFY_PROMPT)
 
     def test_prompt_defines_the_vague_label_from_the_trip_context(self):
         self.assertIn('vague:', CLASSIFY_PROMPT)

@@ -189,6 +189,7 @@ def route_result(state: dict, result: TurnRoute) -> dict:
     Chưa đồng ý: câu du lịch hay hỏi về một nơi đều qua `extract` để ghi lại điểm đến và thông tin đã nói, rồi
     `extract_result` đưa sang `explore` (không hỏi thông tin chuyến); "không biết" đi bậc gợi ý của `converse` (bậc 2
     tự chọn một điểm đến và khám phá luôn). Trò chuyện và ngoài phạm vi đi `converse`, trả lời thường kèm nút gợi ý.
+    Không muốn đi hay lên lịch nữa (`stop`, AC-AGT-01 chốt 2026-10-12) đi `converse` cảm ơn, hẹn gặp lại ở cả hai giai đoạn.
     """
     route = TurnRoute.model_validate(result)
     label = route.route
@@ -196,6 +197,11 @@ def route_result(state: dict, result: TurnRoute) -> dict:
         # Hỏi giá/giờ vé máy bay: nhánh giá vé của `explore` tra chuyến bằng luật từ các trường LLM đã hiểu.
         return {**understood(route), "interaction_type": "conversation", "refusal": False, "decision": "explore",
                 "fare_question": True, "missing_fields": [], "events": [event("classify", "route fare")]}
+    if label == "stop":
+        # Không hỏi gì, không form, không nút; bỏ lời mời lập lịch đang chờ. Chuyến và việc đã đồng ý lập lịch giữ nguyên
+        # để "thôi đi tiếp" nối lại được. Không lấy `understood`: tên nơi LLM đọc ra sẽ làm `converse` trả lời về nơi đó.
+        return {"interaction_type": "stop", "refusal": False, "decision": "simple", "missing_fields": [],
+                "clarification_reason": None, "pending_offer": None, "events": [event("classify", "route stop")]}
     consent = plan_consented(state, label, route.plan_request)
     update = {"interaction_type": "travel" if label in ("vague", "explore") else label,
               "refusal": label == "out_of_scope", **understood(route),

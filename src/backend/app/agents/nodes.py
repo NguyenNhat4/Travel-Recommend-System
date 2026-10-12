@@ -216,11 +216,11 @@ def classify_node(state: AgentState, *, llm=None) -> dict:
     """Phân luồng lượt chat, không trích gì khác. **Gọi LLM** (prompt ngắn, output một nhãn).
 
     Đọc: `query` và ngữ cảnh hội thoại chung (`history.llm_context`).
-    Ghi: `decision` (`travel`/`missing_info`/`simple`/`error`), `interaction_type` (`travel`/`conversation`/`out_of_scope`), `refusal`, `missing_fields`;
+    Ghi: `decision` (`travel`/`missing_info`/`simple`/`error`), `interaction_type` (`travel`/`conversation`/`stop`/`out_of_scope`), `refusal`, `missing_fields`;
     nhãn `vague` còn ghi `clarification_reason`, `start_date_asked`, `clarification_rounds`.
     Đi tiếp (`routing.route_after_classify`): `extract` khi là du lịch · `clarify` (kèm form) khi câu trả lời
-    không thêm được thông tin mà chuyến đi còn thiếu trường bắt buộc · `converse` khi trò chuyện hoặc
-    ngoài phạm vi (đặt chỗ, thanh toán, chèn lệnh đều là ngoài phạm vi) · `dead_letter` khi lỗi.
+    không thêm được thông tin mà chuyến đi còn thiếu trường bắt buộc · `converse` khi trò chuyện, khi người dùng không
+    muốn đi nữa (`stop`) hoặc ngoài phạm vi (đặt chỗ, thanh toán, chèn lệnh đều là ngoài phạm vi) · `dead_letter` khi lỗi.
     """
     if state.get("decision") == "error":
         return {"events": [event("classify", "request rejected")]}
@@ -412,10 +412,11 @@ async def ask_clarification_node_async(state: AgentState, *, llm=None, timeout_s
 
 
 def converse_node(state: AgentState, *, llm=None) -> dict:
-    """Reply to chit-chat and refusals. No product has been retrieved at this point.
+    """Reply to chit-chat, goodbyes and refusals. No product has been retrieved at this point.
 
     Đọc: `query`, `conversation_history`, `interaction_type`, `refusal`, `intent`, `missing_fields`.
-    Ghi: `response` `NEEDS_CLARIFICATION`, hoặc `VALIDATION_ERROR` (400) khi yêu cầu ngoài phạm vi.
+    Ghi: `response` `NEEDS_CLARIFICATION`, hoặc `VALIDATION_ERROR` (400) khi yêu cầu ngoài phạm vi. Lượt `stop`
+    ("ko đi nữa") chỉ có lời cảm ơn, hẹn gặp lại: không tiêu đề, không trường thiếu, không form, không nút.
     Đi tiếp: `finalize`. `blocked_by_guardrail` (từ `classify`) thì dùng câu từ chối cố định, `unclear_input`
     (tin nhắn rác, tầng 1) thì dùng câu "chưa hiểu" cố định — cả hai không gọi LLM.
     """

@@ -13,7 +13,7 @@ lập lịch trình từ sản phẩm thật. Mỗi lượt chạy qua một gra
 stateDiagram-v2
     [*] --> intake: tin nhắn + conversationId
     intake --> classify
-    classify --> converse: trò chuyện / ngoài phạm vi / bị guardrail chặn
+    classify --> converse: trò chuyện / không muốn đi nữa / ngoài phạm vi / bị guardrail chặn
     classify --> clarify: câu "không biết" khi còn thiếu trường bắt buộc
     classify --> extract: yêu cầu du lịch
     extract --> clarify: thiếu / sai / mâu thuẫn
