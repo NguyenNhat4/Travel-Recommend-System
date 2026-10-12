@@ -141,7 +141,7 @@ Ký hiệu auth: **—** không gửi JWT · **tùy** gửi nếu có · **bắt
 | Lối vào danh mục | — | — | — | Bốn ô tĩnh từ `navConfig.ts` → `/flights`, `/hotels`, `/experiences`, `/combos` |
 | Gợi ý khi gõ ở ô tìm kiếm (FR-SRC-05) | `GET /search/suggestions?q=&limit=8` | — | `suggestions[]` (`type` = `destination` \| `product`, `label`, `productId`, `taxonomy`, `destination`, `productCount`) | Chỉ gọi khi có ≥ 2 ký tự chữ/số, sau 200 ms không gõ; huỷ lượt cũ; bộ nhớ đệm trang 50 khoá / 5 phút. Lỗi → "Chưa tải được gợi ý", vẫn có "Xem tất cả". Không tính vào ngân sách request khi tải trang vì chỉ gọi lúc gõ. Ô rỗng không gọi |
 
-**Ngân sách request của Home:** khách ≤ 1 request khi tải (khối ④ nếu trong vùng nhìn), đã đăng nhập ≤ 2 (thêm ①); các khối dưới màn hình chỉ tải khi cuộn tới (`useInView` + `useLazySection`). ① quá 3 giây (`RECOMMENDATION_TIMEOUT_MS`) thì ẩn khối và hiện dòng "Thử lại".
+**Ngân sách request của Home:** khách ≤ 1 request khi tải (khối ④ nếu trong vùng nhìn), đã đăng nhập ≤ 2 (thêm ①); các khối dưới màn hình chỉ tải khi cuộn tới (`useInView` + `useLazySection`). ① quá 10 giây (`RECOMMENDATION_TIMEOUT_MS`) thì ẩn khối và hiện dòng "Thử lại".
 
 ### 4.1a. Trang danh mục `/hotels`, `/flights`, `/experiences`, `/combos`
 
@@ -431,7 +431,7 @@ Dùng bảng nhãn tiếng Việt ở `hop-dong-tich-hop-backend.md` §2.5. Key 
 | Hằng số | Giá trị | Dùng ở |
 |---|---|---|
 | `WEAK_RESULT_TOP_SCORE` | `0.35` | Băng "kết quả yếu" ở Search |
-| `RECOMMENDATION_TIMEOUT_MS` | `3000` | Home ① |
+| `RECOMMENDATION_TIMEOUT_MS` | `10000` | Home ① |
 | `ASSISTANT_SLOW_MS` | `8000` | Trạng thái "chậm" của trợ lý |
 | `ITINERARY_NOTE_MAX_CHARS` | `160` | Ghi chú 💬 |
 | `BECAUSE_NAME_MAX_CHARS` | `32` | `BecauseLine` |

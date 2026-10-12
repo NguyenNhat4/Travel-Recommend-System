@@ -25,6 +25,10 @@ for (const width of [320, 768, 1024, 1440]) {
     });
     await page.goto('/');
     // Home tự tải điểm đến khi khối "Bạn muốn đi đâu?" tới gần vùng nhìn; điều cần kiểm là việc mở widget không tải thêm.
+    // Ở 768/1024 px khối này vào vùng nhìn trễ sau khi bố cục ổn định, nên cuộn tới khối để request của trang chủ xảy ra trước mốc đếm.
+    await page.getByRole('heading', { name: 'Bạn muốn đi đâu?' }).scrollIntoViewIfNeeded();
+    await expect.poll(() => destinationRequests).toBeGreaterThan(0);
+    await page.evaluate(() => window.scrollTo(0, 0));
     await page.waitForLoadState('networkidle');
     destinationRequests = 0;
     await page.getByRole('button', { name: 'Mở trợ lý du lịch AI' }).click();

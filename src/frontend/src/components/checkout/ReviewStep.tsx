@@ -170,7 +170,7 @@ export const ReviewStep: React.FC<{ ctl: CheckoutController }> = ({ ctl }) => {
         </div>
         <p className="text-[11px] text-slate-500 flex items-start gap-1.5">
           <Lock className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-          Bạn nhập thẻ trên trang do Stripe host; V-OTA không nhận và không lưu số thẻ. Chế độ test: dùng thẻ 4242 4242 4242 4242.
+          Bạn nhập thẻ trên trang do Stripe host; Sota không nhận và không lưu số thẻ. Chế độ test: dùng thẻ 4242 4242 4242 4242.
         </p>
       </section>
 

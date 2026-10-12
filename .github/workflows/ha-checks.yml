@@ -1,4 +1,4 @@
-name: HA checks
+name: HA CI
 
 # Kiểm các phần HA mà workflow khác không chạy: Terraform staging-ha (infra-terraform-staging chỉ validate root `staging`),
 # test cấu trúc, cụm Patroni thật trong Docker, khoá DB của crawler trên Postgres thật. Chỉ kiểm, không deploy.

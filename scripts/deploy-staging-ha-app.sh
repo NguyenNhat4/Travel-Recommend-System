@@ -60,6 +60,12 @@ google_logging_metric.crawler_catalog_late[0]|create
 google_monitoring_alert_policy.crawler_catalog_late[0]|create
 google_monitoring_alert_policy.crawler_run_failed[0]|update
 google_monitoring_alert_policy.crawler_silent[0]|update
+# Patroni và dashboard (2026-10-12): startup-script có metrics_filter (f664124c), pg-a/pg-b đã ghi trực tiếp qua SSH.
+# Plan đã kiểm: chỉ metadata và dashboard_json đổi, không đổi machine_type/scheduling/status (không dừng VM DB).
+google_compute_instance.patroni["a"]|update
+google_compute_instance.patroni["b"]|update
+google_compute_instance.patroni["w"]|update
+google_monitoring_dashboard.ha|update
 '
 unexpected="$(terraform show -json "$plan_file" | jq -r '
   .resource_changes[]

@@ -280,7 +280,7 @@ describe('ProductDetailView', () => {
     api.listVariants.mockResolvedValue({ ...variantsFixture, results: [], total: 0 });
     render(<ProductDetailView productId="nt-h-10" />);
     // Không có hạng phòng nào: trang vẫn hiện, không có thanh ngày, không có nút Đặt ngay lẫn nút thêm giỏ.
-    expect(await screen.findByText(/chưa có hạng phòng nào trên V-OTA/)).toBeTruthy();
+    expect(await screen.findByText(/chưa có hạng phòng nào trên Sota/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: /^Đặt ngay/ })).toBeNull();
     expect(screen.queryByTestId('hotel-trip-bar')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Thêm vào giỏ hàng' })).toBeNull();
@@ -393,10 +393,10 @@ describe('ProductDetailView', () => {
     expect(travel.startBooking).not.toHaveBeenCalled();
   });
 
-  it('shows the "no longer on V-OTA" page with popular products on 404', async () => {
-    api.getProduct.mockRejectedValue(new ApiError('Sản phẩm này không còn trên V-OTA.', 'PRODUCT_NOT_FOUND', 404, false));
+  it('shows the "no longer on Sota" page with popular products on 404', async () => {
+    api.getProduct.mockRejectedValue(new ApiError('Sản phẩm này không còn trên Sota.', 'PRODUCT_NOT_FOUND', 404, false));
     render(<ProductDetailView productId="nt-hotel-01" />);
-    expect(await screen.findByText('Sản phẩm này không còn trên V-OTA')).toBeTruthy();
+    expect(await screen.findByText('Sản phẩm này không còn trên Sota')).toBeTruthy();
     expect(await screen.findByText(popularFixture.results[0].name)).toBeTruthy();
     expect(api.trackProductView).not.toHaveBeenCalled();
   });
