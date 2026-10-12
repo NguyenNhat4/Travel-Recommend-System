@@ -2,8 +2,8 @@
 
 - Ngày: 2026-10-12
 - Người đề xuất: tqanh123 / Claude Code
-- Trạng thái: chờ chốt (người dùng đã chọn hướng Redis ngày 2026-10-12; chờ chốt nội dung dưới đây)
-- Chốt bởi / ngày:
+- Trạng thái: đã áp dụng (2026-10-12: PRD `architecture.md` §1/§4, `deployment-plan.md` §2; contract trong 1.25.0; backend, hạ tầng và spec theo `docs/plan/2026-10-12-goi-y-trang-chu-cache-redis-va-ke-pho-bien.md`)
+- Chốt bởi / ngày: tqanh123, 2026-10-12
 - PRD bị ảnh hưởng: `docs/prd/architecture.md` §1 (sơ đồ), §4 (dòng Redis); `docs/prd/deployment-plan.md` §2 (bảng biến môi trường)
 - Mã FR/NFR: NFR-PERF-01; giữ nguyên FR-REC-02, AC-REC-02, AC-REC-03, FR-BKG-03 / AC-BKG-04
 

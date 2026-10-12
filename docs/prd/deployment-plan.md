@@ -70,6 +70,8 @@ Hệ thống phân tách ranh giới bảo mật bằng các chuỗi kết nối
 | `BOOKING_DRAFT_TTL_MINUTES` | Thời gian hiệu lực của đơn nháp (Đặt ngay), mặc định `30` | Tất cả | Không bí mật |
 | `GUEST_BOOKING_TTL_DAYS` | Thời gian Redis giữ giỏ và đơn nháp của khách chưa đăng nhập, mặc định `3` | Tất cả | Không bí mật |
 | `BOOKING_REDIS_URL` | Redis cho giỏ và đơn nháp của khách chưa đăng nhập, dùng DB index riêng | Tất cả | Có mật khẩu; không mở ra mạng ngoài |
+| `RECOMMEND_CACHE_REDIS_URL` | Redis cho cache kết quả gợi ý cá nhân hoá, DB index riêng (ví dụ `/4`) | Tất cả | Có mật khẩu; không mở ra mạng ngoài. Để trống thì tắt cache (dev/test) |
+| `RECOMMEND_CACHE_TTL_SECONDS` | Thời gian sống của một mục cache gợi ý, mặc định `900` | Tất cả | Không bí mật |
 | `PAYMENT_MAX_FAILED_ATTEMPTS` | Số lần thẻ bị từ chối tối đa, mặc định `3` | Tất cả | Không bí mật |
 | `PUBLIC_WEB_URL` | Gốc URL web để dựng `success_url`, `cancel_url` | Tất cả | Không bí mật |
 
