@@ -336,7 +336,7 @@ variable "db_client_tags" {
 variable "crawler_alerts_enabled" {
   description = "Bật cảnh báo catalog không đổi / job không chạy / lượt thất bại (cron trên VM phát catalog.freshness từ bản crawler mới). Chỉ bật SAU KHI crawler bản có catalog.freshness đã deploy, nếu không cảnh báo vắng mặt kêu giả."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "origin_tls_enabled" {
