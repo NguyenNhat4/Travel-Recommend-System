@@ -1,4 +1,4 @@
-name: Crawler CI/CD
+name: Crawler CI
 
 on:
   pull_request:

@@ -4,7 +4,7 @@ Hướng dẫn dựng, kiểm tra và xử lý sự cố cho PostgreSQL replica.
 
 ## 1. Dựng lần đầu (tự động qua CI/CD)
 
-Không chạy lệnh tay. Workflow `Staging Infra Terraform` (`.github/workflows/infra-terraform-staging.yml`) làm toàn bộ khi có thay đổi được merge vào nhánh release:
+Không chạy lệnh tay. Workflow `Staging Infra CI/CD` (`.github/workflows/infra-terraform-staging.yml`) làm toàn bộ khi có thay đổi được merge vào nhánh release:
 
 1. **Job `plan_apply_staging`**: plan, chặn plan có xoá/thay thế, chặn cập nhật tại chỗ VM primary/app, rồi apply. Xem plan trong Summary của run. Cần xoá/thay thế có chủ đích thì chạy workflow tay với `allow_destroy=true`; cần cập nhật VM primary/app thì chạy tay với `allow_vm_update=true` (CI chụp snapshot disk primary trước).
 2. **Job `replication_staging`** (chạy sau khi apply thành công) chạy `ops/ci-db-replication.sh` qua IAP SSH, theo thứ tự:
@@ -90,7 +90,7 @@ Với app VM đơn cũ (tunnel SSH), vẫn theo cách tay:
 
 Ngay sau `promote-db-replica.sh`, DB mới là một node duy nhất. Mất nó trước khi có replica mới là mất mọi ghi từ lúc nâng. Làm ngay, không để đến sáng:
 
-1. Tạo VM replica mới **ở zone khác** zone của DB vừa được nâng (cùng region): workflow Staging Infra Terraform với `TF_VAR_db_replica_vm_name` mới và `TF_VAR_db_replica_zone` khác zone của primary mới (biến GitHub `GCE_DB_REPLICA_INSTANCE`, `GCE_DB_REPLICA_ZONE`).
+1. Tạo VM replica mới **ở zone khác** zone của DB vừa được nâng (cùng region): workflow Staging Infra CI/CD với `TF_VAR_db_replica_vm_name` mới và `TF_VAR_db_replica_zone` khác zone của primary mới (biến GitHub `GCE_DB_REPLICA_INSTANCE`, `GCE_DB_REPLICA_ZONE`).
 2. Nối replication cho cặp mới (primary mới = VM vừa nâng):
    ```bash
    GCP_PROJECT_ID=<project> PRIMARY_VM=<vm vừa nâng> GCE_ZONE=<zone của nó> \
