@@ -42,6 +42,11 @@ export UVICORN_WORKERS="${UVICORN_WORKERS:-2}"
 export UVICORN_GRACEFUL_SECONDS="${UVICORN_GRACEFUL_SECONDS:-100}"
 export BACKEND_STOP_GRACE="${BACKEND_STOP_GRACE:-110}"
 
+acquire_lock() { # hai lần chạy trên cùng VM (vd. Backend CD và Frontend CD chồng nhau) phải tuần tự
+  exec 9> /var/lock/vota-slot-deploy.lock
+  flock -w 1800 9 || die "không lấy được khoá slot-deploy sau 30 phút"
+}
+
 slot_ports() { # $1 = blue|green -> đặt BACKEND_PORT và FRONTEND_PORT
   case "$1" in
     blue) BACKEND_PORT=8001; FRONTEND_PORT=3001 ;;
@@ -364,7 +369,7 @@ drain_and_remove_old() { # $1 = tên slot cũ hoặc legacy; chạy nền để 
       docker stop -t $BACKEND_STOP_GRACE vota-frontend-$old vota-backend-$old >/dev/null 2>&1 || true
       docker rm -f vota-frontend-$old vota-backend-$old >/dev/null 2>&1 || true
     fi
-  " > /var/log/vota-slot-drain.log 2>&1 < /dev/null &
+  " 9>&- > /var/log/vota-slot-drain.log 2>&1 < /dev/null &
   log "bản cũ ($old) sẽ được rút sau $DRAIN_SECONDS giây"
 }
 
@@ -378,6 +383,7 @@ require_images() {
 # Các mode
 # ---------------------------------------------------------------------------------------------------------------
 mode_boot() {
+  acquire_lock
   require_images
   refresh_config
   write_files
@@ -406,6 +412,7 @@ mode_boot() {
 }
 
 mode_deploy() {
+  acquire_lock
   require_images
   local avail active new
   avail="$(awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo)"
