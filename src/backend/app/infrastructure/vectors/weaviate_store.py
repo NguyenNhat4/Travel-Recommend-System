@@ -313,6 +313,24 @@ class WeaviateVectorSearch:
                 out[str(obj.properties["productId"])] = _object_vector(obj)
         return out
 
+    def vectors_with_metadata(self, product_ids: Sequence[str]) -> dict[str, tuple[np.ndarray, VectorMetadata]]:
+        """Vector kèm `modelVersion`/`textHash` theo id, cùng đường gRPC với `vectors()` (float32 giống hệt) — cho việc nạp
+        sẵn vector vào RAM (`PreloadedVectorSearch`, 2026-10-12)."""
+        out: dict[str, tuple[np.ndarray, VectorMetadata]] = {}
+        ids = list(dict.fromkeys(product_ids))
+        for start in range(0, len(ids), self._ID_CHUNK):
+            chunk = ids[start:start + self._ID_CHUNK]
+            result = self.collection.query.fetch_objects(
+                filters=self._id_filter(chunk), limit=len(chunk), include_vector=True,
+                return_properties=["productId", "modelVersion", "textHash"],
+            )
+            for obj in result.objects:
+                props = obj.properties
+                pid = str(props["productId"])
+                out[pid] = (_object_vector(obj), VectorMetadata(str(obj.uuid), pid, str(props.get("modelVersion") or ""),
+                                                                str(props.get("textHash") or "")))
+        return out
+
     def metadata(self, product_ids: Sequence[str]) -> dict[str, VectorMetadata]:
         """`modelVersion`/`textHash` của object theo id tất định, không tải vector."""
         out = {}
@@ -334,7 +352,9 @@ class WeaviateVectorSearch:
 class WeaviateVectorStore:
     """Metadata search unit từ PostgreSQL + kho vector Weaviate để truy vấn theo request.
 
-    Không tải vector lúc khởi động. Mỗi lần nạp kiểm từng unit theo object id, `modelVersion` và `textHash`:
+    `load()` không tải vector (khởi động không chờ). Khi `search` là `PreloadedVectorSearch` (2026-10-12), `load()` báo cho
+    nó tập vector cần có (`expect`), còn việc tải vector vào RAM chạy ở nền do `RecsysRefresher` lên lịch. Mỗi lần nạp kiểm
+    từng unit theo object id, `modelVersion` và `textHash`:
     unit chưa có vector vẫn nằm trong metadata (Weaviate chưa trả nó cho tới khi job index xong), unit có vector
     của text cũ dùng tạm vector đó. Chỉ từ chối khi dưới một nửa unit có vector đúng model — collection rỗng,
     chưa index, hoặc vừa đổi text builder mà chưa index lại.
@@ -363,4 +383,8 @@ class WeaviateVectorStore:
         if len(current) < len(desired) or stale:
             logger.warning("recsys.vectors.out_of_sync search_units=%d missing=%d stale_text=%d",
                            len(desired), len(desired) - len(current), stale)
+        # Sau bước kiểm: lần nạp lỗi không được đổi bảng vector trong RAM đang phục vụ. Chỉ chạy cục bộ, không gọi mạng.
+        expect = getattr(self.search, "expect", None)
+        if callable(expect):
+            expect(desired.keys(), stored)
         return catalog.to_index(self.expected_model_version), self.search

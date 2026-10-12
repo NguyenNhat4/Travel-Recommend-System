@@ -137,6 +137,9 @@ class Settings(BaseSettings):
     # Các lượt Weaviate độc lập của /recommendations chạy song song trên pool riêng `recsys-io` mỗi tiến trình (2026-10-12).
     # Output y hệt tuần tự; 0 = tuần tự, rollback không cần redeploy.
     recommend_io_workers: int = Field(default=16, ge=0, le=64)
+    # Nạp sẵn vector sản phẩm vào RAM ở nền sau mỗi lần nạp catalog (2026-10-12): tra vector theo id lấy từ RAM, ANN vẫn qua
+    # Weaviate. False = mọi lần tra vector hỏi Weaviate như trước (rollback không cần redeploy).
+    recommend_preload_vectors: bool = True
     # Hybrid /search (HYBRID_CANDIDATE_SCORE, spec §2.4): BM25 trên nameAscii/searchTextAscii + RRF ở app.
     search_hybrid: bool = True  # False → dense-only ANN_CANDIDATE_SCORE như trước 25/09
     search_normalize: bool = True  # bước chuẩn hoá truy vấn (viết tắt, chính tả tên riêng, điểm đến, kiểu đi); False → nguyên câu

@@ -9,8 +9,9 @@ Hai adapter CDP trong `infrastructure/cdp/` cùng tồn tại vì là hai chiề
   * `PostgresCdpReader`  — ĐỌC (sync): lịch sử của khách và bảng phổ biến cho recsys.
 Cả hai đi qua `CDP_DATABASE_URL`; không nơi nào khác được SQL thẳng vào schema `cdp` (AGENTS.md §6.1).
 
-Nạp metadata search unit lúc khởi động rồi nạp lại mỗi `CATALOG_REFRESH_SECONDS`; vector ở lại Weaviate.
-Lần nạp lại lỗi thì giữ bản đang phục vụ. Chưa nạp được lần nào (thiếu database, Weaviate hoặc index) thì log
+Nạp metadata search unit lúc khởi động rồi nạp lại mỗi `CATALOG_REFRESH_SECONDS`; truy vấn ANN luôn ở Weaviate.
+Vector theo id được nạp vào RAM ở nền sau mỗi lần nạp (`PreloadedVectorSearch`, `RECOMMEND_PRELOAD_VECTORS`; khởi động
+không chờ). Lần nạp lại lỗi thì giữ bản đang phục vụ. Chưa nạp được lần nào (thiếu database, Weaviate hoặc index) thì log
 rồi bỏ qua phần recsys — các route còn lại vẫn phục vụ được, đúng tinh thần "CDP lỗi thì không kéo sập cả app"
 (hop-dong-tich-hop-cdp.md §6).
 """
@@ -206,18 +207,25 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None, *,
                         embedder, QueryEmbeddingCache(settings.search_embed_cache_size),
                         log_every=settings.search_embed_cache_log_every,
                     )
+            search = WeaviateVectorSearch(
+                connect_weaviate(
+                    settings.weaviate_url,
+                    api_key=settings.weaviate_api_key,
+                    grpc_port=settings.weaviate_grpc_port,
+                    timeout_seconds=settings.weaviate_timeout_seconds,
+                ),
+                collection=settings.vector_collection,
+                dimension=settings.embed_dimension,
+            )
+            if settings.recommend_preload_vectors:
+                # Tra vector theo id từ RAM (nạp ở nền sau mỗi lần nạp); ANN vẫn qua Weaviate. Dựng một lần: RecsysRefresher
+                # truyền lại store này ở các lần nạp sau nên bảng vector sống qua reload.
+                from src.backend.app.infrastructure.vectors.preloaded_vector_search import PreloadedVectorSearch
+
+                search = PreloadedVectorSearch(search)
             vector_store = WeaviateVectorStore(
                 settings.database_url,
-                WeaviateVectorSearch(
-                    connect_weaviate(
-                        settings.weaviate_url,
-                        api_key=settings.weaviate_api_key,
-                        grpc_port=settings.weaviate_grpc_port,
-                        timeout_seconds=settings.weaviate_timeout_seconds,
-                    ),
-                    collection=settings.vector_collection,
-                    dimension=settings.embed_dimension,
-                ),
+                search,
                 expected_model_version=f"{settings.embed_model}:{TEXT_BUILDER_VERSION}",
             )
         logger.info("startup.recsys.index.load.start source=weaviate")
@@ -369,6 +377,7 @@ class RecsysRefresher:
         self._failures = 0
         self._stop = asyncio.Event()
         self._prewarm_task: asyncio.Task | None = None
+        self._preload_task: asyncio.Task | None = None   # nạp vector vào RAM (PreloadedVectorSearch), mỗi lần nạp lại
         self._prewarm_stop = threading.Event()
 
     async def reload(self) -> bool:
@@ -393,6 +402,10 @@ class RecsysRefresher:
             setattr(self.app.state, name, service)
         if self._on_publish is not None:
             self._on_publish()
+        preload = getattr(updated.get("recsys_vectors"), "preload", None)
+        if callable(preload) and (self._preload_task is None or self._preload_task.done()):
+            # Nền: chỉ lấy vector còn thiếu hoặc đã đổi `textHash` từ lần nạp trước; trước khi xong vẫn hỏi Weaviate.
+            self._preload_task = asyncio.create_task(self._run_preload(preload))
         if first:
             logger.info("startup.recsys.ready search_units=%d", len(updated["index"].units))
             if getattr(self.settings, "search_prewarm", False) and self._prewarm_task is None:
@@ -413,14 +426,24 @@ class RecsysRefresher:
         except Exception as exc:  # noqa: BLE001 — prewarm hỏng thì cache chỉ nạp dần theo request, không ảnh hưởng phục vụ
             logger.warning("search.prewarm.failed error=%s", exc)
 
-    async def wait_prewarm(self, timeout: float = PREWARM_SHUTDOWN_WAIT_SECONDS) -> None:
-        """Shutdown: chờ prewarm dừng (đã nhận `stop`) trước khi đóng embedder dùng chung."""
-        if self._prewarm_task is None:
-            return
+    async def _run_preload(self, preload) -> None:
         try:
-            await asyncio.wait_for(asyncio.shield(self._prewarm_task), timeout)
-        except (asyncio.TimeoutError, asyncio.CancelledError):
-            logger.warning("search.prewarm.shutdown_timeout seconds=%s", timeout)
+            report = await asyncio.to_thread(preload, self._prewarm_stop)
+            log_event(logger, "recsys.vectors.preload", outcome=report.get("outcome"), vectors=report.get("vectors"),
+                      fetched=report.get("fetched"), complete=report.get("complete"),
+                      duration_ms=round(1000 * float(report.get("seconds") or 0)))
+        except Exception as exc:  # noqa: BLE001 — nạp lỗi thì vẫn hỏi Weaviate như trước, không ảnh hưởng phục vụ
+            log_event(logger, "recsys.vectors.preload", "WARNING", outcome="failed", error_kind=type(exc).__name__)
+
+    async def wait_prewarm(self, timeout: float = PREWARM_SHUTDOWN_WAIT_SECONDS) -> None:
+        """Shutdown: chờ prewarm và việc nạp vector dừng (đã nhận `stop`) trước khi đóng embedder và client dùng chung."""
+        for name, task in (("search.prewarm", self._prewarm_task), ("recsys.vectors.preload", self._preload_task)):
+            if task is None:
+                continue
+            try:
+                await asyncio.wait_for(asyncio.shield(task), timeout)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                logger.warning("%s.shutdown_timeout seconds=%s", name, timeout)
 
     async def run(self) -> None:
         while not self._stop.is_set():

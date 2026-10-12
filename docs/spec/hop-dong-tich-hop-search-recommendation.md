@@ -334,6 +334,14 @@ có vector của text cũ dùng tạm vector đó. Engine chỉ từ chối (tư
 `SEARCH_UNAVAILABLE` ở §6) khi dưới một nửa search unit có vector đúng model —
 collection rỗng, chưa index, hoặc vừa đổi text builder.
 
+**Cập nhật 12/10/2026 (người dùng chốt, `docs/plan/2026-10-12-goi-y-trang-chu-cache-redis-va-ke-pho-bien.md`).**
+
+- **Nạp sẵn vector theo id vào RAM.** Sau mỗi lần nạp, backend nạp ở nền vector của mọi search unit vào RAM (`PreloadedVectorSearch`, `RECOMMEND_PRELOAD_VECTORS`, mặc định bật). Khởi động không chờ. Dung lượng khoảng 4.000 × 384 float32, cỡ 6 MB mỗi tiến trình. Lần này khác lần 24/09: chỉ tải vector e5 384 chiều, qua gRPC, ở nền.
+- **Phần nào dùng RAM:** lấy vector theo id (`vectors()`), và vector đính kèm hit của `nearVector` (gọi Weaviate với `include_vector=false`). Chưa nạp xong thì vẫn hỏi Weaviate như trên.
+- **ANN vẫn qua Weaviate** (NFR-PERF-03). Không quét tuần tự.
+- **Khi index đổi:** mục có `modelVersion`/`textHash` khác ở lần nạp sau thì bỏ ngay và lấy lại ở nền. Vector trong RAM trễ so với Weaviate tối đa một chu kỳ nạp, khi job index ghi lại object.
+- **Gọi song song:** các lượt độc lập của `/recommendations` (ANN ngắn hạn, ANN dài hạn, vector món phổ biến) chạy trên pool riêng `recsys-io` (`RECOMMEND_IO_WORKERS`). Kết quả ghép đúng thứ tự cũ, nên output y hệt chạy tuần tự.
+
 Vì chỉ có top-K, sản phẩm ngoài tập ứng viên vẫn có thể vượt cutoff. Do đó bốn
 trường sau là **bắt buộc**:
 

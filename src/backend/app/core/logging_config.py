@@ -127,6 +127,7 @@ EVENT_FIELDS: dict[str, set[str]] = {
     "recsys.recommend": {"persona", "branch", "result_count", "duration_ms", "cache", "stage_ms", "events_read"},
     "recsys.fallback": {"reason", "persona"},
     "recsys.explore_fill": {"filled"},
+    "recsys.vectors.preload": {"outcome", "vectors", "fetched", "complete", "duration_ms", "error_kind"},
     "cart.item.add": {"product_id", "quantity", "using_date", "owner_kind"},
     "cart.item.remove": {"cart_item_id", "owner_kind"},
     "draft.create": {"draft_id", "item_count", "owner_kind"},
