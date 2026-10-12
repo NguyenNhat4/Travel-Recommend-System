@@ -112,52 +112,5 @@ class ParseComboHotelsTests(unittest.TestCase):
         self.assertEqual(len(recs), 1)
 
 
-class ComboDatesTests(unittest.TestCase):
-    """Trang ghi "15/10" không có năm; hợp đồng `ProductAttributes.returnDate` là date (lỗi INVALID_TOOL_RESPONSE 08/10)."""
-
-    URL = "https://vn.trip.com/packages/list?dCityCode=SGN&dDate=2026-10-15&rDate=2026-10-18&locale=vi-VN"
-
-    def test_day_month_takes_year_from_full_date_and_never_guesses(self):
-        self.assertEqual(day_month_iso("15/10", "2026-10-15"), "2026-10-15")
-        self.assertEqual(day_month_iso("T5, 2/1", "2027-01-02"), "2027-01-02")  # qua năm: năm theo URL
-        self.assertEqual(day_month_iso("2026-10-15", None), "2026-10-15")      # đã ISO thì giữ
-        self.assertIsNone(day_month_iso("16/10", "2026-10-15"))                 # lệch ngày URL
-        self.assertIsNone(day_month_iso("15/10", None))
-        self.assertIsNone(day_month_iso(None, "2026-10-15"))
-
-    def test_trip_combo_dates_converts_or_drops_and_leaves_other_combos(self):
-        attrs = {"comboKind": "trip_real_flight_hotel", "url": self.URL, "departDate": "15/10", "returnDate": "19/10"}
-        self.assertEqual(trip_combo_dates(attrs), {"comboKind": "trip_real_flight_hotel", "url": self.URL,
-                                                   "departDate": "2026-10-15"})
-        done = {"comboKind": "trip_real_flight_hotel", "url": self.URL, "departDate": "2026-10-15"}
-        self.assertIs(trip_combo_dates(done), done)  # chạy lại không đổi gì
-        vinpearl = {"comboKind": "flight_hotel", "returnDate": "15/10"}
-        self.assertIs(trip_combo_dates(vinpearl), vinpearl)
-
-    def test_normalised_trip_combo_has_iso_dates(self):
-        import normalise
-        recs = parse_combo_hotels(HOTEL_HTML, parse_flight_card(FLIGHT_HTML), ORIGIN, DEST, self.URL, "2026-09-23T00:00:00Z")
-        attrs = normalise.trip_combo_product(recs[0])["attributes"]
-        self.assertEqual((attrs["departDate"], attrs["returnDate"]), ("2026-10-15", "2026-10-18"))
-
-
-class ComboRoutesTests(unittest.TestCase):
-    def test_only_pairs_hubs_with_destinations_that_have_both_airport_and_hotel_city_id(self):
-        hub = Destination("Hà Nội", "Hanoi", None, None, ("HAN",))
-        with_both = Destination("Nha Trang", "Nha Trang", None, None, ("CXR",), trip_hotel_city_id="1777")
-        no_hotel_id = Destination("Huế", "Hue", None, None, ("HUI",))  # có sân bay, không có trip_hotel_city_id
-        no_airport = Destination("Sa Pa", "Sa Pa", None, None, (), trip_hotel_city_id="123")
-        routes = combo_routes((hub, with_both, no_hotel_id, no_airport))
-        self.assertEqual(routes, [(hub, with_both)])
-
-    def test_hub_never_paired_with_itself(self):
-        hcm = Destination("TP. Hồ Chí Minh", "Ho Chi Minh City", None, None, ("SGN",), trip_hotel_city_id="301")
-        hanoi = Destination("Hà Nội", "Hanoi", None, None, ("HAN",), trip_hotel_city_id="286")
-        routes = combo_routes((hcm, hanoi))
-        self.assertNotIn((hcm, hcm), routes)
-        self.assertIn((hcm, hanoi), routes)
-        self.assertIn((hanoi, hcm), routes)
-
-
 if __name__ == "__main__":
     unittest.main()

@@ -151,7 +151,7 @@ Image [Dockerfile.fresh-catalog](../../Dockerfile.fresh-catalog) chứa collecto
 
 ### Hạn giờ và phục hồi khi nghẽn
 
-CLI `fresh_catalog.py` giám sát tiến trình chạy: `run.maxHours` mặc định 18 giờ cho toàn lượt; `timeout.processing` mặc định 30 phút cho mỗi bước xử lý (chuẩn hoá, kiểm tra, DB, index và lô streaming). Hạn giờ từng nguồn vẫn theo Cấu hình (mặc định `timeout.booking` 600, `timeout.agoda` 180 phút cho lượt làm mới cả catalog; cả lượt ước 11–14 giờ trên VM, luôn dưới `run.maxHours` 18 giờ nên không chồng lượt 02:00 hôm sau). Retry dùng chung hạn giờ của nguồn. Nguồn chạy bằng `crawl.py` quá hạn mà không tự dừng thì supervisor chỉ dừng cây tiến trình của nguồn đó (pid ở `detail.pid` của bước) và lượt chạy tiếp nguồn sau; chỉ khi nguồn vẫn "running" thêm 3 phút, hoặc bước trong tiến trình (khách sạn Trip, chuẩn hoá, DB, index) quá hạn, supervisor mới kết thúc cả lượt, ghi trạng thái lỗi trước khi thả khóa. Lượt full bị kết thúc cưỡng bức như vậy, hoặc bị hệ điều hành giết (hết RAM), tự chạy tiếp **một lần** `resume <lượt> --from normalise` (setting `run.autoResume`, mặc định bật; không áp cho lượt bấm Dừng): dòng ghi dở ở cuối interim được chốt rồi phần đã cào được chuẩn hoá, nạp DB, index. Gọi trực tiếp `run_job()` từ Python không có lớp supervisor; dùng CLI/wrapper khi vận hành.
+CLI `fresh_catalog.py` giám sát tiến trình chạy: `run.maxHours` mặc định 15 giờ cho toàn lượt (`crawl.maxHours` 14 giờ cho phần cào); `timeout.processing` mặc định 30 phút cho mỗi bước xử lý (chuẩn hoá, kiểm tra, DB, index và lô streaming). Hạn giờ từng nguồn vẫn theo Cấu hình (mặc định `timeout.booking` 600, `timeout.agoda` 180 phút cho lượt làm mới cả catalog; cả lượt ước 11–14 giờ trên VM, dưới `run.maxHours` 15 giờ nên lượt bắt đầu 08:35 kết thúc trước khi VM crawler tắt lúc 23:59). Retry dùng chung hạn giờ của nguồn. Nguồn chạy bằng `crawl.py` quá hạn mà không tự dừng thì supervisor chỉ dừng cây tiến trình của nguồn đó (pid ở `detail.pid` của bước) và lượt chạy tiếp nguồn sau; chỉ khi nguồn vẫn "running" thêm 3 phút, hoặc bước trong tiến trình (khách sạn Trip, chuẩn hoá, DB, index) quá hạn, supervisor mới kết thúc cả lượt, ghi trạng thái lỗi trước khi thả khóa. Lượt full bị kết thúc cưỡng bức như vậy, hoặc bị hệ điều hành giết (hết RAM), tự chạy tiếp **một lần** `resume <lượt> --from normalise` (setting `run.autoResume`, mặc định bật; không áp cho lượt bấm Dừng): dòng ghi dở ở cuối interim được chốt rồi phần đã cào được chuẩn hoá, nạp DB, index. Gọi trực tiếp `run_job()` từ Python không có lớp supervisor; dùng CLI/wrapper khi vận hành.
 
 Nạp DB không dừng cả lượt vì một dòng: dòng mới ghép với DB bị trùng ID mà khác ref, trùng `sourceRef` chuẩn với dòng khác của lượt, hoặc khách sạn Trip chưa đủ mốc ngày giá được bỏ ra, ghi vào `<lượt>/db_quarantine.jsonl` kèm lý do (`counts.database.quarantined`, có cảnh báo); các dòng khác vẫn nạp. `run_daily_docker.sh fresh-run` giới hạn RAM container job bằng `FRESH_MEMORY` (mặc định `2500m`, rỗng = không giới hạn) để hết RAM thì chỉ tiến trình trong job bị giết, không phải backend chạy chung VM.
 
@@ -219,7 +219,7 @@ FRESH_IMAGE=<AR>/vota-fresh-catalog:<tag> /opt/vota/bin/run_daily_docker.sh fres
 FRESH_IMAGE=<AR>/vota-fresh-catalog:<tag> /opt/vota/bin/run_daily_docker.sh fresh-run index
 FRESH_IMAGE=<AR>/vota-fresh-catalog:<tag> /opt/vota/bin/run_daily_docker.sh fresh-run full
 
-# Cron đánh thức mỗi 15 phút. Giờ chạy cấu hình trên monitor (mặc định 02:00 Việt Nam).
+# Cron đánh thức mỗi 15 phút. Giờ chạy cấu hình trên monitor (mặc định 08:35 Việt Nam; VM crawler staging-ha bật 08:30–23:59).
 */15 * * * * FRESH_IMAGE=<AR>/vota-fresh-catalog:<tag> /opt/vota/bin/run_daily_docker.sh fresh-run tick
 ```
 
@@ -249,6 +249,18 @@ có x/y". Bấm ô Bảo trì DB, Gộp catalog, Kiểm tra, Nạp DB, Index (v�
 chú; bấm lại để thu. Bước con ghi ở `detail.substeps` của bước trong run.json (`stage_log.Stages`; chuẩn hoá dùng
 `normalise_stages/steps.json`) và một dòng log `catalog.substep name=<bước>:<bước con> …`: tab Log của ô lớn lọc theo
 `name=<bước>`, bấm một ô con mở tab Log lọc đúng bước con đó.
+
+**Bước con chưa chạy và log theo bước (09/10/2026):** danh sách bước con của từng bước lớn khai báo ở
+`pipeline_graph.SUBSTEPS` (test đối chiếu với code), nên ô chưa chạy vẫn bung được; bước con chưa có số liệu là ô mờ viền đứt
+mang trạng thái "Chờ tới lượt" (sau bước con đang chạy, hoặc cả ô đang chờ) hoặc "Không chạy" (lượt này không chạy bước con
+đó). Bản gộp nháp trong lúc cào chỉ có chuỗi từ "đọc checkpoint". Mỗi bước con (`stage_log.Stages`) ghi một dòng
+`status=running` lúc bắt đầu và một dòng kết quả lúc xong. Tab Log của ô Gộp và các ô con của nó lấy thêm dòng
+`normalise.step.*` (gộp chính thức, và bản nháp có tiền tố `[preview]`) nên xem được ngay trong lúc gộp; ô Gộp (không chọn
+ô con) còn hiện toàn bộ log "Catalog đang gộp" (mọi dòng `[preview]`, `catalog.preview.*`), kể cả khi bước Gộp chính thức
+chưa chạy, và mọi dòng không tiền tố giữa `catalog.step.start name=normalise` và mốc bước kế tiếp (log của bước Gộp chính
+thức chạy trong tiến trình job: đọc interim, gộp trùng, "Đã ghi …", cảnh báo). Lọc `name=<bước>` khớp đúng tên bước, không lẫn `normalise.source:…` / `normalise.preview`; đầu tab Log ghi
+đang lọc theo bước nào, kèm nút bỏ lọc. Tab "DB" có nút "Tải lại" và ô "Tự làm mới mỗi 10 giây" (mặc định bật khi đang có
+lượt chạy; mỗi lần đếm lại số dòng mọi bảng).
 
 **Dung lượng (tab "Dung lượng" của monitor, 06/10/2026):** hiện đĩa VM (đã dùng / còn trống của filesystem chứa thư mục dữ
 liệu), dung lượng từng thư mục con và từng lượt cào còn giữ; nút "Xoá các lượt cũ hơn" giữ N lượt mới nhất (lượt đang chạy
@@ -695,6 +707,18 @@ python -m data_collection.seed --as-of 2026-09-23 --seed 42 --reset
 ```
 
 Pipeline parse combo, chuẩn hoá cửa sổ đặt chỗ, sinh lịch sử CDP/app/Insider rồi nạp hai database bằng transaction. Vector không nằm trong PostgreSQL; sau khi seed, chạy `make index-vectors` ở repository root để chỉ embed text mới/đã đổi và đồng bộ collection `Product` của Weaviate. `purchase` thiếu `event_group_id` khoảng 3% là edge case cố ý và vẫn được giữ lại.
+
+Dữ liệu mô phỏng cho demo (`docs/prd/data-model.md` §3.1, chốt 09/10/2026): hạng phòng cho khách sạn chưa có phòng (`demo:room:*`),
+tuyến chiều ngược (`demo:reverse:*`) + vé phủ ngày (`demo:fill:*`), sản phẩm cho mọi thành phần combo + `price_share` (`demo:combo:*`).
+Mọi đường nạp catalog (seed, `--catalog-only`, job fresh) tự chạy `seed/demo_data.py` sau vé Thương gia mô phỏng; chạy tay khi cần
+(cả bốn bước trong một transaction, `--dry-run` chạy rồi ROLLBACK). Mỗi bước chỉ ghi dòng của mình, chạy lại không đổi gì; tắt bằng
+`SIMULATED_ROOMS=0` / `SIMULATED_FILL_FLIGHTS=0` / `SIMULATED_COMBO_ITEMS=0` thì khoá các dòng đó, không xoá. Từng bước có CLI riêng
+(`--dry-run` chỉ đọc), `combo_components --report` ghi quyết định từng thành phần ra JSON:
+
+```bash
+python -m data_collection.seed.demo_data --database-url-env SEED_DATABASE_URL [--as-of YYYY-MM-DD] [--dry-run]
+python -m data_collection.seed.combo_components --database-url-env SEED_DATABASE_URL --dry-run --report combo_report.json
+```
 
 Chạy kiểm tra từ repository root:
 

@@ -32,17 +32,6 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: Refuse to deploy a schema change without a migration step
-        # CD staging-ha chưa chạy migration DB. Code mới mà kèm thay đổi db/migrations thì không được tự triển khai.
-        if: ${{ github.event_name == 'push' }}
-        run: |
-          changed="$(git diff --name-only HEAD~1 HEAD -- db/migrations || true)"
-          if [ -n "$changed" ]; then
-            echo 'Commit này có thay đổi db/migrations. CD staging-ha chưa chạy migration; dừng để tránh deploy code lệch schema:' >&2
-            echo "$changed" >&2
-            exit 1
-          fi
-
       - name: Validate publishing configuration
         env:
           GCP_WIF_PROVIDER: ${{ secrets.GCP_WIF_PROVIDER }}

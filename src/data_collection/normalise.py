@@ -1346,13 +1346,27 @@ def trip_roundtrip_products(record: dict, route: dict) -> list[dict]:
     return out
 
 
+def _route_city(city: str, airports: list | None, code: str | None) -> str:
+    """Điểm đến chuẩn của một đầu tuyến bay: alias của tên thành phố, rồi điểm đến của sân bay (kế hoạch), rồi tên gốc."""
+    found = destination_in_text(city)
+    if found:
+        return found
+    from collectors.plan import DESTINATIONS
+    by_airport = {a: d.name for d in DESTINATIONS for a in d.airports}
+    for airport in [*(airports or []), code]:
+        if airport and str(airport).upper() in by_airport:
+            return by_airport[str(airport).upper()]
+    return city
+
+
 def trip_route_products(r: dict, flights_per_route: int) -> list[dict]:
     from_city, to_city = r.get("fromCity"), r.get("toCity")
     if not from_city or not to_city:
         return []
-    # tên hiển thị theo điểm đến chuẩn ("Đảo Phú Quốc" → "Phú Quốc"); giữ tên gốc nếu không khớp
-    from_city = normalise_destination(from_city) or from_city
-    to_city = normalise_destination(to_city) or to_city
+    # tên hiển thị theo điểm đến chuẩn ("Đảo Phú Quốc" → "Phú Quốc"); tên không khớp alias nào ("Điện Biên Phủ" — alias bỏ
+    # qua vì trùng tên đường) thì lấy điểm đến của sân bay trong kế hoạch, để originCity khớp /destinations; không có thì giữ tên gốc
+    from_city = _route_city(from_city, r.get("fromAirports"), r.get("fromCode"))
+    to_city = _route_city(to_city, r.get("toAirports"), r.get("toCode"))
     flights = [f for f in r.get("flights") or [] if f.get("flightNumber")]
     prices = [f["price"] for f in flights if f.get("price")]
     one_way = r.get("oneWay") or {}

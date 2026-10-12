@@ -53,6 +53,13 @@ google_compute_instance_template.app|delete,create
 google_compute_region_instance_group_manager.app|update
 google_compute_region_autoscaler.app|update
 google_compute_instance.crawler[0]|create
+google_compute_firewall.patroni_clients[0]|update
+# Cảnh báo crawler (crawler_alerts_enabled = true, 2026-10-12): metric và policy đã có trong state.
+google_logging_metric.crawler_freshness_heartbeat[0]|update
+google_logging_metric.crawler_catalog_late[0]|create
+google_monitoring_alert_policy.crawler_catalog_late[0]|create
+google_monitoring_alert_policy.crawler_run_failed[0]|update
+google_monitoring_alert_policy.crawler_silent[0]|update
 '
 unexpected="$(terraform show -json "$plan_file" | jq -r '
   .resource_changes[]

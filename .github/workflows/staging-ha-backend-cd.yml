@@ -5,7 +5,8 @@ name: Staging-HA Backend CD
 # cả ba bước; nếu tách verify ra job khác thì deploy của run khác có thể apply xen giữa lúc verify.
 # Frontend cùng MIG và cùng Terraform state, nên image frontend lấy từ last-good, không build lại ở đây.
 # Output job chỉ truyền digest: đường dẫn image là secret, GitHub che giá trị secret trong output nên job sau nhận chuỗi rỗng.
-# Không chạy migration DB ở đây (kiểm tra db/migrations nằm ở staging-ha-backend-build.yml).
+# Migration DB chạy ở job deploy, trước khi apply: run.py chỉ áp migration chưa có trong app.schema_migrations,
+# DSN của role vota_migrator đọc từ Secret Manager vota-ha-migrate-database-url (không lưu trong repo).
 
 on:
   push:
@@ -120,6 +121,23 @@ jobs:
           BACKEND_IMAGE: ${{ secrets.GAR_BACKEND_IMAGE }}
           BACKEND_DIGEST: ${{ needs.build.outputs.backend_digest }}
         run: echo "BACKEND_REF=$BACKEND_IMAGE@$BACKEND_DIGEST" >> "$GITHUB_ENV"
+
+      - name: Apply pending DB migrations
+        # Áp migration chưa có (idempotent). Chạy trước apply để code mới không chạy trên schema cũ.
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          MIGRATE_DSN_SECRET: vota-ha-migrate-database-url
+        run: |
+          set -euo pipefail
+          umask 077
+          # Runner Debian không có python3-venv (ensurepip thiếu), và pip hệ thống bị PEP 668 chặn; cài vào thư mục tạm.
+          python3 -m pip install -q --target "$RUNNER_TEMP/migrate-deps" 'psycopg[binary]>=3.2,<4'
+          export PYTHONPATH="$RUNNER_TEMP/migrate-deps"
+          dsn="$(gcloud secrets versions access latest --secret="$MIGRATE_DSN_SECRET" --project="$GCP_PROJECT_ID")"
+          echo "::add-mask::$dsn"
+          export SEED_DATABASE_URL="$dsn"
+          python3 db/migrations/run.py --status
+          python3 db/migrations/run.py
 
       - name: Apply backend image
         env:

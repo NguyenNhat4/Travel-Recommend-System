@@ -271,6 +271,23 @@ class QualityTests(unittest.TestCase):
             for extra in ("bookable", "priceKind", "availabilityStatus"):
                 self.assertNotIn(extra, p["attributes"])
 
+    def test_route_city_falls_back_to_the_airport_destination(self):
+        record = {"fromCity": "Điện Biên Phủ", "toCity": "Hà Nội", "fromCode": "din", "toCode": "han",
+                  "fromAirports": ["DIN"], "toAirports": ["HAN"], "crawledAt": "2026-09-19T05:37:38Z",
+                  "url": "https://vn.trip.com/flights/x", "oneWay": {"lowPrice": 900000}, "flights": [
+                      {"flightNumber": "VN1807", "airline": "Vietnam Airlines", "from": "DIN", "to": "HAN",
+                       "departureTime": "2026-10-10T12:35:00.000Z", "arrivalTime": "2026-10-10T13:40:00.000Z",
+                       "durationMinutes": 65, "price": 900000}]}
+        route, flight = n.trip_route_products(record, 0)
+        self.assertEqual(route["attributes"]["originCity"], "Điện Biên")  # khớp điểm đến của /destinations
+        self.assertEqual(route["name"], "Vé máy bay Điện Biên - Hà Nội")
+        self.assertIn("Điện Biên - Hà Nội", flight["name"])
+        self.assertEqual(n._route_city("Vân Đồn", ["VDO"], "vdo"), "Vân Đồn")  # tên khớp alias thì giữ, không đổi theo sân bay
+        self.assertEqual(n._route_city("Nơi lạ", ["XXX"], None), "Nơi lạ")
+
+    def test_tuyen_quang_hotel_name_is_not_a_destination(self):
+        self.assertEqual(n.normalise_destination("Vinpearl Onsen Resort Tuyên Quang"), "Tuyên Quang")
+
     def test_trip_attraction_without_price_is_kept_and_not_called_unticketed(self):
         base = {"poiId": 1, "name": "Cầu Vàng", "province": "Đà Nẵng", "latitude": 15.99, "longitude": 107.99,
                 "introduction": "Cây cầu nổi tiếng " * 12, "crawledAt": "2026-09-19T00:00:00Z", "plan": {"destination": "Đà Nẵng"}}

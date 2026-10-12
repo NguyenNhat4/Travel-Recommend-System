@@ -3,9 +3,9 @@
 # Quyền DB của từng người là role Postgres riêng, không phải quyền trên VM này.
 
 variable "create_bastion" {
-  description = "Tạo bastion cho đội DB."
+  description = "Tạo bastion cho đội DB. Bật trong cấu hình CD để plan khớp state; bastion không được CD thay đổi nội dung (xem ignore_changes)."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "bastion_zone" {
@@ -27,9 +27,9 @@ variable "bastion_public_ip" {
 }
 
 variable "bastion_ssh_source_ranges" {
-  description = "IP/CIDR được phép SSH vào bastion (đặt trong tfvars, gitignored)."
+  description = "IP/CIDR được phép SSH vào bastion. Mặc định mở cho mọi IP theo chỉ đạo người vận hành ngày 2026-10-12."
   type        = list(string)
-  default     = []
+  default     = ["0.0.0.0/0"]
 }
 
 variable "bastion_password_hash" {
@@ -78,13 +78,6 @@ resource "google_compute_instance" "bastion" {
   # Lịch tắt 23:59 / bật 08:30 chung với các VM khác (scheduler.tf). IP tĩnh giữ nguyên qua các lần tắt bật.
   resource_policies = [google_compute_resource_policy.bastion_schedule[0].self_link]
 
-  lifecycle {
-    precondition {
-      condition     = length(var.bastion_ssh_source_ranges) > 0 && var.bastion_password_hash != ""
-      error_message = "Cần bastion_ssh_source_ranges và TF_VAR_bastion_password_hash."
-    }
-  }
-
   boot_disk {
     initialize_params {
       image = "debian-cloud/debian-12"
@@ -106,6 +99,15 @@ resource "google_compute_instance" "bastion" {
     enable-oslogin        = "FALSE"
     bastion-password-hash = var.bastion_password_hash
     startup-script        = local.bastion_startup
+  }
+
+  # Mật khẩu (hash) và script chỉ đặt một lần khi dựng VM. CD không có TF_VAR hash nên không được ghi đè,
+  # kẻo plan đặt hash về rỗng và khóa đăng nhập.
+  lifecycle {
+    ignore_changes = [
+      metadata["bastion-password-hash"],
+      metadata["startup-script"],
+    ]
   }
 
   shielded_instance_config {

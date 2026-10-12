@@ -327,16 +327,16 @@ variable "patroni_clone_from_host" {
 }
 
 variable "db_client_tags" {
-  description = "Network tag BỔ SUNG được nối tới Postgres qua load balancer nội bộ. App VM của nhóm HA và job cào (tag vota-crawler) luôn được phép."
+  description = "Network tag BỔ SUNG được nối tới Postgres qua load balancer nội bộ. App VM của nhóm HA và job cào (tag vota-crawler) luôn được phép. ci-runner: runner tự host chạy CD, cần tới Postgres để áp db/migrations (2026-10-12)."
   type        = list(string)
-  default     = []
+  default     = ["ci-runner"]
 }
 
 # --- Cảnh báo job cào (chạy bằng cron trên VM) ---
 variable "crawler_alerts_enabled" {
   description = "Bật cảnh báo catalog không đổi / job không chạy / lượt thất bại (cron trên VM phát catalog.freshness từ bản crawler mới). Chỉ bật SAU KHI crawler bản có catalog.freshness đã deploy, nếu không cảnh báo vắng mặt kêu giả."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "origin_tls_enabled" {
