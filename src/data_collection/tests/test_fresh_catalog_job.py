@@ -124,15 +124,29 @@ class ApplyWindowTests(unittest.TestCase):
         with_room = apply_window([row('h2', start=AS_OF, end=HI), row('r2', attributes={'level': 'room', 'parentProductId': 'h2'})], AS_OF)
         self.assertNotIn('h2', with_room)  # có phòng đặt được: giữ nguyên
 
-    def test_hidden_hotel_without_marker_or_merged_is_not_reopened(self):
-        room = row('room', attributes={'level': 'room', 'parentProductId': 'hotel'})
-        sold = row('hotel', available=False, start=AS_OF, end=HI)  # tắt vì lý do khác, không có dấu
+    def test_hotel_hidden_without_marker_reopens_with_cheapest_room_price_but_merged_stays_hidden(self):
+        """FR-CAT-02: khách sạn có hạng phòng đặt được thì bán, kể cả khi lượt cào trước tắt nó vì nguồn không trả giá cho
+        đúng ngày hỏi (không có dấu noBookableRoom; 12/10/2026). Dòng đã gộp, giá quá hạn vẫn ẩn."""
+        rooms = [row('cheap', attributes={'level': 'room', 'parentProductId': 'hotel'}, unit_price=750000),
+                 row('dear', attributes={'level': 'room', 'parentProductId': 'hotel'}, unit_price=900000),
+                 row('closed', attributes={'level': 'room', 'parentProductId': 'hotel'}, unit_price=500000, available=False)]
+        sold = row('hotel', available=False, start=AS_OF, end=HI, unit_price=None)
         merged = row('merged', available=False, start=AS_OF, end=HI,
                      attributes={'level': 'property', 'noBookableRoom': True, 'mergedInto': 'x'})
         merged_room = row('mroom', attributes={'level': 'room', 'parentProductId': 'merged'})
-        changed = apply_window([sold, room, merged, merged_room], AS_OF)
-        self.assertNotIn('hotel', changed)
+        stale = row('stale', available=False, start=AS_OF, end=HI, attributes={'level': 'property', 'priceFreshness': 'stale'})
+        stale_room = row('sroom', attributes={'level': 'room', 'parentProductId': 'stale'})
+        changed = apply_window([sold, *rooms, merged, merged_room, stale, stale_room], AS_OF)
+        self.assertEqual((changed['hotel']['available'], changed['hotel']['unit_price']), (True, 750000))
         self.assertFalse(changed['merged']['available'])
+        self.assertNotIn('stale', {pid for pid, r in changed.items() if r['available']})
+
+    def test_available_hotel_with_bookable_room_but_no_price_gets_the_cheapest_room_price(self):
+        hotel = row('hotel', start=AS_OF, end=HI, unit_price=None)
+        room = row('room', attributes={'level': 'room', 'parentProductId': 'hotel'}, unit_price=620000)
+        changed = apply_window([hotel, room], AS_OF)
+        self.assertEqual(changed['hotel']['unit_price'], 620000)
+        self.assertNotIn('hotel', apply_window([changed['hotel'], room], AS_OF))  # lần sau không ghi lại
 
     def test_rows_already_inside_the_window_are_not_rewritten(self):
         # combo: không có lịch, không phụ thuộc phòng con (khách sạn không phòng bị tắt theo FR-CAT-02).

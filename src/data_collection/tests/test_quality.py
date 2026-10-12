@@ -345,6 +345,25 @@ class QualityTests(unittest.TestCase):
         self.assertIn("giá phòng bất thường", removed[0][1])
         self.assertEqual({p["productId"] for p in kept}, {"a", "b", "c", "d", "e", "suite", "vin", "x1", "x2"})
 
+    def test_flights_without_image_get_the_airline_logo_routes_stay_empty(self):
+        """12/10/2026: vé mang logo hãng (collectors/airlines.py); tuyến để ảnh thành phố đến do DB đặt."""
+        products = [
+            {"taxonomy": "flight", "attributes": {"level": "flight", "airline": "VietJet Air"}, "imageUrl": None},
+            {"taxonomy": "flight", "attributes": {"level": "flight", "airline": "Hãng lạ"}, "imageUrl": None},
+            {"taxonomy": "flight", "attributes": {"level": "flight", "airline": "Vietnam Airlines"}, "imageUrl": "giữ"},
+            {"taxonomy": "flight", "attributes": {"level": "route", "airlines": ["VietJet Air"]}, "imageUrl": None},
+        ]
+        self.assertEqual(n.apply_airline_logos(products), 1)
+        self.assertEqual([p["imageUrl"] for p in products],
+                         ["https://pic.tripcdn.com/airline_logo/3x/vj.png", None, "giữ", None])
+
+    def test_points_hidden_on_production_are_in_the_reviewed_exclusion_list(self):
+        """22 điểm Trip không phải điểm tham quan đã ẩn trên production 12/10/2026: lượt cào sau không được bật lại."""
+        excluded = n.load_excluded_products()
+        for ref in ("trip:attraction:146226495", "trip:attraction:146505433", "trip:attraction:149736329"):
+            self.assertIn(ref, excluded)
+            self.assertTrue(excluded[ref].startswith("không phải sản phẩm du lịch"))
+
 
 if __name__ == "__main__":
     unittest.main()

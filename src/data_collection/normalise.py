@@ -44,6 +44,7 @@ from pathlib import Path
 
 from collectors import mapexport
 from collectors.common import Paths, default_data_dir, read_jsonl, setup_logging
+from collectors.airlines import airline_logo
 from collectors.geo import AIRPORTS, DESTINATION_ALIASES, DESTINATION_CENTERS, clean_coords, destination_in_text, destination_radius_km, km_from_destination, normalise_destination
 from collectors.plan import TARGET_MAX, TARGET_MIN, Budget, budget_with, select_destinations
 from collectors.textutil import clean_text, detect_lang, first_int, fold, iso_date, trip_combo_dates, uniq
@@ -2097,6 +2098,20 @@ def non_tourism_reason(name: str | None) -> str | None:
     return None
 
 
+def apply_airline_logos(products: list[dict]) -> int:
+    """Vé máy bay (`level: flight`) chưa có ảnh: logo hãng của chặng đi (collectors/airlines.py; người dùng chốt 12/10/2026,
+    như các OTA). Tuyến bay để trống: ảnh thành phố đến đặt trên DB. Upsert của job không ghi đè image_url nên chỉ dòng mới nhận."""
+    changed = 0
+    for p in products:
+        attrs = p.get("attributes") or {}
+        if p["taxonomy"] == "flight" and attrs.get("level") == "flight" and not p.get("imageUrl"):
+            logo = airline_logo(attrs.get("airline"))
+            if logo:
+                p["imageUrl"] = logo
+                changed += 1
+    return changed
+
+
 DESTINATION_OVERRIDES_CSV = Path(__file__).resolve().parent / "collectors" / "destination_overrides.csv"
 LOCATION_SOURCE = {"vinpearl": "vinpearl", "booking": "booking.com", "agoda": "agoda.com", "trip_attraction": "trip.com",
                    "booking_attraction": "booking.com"}
@@ -3383,6 +3398,8 @@ def merge_catalog(a: argparse.Namespace, clock: StepClock, paths: Paths, entries
         products = [p for p in products if p["sourceRef"] not in excluded]
         if before - len(products):
             dropped["đã soát tay và loại (collectors/excluded_products.csv)"] += before - len(products)
+
+    apply_airline_logos(products)
 
     auto_excluded = [(p, non_tourism_reason(p["name"])) for p in products
                      if p["taxonomy"] == "attraction" and p["sourceRef"].startswith("trip:attraction:")]
