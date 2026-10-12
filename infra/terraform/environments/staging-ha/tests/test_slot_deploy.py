@@ -215,5 +215,22 @@ esac
         self.assertEqual(visited, ["vm-a", "vm-b", "vm-c"], result.stdout + result.stderr)
 
 
+class AlwaysOn(unittest.TestCase):
+    """Staging-ha chạy 24/7 (2026-10-12): VM không được gắn lịch tắt/bật."""
+
+    def test_no_vm_is_attached_to_a_schedule_policy(self):
+        for name in ("bastion.tf", "crawler.tf", "patroni.tf", "weaviate.tf"):
+            self.assertNotRegex((D / name).read_text(), r"(?m)^\s*resource_policies\s*=", name)
+
+
+class DockerCredentialsPerJob(unittest.TestCase):
+    """Các runner chung một HOME; `docker logout` của job khác xoá đăng nhập (403 khi đẩy image, 2026-10-12)."""
+
+    def test_image_builds_use_their_own_docker_config(self):
+        for wf in ("staging-ha-backend-build.yml", "staging-ha-frontend-build.yml", "staging-ha-crawler-cd.yml"):
+            text = (ROOT / ".github" / "workflows" / wf).read_text()
+            self.assertLess(text.index("DOCKER_CONFIG="), text.index("docker/login-action"), wf)
+
+
 if __name__ == "__main__":
     unittest.main()
