@@ -365,6 +365,8 @@ class WeaviateVectorStore:
         self.search = search
         self.expected_model_version = expected_model_version
         self.sync: dict[str, int] = {}
+        #: Phiên bản catalog + vector của lần nạp gần nhất (cache gợi ý dùng trong khoá); None khi không hỏi được mã băm.
+        self.version: str | None = None
 
     def load(self) -> tuple[UnitIndex, WeaviateVectorSearch]:
         catalog = self.reader.load()
@@ -387,4 +389,14 @@ class WeaviateVectorStore:
         expect = getattr(self.search, "expect", None)
         if callable(expect):
             expect(desired.keys(), stored)
+        self.version = self._version(getattr(self.reader, "fingerprint", None), stored)
         return catalog.to_index(self.expected_model_version), self.search
+
+    @staticmethod
+    def _version(fingerprint: str | None, stored: dict[str, VectorMetadata]) -> str | None:
+        """Mã băm Postgres của catalog + metadata vector Weaviate: đổi khi catalog đổi hoặc job index ghi lại object, giống
+        nhau ở mọi tiến trình cùng dữ liệu. Cache gợi ý gắn khoá vào đây (kết quả gồm giá, trạng thái lấy từ catalog)."""
+        if fingerprint is None:
+            return None
+        rows = "\n".join(f"{pid}\t{m.model_version}\t{m.text_hash}" for pid, m in sorted(stored.items()))
+        return hashlib.sha256(f"{fingerprint}\n{rows}".encode("utf-8")).hexdigest()[:32]

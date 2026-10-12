@@ -146,6 +146,26 @@ def test_load_tells_a_preloading_search_what_to_expect_only_after_validation():
     assert rejected.search.expected == []   # lần nạp lỗi không đổi bảng vector đang phục vụ
 
 
+class _FingerprintReader(_Reader):
+    def __init__(self, ids=("P1",), fingerprint="fp-1"):
+        super().__init__(ids)
+        self.fingerprint = fingerprint
+
+
+def test_version_combines_catalog_fingerprint_and_vector_metadata():
+    def version(fingerprint="fp-1", text_hash=None):
+        store = WeaviateVectorStore("unused", _search(_Collection(stored={"P1": _Obj("P1", text_hash=text_hash)})),
+                                    expected_model_version="v")
+        store.reader = _FingerprintReader(fingerprint=fingerprint)
+        store.load()
+        return store.version
+
+    assert version() == version() is not None                      # cùng dữ liệu → cùng phiên bản ở mọi tiến trình
+    assert version(fingerprint="fp-2") != version()                 # catalog đổi
+    assert version(text_hash="reindexed") != version()              # job index ghi lại object
+    assert version(fingerprint=None) is None                        # không hỏi được mã băm → không cache
+
+
 def test_weaviate_store_rejects_collection_without_current_vectors():
     with pytest.raises(RuntimeError, match="chỉ có 0/1 search unit"):
         _store(_Collection(stored={})).load()

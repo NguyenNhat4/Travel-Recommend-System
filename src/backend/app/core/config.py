@@ -140,6 +140,10 @@ class Settings(BaseSettings):
     # Nạp sẵn vector sản phẩm vào RAM ở nền sau mỗi lần nạp catalog (2026-10-12): tra vector theo id lấy từ RAM, ANN vẫn qua
     # Weaviate. False = mọi lần tra vector hỏi Weaviate như trước (rollback không cần redeploy).
     recommend_preload_vectors: bool = True
+    # Cache kết quả gợi ý trên Redis dùng chung (PRD architecture §4, deployment-plan §2; chốt 2026-10-12): DB index riêng,
+    # mọi khoá có TTL (noeviction). Trống = tắt cache (dev/test). Không bắt buộc ở REQUIRE_SHARED_BACKENDS: thiếu thì chỉ chậm.
+    recommend_cache_redis_url: str = ""
+    recommend_cache_ttl_seconds: int = Field(default=900, ge=60, le=86400)
     # Hybrid /search (HYBRID_CANDIDATE_SCORE, spec §2.4): BM25 trên nameAscii/searchTextAscii + RRF ở app.
     search_hybrid: bool = True  # False → dense-only ANN_CANDIDATE_SCORE như trước 25/09
     search_normalize: bool = True  # bước chuẩn hoá truy vấn (viết tắt, chính tả tên riêng, điểm đến, kiểu đi); False → nguyên câu

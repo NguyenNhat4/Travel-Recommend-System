@@ -74,7 +74,13 @@ from src.backend.app.application.itinerary.use_cases import PlanItinerary
 from src.backend.app.application.tracking.behaviour import BehaviourTracker
 from src.backend.app.domain.booking import DraftPolicy, HoldPolicy
 from src.backend.app.domain.catalog import ListingItem
-from src.backend.app.application.recommendation import BuildPopularity, RecommendForUser
+from src.backend.app.application.recommendation import (
+    BuildPopularity,
+    CachePolicy,
+    RecommendationCache,
+    RecommendForUser,
+    source_digest,
+)
 from src.backend.app.application.search import SearchProducts, SimilarProducts, SuggestProducts
 from src.backend.app.application.search.search_log import SearchLogRecorder
 from src.backend.app.domain.search import HybridConfig
@@ -177,11 +183,13 @@ def search_hypothesizer(settings):
 
 
 def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None, *,
-                 recommend_executor: Executor | None = None) -> dict:
+                 recommend_executor: Executor | None = None, recommend_cache=None) -> dict:
     """Dựng engine recsys trên database đã seed.
 
     Ba tham số override để test tiêm giả lập mà không cần Postgres hay tải model embedding. `recommend_executor` là pool
     `recsys-io` của tiến trình (lifespan dựng một lần, dùng lại qua các lần nạp lại) cho các lượt Weaviate song song.
+    `recommend_cache` là `RecommendationCache` trên Redis (None = tắt); engine chỉ cache khi biết phiên bản catalog
+    (`WeaviateVectorStore.version`).
     """
     owns_embedder = False
     owns_vector_store = vector_store is None
@@ -284,6 +292,10 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None, *,
     logger.info("startup.recsys.search.fusion fuzzy_k=%s weights=%s/%s/%s", settings.search_fuzzy_k if hybrid else 0,
                 settings.search_rrf_dense_weight, settings.search_rrf_lexical_weight, settings.search_rrf_fuzzy_weight)
     product_popularity = {index.units[u].product_id: s for u, s in popularity.unit_scores().items()}
+    catalog_version = getattr(vector_store, "version", None)
+    if recommend_cache is not None and not catalog_version:
+        log_event(logger, "recsys.cache.disabled", "WARNING", reason="no_catalog_version",
+                  message="recsys.cache.disabled reason=no_catalog_version; lần nạp này tính mỗi request")
     return {
         "recsys_embedder": embedder,
         "recsys_vectors": vector_search,
@@ -332,6 +344,8 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None, *,
             next_trip_scoring=settings.recommend_next_trip_scoring,
             max_per_destination=settings.recommend_max_per_destination or None,
             executor=recommend_executor,
+            cache=recommend_cache,
+            catalog_version=catalog_version,
         ),
     }
 
@@ -464,6 +478,29 @@ class RecsysRefresher:
             resource = self.services.get(name)
             if resource is not None and hasattr(resource, "close"):
                 resource.close()
+
+
+def build_recommendation_cache(settings: Settings, stack) -> RecommendationCache | None:
+    """Cache kết quả gợi ý trên Redis dùng chung (PRD architecture §4, chốt 2026-10-12); URL trống thì tắt.
+
+    Namespace của khoá băm mã nguồn các module quyết định output, để bản deploy mới không đọc kết quả của bản cũ.
+    `stack` (AsyncExitStack của lifespan) đóng client khi tắt.
+    """
+    if not settings.recommend_cache_redis_url:
+        if settings.app_env == "production":
+            log_event(logger, "recsys.cache.disabled", "WARNING", reason="no_redis_url",
+                      message="recsys.cache.disabled reason=no_redis_url; RECOMMEND_CACHE_REDIS_URL trống")
+        return None
+    from src.backend.app.application.recommendation import cache as cache_module, use_cases as recommend_module
+    from src.backend.app.application.search import use_cases as search_module
+    from src.backend.app.domain.recommendation import popularity as popularity_module, profile as profile_module
+    from src.backend.app.infrastructure.persistence.redis_recommendation_cache import RedisRecommendationCacheStore
+
+    store = RedisRecommendationCacheStore.from_url(settings.recommend_cache_redis_url)
+    stack.callback(store.close)
+    namespace = source_digest(recommend_module, cache_module, search_module, profile_module, popularity_module)
+    logger.info("startup.recsys.cache.ready mode=redis ttl_seconds=%d", settings.recommend_cache_ttl_seconds)
+    return RecommendationCache(store, CachePolicy(ttl_seconds=settings.recommend_cache_ttl_seconds), namespace=namespace)
 
 
 def build_auth(settings: Settings, cdp_client, redis_client=None) -> dict:
@@ -800,7 +837,10 @@ async def lifespan(app: FastAPI):
         if settings.recommend_io_workers:
             recsys_io = ThreadPoolExecutor(max_workers=settings.recommend_io_workers, thread_name_prefix="recsys-io")
             stack.callback(recsys_io.shutdown, wait=False, cancel_futures=True)
-        recsys = RecsysRefresher(app, settings, build=functools.partial(build_recsys, recommend_executor=recsys_io),
+        recommend_cache = build_recommendation_cache(settings, stack)
+        recsys = RecsysRefresher(app, settings,
+                                 build=functools.partial(build_recsys, recommend_executor=recsys_io,
+                                                         recommend_cache=recommend_cache),
                                  on_publish=publish_catalog)
         if not await recsys.reload():
             publish_catalog()
