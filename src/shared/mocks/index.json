@@ -103,6 +103,14 @@
       "method": "get",
       "path": "/products",
       "status": 200,
+      "case": "diversified",
+      "file": "catalog/listProducts.200-diversified.json"
+    },
+    {
+      "operationId": "listProducts",
+      "method": "get",
+      "path": "/products",
+      "status": 200,
       "case": "variants",
       "file": "catalog/listProducts.200-variants.json"
     },

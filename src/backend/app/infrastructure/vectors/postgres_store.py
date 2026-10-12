@@ -122,6 +122,11 @@ class PostgresCatalogReader:
         self.database_url = database_url
         self._cached: tuple[str, CatalogUnits] | None = None  # (mã băm, catalog) của lần kéo gần nhất
 
+    @property
+    def fingerprint(self) -> str | None:
+        """Mã băm catalog của lần nạp gần nhất (cùng nội dung → cùng mã ở mọi tiến trình); None khi lần nạp không hỏi được."""
+        return self._cached[0] if self._cached is not None else None
+
     def _fingerprint(self) -> str | None:
         """Mã băm catalog hiện tại; lỗi thì trả None để lần nạp quay về kéo đầy đủ."""
         import psycopg

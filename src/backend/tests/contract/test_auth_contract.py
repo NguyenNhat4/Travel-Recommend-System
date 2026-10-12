@@ -102,6 +102,27 @@ def test_login_errors_follow_contract(client):
     assert unknown.json()["error"]["message"] == bad.json()["error"]["message"]
 
 
+def test_successful_logins_warm_home_recommendations(client, world):
+    # PRD architecture §4 (2026-10-12): đăng nhập xong thì tính trước gợi ý trang chủ vào cache.
+    client.post("/api/v1/auth/login", json={"email": "minh.anh@example.com", "password": "sai-mat-khau"})
+    client.post("/api/v1/auth/session", headers=svc(), json={"email": "quoc.bao@example.com", "password": "sai-mat-khau"})
+    assert world.warm_calls == []                                    # đăng nhập lỗi: không làm ấm
+    assert client.post("/api/v1/auth/login", json={"email": "minh.anh@example.com", "password": PASSWORD}).status_code == 200
+    assert client.post("/api/v1/auth/session", headers=svc(),
+                       json={"email": "quoc.bao@example.com", "password": PASSWORD}).status_code == 200
+    assert world.warm_calls == ["VP0000001", "VP0000002"]
+
+
+def test_login_still_succeeds_when_warming_fails(client, world):
+    world.warm_error = RuntimeError("cannot schedule new futures after shutdown")
+    r = client.post("/api/v1/auth/login", json={"email": "thu.ha@example.com", "password": PASSWORD})
+    s = client.post("/api/v1/auth/session", headers=svc(), json={"email": "thu.ha@example.com", "password": PASSWORD})
+    assert r.status_code == s.status_code == 200
+    assert_contract(r, "/auth/login", "post")
+    assert_contract(s, "/auth/session", "post")
+    assert world.warm_calls == ["VP0000003", "VP0000003"]
+
+
 def test_sixth_wrong_password_is_429_with_retry_after(client):
     for _ in range(5):
         assert client.post("/api/v1/auth/session", headers=svc(),

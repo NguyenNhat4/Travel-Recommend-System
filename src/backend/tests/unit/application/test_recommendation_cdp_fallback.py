@@ -49,9 +49,16 @@ def test_cdp_outage_falls_back_to_popular(services, destination):
     assert r["diagnostics"]["coldStart"] is True and r["diagnostics"]["eventsUsed"] == 0
     assert r["recommendations"] and all(x["because"] == [] for x in r["recommendations"])
     assert {"generatedAt", "modelVersion"} <= r.keys()
-    # Giống hệt khách chưa đăng nhập: cùng một đường lui.
+    # Giống hệt khách chưa đăng nhập: cùng một đường lui (trừ thời gian từng bước và số event đọc, chỉ dành cho log).
     guest = services["recommend"](None, k=3, now=services["now"], destination=destination)
-    assert r == guest
+    assert _payload(r) == _payload(guest)
+
+
+def _payload(result: dict) -> dict:
+    from src.backend.app.application.recommendation.responses import ENGINE_ONLY_DIAGNOSTICS
+
+    diagnostics = {k: v for k, v in result["diagnostics"].items() if k not in ENGINE_ONLY_DIAGNOSTICS}
+    return {**result, "diagnostics": diagnostics}
 
 
 def test_cdp_outage_logs_warning_without_user_id(services, caplog):

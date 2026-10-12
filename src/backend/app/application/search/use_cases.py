@@ -117,6 +117,10 @@ class StageTimer:
         self._seconds[name] = self._seconds.get(name, 0.0) + max(0.0, now - self._last)
         self._last = now
 
+    def record(self, name: str, seconds: float) -> None:
+        """Ghi thời gian của một lời gọi đo riêng (ví dụ chạy song song trên pool), không dời mốc của `lap`."""
+        self._seconds[name] = self._seconds.get(name, 0.0) + max(0.0, seconds)
+
     @property
     def ms(self) -> dict[str, int]:
         return {name: int(seconds * 1000) for name, seconds in self._seconds.items()}
