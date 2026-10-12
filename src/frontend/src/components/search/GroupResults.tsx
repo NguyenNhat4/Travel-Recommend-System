@@ -4,8 +4,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Filter, Search, X } from 'lucide-react';
 import { ApiError } from '../../services/http';
 import {
-  GROUP_PAGE_SIZE, SEARCH_GROUPS, searchCacheKey, searchGroupApi, viewItems,
-  type Guests, type SearchGroup, type Stay, type SearchResultItem, type SortOption,
+  GROUP_PAGE_SIZE, SEARCH_GROUPS, searchCacheKey, searchGroupApi, sortItems,
+  type Guests, type PriceStarFilter, type SearchGroup, type Stay, type SearchResultItem, type SortOption,
 } from '../../services/search';
 import type { Taxonomy } from '../../types/travel';
 import { loadSection } from '../../hooks/useLazySection';
@@ -38,21 +38,41 @@ interface Loaded {
   hasMore: boolean;
 }
 
+/** Thanh trượt giá: chờ người dùng dừng kéo rồi mới gọi API (mỗi nấc là một request). */
+const PRICE_DEBOUNCE_MS = 400;
+const PRICE_SLIDER_MAX = 8_000_000;
+
 /**
  * Danh sách đầy đủ của một nhóm (tab Lưu trú, Tour và trải nghiệm, Tiện ích khác; hoặc vé máy bay khi mở từ /flights).
  * Mỗi trang `GROUP_PAGE_SIZE` mục, "Xem thêm" nối trang kế; từng trang nằm trong bộ đệm nên quay lại tab không tải lại.
- * Sắp xếp là popup ở mọi nhóm; lọc hạng sao và giá chỉ có ở Lưu trú (đơn vị giá đồng nhất).
+ * Sắp xếp là popup ở mọi nhóm (chạy trên các mục đã tải); lọc hạng sao và giá chỉ có ở Lưu trú (đơn vị giá đồng nhất)
+ * và gửi lên API (`starRatingMin`, `priceMax`), nên `total` và "Xem thêm" đếm theo bộ lọc.
  * Cha đặt `key` theo (nhóm, truy vấn, điểm đến) nên state ở đây tự đặt lại khi các giá trị đó đổi.
  */
 export const GroupResults: React.FC<GroupResultsProps> = ({ group, query, destination, tripQuery, onClearDestination, onAskAssistant, taxonomy, guests, stay, label, embedded }) => {
   const [pages, setPages] = useState(1);
   const [retryToken, setRetryToken] = useState(0);
   const [sort, setSort] = useState<SortOption>('relevance');
-  const [minStarRating, setMinStarRating] = useState<number | undefined>(undefined);
-  const [maxPrice, setMaxPrice] = useState<number | undefined>(undefined);
+  const [filter, setFilter] = useState<PriceStarFilter>({});
+  // Giá trên thanh trượt (hiện ngay); `filter.maxPrice` là giá đã gửi API.
+  const [priceDraft, setPriceDraft] = useState<number | undefined>(undefined);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<ApiError | null>(null);
+  const { minStarRating, maxPrice } = filter;
+
+  // Đổi bộ lọc là một danh sách mới: về trang 1 và bỏ danh sách cũ (kết quả và số "Xem thêm" cũ không còn đúng).
+  const applyFilter = (next: (current: PriceStarFilter) => PriceStarFilter) => {
+    setFilter(next);
+    setPages(1);
+    setLoaded(null);
+  };
+
+  useEffect(() => {
+    if (priceDraft === maxPrice) return undefined;
+    const timer = setTimeout(() => applyFilter((current) => ({ ...current, maxPrice: priceDraft })), PRICE_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [priceDraft, maxPrice]);
 
   useEffect(() => {
     let cancelled = false;
@@ -61,8 +81,8 @@ export const GroupResults: React.FC<GroupResultsProps> = ({ group, query, destin
     Promise.all(Array.from({ length: pages }, (_, index) => {
       const offset = index * GROUP_PAGE_SIZE;
       return loadSection(
-        searchCacheKey('group', query, destination, group, GROUP_PAGE_SIZE, offset, taxonomy, guests, stay),
-        () => searchGroupApi(query, group, { destination, limit: GROUP_PAGE_SIZE, offset, taxonomy, guests, stay }),
+        searchCacheKey('group', query, destination, group, GROUP_PAGE_SIZE, offset, taxonomy, guests, stay, filter),
+        () => searchGroupApi(query, group, { destination, limit: GROUP_PAGE_SIZE, offset, taxonomy, guests, stay, ...filter }),
       );
     })).then((list) => {
       if (cancelled) return;
@@ -79,12 +99,20 @@ export const GroupResults: React.FC<GroupResultsProps> = ({ group, query, destin
     return () => { cancelled = true; };
   // guests và stay là object dựng lại mỗi lần render của cha: so theo giá trị từng trường để không tải lại vô ích.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, destination, group, taxonomy, guests?.adults, guests?.children, stay?.checkIn, stay?.checkOut, pages, retryToken]);
+  }, [query, destination, group, taxonomy, guests?.adults, guests?.children, stay?.checkIn, stay?.checkOut, minStarRating, maxPrice, pages, retryToken]);
 
-  const visible = useMemo(() => viewItems(loaded?.items ?? [], { sort, minStarRating, maxPrice }), [loaded, sort, minStarRating, maxPrice]);
+  const visible = useMemo(() => sortItems(loaded?.items ?? [], sort), [loaded, sort]);
   const isStay = group === 'stay';
   const hasFilters = minStarRating !== undefined || maxPrice !== undefined;
-  const clearFilters = () => { setMinStarRating(undefined); setMaxPrice(undefined); };
+  const setStar = (value: number | undefined) => applyFilter((current) => ({ ...current, minStarRating: value }));
+  const clearPrice = () => {
+    setPriceDraft(undefined);
+    applyFilter((current) => ({ ...current, maxPrice: undefined }));
+  };
+  const clearFilters = () => {
+    setPriceDraft(undefined);
+    applyFilter(() => ({}));
+  };
 
   const sidebar = isStay && (
     <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-6">
@@ -111,7 +139,7 @@ export const GroupResults: React.FC<GroupResultsProps> = ({ group, query, destin
                 type="radio"
                 name="starRating"
                 checked={minStarRating === opt.val}
-                onChange={() => setMinStarRating(opt.val)}
+                onChange={() => setStar(opt.val)}
                 className="text-brand-600 focus:ring-brand-500 w-3.5 h-3.5"
               />
               <span>{opt.label}</span>
@@ -126,19 +154,19 @@ export const GroupResults: React.FC<GroupResultsProps> = ({ group, query, destin
           <input
             type="range"
             min="500000"
-            max="8000000"
+            max={PRICE_SLIDER_MAX}
             step="500000"
             aria-label="Mức giá tối đa"
-            value={maxPrice || 8000000}
+            value={priceDraft ?? PRICE_SLIDER_MAX}
             onChange={(e) => {
               const value = parseInt(e.target.value, 10);
-              setMaxPrice(value >= 8000000 ? undefined : value);
+              setPriceDraft(value >= PRICE_SLIDER_MAX ? undefined : value);
             }}
             className="w-full accent-brand-600"
           />
           <div className="flex justify-between text-xs text-slate-500 font-mono">
             <span>500k</span>
-            <span className="font-bold text-brand-700">{maxPrice ? new Intl.NumberFormat('vi-VN').format(maxPrice) + ' ₫' : 'Tất cả'}</span>
+            <span className="font-bold text-brand-700">{priceDraft ? new Intl.NumberFormat('vi-VN').format(priceDraft) + ' ₫' : 'Tất cả'}</span>
             <span>8tr+</span>
           </div>
         </div>
@@ -239,14 +267,18 @@ export const GroupResults: React.FC<GroupResultsProps> = ({ group, query, destin
             {minStarRating !== undefined && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 font-medium border border-amber-200">
                 {minStarRating}★+
-                <button onClick={() => setMinStarRating(undefined)} aria-label="Bỏ lọc hạng sao"><X className="w-3 h-3" /></button>
+                <button onClick={() => setStar(undefined)} aria-label="Bỏ lọc hạng sao"><X className="w-3 h-3" /></button>
               </span>
             )}
             {maxPrice !== undefined && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 font-medium border border-amber-200">
                 ≤ {new Intl.NumberFormat('vi-VN').format(maxPrice)} ₫
-                <button onClick={() => setMaxPrice(undefined)} aria-label="Bỏ lọc giá"><X className="w-3 h-3" /></button>
+                <button onClick={clearPrice} aria-label="Bỏ lọc giá"><X className="w-3 h-3" /></button>
               </span>
+            )}
+            {/* Số trên tab là số chưa áp sao/giá; khi đang lọc thì danh sách ghi số theo bộ lọc. */}
+            {hasFilters && loaded && !error && (
+              <span className="text-slate-500 font-medium">· {loaded.total} kết quả theo bộ lọc</span>
             )}
           </div>
           <div className="self-end sm:self-auto">

@@ -8,7 +8,7 @@ import {
   DEFAULT_QUERY, SEARCH_GROUPS, TAB_GROUPS, parseGroupParam, searchCacheKey, searchOverviewApi,
   type SearchGroup, type TabGroup,
 } from '../../services/search';
-import { useLazySection } from '../../hooks/useLazySection';
+import { loadSection, useLazySection } from '../../hooks/useLazySection';
 import { parseTripContext, serializeTripContext } from '../../features/search/tripContext';
 import { SearchBox } from '../common/SearchBox';
 import { Search, Loader2 } from 'lucide-react';
@@ -54,10 +54,11 @@ export const SearchView: React.FC = () => {
     return url.pathname + url.search;
   };
 
-  // Số kết quả của các tab: một request nhẹ, có bộ đệm. Không dùng ở chế độ vé máy bay (không có tab).
+  // Số kết quả của các tab = `total` của chính các request hàng ở "Tất cả" (cùng khóa bộ đệm, nên hàng không gọi lại),
+  // để tab, hàng và "Xem thêm" cùng một số. Không dùng ở chế độ vé máy bay (không có tab).
   const overview = useLazySection(
     searchCacheKey('overview', queryParam, destination),
-    () => searchOverviewApi(queryParam, destination),
+    () => searchOverviewApi(queryParam, destination, loadSection),
     { enabled: !isFlightMode },
   );
   const counts = overview.data?.counts;
@@ -92,7 +93,7 @@ export const SearchView: React.FC = () => {
             <span className="text-xs font-semibold text-slate-500 flex items-center gap-1.5">
               {overview.loading && <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-600" />}
               {overview.data && (
-                <span>Tìm thấy {overview.data.total}{overview.data.totalExact === false ? '+' : ''} dịch vụ phù hợp</span>
+                <span>Tìm thấy {overview.data.total} dịch vụ phù hợp</span>
               )}
             </span>
           )}
@@ -161,15 +162,13 @@ export const SearchView: React.FC = () => {
               </span>
             </div>
           )}
-          {TAB_GROUPS.map((tab, index) => (
+          {TAB_GROUPS.map((tab) => (
             <GroupShelf
               key={`${tab}|${queryParam}|${destination ?? ''}`}
               group={tab}
               query={queryParam}
               destination={destination}
               tripQuery={tripQuery}
-              total={counts?.[tab]}
-              lazy={index > 0}
               onSeeAll={goTab}
             />
           ))}
