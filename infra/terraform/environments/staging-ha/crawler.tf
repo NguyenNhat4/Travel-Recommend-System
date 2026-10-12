@@ -22,47 +22,13 @@ variable "crawler_machine_type" {
   default     = "e2-medium"
 }
 
-variable "crawler_stop_schedule" {
-  description = "Lịch tắt VM job cào (cron, theo crawler_schedule_timezone). Mặc định 23:59 hằng ngày."
-  type        = string
-  default     = "59 23 * * *"
-}
-
-variable "crawler_start_schedule" {
-  description = "Lịch bật VM job cào (cron, theo crawler_schedule_timezone). Mặc định 08:30 hằng ngày."
-  type        = string
-  default     = "30 8 * * *"
-}
-
-variable "crawler_schedule_timezone" {
-  description = "Múi giờ áp dụng cho crawler_stop_schedule và crawler_start_schedule."
-  type        = string
-  default     = "Asia/Ho_Chi_Minh"
-}
-
 locals {
   crawler_enabled = var.create_crawler_vm
   crawler_name    = "${var.name_prefix}-crawler"
   crawler_tag     = "vota-crawler"
 }
 
-# Lịch bật/tắt riêng cho VM job cào. Chỉ áp dụng cho VM đơn này, không dùng cho MIG app.
-resource "google_compute_resource_policy" "crawler_schedule" {
-  count  = local.crawler_enabled ? 1 : 0
-  name   = "${var.name_prefix}-crawler-schedule"
-  region = var.region
-
-  instance_schedule_policy {
-    vm_start_schedule {
-      schedule = var.crawler_start_schedule
-    }
-    vm_stop_schedule {
-      schedule = var.crawler_stop_schedule
-    }
-    time_zone = var.crawler_schedule_timezone
-  }
-}
-
+# Không có lịch bật/tắt: VM job cào chạy 24/7 (2026-10-12, xem history/2026-10-12-tat-lich-vm-va-bo-chan-cd.md).
 resource "google_compute_instance" "crawler" {
   count                     = local.crawler_enabled ? 1 : 0
   name                      = local.crawler_name
@@ -70,7 +36,6 @@ resource "google_compute_instance" "crawler" {
   machine_type              = var.crawler_machine_type
   tags                      = [local.crawler_tag]
   allow_stopping_for_update = true
-  resource_policies         = [google_compute_resource_policy.crawler_schedule[0].self_link]
 
   boot_disk {
     initialize_params {
