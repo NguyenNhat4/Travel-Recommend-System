@@ -170,7 +170,7 @@ export interface paths {
         };
         /**
          * Danh sách sản phẩm
-         * @description Không có parentProductId: chỉ trả tầng cha (search unit — property, route và taxonomy không phân tầng), giống /search và /recommendations. Có parentProductId: trả các sản phẩm tầng con (hạng phòng, chuyến bay cụ thể) của sản phẩm cha đó, là đơn vị đặt chỗ mà Web thêm vào giỏ; sort=popular với tầng con xếp theo giá tăng dần. parentProductId không có trong catalog hoặc không có tầng con thì trả results rỗng.
+         * @description Không có parentProductId: chỉ trả tầng cha (search unit — property, route và taxonomy không phân tầng), giống /search và /recommendations. Có parentProductId: trả các sản phẩm tầng con (hạng phòng, chuyến bay cụ thể) của sản phẩm cha đó, là đơn vị đặt chỗ mà Web thêm vào giỏ; sort=popular với tầng con xếp theo giá tăng dần. parentProductId không có trong catalog hoặc không có tầng con thì trả results rỗng. diversify=taxonomy (1.25.0) trộn danh sách theo nhóm loại; kệ Phổ biến tab Tất cả ở Home dùng tham số này.
          */
         get: operations["listProducts"];
         put?: never;
@@ -1485,9 +1485,9 @@ export interface components {
             excludedVerticals: components["schemas"]["Taxonomy"][];
             /** @description true khi khách đã đặt đủ mọi taxonomy trong chuyến và engine phải bỏ category exclusion để không trả danh sách rỗng. */
             exclusionRelaxed?: boolean;
-            /** @description [CHỜ DUYỆT: P3] false nghĩa là phải dựng lại user vector tại chỗ — đọc tối đa 500 event qua HTTP từ CDP clone. Đây là đường chậm; tỉ lệ false cao nghĩa là quy tắc vô hiệu hóa cache đang sai. */
+            /** @description true khi kết quả lấy từ cache gợi ý. */
             userVectorCacheHit?: boolean;
-            /** @description [CHỜ DUYỆT: P3] Phải xấp xỉ 1.0. Lệch xa là dấu hiệu quên L2-normalize hoặc sai đơn vị thời gian trong decay — hai lỗi cho ra kết quả trông hoàn toàn hợp lý. */
+            /** @description Phải xấp xỉ 1.0. Lệch xa là dấu hiệu quên L2-normalize hoặc sai đơn vị thời gian trong decay — hai lỗi cho ra kết quả trông hoàn toàn hợp lý. */
             userVectorNorm?: number;
             engine?: components["schemas"]["EngineDiagnostics"];
             latencyMs: number;
@@ -2515,9 +2515,12 @@ export interface operations {
                 /** @description productId của sản phẩm cha (property hoặc route). Lọc các tầng con của nó. */
                 parentProductId?: string;
                 destination?: string;
-                taxonomy?: components["schemas"]["Taxonomy"];
+                /** @description Lọc một hoặc nhiều danh mục (1.25.0): nhiều giá trị cách nhau bằng dấu phẩy, ví dụ taxonomy=attraction,golf. Một giá trị như cũ vẫn hợp lệ. Giá trị trùng được bỏ qua; giá trị ngoài enum hoặc đoạn rỗng (taxonomy=hotel,) trả 400 VALIDATION_ERROR, details.fields có "taxonomy". */
+                taxonomy?: components["schemas"]["Taxonomy"][];
                 availableOnly?: boolean;
                 sort?: components["schemas"]["ProductSort"];
+                /** @description (1.25.0) Chỉ nhận taxonomy. Trộn danh sách đã lọc và xếp theo round-robin giữa các nhóm loại, thứ tự nhóm cố định: khách sạn (hotel) → vé tham quan và golf (attraction, golf) → combo → vé máy bay (flight); trong mỗi nhóm giữ thứ tự của sort, nhóm hết món thì bỏ qua. Trộn trước khi cắt offset/limit nên kết quả là một hoán vị: total không đổi, các trang nối tiếp nhau. Lọc taxonomy chỉ còn một nhóm thì thứ tự không đổi. Chỉ đi với sort=popular và không có parentProductId; giá trị khác, đi cùng sort giá hoặc parentProductId trả 400 VALIDATION_ERROR, details.fields có "diversify". Không gửi thì giữ hành vi cũ. */
+                diversify?: "taxonomy";
                 limit?: components["parameters"]["Limit"];
                 offset?: components["parameters"]["Offset"];
             };

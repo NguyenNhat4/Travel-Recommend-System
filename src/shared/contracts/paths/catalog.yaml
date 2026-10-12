@@ -9,6 +9,7 @@
       giống /search và /recommendations. Có parentProductId: trả các sản phẩm tầng con (hạng phòng, chuyến bay
       cụ thể) của sản phẩm cha đó, là đơn vị đặt chỗ mà Web thêm vào giỏ; sort=popular với tầng con xếp theo
       giá tăng dần. parentProductId không có trong catalog hoặc không có tầng con thì trả results rỗng.
+      diversify=taxonomy (1.25.0) trộn danh sách theo nhóm loại; kệ Phổ biến tab Tất cả ở Home dùng tham số này.
     security:
     - {}
     - bearerAuth: []
@@ -27,8 +28,18 @@
         type: string
     - name: taxonomy
       in: query
+      required: false
+      description: >-
+        Lọc một hoặc nhiều danh mục (1.25.0): nhiều giá trị cách nhau bằng dấu phẩy, ví dụ taxonomy=attraction,golf.
+        Một giá trị như cũ vẫn hợp lệ. Giá trị trùng được bỏ qua; giá trị ngoài enum hoặc đoạn rỗng (taxonomy=hotel,)
+        trả 400 VALIDATION_ERROR, details.fields có "taxonomy".
+      style: form
+      explode: false
       schema:
-        $ref: ../openapi.yaml#/components/schemas/Taxonomy
+        type: array
+        minItems: 1
+        items:
+          $ref: ../openapi.yaml#/components/schemas/Taxonomy
     - name: availableOnly
       in: query
       schema:
@@ -38,6 +49,20 @@
       in: query
       schema:
         $ref: ../openapi.yaml#/components/schemas/ProductSort
+    - name: diversify
+      in: query
+      required: false
+      description: >-
+        (1.25.0) Chỉ nhận taxonomy. Trộn danh sách đã lọc và xếp theo round-robin giữa các nhóm loại, thứ tự nhóm cố
+        định: khách sạn (hotel) → vé tham quan và golf (attraction, golf) → combo → vé máy bay (flight); trong mỗi nhóm
+        giữ thứ tự của sort, nhóm hết món thì bỏ qua. Trộn trước khi cắt offset/limit nên kết quả là một hoán vị: total
+        không đổi, các trang nối tiếp nhau. Lọc taxonomy chỉ còn một nhóm thì thứ tự không đổi. Chỉ đi với sort=popular
+        và không có parentProductId; giá trị khác, đi cùng sort giá hoặc parentProductId trả 400 VALIDATION_ERROR,
+        details.fields có "diversify". Không gửi thì giữ hành vi cũ.
+      schema:
+        type: string
+        enum:
+        - taxonomy
     - $ref: ../openapi.yaml#/components/parameters/Limit
     - $ref: ../openapi.yaml#/components/parameters/Offset
     responses:
