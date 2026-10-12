@@ -1,5 +1,7 @@
 'use client';
 
+import { useSearchParams } from 'next/navigation';
+
 import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { AlertCircle, Loader2, Search } from 'lucide-react';
@@ -41,6 +43,7 @@ const Notice: React.FC<{ tone?: 'info' | 'warn'; children: React.ReactNode }> = 
  */
 export const FlightResultsView: React.FC<{ search: FlightSearch; notice?: string | null }> = ({ search, notice }) => {
   const { origin, destination, trip } = search;
+  const preferredFareId = useSearchParams()?.get('fare');
   const { startBooking } = useTravel();
   const today = todayVN();
   const adults = trip.adults ?? 1;
@@ -163,7 +166,7 @@ export const FlightResultsView: React.FC<{ search: FlightSearch; notice?: string
   } else if (outbound.status === 'no-route') {
     body = (
       <div className={`${CARD} space-y-4 p-8`}>
-        <h3 className="font-display text-lg text-slate-900">Chưa có chặng {origin} → {destination} trên V-OTA</h3>
+        <h3 className="font-display text-lg text-slate-900">Chưa có chặng {origin} → {destination} trên Sota</h3>
         {outbound.choices.length > 0 ? (
           <>
             <p className="text-sm text-slate-600">Đổi điểm đi ở ô tìm kiếm phía trên, hoặc chọn một điểm đi có chuyến tới {destination}:</p>
@@ -231,6 +234,7 @@ export const FlightResultsView: React.FC<{ search: FlightSearch; notice?: string
           <div className="flex flex-col gap-3.5">
             {visible.map((option) => (
               <FlightCard key={option.key} option={option} expanded={expanded.has(option.key)}
+                preferredFareId={preferredFareId}
                 chosen={chosen[step]?.option.key === option.key ? chosen[step]!.fare : null}
                 onToggleExpanded={() => setExpanded((prev) => { const next = new Set(prev); if (!next.delete(option.key)) next.add(option.key); return next; })}
                 onPick={choose} onClear={clearChoice} />
@@ -284,7 +288,7 @@ export const FlightResultsView: React.FC<{ search: FlightSearch; notice?: string
             <h3 className="font-display text-[22px] text-slate-900" aria-live="polite">{step === 'ret' ? 'Chọn vé chiều về' : 'Chọn vé chiều đi'}</h3>
             <SortMenu<FlightSort> value={sort} onChange={setSort} labels={FLIGHT_SORT_LABELS} />
           </div>
-          {mode === 'round' && back.status === 'none' && <Notice tone="warn">Chưa có chuyến chiều về {destination} → {originCity} trên V-OTA. Bạn vẫn đặt được vé một chiều.</Notice>}
+          {mode === 'round' && back.status === 'none' && <Notice tone="warn">Chưa có chuyến chiều về {destination} → {originCity} trên Sota. Bạn vẫn đặt được vé một chiều.</Notice>}
           {mode === 'round' && back.status === 'loading' && outbound.status === 'ready' && step === 'out' && (
             <p className="flex items-center gap-2 text-xs text-slate-500"><Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />Đang tìm chuyến chiều về…</p>
           )}

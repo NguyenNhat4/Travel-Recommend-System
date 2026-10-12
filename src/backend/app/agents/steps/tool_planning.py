@@ -300,6 +300,12 @@ def validated_plan(state: dict, plan: list, *, require_recommendations: bool = F
         pass
     if not 1 <= len(calls) <= MAX_CALLS:
         raise ToolError("INVALID_TOOL_PLAN")
+    excluded = set(state.get("constraints", {}).get("exclude_taxonomies") or [])
+    # Như golf bên dưới: planner đôi khi vẫn search loại người dùng đã loại trừ (snapshot X01 12/10, "đổi chuyến bay"
+    # còn kèm search vé máy bay). Bỏ lời gọi đó thay vì huỷ cả lượt thành 503.
+    kept = [call for call in calls
+            if not (call["name"] == "search_products" and (call.get("args") or {}).get("taxonomy") in excluded)]
+    calls = kept or [_destination_search(state)]
     validated = [{"name": call["name"], "args": _validated_args(state, call)} for call in calls]
     if not wants_golf(state):
         # Planner hay tự thêm search golf (trace 2026-10-08: gia đình có bé ở TP.HCM); không ai nhắc thì bỏ.

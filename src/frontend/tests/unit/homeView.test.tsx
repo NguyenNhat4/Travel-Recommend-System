@@ -6,7 +6,7 @@ import popularFixture from '../../../shared/mocks/catalog/listProducts.200-popul
 
 const api = vi.hoisted(() => ({ listProducts: vi.fn(), listDestinations: vi.fn(), fetchRecommendations: vi.fn(), fetchSuggestions: vi.fn() }));
 const travel = vi.hoisted(() => ({
-  currentPersona: null as unknown, activeEvents: [] as unknown[], navigate: vi.fn(), showToast: vi.fn(),
+  currentPersona: null as unknown, activeEvents: [] as unknown[], navigate: vi.fn(), showToast: vi.fn(), authReady: true, openLoginModal: vi.fn(),
 }));
 vi.mock('../../src/services/catalog', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/services/catalog')>()),
@@ -32,6 +32,9 @@ describe('HomeView', () => {
       { type: 'product', label: 'VinWonders Phú Quốc', productId: 'pq-a-01', taxonomy: 'attraction', destination: 'Phú Quốc' },
     ]);
     travel.currentPersona = null;
+    travel.authReady = true;
+    travel.navigate.mockReset();
+    travel.openLoginModal.mockReset();
     api.listProducts.mockResolvedValue(popularFixture);
     api.listDestinations.mockResolvedValue([]);
     api.fetchRecommendations.mockRejectedValue(new Error('không cần'));
@@ -56,6 +59,27 @@ describe('HomeView', () => {
     await waitFor(() => expect(api.fetchRecommendations).toHaveBeenCalledTimes(1));
     expect(api.fetchRecommendations.mock.calls[0][0]).toMatchObject({ k: 4 });
     expect(await screen.findByRole('button', { name: 'Thử lại' })).toBeTruthy(); // gợi ý lỗi: ẩn khối, chỉ có dòng thử lại
+  });
+
+  it('guest: shows the sign-in banner and its buttons open the login modal / register page', () => {
+    render(<HomeView />);
+    const banner = screen.getByRole('region', { name: 'Đăng nhập để nhận gợi ý' });
+    expect(within(banner).getByText('Đăng nhập để nhận gợi ý theo chuyến đi của bạn')).toBeTruthy();
+    fireEvent.click(within(banner).getByRole('button', { name: 'Đăng nhập' }));
+    expect(travel.openLoginModal).toHaveBeenCalledTimes(1);
+    fireEvent.click(within(banner).getByRole('button', { name: 'Đăng ký' }));
+    expect(travel.navigate).toHaveBeenCalledWith('/register');
+  });
+
+  it('hides the sign-in banner while the session loads and once logged in', () => {
+    travel.authReady = false;
+    const { unmount } = render(<HomeView />);
+    expect(screen.queryByRole('region', { name: 'Đăng nhập để nhận gợi ý' })).toBeNull();
+    unmount();
+    travel.authReady = true;
+    travel.currentPersona = { id: 'VP1', name: 'Minh Anh' };
+    render(<HomeView />);
+    expect(screen.queryByRole('region', { name: 'Đăng nhập để nhận gợi ý' })).toBeNull();
   });
 
   it('only the selected popular tab calls the API', async () => {

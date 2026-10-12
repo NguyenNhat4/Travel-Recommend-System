@@ -1,7 +1,7 @@
 """Câu ngắn mô tả chuyến đi và từng lượt trợ lý theo nghĩa, dựng bằng luật từ state (không gọi LLM).
 
 LLM đọc lại hội thoại qua các câu này thay vì nguyên văn: lịch trình dài kèm giá bị thay bằng
-"gửi lịch trình Hà Nội 3 ngày" (sản phẩm đã cho xem nằm ở `previous_selection`), câu hỏi lại kèm lý do thật ("không dùng được điểm đến "biển": …").
+"gửi lịch trình Hà Nội 3 ngày" (sản phẩm đã cho xem nằm ở khối `already_shown`, `shown.context`), câu hỏi lại kèm lý do thật ("không dùng được điểm đến "biển": …").
 Không có giá hay số tiền nào ở đây, để LLM không chép giá của lịch trình cũ thành ràng buộc mới.
 """
 from __future__ import annotations
@@ -115,10 +115,6 @@ def question_note(state: dict) -> str:
     return message(state, "note_chat")
 
 
-#: Số thẻ nêu tên trong ghi chú lượt khám phá (ghi chú tối đa 300 ký tự).
-NOTE_CARDS = 3
-
-
 def _answer_note(state: dict, response: dict, destination: str) -> str | None:
     """Lượt đã trả lời (giá vé, thẻ khám phá): ghi tuyến hay nơi vừa giới thiệu, để LLM lượt sau hiểu "chỗ đó", "ngày
     khác thì sao", "còn đi Đà Nẵng thì sao" là nói về gì."""
@@ -128,10 +124,10 @@ def _answer_note(state: dict, response: dict, destination: str) -> str | None:
             return message(state, "note_fare_anywhere", origin=fare.get("origin") or "",
                            destination=fare.get("best") or "")
         return message(state, "note_fare", origin=fare.get("origin") or "", destination=fare.get("destination") or "")
-    results = response.get("searchResults") or {}
-    names = [item.get("name") for items in results.values() for item in items if item.get("name")]
-    if names:
-        return message(state, "note_explore", destination=destination, names=", ".join(names[:NOTE_CARDS]))
+    # Chỉ ghi đã làm gì; tên, giá từng thẻ nằm ở khối "đã gợi ý" (`shown.context`), không lặp ở mỗi ghi chú.
+    count = sum(len(items or []) for items in (response.get("searchResults") or {}).values())
+    if count:
+        return message(state, "note_explore", destination=destination, count=count)
     return None
 
 

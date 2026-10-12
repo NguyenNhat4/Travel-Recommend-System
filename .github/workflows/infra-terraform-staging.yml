@@ -1,4 +1,4 @@
-name: Staging Infra Terraform
+name: Staging Infra CI/CD
 
 # Infrastructure as code for the staging VMs.
 # - Pull request: validate only (fmt, validate, layout test). Nothing touches GCP.

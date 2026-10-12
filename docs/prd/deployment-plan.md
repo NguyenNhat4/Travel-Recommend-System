@@ -45,6 +45,9 @@ Hệ thống phân tách ranh giới bảo mật bằng các chuỗi kết nối
 | `INSIDER_BASE_URL` | URL kết nối dịch vụ Insider Clone | Tất cả | Giao tiếp qua HTTP REST |
 | `INSIDER_REQUEST_TOKEN`| Token xác thực gọi sang Insider | Staging / Prod | Bí mật, không commit vào repository |
 | `LLM_API_KEY` | Khóa xác thực mô hình AI (OpenAI / Claude) | Tất cả | Bí mật, quản lý qua Vault hoặc Secret Manager |
+| `ITINERARY_ORCHESTRATOR` | `off` (mặc định) hoặc `on`; giữ đường cũ tới bộ đo đạt ngưỡng | Tất cả | Không bí mật |
+| `ITINERARY_ORCHESTRATOR_MODEL` / `ITINERARY_ORCHESTRATOR_PROVIDER` | Model riêng và provider `gemini|openai|anthropic`; bỏ trống dùng model chung; lựa chọn GPT-6.1 Sol/OpenAI | Tất cả | Không bí mật; dùng khoá provider hiện có |
+| `ITINERARY_ORCHESTRATOR_REASONING_EFFORT` | Mức reasoning tuỳ chọn; chọn theo số đo, không gửi khi để trống | Tất cả | Không bí mật |
 | `ITINERARY_DATA_MODE` | Nguồn dữ liệu cho tool của trợ lý: `fixture` (dữ liệu mẫu, mặc định dev/test), `inprocess` (gọi engine trong cùng tiến trình; dùng khi chạy dữ liệu thật), `http` (gọi qua HTTP tới `ITINERARY_SERVICE_BASE_URL`; tuỳ chọn, để hoàn tác hoặc khi tách agent thành service riêng), `disabled` | Tất cả | Không bí mật. Không đặt thì ngoài dev/test là `disabled`, nên staging/production phải đặt tường minh |
 | `ITINERARY_SERVICE_BASE_URL` | Gốc URL backend mà adapter HTTP gọi tới | Chỉ khi `ITINERARY_DATA_MODE=http` | Không bí mật. Bắt buộc ở mode `http`, bỏ qua ở mode khác |
 | `ITINERARY_TOOL_TIMEOUT_SECONDS` | Thời hạn (giây) cho mỗi lời gọi tool của trợ lý, áp dụng mọi mode | Tất cả | Không bí mật |
@@ -155,7 +158,7 @@ Hệ thống cung cấp các endpoint kiểm tra trạng thái sức khỏe đ�
 ```
 1. Xác nhận toàn bộ automated tests và contract validation đều PASS trên CI.
 2. Thực thi migration cơ sở dữ liệu bằng `db/migrations/run.py`.
-3. Triển khai phiên bản Backend mới. Staging-HA thay toàn bộ VM app một lượt và chấp nhận downtime ngắn (vài phút) để rút ngắn thời gian phát hành; không dùng VM surge. Cổng sẵn sàng là LB báo đủ VM HEALTHY và `/health/ready` qua public endpoint đạt 6 lần liên tiếp. Quyết định này áp dụng cho staging-HA; production chưa có quyết định riêng. *(Chốt 2026-10-09, đề xuất `update-archive/2026-10-09-rut-ngan-cd-chap-nhan-downtime.md`.)*
+3. Triển khai phiên bản Backend mới. Staging-HA cập nhật image không gián đoạn: trên mỗi VM chạy bản mới (slot blue/green) song song bản cũ, đợi `/health/ready` của bản mới, đổi proxy cục bộ (cổng 3000) sang bản mới rồi rút bản cũ sau khi drain; bản mới không sẵn sàng thì bản cũ vẫn phục vụ. Terraform chỉ đổi template (MIG `OPPORTUNISTIC`, không thay VM). Mỗi lần chỉ một deploy chạy (khoá concurrency `staging-ha-app` và `flock` trên VM). Cổng sẵn sàng là LB báo đủ VM HEALTHY và `/health/ready` qua public endpoint đạt 6 lần liên tiếp. Quyết định này áp dụng cho staging-HA; production chưa có quyết định riêng. *(Thay quyết định 2026-10-09 "chấp nhận downtime" của `update-archive/2026-10-09-rut-ngan-cd-chap-nhan-downtime.md`; cập nhật 2026-10-12 theo chỉ đạo trực tiếp, chi tiết vận hành ở `docs/guide/van-hanh-cd-staging-ha.md`.)*
 4. Triển khai phiên bản Frontend mới tương ứng.
 5. Thực hiện kịch bản Smoke Test trên Staging/Production để xác nhận luồng tìm kiếm và đặt hàng hoạt động bình thường.
 

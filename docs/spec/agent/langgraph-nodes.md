@@ -4,6 +4,57 @@ Agent lập lịch trình là một LangGraph gồm mười lăm node. Tài li�
 
 Một lượt gọi API đi qua ba việc: **hiểu người dùng muốn gì**, **lấy sản phẩm thật từ catalog**, và **soạn câu trả lời**. Mỗi node lo một mẩu của ba việc đó, và tất cả cùng đọc/ghi vào một state chung.
 
+## Orchestrator sau cờ (chốt 2026-10-12)
+
+Phục vụ FR-AGT-01/06/07, AC-AGT-05/06/07/08, NFR-REL-01. Nội dung các mục cũ bên dưới mô tả đường mặc định
+`ITINERARY_ORCHESTRATOR=off`. Cờ `on` giữ các luật trước LLM và toàn bộ nhánh lập lịch, nhưng thay phân luồng hội thoại
+bằng một orchestrator. Không có LLM riêng cho explore.
+
+```mermaid
+flowchart TD
+    intake --> precheck
+    precheck -->|guardrails, đổi vé/khách sạn, chọn phương án| old[Nhánh luật hiện có]
+    precheck -->|tin cần hiểu hoặc lời tạm biệt| orchestrate
+    precheck -->|nút vé đã tạo| run_jobs
+    orchestrate -->|answer hoặc ask| gatekeep
+    orchestrate -->|execute| run_jobs
+    orchestrate -->|plan, đồng ý đã kiểm| extract
+    extract --> planning[Nhánh lập lịch hiện có]
+    extract -->|trip_details không trích được thông tin| gatekeep
+    run_jobs -->|kết quả và pending| orchestrate
+    run_jobs -->|chỉ vé đủ 5 điều kiện hoặc nút vé| gatekeep
+    gatekeep -->|tra lại mã cũ chưa tra| run_jobs
+    gatekeep -->|buộc sửa câu một lần| orchestrate
+    gatekeep --> finalize
+    old --> finalize
+    planning --> finalize
+```
+
+- `precheck` (`nodes.precheck_node`): chỉ luật đầu vào/thao tác có sẵn, không được tiêm model phân loại;
+  node và event mang cùng tên precheck. Cờ off giữ node classify và LLM phân loại cũ.
+- `orchestrate` (`steps/orchestration.py`, schema `models.OrchestratorTurn`): đọc ngữ cảnh và results rút gọn; hiểu
+  toàn bộ tin, khai `answer|ask|plan|execute`, ý định và phạm vi; số và ID không do model tạo. Model riêng do main.py tiêm. Nhu cầu khám phá có chủ đề rõ thì chủ động execute;
+  chưa có thành phố vẫn tìm toàn catalog, không chờ khách thúc tìm hay buộc chọn thành phố trước.
+- `run_jobs` (`steps/jobs.py`): các việc độc lập chạy song song qua port. `about_shown` chỉ tra đúng mã; `more` kế thừa
+  `via`, loại thẻ đã hiện cả hội thoại theo điểm đến + loại; rẻ/đắt hơn dùng mốc giá mới, giữ điều kiện. Tìm quanh giữ
+  mốc toạ độ; nếu cùng cần so giá, giữ riêng mốc giá để không so với giá của địa danh. Danh sách xếp giá có query được
+  giao với phạm vi Search vừa tra, không bỏ điều kiện query. `continue_from` dùng chung con trỏ nguồn, lấy unlisted
+  trước khi tải trang kế. 8 mục/1.500 ký tự mỗi việc, 3.000 ký tự cho toàn bộ bản rút gọn (kể cả metadata và tóm tắt vòng trước) là số khởi đầu cho B12.
+  Tìm không giới hạn thành phố thì mỗi dòng kèm điểm đến từ catalog. Dòng cũ chuyển thành `earlier_refs`; dữ liệu đầy đủ vẫn ở code để kiểm grounding và chèn khối vé.
+- `gatekeep` (`domain/itinerary/gatekeeper.py`, hàm thuần + node điều phối): mã phải có trong bản rút gọn lượt này;
+  số qua placeholder, so mốc ghi job; lặp theo intent, giới hạn 3 thẻ tham quan/tour và 2/4 khách sạn; nhãn so sánh do code
+  tính; chèn nguyên khối vé còn hiệu lực, một câu hỏi. Chỉ câu mời được chèn tạo pending_offer; từ chối thắng tạo lời mời.
+- Phanh: 3 việc/vòng, 3 vòng execute, 10 lời gọi tool, ngân sách request, việc trùng/con trỏ không dời. Chạm phanh thì
+  buộc trả lời, nêu việc chưa làm; model lỗi hoặc vẫn sai thì dùng lời dự phòng từ dữ liệu hiện có.
+- `finalize` kiểm lại bản trước điền số, kiểm contract/grounding và là chỗ duy nhất ghi shown. Cap 40 dòng facts mỗi
+  nơi; bộ nhớ ID/mã/phạm vi/điều kiện tìm gọn vẫn giữ cả hội thoại để cap facts không làm more lặp lại thẻ cũ.
+- `waiting_jobs` giữ các câu vé chưa được hỏi đúng một lượt sau. Bấm nút vé do code tạo chạy các yêu cầu đang chờ thiếu
+  đúng trường vừa điền, không gọi LLM; quá 3 yêu cầu thì chia vòng, phần chưa làm khi chạm phanh được nêu rõ.
+  Trả lời bằng chữ đi orchestrator. Chuyển việc khác thì các việc chờ hết hạn.
+
+Đặc tả đã chốt: [plan](../../plan/2026-10-12-nho-ket-qua-da-xem.md),
+[đề xuất đã áp dụng](../../prd/update-archive/2026-10-12-orchestrator-va-kham-pha-llm.md).
+
 ## 1. Bốn giai đoạn
 
 Đừng nhớ mười lăm node rời rạc. Nhớ bốn giai đoạn, mỗi giai đoạn trả lời một câu hỏi:
@@ -96,7 +147,7 @@ Vượt ngưỡng → 429 `TOO_MANY_ATTEMPTS`, `retryable: true`, `details.retry
 Kiểm thử: `tests/unit/agents/test_guardrails.py` (bảng dương/âm, không gọi LLM, và **không câu nào trong
 `evaluation/datasets/agent_test_cases_nhat.yaml` bị chặn nhầm**), `tests/contract/test_assistant_rate_limit.py` (429 đã khai báo, đúng ngưỡng).
 
-**Node nào gọi LLM:** chỉ `classify`, `extract`, `tool` (bước chọn tên điểm đến theo catalog và lập tool plan), `filter` (chỉ ra cặp điểm tham quan trùng), `converse`, `clarify` và `narrate`. Mọi lượt gọi LLM (trừ `filter`, chỉ nhận mã + tên điểm tham quan và điểm đến) nhận cùng ngữ cảnh hội thoại qua `steps/history.llm_context`: lịch sử gần nhất (giới hạn 20 message, 8.000 ký tự), chuyến đi đã chốt (`trip_so_far`, `known_constraints`), sản phẩm đã cho xem và câu hỏi gần nhất của trợ lý.
+**Node nào gọi LLM:** chỉ `classify`, `extract`, `tool` (bước chọn tên điểm đến theo catalog và lập tool plan), `filter` (chỉ ra cặp điểm tham quan trùng), `converse`, `clarify` và `narrate`. Mọi lượt gọi LLM (trừ `filter`, chỉ nhận mã + tên điểm tham quan và điểm đến) nhận cùng ngữ cảnh hội thoại qua `steps/history.llm_context`: lịch sử gần nhất (giới hạn 20 message, 8.000 ký tự), chuyến đi đã chốt (`trip_so_far`, `known_constraints`), sản phẩm đã cho xem trong cả hội thoại (`already_shown`) và câu hỏi gần nhất của trợ lý.
 
 **Ngữ cảnh cho LLM là bản đã diễn giải, không phải dump thô.** Trace thật (01/10/2026): lịch trình cũ kèm giá xuất hiện hai lần trong payload, câu 5 chữ của người dùng chìm giữa đó, `extract` chép giá và tên khách sạn cũ thành ràng buộc mới, còn `clarify` mượn lý do từ chối cũ trong lịch sử. Nay `llm_context` gồm:
 
@@ -104,16 +155,20 @@ Kiểm thử: `tests/unit/agents/test_guardrails.py` (bảng dương/âm, không
 |---|---|
 | `trip_so_far` | Chuyến đi đã biết trong một dòng kèm trường còn thiếu (`turn_notes.trip_summary`): "Hà Nội, 3 ngày; chưa có: ngày khởi hành, số người, ngân sách" |
 | `stage` | Đã gửi lịch trình (có `previous_selection`), đang hỏi thông tin, hay đầu hội thoại |
-| `conversation_history` | Mỗi mục một khoá theo người nói: `user` là tin người dùng nguyên văn, `assistant_did` là **ghi chú theo nghĩa** của tin trợ lý (`note`), không còn cả bài lịch trình kèm giá: "gửi lịch trình Hà Nội 3 ngày", "không dùng được điểm đến "biển": không có trong danh sách điểm đến; hỏi điểm đến". Ghi chú lịch trình không kèm tên sản phẩm: sản phẩm đã cho xem chỉ nằm ở `previous_selection` (kèm id). Trace 02/10/2026: cặp `role`/`content` phẳng và tên sản phẩm lặp ở mỗi ghi chú làm payload dài, dễ đọc nhầm ghi chú trợ lý thành lời người dùng |
+| `conversation_history` | Mỗi mục một khoá theo người nói: `user` là tin người dùng nguyên văn, `assistant_did` là **ghi chú theo nghĩa** của tin trợ lý (`note`), không còn cả bài lịch trình kèm giá: "gửi lịch trình Hà Nội 3 ngày", "giới thiệu 4 nơi ở Hà Nội (xem already_shown)", "không dùng được điểm đến "biển": không có trong danh sách điểm đến; hỏi điểm đến". Ghi chú không kèm tên sản phẩm: tên và thông tin nằm ở `already_shown`. Trace 02/10/2026: cặp `role`/`content` phẳng và tên sản phẩm lặp ở mỗi ghi chú làm payload dài, dễ đọc nhầm ghi chú trợ lý thành lời người dùng |
 | `last_assistant_message` | Câu cuối của trợ lý: nguyên văn khi ≤ 500 ký tự (câu hỏi lại, để hiểu câu trả lời ngắn), ghi chú khi dài hơn (lịch trình) |
-| `known_constraints`, `previous_selection` | Như trước |
+| `known_constraints` | Ràng buộc đã chốt |
+| `already_shown` | Sản phẩm đã cho xem trong cả hội thoại (state `shown`, `steps/shown.context`): `items` mỗi sản phẩm một dòng — mã `#n`, tên ngắn (vé: hãng và số hiệu), một dòng thông tin theo loại (khách sạn: giá kèm đơn vị theo `priceUnit`, hạng sao, điểm và số đánh giá làm tròn, tối đa 5 tiện ích; điểm tham quan, tour, combo: "tham quan tự do" hoặc giá kèm đơn vị "/khách", "/gói", giờ mở, thời lượng, tối đa 3 nhãn; vé: tuyến, ngày, giờ, hạng, giá), lượt và chỗ đã hiện ("khám phá", "vé máy bay", "lịch, ngày 2 chiều"); `current_plan` tóm lịch gần nhất theo mã ("khách sạn #1 (đêm 1–2); ngày 1: sáng #2, chiều #3"); `about` nói giá là giá lúc gợi ý, không phải ngân sách. Không có mô tả, ảnh, địa chỉ đủ, tổng tiền lịch. Các dòng sản phẩm tối đa 2.000 ký tự: quá thì bỏ lượt cũ nhất trước, giữ lượt gần nhất và sản phẩm của lịch gần nhất. Lỗi 12/10/2026: "hà nội" → "ngoài ra còn gì nữa" trả lại 4 thẻ cũ vì không lượt nào nhớ đã hiện gì (plan `docs/plan/2026-10-12-nho-ket-qua-da-xem.md`) |
+| `previous_selection` | Sản phẩm của lịch gần nhất kèm id, để `extract` loại đúng sản phẩm và `tool` chọn sản phẩm gốc cho Similar |
+
+Tin nhắn hiện tại (`message`) do node thêm, đứng **đầu** payload. Đo lặp `classify` 12/10/2026 (plan B3): đưa tin nhắn xuống cuối payload (để tránh *lost in the middle*) làm câu hỏi vé hiểu sai nhiều hơn rõ rệt — "vé nha trang đi phú quốc bao nhiêu" hỏi lại loại vé (AC-AGT-08) 24/24 lần → 10/24, "đi đâu cũng được, miễn đắt nhất" sau một câu báo giá hiểu đúng 8/10 → 4/10 — còn thêm khối `already_shown` ở vị trí trên thì không đổi kết quả (20/30 cả hai; bản cuối 15/16 so với 11/16 khi chưa có khối). Đổi thứ tự payload phải đo lại như vậy trước.
 
 `finalize` dựng ghi chú bằng luật (`steps/turn_notes.turn_note`, không gọi LLM) từ state đã chốt và lưu kèm tin nhắn trợ lý trong `conversation_history` (khoá `note`, tối đa 300 ký tự). Lịch sử lưu trước khi có ghi chú thì dùng câu gọn ≤ 500 ký tự hoặc dòng tiêu đề. `clarify`/`converse` nhận thêm `this_turn` — ghi chú của chính lượt đang trả lời — để câu trả lời biết vì sao đang hỏi. Message `human` gửi LLM là YAML đọc được (`history.prompt_yaml`: giữ nguyên tiếng Việt, chuỗi nhiều dòng dạng khối `|`, nội dung người dùng được quote nên không phá được cấu trúc), không phải chuỗi JSON. Đây là chỗ hay bị hiểu sai — **`compose` không gọi LLM**, nó xếp lịch bằng quy tắc cố định (mục 5); LLM của `narrate` chỉ viết lời về lịch đã dựng, không chọn hay đổi sản phẩm.
 
 ### Giai đoạn trò chuyện và khám phá (FR-AGT-06, chốt 2026-10-10)
 
 Trước khi người dùng đồng ý lập lịch, trợ lý **không hỏi thông tin chuyến và không hiện form**. `classify` thêm nhãn
-`explore` và cờ `plan_request`; luật đồng ý ở `steps/classification.plan_consented`:
+`explore` và cờ `plan_request`; luật đồng ý gom ở `steps/consent.py` (`plan_consented` xét ở `classify`, `planning_implied` xét sau `extract`); vòng đời các cờ hội thoại (lưu qua lượt, chỉ trong lượt, khi nào bị dọn) ở `steps/phase.py`:
 
 | Người dùng | Đồng ý lập lịch? | Đi đâu |
 |---|---|---|
@@ -126,10 +181,13 @@ Trước khi người dùng đồng ý lập lịch, trợ lý **không hỏi th
 | "Để sau", "không biết" khi đang có lời mời | Chưa | `converse`, xoá lời mời, không hỏi lại |
 | "Cứ chọn đại", "tuỳ bạn", "đâu cũng được" khi chưa có điểm đến | Chưa | Luật `_DELEGATE`: `explore` tự chọn ngay (bậc 2), không đợi LLM xếp nhãn |
 | Chê một nơi đã gợi ý ("chán, Đà Nẵng đi rồi", "chỗ khác đi") | Chưa | Ghi `rejected_destinations`, bỏ lời mời, `explore` chọn nơi khác; nơi bị chê không vào nút gợi ý; hỏi lại đúng tên nơi đó là đổi ý |
-| Hỏi giá vé ("vé ra Hà Nội bao nhiêu?", "vé sg ra hn bao nhiu", "how much is a flight from saigon", "tao ở sài gòn, đi đâu cũng đc miễn vé rẻ") | Giữ nguyên | LLM của `classify` nhận câu hỏi vé ở mọi cách viết (gõ sai, viết tắt, tiếng Anh, nói vòng). Nó đọc ra `TurnRoute.fare` (`models.FareQuestion`): nơi đi, nơi đến, đi đâu cũng được, đắt nhất, chuyến về, ngày khác/rẻ hơn, chưa rõ loại vé. Nhãn `fare` đi `explore`, nhánh giá vé (`fare_question`, `fare_ask`). Phần còn lại là luật trong `steps/fares.answer`. Tên nơi được đối chiếu với điểm đến và tuyến bay của catalog (`_place`); chỗ LLM để trống thì lấy từ `pending_fare`, rồi từ `intent`. Thiếu điểm đến hoặc nơi đi thì hỏi lại kèm nút; nút nơi đi lấy từ `originCity` của các tuyến tới điểm đến. Đủ thì báo vé một chiều rẻ nhất (`flight_options`) và tối đa 3 ngày rẻ khác. Đã có ngày đi thì nêu vé đúng ngày đó, rồi so với cả đợt đang mở bán. Chưa rõ loại vé thì hỏi lại vé máy bay, khách sạn hay vé tham quan, kèm 3 nút. Sau khi báo giá, `pending_fare` giữ tuyến (`answered`) và ghi chú lượt nêu tuyến đó. Nhờ vậy câu hỏi tiếp ("đắt nhất thì sao", "ngày khác", "còn đi Đà Nẵng thì sao", "đi đâu cũng được, miễn đắt nhất") dùng lại được nơi đi, nơi đến. Đã có lịch: câu hỏi về chuyến của lịch ("chuyến bay về mấy giờ") trả lời theo tuyến của chuyến, chiều về đúng ngày cuối; lịch giữ nguyên. Câu gộp nhiều ý: trả lời phần vé, các ý còn lại (`other_questions`) thành nút. Câu **đổi** vé hay khách sạn là `travel`/`changes` |
+| Hỏi giá vé ("vé ra Hà Nội bao nhiêu?", "vé sg ra hn bao nhiu", "how much is a flight from saigon", "tao ở sài gòn, đi đâu cũng đc miễn vé rẻ", "ngày 20/10 có chuyến sớm không", "tại sao đắt") | Giữ nguyên | Tư vấn vé máy bay (FR-AGT-07, chốt 2026-10-11). LLM của `classify` nhận câu hỏi vé ở mọi cách viết và đọc ra `TurnRoute.fare` (`models.FareQuestion`): nơi đi, nơi đến, đi đâu cũng được, đắt nhất, chuyến về, ngày khác/rẻ hơn, chưa rõ loại vé, ngày bay hỏi (`day`, theo `today`), khung giờ (`time_of_day`: đi sớm < 09:00, sáng 05–12, chiều 12–18, tối ≥ 18:00), "tại sao đắt" (`why`), ngày nào có/không có chuyến (`availability`). Câu chỉ nói "vé" (không máy bay, bay, chuyến bay, hãng) là chưa rõ loại vé, kể cả kèm "đi đâu cũng được": hỏi lại vé máy bay, khách sạn hay vé tham quan, kèm 3 nút. Nhãn `fare` đi `explore`, nhánh giá vé (`fare_question`, `fare_ask`); phần còn lại là luật trong `steps/fares.answer`. Tên nơi được đối chiếu với điểm đến và tuyến bay của catalog (`_place`); chỗ LLM để trống lấy từ `pending_fare`, rồi từ `intent`. Thiếu điểm đến hoặc nơi đi thì hỏi lại kèm nút (nơi đi lấy từ `originCity` của các tuyến). Đủ thì `answer_text` dựng câu gọn chỉ nêu chuyến trả lời câu hỏi: rẻ/đắt nhất cả đợt mở bán; đúng ngày hỏi (các chuyến ngày đó, không có thì ngày gần nhất có chuyến, rồi ngày rẻ nhất cả đợt); trong khung giờ (không có thì nói rõ và tính mọi giờ); đợt mở bán và các ngày chưa có chuyến; "ngày khác" thì các ngày kế tiếp. Chuyến giá minh hoạ (`attributes.simulated`, Thương gia mô phỏng) chỉ tính khi tuyến không còn chuyến giá thật (`_one_way`). `why_text` nói rõ dữ liệu không có hành lý, điều kiện vé, ghế còn lại nên không khẳng định lý do, rồi chỉ nêu số liệu: gấp bao nhiêu lần vé rẻ nhất, so với giá phổ biến (trung vị), khác hạng ghế, giá minh hoạ, khác hãng, bay sát ngày (≤ 7 ngày). Chuyến nêu trong câu là link `[Hãng Số hiệu](product:id)`; tối đa 4 chuyến thật thành `searchResults.flight` (contract 1.25.0) và `candidates` để `finalize` kiểm grounding; widget hiện hàng thẻ ngày–giá, mỗi thẻ mở `/flights` đúng tuyến, đúng ngày. Câu hỏi tiếp "ngày khác", "tại sao đắt" giữ kiểu rẻ/đắt của lần trước; hỏi ngày, giờ, ngày nào có chuyến thì mặc định rẻ nhất. Nút của câu trả lời vé ("Từ TP. Hồ Chí Minh", "Đắt nhất thì sao?", "Ngày nào còn vé?", "Vé máy bay ra Hà Nội rẻ nhất") lưu trong `pending_fare.chips`; bấm (gõ y nguyên) nút đó thì `classify` đi thẳng nhánh vé bằng `fares.chip_reply`, không gọi LLM (chat thử 11/10: LLM hiểu "Từ TP. Hồ Chí Minh" là hỏi Sài Gòn có gì chơi). Sau khi báo giá, `pending_fare` giữ tuyến (`answered`), kiểu (`kind`), chuyến vừa hiện (`shown`). Đã có lịch: câu hỏi về chuyến của lịch ("chuyến bay về mấy giờ") trả lời theo tuyến của chuyến, chiều về đúng ngày cuối; lịch giữ nguyên. Câu gộp nhiều ý: trả lời phần vé, các ý còn lại (`other_questions`) thành nút. Câu **đổi** vé hay khách sạn là `travel`/`changes` |
+| Xin form ("cho mình cái form", "đưa mình cái form") | Giữ nguyên/Đồng ý | `TurnRoute.form_request`: coi như đồng ý lập lịch, `clarify` lý do `suggest_form` kèm form điền sẵn ngay lượt này (`conversation._form_shown`); câu có kèm thông tin chuyến thì `extract` ghi trước, form vẫn hiện (chat thử 11/10: trợ lý hỏi lại bằng chữ) |
+| "Đổi sang chỗ khác", "đổi địa điểm" chưa nêu nơi mới | Giữ nguyên | `extract` (`change_without_value = ["destination"]`) hỏi "đổi sang đâu" trước mọi câu hỏi phần còn thiếu, không form; 3 nút "Đổi sang <nơi>" là điểm đến khác của catalog, chữ nêu đúng các nơi đó (`conversation.destination_choices`, chat thử 11/10: từng ra form điền sẵn điểm đến cũ kèm "còn thiếu số ngày") |
 | Hỏi về một nơi mà chưa rõ thành phố ("có khách sạn nào có hồ bơi gần phố cổ không?") | Giữ nguyên | `explore`: tên nơi LLM đọc ra (`explore_place`: "phố cổ") khớp nơi ở nhiều thành phố của catalog thì hỏi "Bạn muốn nói Khu Phố Cổ Hà Nội hay Phố cổ Hội An?" kèm một nút mỗi nơi (tên catalog, `ask_which_place`); không tra được nơi thì `extract` → `converse` hỏi lại. Câu hỏi gốc lưu ở `open_question`, những gì LLM hiểu ở câu đó (chỗ ở, giá rẻ) ở `open_understood`; lượt sau trả lời ngắn nêu điểm đến ("hà nội cha ơi") thì `explore` trả lời câu hỏi gốc ở đó. "gần <nơi>" khi hỏi chỗ ở: câu tìm khách sạn kèm "gần <nơi>", tìm thêm chính nơi đó làm mốc và chỉ giữ khách sạn trong 1,5 km quanh mốc (lý do `near`) |
 | Hỏi về chính một nơi ("Văn Miếu buổi tối có mở không?") hoặc quanh nơi đó ("gần Văn Miếu có gì nữa?") | Giữ nguyên | `explore.pick`: chỉ thẻ nơi đó, câu đầu trả lời thẳng (`asked_only`); hỏi quanh nơi đó thì các điểm tham quan gần nhất (≤ 3 km), không lặp nơi đó, không chen khách sạn |
-| Hỏi về một nơi bằng tên dân gian, gõ sai, không nêu thành phố ("Văn Miếu buổi tối có mở không?", "lăng bác mấy giờ mở cửa", "văn miếu tối mở ko b", "chợ bến thành mở tới mấy giờ") | Chưa | LLM của `classify` đọc ra tên nơi thường dùng (`explore_place`, ví dụ "Lăng Chủ tịch Hồ Chí Minh"), thành phố (`explore_city`), loại nơi (`explore_focus`) và việc có hỏi giá không (`explore_price`). `explore` dùng thành phố đó nếu nó là điểm đến của catalog, kể cả khi đang nói về thành phố khác. Không có thành phố thì tìm nơi đó trên cả catalog (`place_destination`) và lấy điểm đến của chính sản phẩm khớp tên. Câu tìm nơi là tên LLM đọc ra, đã bỏ tên thành phố (`place_query`), vì Search hiểu "Hồ Chí Minh" trong tên là điểm đến và hiểu "ko" là phủ định. Khớp tên bằng `named_in`; không khớp thì lấy tên gần nhất (`closest_named`). Payload LLM có giờ mở cửa và vé vào của nơi được hỏi (`facts.entry`, `facts.ticketPrice`); người dùng hỏi giá mà LLM không nêu thì code thêm câu giá |
+| Hỏi về một nơi bằng tên dân gian, gõ sai, không nêu thành phố ("Văn Miếu buổi tối có mở không?", "lăng bác mấy giờ mở cửa", "văn miếu tối mở ko b", "chợ bến thành mở tới mấy giờ") | Chưa | LLM của `classify` đọc ra tên nơi thường dùng (`explore_place`, ví dụ "Lăng Chủ tịch Hồ Chí Minh"), thành phố (`explore_city`), loại nơi (`explore_focus`) và việc có hỏi giá không (`explore_price`). `explore` dùng thành phố đó nếu nó là điểm đến của catalog, kể cả khi đang nói về thành phố khác. Không có thành phố thì tìm nơi đó trên cả catalog (`place_destination`) và lấy điểm đến của chính sản phẩm khớp tên. Câu tìm nơi là tên LLM đọc ra, đã bỏ tên thành phố (`place_query`), vì Search hiểu "Hồ Chí Minh" trong tên là điểm đến và hiểu "ko" là phủ định. Khớp tên bằng `named_in`; không khớp thì lấy tên gần nhất (`closest_named`). Payload LLM có giờ mở cửa, vé vào và địa chỉ của nơi được hỏi (`facts.entry`, `facts.ticketPrice`, `facts.address`); người dùng hỏi giá mà LLM không nêu thì code thêm câu giá. "ở đâu" chỉ là hỏi chỗ ở khi câu không nêu nơi nào ("chùa thiên mụ ở đâu" là hỏi vị trí, trả lời bằng địa chỉ catalog). Không tra ra nơi được hỏi: payload có `place_not_found`, LLM tự nói bằng lời của mình là không kiểm được nơi đó; lượt đi `converse` mà câu LLM có giờ, giá hoặc nói về giờ/giá/vé mà không nhận là không kiểm được thì thay bằng câu cố định (`conversation._claims_a_fact`) |
+| Hỏi khách sạn rẻ nhất/đắt nhất ("rẻ nhất là chỗ nào", "còn đắt nhất") | Giữ nguyên | `explore_price` = `cheap`/`dear`. Không kèm "gần <nơi>": thẻ lấy từ danh sách khách sạn còn phòng của cả điểm đến xếp theo giá (`GET /products?sort=price_asc|price_desc`, `exploration.price_listing`), LLM được nói là rẻ/đắt nhất điểm đến (`price_scope = city`). Có "gần <nơi>": chỉ trong các khách sạn tìm được quanh nơi đó, LLM nói rõ phạm vi (`price_scope = found`). Lý do thẻ `cheapest`/`low_price`, `dearest`/`high_price` (chat thử M04) |
 | Hỏi chọn điểm đến theo loại nơi ("đi biển", "chỗ nào mát mát") | Chưa/Giữ nguyên | `clarify` (lý do `destination_kind`): LLM nêu vài điểm đến của catalog hợp loại đó; mỗi điểm đến được nêu thành một nút (tối đa 3, `conversation._with_destination_buttons`) |
 | Ngày đi ngoài cửa sổ mở bán (vé máy bay, khách sạn, vé tham quan đều thiếu vì ngày) | Giữ nguyên | `compose` tính một ngày đi chung gần nhất có đủ vé hai chiều, khách sạn cho cả chuyến và vé tham quan còn bán tới ngày về (`flights.joint_start`); câu mở đầu, mục vé máy bay và mục khách sạn cùng gợi ý ngày đó (chat thử M09) |
 
@@ -137,8 +195,9 @@ Khi đã đồng ý lập lịch:
 
 - **Sở thích khách sạn** (hồ bơi, phù hợp trẻ nhỏ, view biển, có bữa sáng, spa; `domain/itinerary/preferences.py`) là
   **ưu tiên**: nằm trong `intent.interests`, không trong `constraints.hotel_attributes` (bộ lọc bắt buộc; catalog thật chỉ ghi
-  tiện ích dạng chuỗi nên cờ bắt buộc sẽ loại gần hết khách sạn). Câu hỏi gộp mời nói sở thích; form có ô `interests` chọn
-  nhiều (`interestOptions`, tích sẵn "Phù hợp trẻ nhỏ" khi có trẻ em); câu "ưu tiên …" được `extract` giữ mềm. Sở thích vào câu
+  tiện ích dạng chuỗi nên cờ bắt buộc sẽ loại gần hết khách sạn). Câu hỏi gộp mời nói sở thích; form có ô `interests` gồm
+  5 lựa chọn cố định (`interestOptions`, tích sẵn "Phù hợp trẻ nhỏ" khi có trẻ em) và một ô tự nhập tối đa 150 ký tự (chốt
+  12/10); câu "ưu tiên …" và phần tự nhập đi trong câu xác nhận, `extract` đọc như mọi tin nhắn và giữ mềm. Sở thích vào câu
   tìm khách sạn (`search_hints`) và lọc mềm ở `evaluate` (chỉ bỏ khách sạn không hợp khi còn ít nhất 3 khách sạn hợp).
 - **Ngày đã chọn không có chuyến bay:** câu cảnh báo vé nêu thêm tối đa 2 ngày gần nhất có vé, giữ số ngày của chuyến, ngày
   đủ hai chiều trước (`domain/itinerary/flights.nearest_dates`, dữ liệu là chuyến `flight_options` đã tải, không tra thêm).
@@ -220,6 +279,12 @@ START → intake → classify → extract → tool → evaluate → retry → to
 START → intake → classify → extract → tool → evaluate → dead_letter → finalize → END  (lỗi vĩnh viễn/auth)
 START → intake → classify → extract → clarify             → finalize → END  (thiếu destination/days, mâu thuẫn, hoặc điều kiện không xác minh được)
 START → intake → classify → converse                      → finalize → END  (chào hỏi, cảm ơn, không muốn đi nữa, hoặc yêu cầu ngoài phạm vi — không gồm yêu cầu du lịch thiếu chi tiết)
+START → intake → classify → explore                       → finalize → END  (hỏi về một nơi, hỏi giá vé, "cứ chọn đại"; FR-AGT-06, FR-AGT-07)
+START → intake → classify → explore → extract → …          → finalize → END  (explore không tra được tên nơi: quay lại extract một lần)
+START → intake → classify → extract → explore              → finalize → END  (chưa đồng ý lập lịch, đã có điểm đến)
+START → intake → classify → clarify                        → finalize → END  (đã đồng ý mà "không biết", xin form, đổi khách sạn/chuyến bay chưa rõ)
+START → intake → classify → tool → evaluate → …            → finalize → END  (đã chọn chuyến bay khác bằng luật, lập lại lịch)
+START → intake → apply_option                              → finalize → END  (bấm/gõ "phương án N" có lịch đã lưu)
 START → intake → classify → dead_letter                    → finalize → END  (request lỗi hoặc LLM classify lỗi)
 ```
 
@@ -233,18 +298,25 @@ Dòng thứ tư (`retry`) tự nó rẽ tiếp thành ba luồng thẳng, theo `
 
 ### 3.1. Sơ đồ mermaid
 
-Cùng nội dung sơ đồ trên, vẽ bằng mermaid theo đúng cạnh trong `agents/graph.py` và điều kiện trong `agents/routing.py`. Node có viền đậm là node **có gọi LLM** (`classify`, `extract`, `tool` khi cần khớp destination hoặc lập plan, `filter` khi còn từ hai điểm tham quan, `converse`, `clarify`, `narrate`); các node còn lại thuần rule-based.
+Cùng nội dung sơ đồ trên, vẽ bằng mermaid theo đúng cạnh trong `agents/graph.py` và điều kiện trong `agents/routing.py`. Node có viền đậm là node **có gọi LLM** (`classify`, `extract`, `tool` khi cần khớp destination hoặc lập plan, `filter` khi còn từ hai điểm tham quan, `converse`, `explore` khi viết lời dẫn thẻ — nhánh giá vé không gọi LLM, `clarify`, `narrate`); các node còn lại thuần rule-based.
 
 ```mermaid
 flowchart TD
     START([START]) --> intake
+    intake -->|"phương án N" có lịch đã lưu| apply_option
     intake --> classify
 
-    classify --> converse
-    classify --> extract
-    classify -->|vague, còn thiếu trường bắt buộc| clarify
+    classify -->|trò chuyện, ngoài phạm vi, guardrail| converse
+    classify -->|hỏi về một nơi, giá vé| explore
+    classify -->|câu du lịch| extract
+    classify -->|đã đồng ý + vague, xin form, đổi KS/vé chưa rõ| clarify
+    classify -->|đã chọn chuyến bay khác| tool
     classify --> dead_letter
 
+    explore -->|không tra được tên nơi| extract
+
+    extract -->|chưa đồng ý, có điểm đến| explore
+    extract -->|chưa đồng ý, chưa có điểm đến| converse
     extract --> tool
     extract --> clarify
     extract --> dead_letter
@@ -262,7 +334,9 @@ flowchart TD
 
     filter --> compose
     compose --> narrate
+    apply_option --> finalize
     converse --> finalize
+    explore --> finalize
     narrate --> finalize
     clarify --> finalize
     dead_letter --> finalize
@@ -274,6 +348,7 @@ flowchart TD
     tool:::llm
     filter:::llm
     converse:::llm
+    explore:::llm
     clarify:::llm
     narrate:::llm
     classDef llm stroke:#d33,stroke-width:3px;

@@ -2,9 +2,10 @@
 
 - Ngày: 2026-10-09
 - Người đề xuất: Nguyễn Minh Nhật / Claude Code
-- Trạng thái: chờ chốt (riêng câu **hỏi giá vé** sau khi có lịch: đã chốt và áp dụng, xem dưới)
+- Trạng thái: đã áp dụng một phần (2026-10-11); phần còn lại từ chối — xem mục "Quyết định chốt (2026-10-11)"
 - Chốt bởi / ngày: phần hỏi giá vé — agent chốt theo uỷ quyền của Nguyễn Minh Nhật ("cho bạn quyền tự chốt"), 2026-10-10;
-  phần còn lại chưa chốt
+  phần còn lại — agent chốt theo uỷ quyền của Nguyễn Minh Nhật ("về phần technical PRD mình cho bạn quyết định mọi thứ"),
+  2026-10-11
 - Đã áp dụng một phần (`history/2026-10-10-cau-hoi-ve-hoi-lai-va-nho-ngu-canh.md`): câu hỏi giá vé sau khi có lịch đi nhánh
   giá vé bằng luật (tra lại chuyến theo tuyến của chuyến, không dùng dữ liệu đã lưu), trả `NEEDS_CLARIFICATION`, lịch giữ
   nguyên; không có node `follow_up`, không lưu thêm dữ liệu đã tra. Câu đổi vé, khách sạn vẫn theo luồng hiện có.
@@ -120,3 +121,36 @@ danh sách nguồn hợp lệ.
   "chưa đổi được chuyến bay qua chat"), `docs/spec/agent/langgraph-nodes.md`, `docs/spec/agent/state-fields.md`,
   `docs/spec/hop-dong-tich-hop-itinerary-assistant.md`.
 - Test: unit cho `domain/itinerary/follow_up.py` và node `follow_up`; golden case cho ba câu ở AC-AGT-05.
+
+## Quyết định chốt (2026-10-11)
+
+Chốt theo những gì source đang làm (đã chạy qua hai đợt chat thử 10/10 và 11/10).
+
+**Chốt và đã áp dụng vào PRD:**
+
+- Sau khi có lịch, câu **hỏi** về vé máy bay của chuyến (rẻ nhất, đắt nhất, giờ bay, chuyến về, ngày khác) được trả lời bằng
+  code từ chuyến bay của catalog, tra lại theo tuyến của chuyến ngay lượt đó. Trả `NEEDS_CLARIFICATION`, lịch giữ nguyên,
+  không lập lịch lại. LLM của `classify` chỉ hiểu câu hỏi. Cách trả lời chi tiết theo FR-AGT-07 / AC-AGT-08 (đề xuất
+  `2026-10-11-tu-van-ve-may-bay-va-sua-loi-chat-thu-lan-3.md`).
+- Câu **đổi** vé, khách sạn đi luồng đổi hiện có (đã chốt khi áp dụng `2026-10-09-goi-y-truoc-khi-lap-lich.md`): chưa nói
+  rõ thì hỏi lại kèm phương án đã tính hoặc chuyến khác cùng ngày, mỗi lựa chọn một nút; nói rõ thì đổi rồi lập lại lịch.
+  Chuyến người dùng chọn được giữ ở các lượt sau khi còn bán đúng ngày của chặng.
+- Giá trị điểm chốt: điểm 1 — không áp dụng (câu hỏi luôn tra lại giá); điểm 2 — `NEEDS_CLARIFICATION`, không phải
+  `COMPLETED`, contract không thêm status; điểm 3 — lời đáp do code viết, LLM chỉ hiểu câu hỏi.
+
+**Từ chối** (luồng hiện có đã làm được việc cần làm):
+
+- Node `follow_up` riêng và nhãn phân luồng hỏi/đổi riêng: câu hỏi vé đi nhánh vé của `explore`; câu đổi đi luật đổi trong
+  `classify` rồi lập lại lịch. Thêm node không thêm được hành vi nào người dùng thấy.
+- Lưu vé và ứng viên đã tra vào working memory để trả lời và đổi từ đó; giữ nguyên câu "Giá và tình trạng còn chỗ luôn được
+  tải lại" ở `architecture.md` §3. Tra lại theo tuyến nhanh (bấm nút dưới 1 giây; gõ chữ khoảng 2 giây vì qua LLM của `classify`) và không trả lời bằng giá
+  cũ.
+- Đổi vé, khách sạn chỉ thay đúng món đó trên cùng bộ sản phẩm, không lập lại lịch: luồng đổi hiện có lập lại lịch, vì giờ
+  bay đổi thì cửa sổ ngày đến, ngày về đổi (AC-AGT-02); đổi khách sạn bằng nút phương án đã không tìm lại (AC-AGT-04).
+- Hỏi về khách sạn của lịch (rẻ nhất, gần nhất, trong ngân sách) từ dữ liệu đã tra: hàng thẻ "Phương án khác" (AC-AGT-04)
+  đã cho xem và đổi khách sạn; câu hỏi khách sạn khác đi nhánh khám phá (FR-AGT-06).
+- Bản AC-AGT-05 ở mục "Nội dung đề xuất" được thay bằng bản theo hành vi trên; gạch đầu dòng "Hội thoại" và "Không suy
+  đoán dữ liệu sản phẩm" ở `architecture.md` §3 không đổi theo §4 của đề xuất.
+
+**Đã áp dụng vào PRD:** `requirements.md` §1.4 (FR-AGT-05 thêm một gạch đầu dòng), §3 (AC-AGT-02 câu cuối, thêm AC-AGT-05);
+`architecture.md` §3 (ghi chú dưới sơ đồ, câu hỏi vé sau khi có lịch tra lại theo tuyến).

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  SEARCH_GROUPS, TAB_GROUPS, parseGroupParam, searchCacheKey, searchGroupApi, searchOverviewApi, searchProductsApi, viewItems,
+  PREVIEW_LIMIT, SEARCH_GROUPS, TAB_GROUPS, parseGroupParam, searchCacheKey, searchGroupApi, searchOverviewApi, searchProductsApi,
+  shelfCacheKey, sortItems,
 } from '../../src/services/search';
 
 describe('search service searchProductsApi', () => {
@@ -61,7 +62,42 @@ describe('search service searchProductsApi', () => {
     expect(response.results.length).toBe(1);
     expect(response.results[0].product.name).toBe('V-OTA Resort & Spa Nha Trang Bay');
     expect(response.results[0].relevanceScore).toBe(0.92);
-    expect(response.categoryCounts.hotel).toBe(1);
+    expect(response.topScore).toBe(0.92);
+    expect(response.isWeakMatch).toBe(false);
+  });
+
+  it('sends the price and star filters to the API instead of filtering the page', async () => {
+    const item = (productId: string, unitPrice: number | null) => ({
+      productId, name: productId, taxonomy: 'hotel', destination: 'Nha Trang', unitPrice, currency: 'VND', available: true, score: 0.9,
+    });
+    global.fetch = vi.fn().mockImplementation(async () => new Response(JSON.stringify({
+      results: [item('dear', 9_000_000), item('free', null)], total: 2, topScore: 0.9,
+    }), { status: 200 }));
+
+    const filtered = await searchProductsApi('x', { taxonomy: 'hotel', minPrice: 100, maxPrice: 2_000_000, minStarRating: 4 });
+    const body = JSON.parse(vi.mocked(global.fetch).mock.calls[0][1]!.body as string);
+    expect(body).toMatchObject({ priceMin: 100, priceMax: 2_000_000, starRatingMin: 4 });
+    // Backend đã lọc: trang giữ nguyên những gì nó trả, total là số của backend.
+    expect(filtered.results.map((r) => r.product.id)).toEqual(['dear', 'free']);
+    expect(filtered.total).toBe(2);
+
+    await searchProductsApi('x', { taxonomy: 'hotel' });
+    const plain = JSON.parse(vi.mocked(global.fetch).mock.calls[1][1]!.body as string);
+    expect(plain).not.toHaveProperty('priceMin');
+    expect(plain).not.toHaveProperty('priceMax');
+    expect(plain).not.toHaveProperty('starRatingMin');
+  });
+
+  it('flags a weak match only when topScore is below the threshold, never when it is null', async () => {
+    const respond = (topScore: number | null) => {
+      global.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ results: [], total: 0, topScore }), { status: 200 }));
+    };
+    respond(0.2);
+    expect((await searchProductsApi('x')).isWeakMatch).toBe(true);
+    respond(null);
+    const empty = await searchProductsApi('x');
+    expect(empty.isWeakMatch).toBe(false);
+    expect(empty.topScore).toBeNull();
   });
 
   it('searches the category name, not hotels, when the query is empty (e.g. /search?type=flight)', async () => {
@@ -167,27 +203,53 @@ describe('search groups', () => {
     expect((await searchGroupApi('x', 'stay', { limit: 6, offset: 6 })).hasMore).toBe(false);
   });
 
-  it('counts tabs from one unfiltered request and leaves flights out', async () => {
-    global.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({
-      results: [], total: 201, facets: { taxonomy: { hotel: 128, flight: 13, attraction: 48, combo: 11, golf: 1 }, destination: {} },
-    }), { status: 200 }));
-    const overview = await searchOverviewApi('Nha Trang');
-    expect(overview.counts).toEqual({ stay: 128, exp: 49, more: 11 });
-    expect(overview.total).toBe(188);
-    expect(bodies()).toHaveLength(1);
-    expect(bodies()[0]).toMatchObject({ taxonomy: null, limit: 1 });
+  it('passes the price and star filters of a group to every request of the group', async () => {
+    global.fetch = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ results: [], total: 0 }), { status: 200 }));
+    await searchGroupApi('x', 'stay', { limit: 20, maxPrice: 2_000_000, minStarRating: 4 });
+    expect(bodies()[0]).toMatchObject({ taxonomy: 'hotel', priceMax: 2_000_000, starRatingMin: 4 });
+    expect(bodies()[0]).not.toHaveProperty('priceMin');
   });
 
-  it('sorts and filters loaded items, keeping unpriced ones last', () => {
-    const make = (id: string, price: number | null, star?: number) => ({
-      product: { id, unitPrice: price, attributes: star ? { starRating: star } : {} },
-      relevanceScore: 0, matchTags: [],
+  it('keeps the best topScore of the group, null when every request is empty', async () => {
+    global.fetch = vi.fn().mockImplementation(async (_url, init) => {
+      const { taxonomy } = JSON.parse((init as RequestInit).body as string);
+      const topScore = taxonomy === 'golf' ? null : 0.8;
+      return new Response(JSON.stringify({ results: [], total: 0, topScore }), { status: 200 });
+    });
+    expect((await searchGroupApi('x', 'exp', { limit: 6 })).topScore).toBe(0.8);
+    expect((await searchGroupApi('x', 'exp', { limit: 6, taxonomy: 'golf' })).topScore).toBeNull();
+  });
+
+  it('counts tabs from the shelf requests (one per taxonomy, never an unfiltered one), so tab = row = "Xem thêm"', async () => {
+    // facets của một request không lọc taxonomy nhỏ hơn total của từng loại (suất vớt BM25 dùng chung): không được dùng.
+    const totals: Record<string, number> = { hotel: 13, attraction: 11, golf: 1, combo: 9 };
+    global.fetch = vi.fn().mockImplementation(async (_url, init) => {
+      const { taxonomy } = JSON.parse((init as RequestInit).body as string);
+      return new Response(JSON.stringify({
+        results: [item(`${taxonomy}-1`, taxonomy, 1, 0.9)], total: totals[taxonomy], topScore: taxonomy === 'combo' ? 0.2 : 0.9,
+        facets: { taxonomy: { [taxonomy]: totals[taxonomy] }, destination: {} },
+      }), { status: 200 });
+    });
+    const keys: string[] = [];
+    const overview = await searchOverviewApi('Nha Trang', null, (key, fetcher) => { keys.push(key); return fetcher(); });
+
+    expect(overview.counts).toEqual({ stay: 13, exp: 12, more: 9 });
+    expect(overview.total).toBe(34);
+    expect(overview.isWeakMatch).toBe(false);   // topScore cao nhất của các nhóm (0.9), không phải của nhóm yếu nhất
+    expect(bodies().map((b) => b.taxonomy).sort()).toEqual(['attraction', 'combo', 'golf', 'hotel']);
+    expect(bodies().every((b) => b.limit === PREVIEW_LIMIT && b.offset === 0)).toBe(true);
+    // Cùng khóa bộ đệm với hàng của tab "Tất cả", nên hàng đọc lại kết quả thay vì gọi lần nữa.
+    expect(keys).toEqual(TAB_GROUPS.map((group) => shelfCacheKey('Nha Trang', null, group)));
+  });
+
+  it('sorts loaded items by price, keeping unpriced ones last; relevance keeps the backend order', () => {
+    const make = (id: string, price: number | null) => ({
+      product: { id, unitPrice: price, attributes: {} }, relevanceScore: 0, matchTags: [],
     }) as never;
-    const items = [make('mid', 500, 4), make('none', null), make('low', 100, 3), make('high', 900, 5)];
-    expect(viewItems(items, { sort: 'price_asc' }).map((r) => r.product.id)).toEqual(['low', 'mid', 'high', 'none']);
-    expect(viewItems(items, { sort: 'price_desc' }).map((r) => r.product.id)).toEqual(['high', 'mid', 'low', 'none']);
-    expect(viewItems(items, { sort: 'relevance', maxPrice: 500 }).map((r) => r.product.id)).toEqual(['mid', 'low']);
-    expect(viewItems(items, { sort: 'relevance', minStarRating: 4 }).map((r) => r.product.id)).toEqual(['mid', 'none', 'high']);
+    const items = [make('mid', 500), make('none', null), make('low', 100), make('high', 900)];
+    expect(sortItems(items, 'price_asc').map((r) => r.product.id)).toEqual(['low', 'mid', 'high', 'none']);
+    expect(sortItems(items, 'price_desc').map((r) => r.product.id)).toEqual(['high', 'mid', 'low', 'none']);
+    expect(sortItems(items, 'relevance').map((r) => r.product.id)).toEqual(['mid', 'none', 'low', 'high']);
   });
 
   it('builds a cache key that separates group, limit and destination', () => {
@@ -204,5 +266,11 @@ describe('search groups', () => {
     const two = searchCacheKey('group', 'x', null, 'stay', 20, 0, 'hotel', { adults: 2, children: 0 });
     expect(two).not.toBe(searchCacheKey('group', 'x', null, 'stay', 20, 0, 'hotel', { adults: 3, children: 0 }));
     expect(two).not.toBe(searchCacheKey('group', 'x', null, 'stay', 20, 0, 'hotel'));
+    const star = searchCacheKey('group', 'x', null, 'stay', 20, 0, undefined, undefined, undefined, { minStarRating: 4 });
+    expect(star).not.toBe(searchCacheKey('group', 'x', null, 'stay', 20, 0));
+    expect(star).not.toBe(searchCacheKey('group', 'x', null, 'stay', 20, 0, undefined, undefined, undefined, { minStarRating: 5 }));
+    expect(star).not.toBe(searchCacheKey('group', 'x', null, 'stay', 20, 0, undefined, undefined, undefined, { maxPrice: 4 }));
+    expect(searchCacheKey('group', 'x', null, 'stay', 20, 0, undefined, undefined, undefined, {})).toBe(searchCacheKey('group', 'x', null, 'stay', 20, 0));
+    expect(shelfCacheKey('x', null, 'stay')).toBe(searchCacheKey('group', 'x', null, 'stay', PREVIEW_LIMIT, 0));
   });
 });

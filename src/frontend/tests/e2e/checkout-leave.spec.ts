@@ -44,7 +44,7 @@ test('logo và liên kết chân trang: hỏi lại, Ở lại giữ dữ liệu
   await openCheckoutFromCart(page);
   await typeLastName(page);
 
-  await page.locator('header').getByText('V-OTA', { exact: true }).click();
+  await page.locator('header').getByText('Sota', { exact: true }).click();
   await expect(dialog(page)).toBeVisible();
   await expect(dialog(page)).toContainText('Rời trang thanh toán?');
   await expect(dialog(page)).toContainText('1 dịch vụ trong giỏ hàng vẫn được giữ nguyên');
@@ -127,7 +127,7 @@ test('tải lại trang rồi bấm Back: vẫn chỉ một mục chặn, Rời 
 test('điện thoại: hộp cảnh báo nằm sát đáy màn hình, hai nút xếp dọc', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 800 });
   await openCheckoutFromCart(page);
-  await page.locator('header').getByText('V-OTA', { exact: true }).click();
+  await page.locator('header').getByText('Sota', { exact: true }).click();
   await expect(dialog(page)).toBeVisible();
   // Chờ hiệu ứng trượt lên xong rồi mới đo.
   await expect.poll(async () => {
