@@ -5,6 +5,7 @@
 - Nhánh: feat/agent-end (từ `release-mvp-v2` 0bb4a688)
 - Trạng thái: hoàn thành
 - Phạm vi: agent, evaluation, docs
+- Bị thay thế bởi: `history/2026-10-12-luat-nhan-cau-dung-len-lich.md` (riêng quyết định "không thêm lưới luật")
 
 ## Mục tiêu
 

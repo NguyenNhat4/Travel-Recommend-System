@@ -2,7 +2,8 @@ import json
 import unittest
 
 import yaml
-from src.backend.app.agents.steps.classification import extract_result, picked_option, route_input, route_result
+from src.backend.app.agents.steps.classification import (extract_result, picked_option, route_input, route_result,
+                                                         says_stop)
 from src.backend.app.agents.nodes import classify_node, intake_node
 from src.backend.app.agents.models import Extraction, TurnRoute
 from src.backend.app.agents.steps.prompts import CLASSIFY_PROMPT
@@ -164,6 +165,50 @@ class ClassifyPromptTests(unittest.TestCase):
         out_of_scope = CLASSIFY_PROMPT.split('out_of_scope:')[1]
         self.assertIn('cancel or change an existing order', out_of_scope)
         self.assertNotIn('cancellation actions', CLASSIFY_PROMPT)
+
+
+class StopRuleTests(unittest.TestCase):
+    """Câu dừng chắc chắn nhận bằng luật, bỏ qua LLM `classify`; câu khác vẫn qua LLM (AC-AGT-01, chốt 2026-10-12)."""
+
+    STOPS = ('ko đi nữa', 'ko di nua', 'Ko đi du lịch nữa!', 'k đi nữa nhé', 'thôi, mình không đi nữa đâu',
+             'hong đi du lịch nữa nha', 'không muốn đi nữa', 'không cần lên lịch nữa', 'thôi huỷ chuyến này',
+             'Hủy lịch trình', 'thôi khỏi lên lịch', 'tạm biệt', 'bye bye', 'ok bye', 'cảm ơn, tạm biệt', 'hẹn gặp lại')
+    # Ý khác hoặc mơ hồ: câu có tên nơi, số, chữ ngoài danh sách, câu hỏi, hay cụm hay dùng để từ chối một gợi ý.
+    OTHERS = ('không đổi nữa', 'không đi Đà Nẵng nữa', 'ko đi nữa, đi Huế', 'không đi được nữa', 'ko đi nữa hả?',
+              'ko đi nữa à', 'không đi 3 ngày nữa', 'không đi', 'không', 'không biết', 'để sau', 'thôi', 'thôi khỏi',
+              'thôi cảm ơn', 'cảm ơn', 'thôi mình không muốn đi nữa đâu bạn ơi', 'lấy phương án 2', 'đổi ngày')
+
+    def test_sure_stop_phrases_match_the_whole_message(self):
+        for text in self.STOPS:
+            self.assertTrue(says_stop(text), text)
+
+    def test_other_or_unclear_messages_are_left_to_the_llm(self):
+        for text in self.OTHERS:
+            self.assertFalse(says_stop(text), text)
+
+    def test_a_matched_stop_skips_the_llm(self):
+        def no_call(*_):
+            raise AssertionError('no LLM call')
+        llm = type('LLM', (), {'with_structured_output': no_call})()
+        state = {**intake_node({'query': 'ko đi nữa'}), 'intent': {**empty_intent(), 'destination': 'Huế'},
+                 'pending_offer': {'destination': 'Huế'}}
+        result = classify_node(state, llm=llm)
+        self.assertEqual((result['decision'], result['interaction_type']), ('simple', 'stop'))
+        self.assertEqual(result['missing_fields'], [])
+        self.assertIsNone(result['pending_offer'])
+        self.assertEqual(result['events'][-1]['message'], 'route stop (rule)')
+
+    def test_an_unmatched_stop_is_still_read_by_the_llm(self):
+        calls = []
+
+        class Llm:
+            def with_structured_output(self, schema):
+                calls.append(schema.__name__)
+                return type('Runnable', (), {'invoke': lambda _self, _prompt: TurnRoute(route='stop')})()
+        result = classify_node(intake_node({'query': 'thôi mình không muốn đi nữa đâu bạn ơi'}), llm=Llm())
+        self.assertEqual(calls, ['TurnRoute'])
+        self.assertEqual(result['interaction_type'], 'stop')
+        self.assertEqual(result['events'][-1]['message'], 'route stop')
 
 
 class PromptYamlTests(unittest.TestCase):

@@ -44,6 +44,39 @@ _ELSEWHERE = re.compile(r"\b(?:cho khac|noi khac|dia diem khac)\b")
 _DIGIT = re.compile(r"\d")
 #: Thông tin chuyến ngoài điểm đến: nói một trong số này là người dùng đang lập lịch ("Hà Nội 3 ngày", "đi 3 ngày").
 _PLANNING_DETAILS = ("days", "startDate", "party", "budget")
+#: Câu dừng chắc chắn (AC-AGT-01, chốt 2026-10-12), so NGUYÊN CÂU trên chuỗi đã `fold` và bỏ từ đệm cuối câu: "ko đi nữa",
+#: "thôi huỷ lịch trình", "tạm biệt". Từ vựng đóng nên câu có thêm tên nơi, số, ngày hay chữ khác không khớp và vẫn qua LLM
+#: `classify`. Không nhận "thôi khỏi", "thôi cảm ơn", "cảm ơn" đứng riêng (hay là từ chối một gợi ý, hoặc còn nói tiếp) và
+#: "không đi" thiếu "nữa".
+_STOP = re.compile(
+    r"^(?:(?:vay )?thoi )?(?:(?:minh|toi|tui|tao|em|anh|chi) )?(?:khong|ko|k|kh|khg|hong|hok|hk|hem|chang|cha) "
+    r"(?:(?:muon|can) )?(?:di du lich|di choi|du lich|di|(?:len|lap) lich(?: trinh)?|len ke hoach) nua$"
+    r"|^(?:thoi )?huy (?:chuyen(?: di)?|lich trinh)(?: nay)?$"
+    r"|^thoi khoi (?:len|lap) lich(?: trinh)?$"
+    r"|^(?:(?:ok|oke|okay|cam on(?: ban)?|thanks|thank you) )?(?:tam biet|bye(?: bye)?|goodbye|hen gap lai)$")
+#: Từ đệm cuối câu bỏ trước khi so ("ko đi nữa nhé", "thôi không đi nữa đâu"). Không có "à", "hả": đó là câu hỏi.
+_STOP_TAIL = re.compile(r"(?: (?:nhe|nha|ban|dau|luon|roi|ma))+$")
+
+
+def says_stop(text: str | None) -> bool:
+    """Câu dừng chắc chắn, nhận bằng luật để bỏ qua LLM `classify`; câu dừng nói cách khác vẫn do LLM gắn `stop`.
+
+    Câu hỏi ("ko đi nữa hả?") không tính: `fold` bỏ dấu "?", nên kiểm trên câu gốc.
+    """
+    if not text or "?" in text:
+        return False
+    return bool(_STOP.match(_STOP_TAIL.sub("", fold(text))))
+
+
+def stopped(rule: bool = False) -> dict:
+    """Update của lượt không muốn đi hay lên lịch nữa (`stop`, AC-AGT-01 chốt 2026-10-12): `converse` cảm ơn, hẹn gặp lại.
+
+    Không hỏi gì, không form, không nút; bỏ lời mời lập lịch đang chờ. Chuyến và việc đã đồng ý lập lịch giữ nguyên để
+    "thôi đi tiếp" nối lại được. Không lấy `understood`: tên nơi LLM đọc ra sẽ làm `converse` trả lời về nơi đó.
+    """
+    return {"interaction_type": "stop", "refusal": False, "decision": "simple", "missing_fields": [],
+            "clarification_reason": None, "pending_offer": None,
+            "events": [event("classify", "route stop (rule)" if rule else "route stop")]}
 
 
 def asks_for_plan(text: str | None) -> bool:
@@ -198,10 +231,7 @@ def route_result(state: dict, result: TurnRoute) -> dict:
         return {**understood(route), "interaction_type": "conversation", "refusal": False, "decision": "explore",
                 "fare_question": True, "missing_fields": [], "events": [event("classify", "route fare")]}
     if label == "stop":
-        # Không hỏi gì, không form, không nút; bỏ lời mời lập lịch đang chờ. Chuyến và việc đã đồng ý lập lịch giữ nguyên
-        # để "thôi đi tiếp" nối lại được. Không lấy `understood`: tên nơi LLM đọc ra sẽ làm `converse` trả lời về nơi đó.
-        return {"interaction_type": "stop", "refusal": False, "decision": "simple", "missing_fields": [],
-                "clarification_reason": None, "pending_offer": None, "events": [event("classify", "route stop")]}
+        return stopped()
     consent = plan_consented(state, label, route.plan_request)
     update = {"interaction_type": "travel" if label in ("vague", "explore") else label,
               "refusal": label == "out_of_scope", **understood(route),

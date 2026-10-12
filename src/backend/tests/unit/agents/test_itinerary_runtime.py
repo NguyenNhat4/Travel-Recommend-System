@@ -534,7 +534,9 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         second = await self.run_graph(llm, clients, store=store, owner='one',
                                       state={'query': 'ko đi nữa', 'conversation_id': conversation_id})
         self.assertEqual([e['node'] for e in second['events']], ['intake', 'classify', 'converse', 'finalize'])
-        self.assertEqual(llm.calls, ['TurnRoute', 'ConversationalAnswer'])
+        # "ko đi nữa" khớp luật câu dừng: không gọi LLM `classify`, chỉ một lời gọi LLM viết lời chào.
+        self.assertEqual(llm.calls, ['ConversationalAnswer'])
+        self.assertIn('route stop (rule)', [e['message'] for e in second['events']])
         response = second['response']
         self.assertEqual(response['status'], 'NEEDS_CLARIFICATION')
         self.assertEqual(response['question'], llm.conversational_message)

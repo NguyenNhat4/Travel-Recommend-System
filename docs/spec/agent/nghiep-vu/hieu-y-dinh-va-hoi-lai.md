@@ -14,7 +14,14 @@ Thứ tự kiểm trong `classify`; bước nào khớp thì dừng ở đó:
 1. **Chip sửa tay** (`intentOverride`, không có message) → du lịch, không gọi LLM.
 2. **Chèn lệnh / đòi secret** khớp mẫu → từ chối 400, không gọi LLM nào nữa.
 3. **Tin rác** (tầng 1): rác → hỏi "chưa hiểu" (200); chỉ có tục tĩu → từ chối 400. Không gọi LLM.
-4. **LLM gắn một nhãn:**
+4. **Câu dừng chắc chắn** (`classification.says_stop`) → `stop`, không gọi LLM `classify`; lời chào ở `converse` vẫn do LLM
+   viết. So nguyên câu sau khi `fold` và bỏ từ đệm cuối câu (nhé, nha, đâu, luôn, rồi, mà, bạn), từ vựng đóng:
+   `[thôi | vậy thôi] [mình | tôi | tui | tao | em | anh | chị] không/ko/k/kh/khg/hong/hok/hk/hem/chẳng/chả [muốn | cần]
+   đi / đi du lịch / du lịch / đi chơi / lên lịch / lập lịch / lên kế hoạch + nữa`; `[thôi] huỷ chuyến [đi] / lịch trình [này]`;
+   `thôi khỏi lên/lập lịch`; `[ok | cảm ơn | thanks] tạm biệt / bye / goodbye / hẹn gặp lại`. Câu có "?", có thêm tên nơi, số,
+   ngày hay chữ ngoài danh sách không khớp và đi bước 5. Cố ý không nhận "thôi khỏi", "thôi cảm ơn", "cảm ơn" đứng riêng
+   (hay là từ chối một gợi ý hoặc còn nói tiếp) và "không đi" thiếu "nữa".
+5. **LLM gắn một nhãn:**
    - `travel` → đi `extract`;
    - `vague` → nếu đã có lượt trước và còn thiếu trường bắt buộc thì hỏi lại kèm form, không thì như `travel`;
    - `stop` → người dùng không muốn đi hoặc không muốn lên lịch nữa ("ko đi nữa", "thôi huỷ lịch trình"): `converse` cảm
