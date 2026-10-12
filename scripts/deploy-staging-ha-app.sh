@@ -80,7 +80,7 @@ while IFS= read -r change; do
   [ -n "$change" ] || continue
   if ! grep -Fxq "$change" <<< "$allowed_changes"; then
     printf 'Plan có thay đổi ngoài phạm vi cho phép:\n%s\n' "$change" >&2
-    die 'dừng trước khi apply'
+    die 'dừng trước khi apply (drift giữa mã và state? xem docs/guide/van-hanh-cd-staging-ha.md, mục "Cổng plan")'
   fi
 done <<< "$unexpected"
 
