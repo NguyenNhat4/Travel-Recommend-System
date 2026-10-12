@@ -235,7 +235,7 @@ Khách huỷ đơn đã CONFIRMED (trong hạn)
 2. Không bao giờ dùng event đã huỷ (mặc định CDP đã lọc).
 3. CDP lỗi hoặc timeout: `/recommendations` vẫn trả `200` với `strategy: "popular"`, `because: []`, `diagnostics.coldStart: true`, `eventsUsed: 0`. Không trả `500` vì lỗi CDP.
 4. Phân biệt "CDP lỗi" với "chưa có lịch sử": cả hai cho `popular`, nhưng chỉ lỗi CDP mới ghi log `WARNING`.
-5. Nếu sau này cache lịch sử, phải xoá cache của người dùng ngay khi ghi `purchase` thành công, để khoảnh khắc K1 (đặt xong, gợi ý đổi ngay) vẫn đúng.
+5. Nếu sau này cache lịch sử, phải xoá cache của người dùng ngay khi ghi `purchase` thành công, để khoảnh khắc K1 (đặt xong, gợi ý đổi ngay) vẫn đúng. Cache **kết quả** gợi ý trên Redis (từ 2026-10-12, `hop-dong-tich-hop-search-recommendation.md` §5) không cache lịch sử: mỗi request vẫn đọc CDP theo mục 1, và khoá cache chứa dấu vân tay các event vừa đọc. `purchase` mới hay `cancel_purchases` cho khoá mới, nên K1 đúng mà không cần bước xoá cache nào.
 
 ---
 

@@ -9,9 +9,13 @@
 - Phạm vi: backend (recommendation, catalog), contract, frontend (trang chủ), infra (biến môi trường Redis), docs
 - Nhánh: `fix/recommendation` (tạo từ `origin/release-mvp-v2` bab57fa5)
 - Đề xuất PRD liên quan: `docs/prd/update-archive/2026-10-12-cache-goi-y-tren-redis.md` (đã chốt, tqanh123, 2026-10-12; đã áp dụng vào PRD)
-- Trạng thái: đang làm
-  - Xong: đề xuất áp dụng vào PRD; contract 1.25.0; `/products` trộn theo nhóm loại; kệ Phổ biến ở trang chủ; spec kệ Phổ biến và timeout.
-  - Còn: cold-start tối đa 2 mỗi taxonomy; giai đoạn 2 (làm nhanh lượt tính); giai đoạn 3 (cache Redis).
+- Trạng thái: hoàn thành phần code, test và tài liệu (2026-10-12); còn phần đo (mục "Còn lại" cuối file)
+  - Xong:
+    - đề xuất áp dụng vào PRD; contract 1.25.0;
+    - giai đoạn 1: `/products` trộn theo nhóm loại, kệ Phổ biến ở trang chủ, spec kệ Phổ biến và timeout, cold-start tối đa 2 mỗi taxonomy;
+    - giai đoạn 2: thời gian từng bước, 500 event, gọi Weaviate song song, nạp sẵn vector vào RAM;
+    - giai đoạn 3: cache gợi ý trên Redis, làm ấm sau đăng nhập, spec.
+  - Mỗi bước có entry `history/2026-10-12-*.md` riêng.
 
 ## Bối cảnh
 
@@ -148,9 +152,9 @@ Quy tắc chi tiết nằm trong đề xuất (khoá theo dấu vân tay event, 
      - Lưu và trả JSON, nên mỗi request nhận bản riêng (`hit()` dùng chung dict `attributes`).
      - Đánh dấu `userVectorCacheHit`.
    - **Adapter:** `infrastructure/persistence/redis_recommendation_cache.py`, dùng client `redis` đồng bộ với `socket_timeout` 100 ms. Lỗi thì bỏ qua cache và ghi WARNING có giới hạn tần suất.
-   - **Nối dây:** `core/config.py` (`recommend_cache_redis_url`, `recommend_cache_ttl_seconds`); `main.py` bọc `recommend` trước `traced` để route và trợ lý dùng chung.
+   - **Nối dây:** `core/config.py` (`recommend_cache_redis_url`, `recommend_cache_ttl_seconds`); `main.py` dựng `RecommendationCache` rồi truyền vào `build_recsys`. Cache nằm trong engine nên route và trợ lý dùng chung, không cần bọc `recommend`. Engine chỉ cache khi biết phiên bản catalog (`WeaviateVectorStore.version`).
    - **Làm ấm sau đăng nhập:** sau `/auth/session` và `/auth/login` thành công, chạy trên pool riêng 2 thread (không dùng `BackgroundTasks`, vì middleware log sẽ tính cả thời gian làm ấm vào request đăng nhập) cho `(cdpUserId, k=4, destination=None)`.
-   - **Test:** bản giả trong `tests/fakes/`, unit test cho lớp bọc (hit, miss, event mới ra khoá mới, Redis lỗi, CDP lỗi không ghi, chống tính trùng), integration test với Redis local, và test kiến trúc.
+   - **Test:** bản giả trong `tests/fakes/`, unit test cho cache (hit, miss, event mới ra khoá mới, Redis lỗi, CDP lỗi không ghi, chống tính trùng), integration test với Redis tạm, và test kiến trúc.
 4. Hạ tầng:
    - `.env.example` và `docker-compose.yml` (DB index chưa dùng; dev hiện dùng 1, 2, 3).
    - Không cần sửa `infra/terraform/environments/staging-ha/compose.ha.yml`: container backend đọc mọi biến từ `env_file` (`/etc/vota/backend.env`, chép từ secret).
@@ -167,3 +171,16 @@ Quy tắc chi tiết nằm trong đề xuất (khoá theo dấu vân tay event, 
 ## Còn chờ người dùng
 
 Không còn (mọi điểm đã chốt ngày 2026-10-12, xem "Quyết định đã chốt").
+
+## Còn lại (sau khi code xong, 2026-10-12)
+
+- **Bench và report của Definition of Done chưa chạy.** Môi trường bench prodcopy không còn: Postgres `127.0.0.1:55433` và collection `ProductE5SmallProdcopy` đã bị gỡ. Theo quy ước của plan, không tự dựng lại. Thay vào đó:
+  - giai đoạn 1 và 2: test tương đương trong tiến trình (có pool và không có pool cho output giống hệt; vector nạp sẵn bằng bit với Weaviate local `ProductBench`);
+  - giai đoạn 3: test tích hợp trên Redis tạm.
+
+  Chi tiết trong các entry `history/2026-10-12-*.md`.
+- **Đo sau deploy:** tỷ lệ trúng (`cache` trong log `recsys.recommend`), `stage_ms`, `events_read`, p95 theo route, bộ nhớ Memorystore.
+- **Vận hành:** thêm `RECOMMEND_CACHE_REDIS_URL` (DB index chưa dùng) vào secret `vota-ha-backend-env`. Chưa có biến thì cache tắt, production ghi WARNING `recsys.cache.disabled`.
+- **Hai điểm hiện thực khác phần "thay đổi source" của đề xuất:**
+  - cache nằm trong engine (`application/recommendation/cache.py`), không phải lớp bọc riêng;
+  - không sửa `compose.ha.yml`, vì biến lấy từ `env_file`.

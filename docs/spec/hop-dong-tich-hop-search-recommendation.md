@@ -40,7 +40,8 @@
 
 - Gọi engine trong process, không để Web gọi trực tiếp tầng vector.
 - Cung cấp `cdpUserId` từ JWT; **không tin** `userId` do client gửi.
-- Vô hiệu hóa cache user vector **đồng bộ** khi ghi `purchase` (§5).
+- Cache kết quả gợi ý trên Redis (chốt 12/10/2026, §5). Khoá chứa dấu vân tay các event vừa đọc từ CDP, nên ghi
+  `purchase` không cần xoá cache: lần gọi kế tiếp tự trượt và tính lại.
 
 **Team Agent**
 
@@ -840,16 +841,31 @@ chỉ khác chữ.
 ```
 checkout thành công
   → Backend ghi purchase sang CDP (đồng bộ, trước commit)
-  → Backend vô hiệu hóa cache user vector (ĐỒNG BỘ, cùng transaction)   [P3]
-  → lần gọi /recommendations kế tiếp dựng lại vector
+  → lần gọi /recommendations kế tiếp đọc lại lịch sử từ CDP (có purchase mới)
+  → dấu vân tay event đổi → khoá cache mới → trượt, tính lại
   → strategy chuyển sang cross_vertical, nextVertical khác null
 ```
 
-**Vô hiệu hóa cache phải đồng bộ.** Để chạy nền là hỏng K1 — người demo bấm
-"Về trang chủ" trong vòng một giây sau khi đặt, và gợi ý vẫn là cái cũ.
+**Cache gợi ý trên Redis (chốt 12/10/2026, `docs/prd/update-archive/2026-10-12-cache-goi-y-tren-redis.md`; PRD
+`architecture.md` §4).** Bản `[P3]` cũ định cache user vector và xoá cache đồng bộ khi ghi `purchase`. Bản đã chốt cache
+**kết quả** gợi ý và không cần xoá:
+
+- **Khoá** = mã băm của: namespace theo mã nguồn engine, phiên bản engine (catalog + metadata vector Weaviate, model,
+  bảng phổ biến, các tham số của engine), `cdpUserId`, `k`, `destination`, ngày theo giờ Việt Nam, và **dấu vân tay
+  các event vừa đọc** (tối đa 500, đúng thứ tự đọc). Redis không chứa `cdpUserId` ở dạng rõ.
+- **Mọi request vẫn đọc CDP** (cùng vùng, vài ms) để dựng dấu vân tay. Event mới bất kỳ (`purchase`, `product_view`…)
+  hay `cancel_purchases` xoá event đều đổi khoá, nên không bao giờ trả kết quả tính từ lịch sử cũ. Không có bước xoá
+  cache nào để quên, kể cả khi ghi event ở nền.
+- **TTL** 15 phút (`RECOMMEND_CACHE_TTL_SECONDS`); không lưu giá trị quá 64 KB.
+- **Redis lỗi hoặc chậm quá 100 ms** thì tính trực tiếp (ngắt mạch 5 giây). **CDP lỗi** thì đường lui `popular` không
+  bao giờ được ghi vào cache.
+- **Chống tính trùng:** request đầu lấy khoá `SET NX`; request cùng khoá chờ kết quả (tối đa 10 giây) thay vì tính lần hai.
+  Frontend huỷ request thì backend vẫn tính xong và ghi, để lần "Thử lại" trúng.
+- **Làm ấm sau đăng nhập:** `/auth/login` và `/auth/session` thành công thì tính trước `(k=4, không destination)` — đúng
+  request của trang chủ — trên pool riêng.
 
 `diagnostics.userVectorCacheHit: false` ở lần gọi ngay sau checkout là **hành vi
-đúng**, không phải lỗi hiệu năng.
+đúng**, không phải lỗi hiệu năng. `true` nghĩa là kết quả lấy từ cache gợi ý.
 
 ---
 
@@ -878,8 +894,8 @@ khác hẳn nhau.
 |---|---:|
 | `POST /search` | 300 ms (Weaviate cùng mạng nội bộ; qua Weaviate Cloud từ mạng dev thì mỗi lượt thêm 0,5–2 s) |
 | `GET /products/{id}/similar` | 300 ms |
-| `GET /recommendations`, cache hit | 300 ms |
-| `GET /recommendations`, cache miss (đọc 500 event từ CDP) | 800 ms |
+| `GET /recommendations`, cache hit (đọc tối đa 500 event từ CDP + một lần GET Redis) | 300 ms |
+| `GET /recommendations`, cache miss (thêm ANN và tra vector, §5) | 800 ms |
 | Embed một truy vấn | p95 ≈ 11 ms khi `embedCache = miss` (e5-small trên CPU laptop; Cohere trước đây ≈ 60 ms, p95 437 ms trên VM); hit ≈ 0 ms — từ 30/09 vector truy vấn được cache (§2.2), số đo thật ở `docs/spec/bench/search-eval-results.md` |
 
 Đo thật 01/10/2026 trên VM (`release-mvp-v2`, contract 1.12.0; Weaviate Cloud ở `eu-central-1`, VM ở `asia-southeast1`):
@@ -887,9 +903,16 @@ khác hẳn nhau.
 Ngân sách 300 ms ở bảng trên chỉ đạt được khi kho vector cùng vùng với backend — số và nguyên nhân ở
 `docs/spec/bench/search-eval-results.md` §2–3, report `src/evaluation/reports/eval-2026-10-01-search-cloud-latency.md`.
 
-Dòng "cache miss" là thừa nhận thẳng: đường đó phải gọi HTTP sang CDP clone rồi
-tra tối đa 500 vector. Nó chỉ xảy ra sau `purchase` hoặc khi cache trống.
-Tỉ lệ cache miss cao là dấu hiệu quy tắc vô hiệu hóa đang sai, không phải engine chậm.
+Dòng "cache miss" là thừa nhận thẳng: đường đó phải gọi ANN và tra vector của
+lịch sử. Từ 12/10/2026 các lượt Weaviate độc lập chạy song song và vector theo id
+lấy từ RAM (§2.4), nhưng ANN vẫn qua Weaviate Cloud khác vùng, nên trên VM hiện
+tại đường miss chưa đạt 800 ms.
+
+Trượt cache xảy ra khi: khách có event mới từ lần tính trước (kể cả `product_view`),
+hết TTL 15 phút, sang ngày mới theo giờ Việt Nam, catalog hay index vector đổi,
+hoặc vừa deploy bản mới (namespace theo mã nguồn). Tỉ lệ trúng đọc ở log
+`recsys.recommend` (trường `cache`: `hit`, `wait_hit`, `miss`…; `docs/spec/logging-schema.md`),
+thời gian từng bước ở `stage_ms`. Chưa có số đo thật: ghi nhận sau lần deploy đầu.
 
 ### 7.2. Tracing
 
@@ -1016,7 +1039,8 @@ Team Search cung cấp:
     → kết quả thiên về **Đà Nẵng**. *(Kiểm tra `tripFactor` thực sự chạy.)*
 24. Tắt CDP clone → `200` `strategy: "popular"`, không phải `500`.
 25. Ngay sau checkout → `strategy` hoặc `nextVertical` đã đổi (**K1**).
-26. p95 dưới 300 ms khi cache hit.
+26. p95 dưới 300 ms khi cache hit. *(Cache gợi ý trên Redis, chốt 12/10/2026, §5; đo bằng log `recsys.recommend`
+    với `cache=hit`.)*
 27. Khách đã mua phòng của khách sạn H (bất kỳ lúc nào) → không có H lẫn combo chứa phòng/khách sạn H trong list; khách đã
     mua combo C → không có C lẫn các thành phần đã map tin cậy của C; combo khác chung thành phần với C vẫn có thể xuất hiện
     (§4.5, AC-REC-02/03; unit test `test_recommendation_combo_exclusion.py`).
@@ -1040,7 +1064,7 @@ Bốn tiêu chí **20, 21, 22, 23** là quan trọng nhất trong cả danh sác
 | S2 | `WEAK_RESULT_TOP_SCORE` / `MARGIN` chưa đo | `0.70` / `0.06` |
 | S3 | Quy tắc 2 tầng chưa duyệt · `[C5]` | Code theo `includeVariants: false` |
 | S4 | Soft delete chưa duyệt · `[U1]` | `because[].productName` giả định sản phẩm còn hàng trong `products` |
-| S5 | Cache user vector chưa duyệt · `[P3]` | Không cache thì p95 `/recommendations` là 800 ms, không phải 300 ms |
+| S5 | ~~Cache user vector chưa duyệt · `[P3]`~~ — **đã chốt 12/10/2026** | Cache **kết quả** gợi ý trên Redis dùng chung, khoá theo dấu vân tay event, TTL 15 phút, không cần xoá khi ghi `purchase` (§5; `docs/prd/update-archive/2026-10-12-cache-goi-y-tren-redis.md`, PRD `architecture.md` §4, contract 1.25.0) |
 | S6 | Công thức `popularity_score` chưa chốt · `[C7]` | Tạm dùng `log(1 + review_count)` |
 | S7 | ~~Model embedding chưa chốt~~ — **đổi 06/10/2026** | `intfloat/multilingual-e5-small`, **384 chiều**, chạy local trong backend, tiền tố `query: ` / `passage: `, collection `ProductE5Small` (`VECTOR_COLLECTION`) (thay Cohere `embed-multilingual-v3.0` 1024 chiều chốt 22/09; Cohere bỏ hẳn, không còn đường lui). Xem `docs/prd/architecture.md` §4–§5, `docs/prd/update-archive/2026-10-05-fr-src-02-embedding-local-e5-small.md`, `docs/prd/update-archive/2026-10-06-bo-duong-lui-cohere.md`. Kéo theo S8. |
 | S8 | ~~`EXACT_FILTER_SCORE` cần duyệt lại~~ — **đã chốt 24/09/2026, hướng (b)** | Đổi cam kết `total`/`facets` thành xấp xỉ trên tập ứng viên, khai báo qua `approximate`/`totalExact`/`facetsExact`. `/similar`, `/recommendations` chạy `ANN_CANDIDATE_SCORE`; `/search` chạy `HYBRID_CANDIDATE_SCORE` từ 25/09 (§2.4). |
@@ -1055,8 +1079,8 @@ Bốn tiêu chí **20, 21, 22, 23** là quan trọng nhất trong cả danh sác
 | S18 | Thời lượng F7, địa danh gazetteer → F1, cổng entity cứng (contract 1.18.0, 07/10; spec `docs/spec/bench/tong-hop-chinh-sua-luong-search-ota.md`, plan `docs/plan/2026-10-07-search-duration-entity-poi.md`) — **chưa đo**: probe fixture c0736–c0756 rồi `gold_v6` (slice `duration_false_positive`, `poi_resolution`), arm `APP.e5s.prod_f12356_dur` / `_poi` / `_ent` / `_dur_poi_ent` | Ba cờ `SEARCH_DURATION_FILTER` / `SEARCH_POI_RESOLVE` / `SEARCH_ENTITY_FILTER` tắt tới khi bench WIN/TIE trên test + Forbidden@10 = 0 + guard + 12 qid hồi quy + p95 không tăng > 30 %; `SEARCH_ENTITY_FILTER` còn cần Web xác nhận (tab Lưu trú có thể 0, `docs/spec/product.md` §4.2.3). Gazetteer là bảng tay trong repo — địa danh ngoài bảng không resolve (Data/Search bổ sung khi có hole) |
 | S11 | Kích thước cache vector truy vấn (10.000), danh sách prewarm (131 câu gold_v1 + head query `app.search_logs` — bảng này chưa có code ghi) và pacing 2.000 câu/phút chưa đo | Dùng mặc định trong `core/config.py`; đo hit/miss bằng `sb latency http` (bench Part 9) trên Cloud; đổi số qua biến môi trường `SEARCH_EMBED_CACHE_*`, `SEARCH_PREWARM_*` |
 
-S5 là phụ thuộc nặng nhất: không duyệt `[P3]` thì tiêu chí nghiệm thu 26 không
-đạt được, và ngân sách §7.1 phải sửa.
+S5 đã chốt 12/10/2026, nên tiêu chí nghiệm thu 26 đo được trên đường cache hit.
+Đường cache miss vẫn phụ thuộc độ trễ tới Weaviate Cloud (§7.1).
 
 ---
 

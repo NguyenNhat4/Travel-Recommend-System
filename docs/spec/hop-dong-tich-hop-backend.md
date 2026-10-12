@@ -636,6 +636,17 @@ Cam kết:
 
 Lý do một endpoint: `docs/product.md` §4.1.3 yêu cầu Home của khách vãng lai và Home của P4 render cùng một section với cùng một component, chỉ khác chữ. Tách endpoint sẽ buộc client phải rẽ nhánh hai lần cho cùng một giao diện.
 
+### 6.6. Cache kết quả gợi ý (chốt 12/10/2026)
+
+Nguồn: PRD `docs/prd/architecture.md` §4 và `docs/prd/deployment-plan.md` §2; đề xuất `docs/prd/update-archive/2026-10-12-cache-goi-y-tren-redis.md`. Quy tắc khoá và K1 ở `hop-dong-tich-hop-search-recommendation.md` §5.
+
+- **Phạm vi:** chỉ request có người dùng (`cdpUserId` từ JWT) và đọc lịch sử từ CDP thành công. Khách vãng lai và đường lui khi CDP lỗi không cache.
+- **Nơi lưu:** Redis dùng chung, DB index riêng (`RECOMMEND_CACHE_REDIS_URL`, trống = tắt). Mọi khoá có TTL (`RECOMMEND_CACHE_TTL_SECONDS`, mặc định 900), vì Memorystore chạy `noeviction`. Khoá `rec:v1:{mã băm}` không chứa `cdpUserId` ở dạng rõ.
+- **Không đổi response:** cùng shape với khi tính trực tiếp. `diagnostics.userVectorCacheHit = true` khi kết quả lấy từ cache; `latencyMs` luôn là thời gian của request hiện tại.
+- **Redis lỗi hoặc chậm quá 100 ms:** tính trực tiếp, ngắt mạch 5 giây, WARNING `recsys.cache.error` tối đa một dòng mỗi phút mỗi worker. Không trả lỗi vì Redis.
+- **Làm ấm:** `/auth/login` và `/auth/session` thành công thì tính trước `(k=4, không destination)` trên pool riêng; đăng nhập không chờ việc này (§7.4 không đổi).
+- **Tắt từng phần bằng biến môi trường, không đổi code** (container cần khởi động lại để nhận biến): để trống `RECOMMEND_CACHE_REDIS_URL`; `RECOMMEND_IO_WORKERS=0` (gọi Weaviate tuần tự); `RECOMMEND_PRELOAD_VECTORS=false`.
+
 ---
 
 ## 7. Booking
@@ -945,7 +956,7 @@ Trả `{ data: BookingSummary[], pagination: { page, pageSize, totalItems, total
 2. Event dùng `eventName: "purchase"`, `eventGroupId` = `app.bookings.event_group_id` (một mã cho cả đơn, theo DDL và `DATABASE_SCHEMA.md` §5: một checkout = một chuyến).
 3. Mỗi bản ghi mang đủ `productId`, `taxonomy`, `quantity`, `unitPrice`, `usingDate`, `timestamp` — đúng hình dạng `UserEvent` của handbook §6.
 4. CDP clone là service riêng nên không có transaction chung. `purchase` chỉ ghi khi Stripe đã thu tiền: Backend commit payment `SUCCEEDED` trước, rồi ghi `purchase` sang CDP, rồi commit đơn `CONFIRMED`. CDP lỗi hoặc commit lỗi thì **không huỷ** event đã ghi (tiền đã thu, đơn phải được xác nhận); đơn giữ `PENDING_PAYMENT` + payment `SUCCEEDED`, Stripe gửi lại webhook hoặc job đối soát chạy lại cho tới khi `CONFIRMED`. Booking `CONFIRMED` mà thiếu event là trạng thái không được phép tồn tại. Khách huỷ đơn đã xác nhận thì Backend gọi `cancel_purchases`. Chi tiết: `hop-dong-tich-hop-cdp.md` §5.
-5. Event được ghi **trước khi** đơn chuyển `CONFIRMED`; Web chỉ gọi `/recommendations` sau khi thấy `CONFIRMED`, nên thấy kết quả đã đổi (AC-REC-02).
+5. Event được ghi **trước khi** đơn chuyển `CONFIRMED`; Web chỉ gọi `/recommendations` sau khi thấy `CONFIRMED`, nên thấy kết quả đã đổi (AC-REC-02). Cache gợi ý (§6.6) không cản điều này: khoá chứa dấu vân tay event vừa đọc từ CDP, nên `purchase` mới (hay `cancel_purchases`) cho khoá mới. Không có bước xoá cache.
 6. Một booking không bao giờ sinh hai event cho cùng một `bookingItemId`: `eventId` là `purchase:{bookingItemId}`, CDP clone trả `duplicate` khi gửi lại. Lần checkout sau một lần lỗi sinh `bookingItemId` mới.
 
 `add_to_cart` (thêm giỏ, tạo đơn nháp, gộp giỏ của khách) là event ghi ở nền, không nằm trong các cam kết giao dịch trên: lỗi CDP không làm hỏng thao tác của khách.
@@ -1043,7 +1054,7 @@ Mọi service truyền tiếp header này, kể cả lời gọi Backend → CDP
 | Hoạt động | Mục tiêu p95 |
 |---|---:|
 | `POST /search` | 300 ms |
-| `GET /recommendations` | 300 ms |
+| `GET /recommendations` | 300 ms khi trúng cache (§6.6); trượt cache: `hop-dong-tich-hop-search-recommendation.md` §7.1 |
 | `GET /products/{id}` | 150 ms |
 | `GET /products/{id}/similar` | 300 ms |
 | `POST /bookings` (gồm tạo phiên Stripe) | 1 giây, không tính thời gian Stripe (timeout 10 giây) |
