@@ -39,7 +39,7 @@ export function WidgetBudget({ summary, days }: { summary: WidgetBudgetSummary; 
         </div>
       )}
       <ul className="mt-3 space-y-2">
-        {GROUPS.map(({ key, label, icon: Icon, chip }) => (
+        {GROUPS.filter((group) => summary[group.key] > 0).map(({ key, label, icon: Icon, chip }) => (
           <li key={key} className="flex items-center justify-between gap-3 text-sm">
             <span className="flex items-center gap-2 text-slate-700">
               <span className={`flex h-7 w-7 items-center justify-center rounded-full ${chip}`}>

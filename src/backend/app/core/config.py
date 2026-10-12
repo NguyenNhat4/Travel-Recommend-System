@@ -16,7 +16,8 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 # Chỉ các trường thực sự Optional: trường `str` thường (cdp_service_token, openai_api_key) coi ""
 # là "chưa cấu hình" và vẫn hợp lệ, không được đổi thành None.
 _OPTIONAL_BLANK_IS_NONE = ("itinerary_service_base_url", "itinerary_data_mode", "itinerary_llm_reasoning_effort",
-                           "search_no_diacritics_cutoff")
+                           "search_no_diacritics_cutoff", "itinerary_orchestrator_model", "itinerary_orchestrator_provider",
+                           "itinerary_orchestrator_reasoning_effort")
 
 
 class Settings(BaseSettings):
@@ -54,6 +55,10 @@ class Settings(BaseSettings):
     # Chỉ áp cho OpenAI. Model reasoning (vd gpt-6-luna) từ chối function tools trên chat completions khi
     # reasoning bật mặc định (400); đặt "none" để tool calling chạy được. Bỏ trống thì không gửi tham số.
     itinerary_llm_reasoning_effort: Literal["none", "minimal", "low", "medium", "high"] | None = None
+    itinerary_orchestrator: Literal["off", "on"] = "off"
+    itinerary_orchestrator_model: str | None = None
+    itinerary_orchestrator_provider: Literal["gemini", "openai", "anthropic"] | None = None
+    itinerary_orchestrator_reasoning_effort: Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"] | None = None
     itinerary_service_base_url: str | None = Field(default=None, pattern=r"^https?://")
     itinerary_data_mode: Literal["fixture", "inprocess", "http", "disabled"] | None = None
     itinerary_tool_timeout_seconds: float = Field(default=10.0, gt=0)

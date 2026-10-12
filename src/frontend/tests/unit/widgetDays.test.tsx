@@ -160,4 +160,28 @@ describe('WidgetDays hotel change (AC-AGT-04, contract 1.19.0)', () => {
     expect(hotels).toEqual(['h1', 'h1', 'h2', 'h2', 'h2']);
     expect(container.textContent).toContain('(Đêm 3–4)');
   });
+
+  it('shows the full hotel card with its photo only on the check-in day, a one-line reminder on the other days', () => {
+    const north = { product: summary('h1', 'Khách sạn Bắc đảo', 'hotel', { imageUrl: 'https://cdn.example.vn/h1.jpg' }),
+      nights: 2, fromNight: 1, note: null };
+    const south = { product: summary('h2', 'Khách sạn Nam đảo', 'hotel', { imageUrl: 'https://cdn.example.vn/h2.jpg' }),
+      nights: 2, fromNight: 3, note: null };
+    const fiveDays = {
+      ...response,
+      intent: { ...response.intent, days: 5 },
+      itinerary: {
+        ...response.itinerary, stay: north, stays: [north, south],
+        days: [1, 2, 3, 4, 5].map((day) => ({ day, slots: [] })),
+      },
+    } as unknown as components['schemas']['ItineraryCompleted'];
+    const widget = {
+      activePlan: convertItineraryCompletedToGroundedPlan(fiveDays), activeDayTab: 0,
+      setHoveredCoordinate: vi.fn(), setHoveredPointId: vi.fn(), focusedProductId: null, itemActions: () => null,
+    } as unknown as FloatingWidgetController;
+    const { container } = render(<WidgetDays widget={widget} />);
+    const sources = Array.from(container.querySelectorAll('img')).map((image) => image.getAttribute('src'));
+    expect(sources).toEqual(['https://cdn.example.vn/h1.jpg', 'https://cdn.example.vn/h2.jpg']);
+    expect(screen.getAllByText('Khách sạn Bắc đảo')).toHaveLength(2);
+    expect(screen.getAllByText(/^Tiếp tục nghỉ tại/)).toHaveLength(3);
+  });
 });

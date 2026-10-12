@@ -150,6 +150,22 @@ ITINERARY_LLM_REASONING_EFFORT= # chỉ OpenAI; model reasoning cần "none" đ�
 ITINERARY_REDIS_URL=redis://:devpass@localhost:6379/2  # working memory 24h; bắt buộc production
 ```
 
+Orchestrator mới (FR-AGT-06/07, chốt 12/10; plan `docs/plan/2026-10-12-nho-ket-qua-da-xem.md`):
+
+```env
+ITINERARY_ORCHESTRATOR=off       # on: thử đường mới; mặc định off tới khi B12 đạt ngưỡng
+ITINERARY_ORCHESTRATOR_MODEL=gpt-6.1-sol
+ITINERARY_ORCHESTRATOR_PROVIDER=openai
+ITINERARY_ORCHESTRATOR_REASONING_EFFORT=low  # số khởi đầu để kiểm nhanh, chưa phải kết quả tune B12
+```
+
+Bỏ trống model thì dùng chung client của agent; chọn model phải khai provider và có khoá tương ứng. Thiếu khoá/dựng lỗi
+thì startup cảnh báo `startup.itinerary_orchestrator.fallback` và dùng model chung. Client riêng chỉ gọi JSON schema;
+GPT-6.1 Sol không gửi temperature và không dùng `none`/`minimal` reasoning. Các bước lập lịch giữ model chung.
+Cờ bật thêm `orchestrate` → `run_jobs` → `gatekeep`: tối đa 3 việc/vòng, 3 vòng execute, 10 lời gọi tool và ngân sách
+`ITINERARY_REQUEST_TIMEOUT_SECONDS` (chừa thời gian cho finalize). Cờ tắt giữ topology/payload/snapshot cũ.
+Không bật mặc định chỉ từ kiểm nhanh B10; bộ đo B11–B12 và việc chuyển/gỡ đường cũ B13 làm sau.
+
 User đăng nhập được ghi thêm transcript vào `app.conversations`/`app.conversation_messages`; lỗi archive
 không làm hỏng lượt chat. Khách không được lưu lâu dài. Web đọc lại lịch sử qua hai endpoint
 `/assistant/conversations`; mọi truy vấn đều lọc bằng `cdp_user_id` từ JWT đã xác minh.

@@ -463,6 +463,14 @@
       "method": "post",
       "path": "/assistant/itineraries",
       "status": 200,
+      "case": "needs-clarification-fare",
+      "file": "assistant/createItinerary.200-needs-clarification-fare.json"
+    },
+    {
+      "operationId": "createItinerary",
+      "method": "post",
+      "path": "/assistant/itineraries",
+      "status": 200,
       "case": "no-results",
       "file": "assistant/createItinerary.200-no-results.json"
     },

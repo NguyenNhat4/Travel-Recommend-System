@@ -65,9 +65,9 @@ class NarrationTests(unittest.TestCase):
         text = narration.fallback_message(current, current['response'])
         self.assertIn('**Gói nhiều ngày để bạn cân nhắc riêng**', text)
         self.assertIn('[03 ngày không giới hạn - VinWonders + Vinpearl Safari + Tour Grand World](product:pass3) — '
-                      'dùng trong 3 ngày · 2.300.000 ₫/người', text)
+                      'dùng trong 3 ngày', text)
+        self.assertNotIn('2.300.000', text)  # giá đã có trên thẻ sản phẩm, lời không lặp lại
         self.assertIn('Bạn muốn thêm gói nào', text)
-        self.assertLess(text.index('Gói nhiều ngày'), text.index('Chi phí dự kiến'))
 
     def test_the_model_may_link_the_pass_and_a_forgotten_one_is_still_asked(self):
         current = self.narrated_state()
@@ -79,7 +79,8 @@ class NarrationTests(unittest.TestCase):
             message='[x](product:park).\n\n**Chi phí dự kiến**\nChưa cộng được tổng.'))
         text = update['response']['message']
         self.assertEqual(reason, 'llm')
-        self.assertLess(text.index('Gói nhiều ngày'), text.index('**Chi phí dự kiến**'))
+        self.assertIn('Gói nhiều ngày', text)
+        self.assertNotIn('**Chi phí dự kiến**', text)  # mục chi phí đã có ở khung ngân sách
         self.assertIn('Bạn muốn thêm gói nào', text)
         self.assertEqual(narration.unknown_links(update['response']), [])
 

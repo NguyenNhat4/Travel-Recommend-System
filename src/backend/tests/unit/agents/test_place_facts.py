@@ -140,6 +140,19 @@ class UnfoundPlaceTests(unittest.TestCase):
         self.assertIn('Mình chưa tìm thấy Văn Miếu – Quốc Tử Giám trong dữ liệu hiện có', question)
         self.assertTrue(question.startswith('**Chưa kiểm được thông tin này**'))
 
+    def test_an_own_words_cannot_check_reply_is_kept(self):
+        # Chat thử 11/10: câu cố định lặp lại mọi lượt; LLM được tự nói "không kiểm được" miễn không nêu giờ, giá.
+        state = {**_state('chùa abc mấy giờ mở', explore_place='Chùa ABC'), 'interaction_type': 'travel'}
+        text = 'Mình chưa tìm thấy Chùa ABC trong dữ liệu nên không kiểm được giờ mở cửa. Bạn muốn xem Huế có gì chơi không?'
+        update = conversation.conversational_update(state, ConversationalAnswer(title='Chưa có Chùa ABC', message=text))
+        self.assertIn(text, update['response']['question'])
+
+    def test_a_cannot_check_reply_with_a_time_is_still_replaced(self):
+        state = {**_state('chùa abc mấy giờ mở', explore_place='Chùa ABC'), 'interaction_type': 'travel'}
+        update = conversation.conversational_update(state, ConversationalAnswer(
+            message='Mình chưa kiểm được, nhưng thường chùa mở từ 7h sáng.'))
+        self.assertNotIn('7h', update['response']['question'])
+
     def test_other_conversation_replies_are_kept(self):
         state = {**_state('chào bạn'), 'interaction_type': 'conversation'}
         update = conversation.conversational_update(state, ConversationalAnswer(message='Chào bạn!'))
