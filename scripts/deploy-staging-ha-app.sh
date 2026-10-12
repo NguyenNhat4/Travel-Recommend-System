@@ -53,6 +53,7 @@ google_compute_instance_template.app|delete,create
 google_compute_region_instance_group_manager.app|update
 google_compute_region_autoscaler.app|update
 google_compute_instance.crawler[0]|create
+google_compute_firewall.patroni_clients[0]|update
 '
 unexpected="$(terraform show -json "$plan_file" | jq -r '
   .resource_changes[]
