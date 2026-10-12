@@ -1,12 +1,22 @@
-"""Quy tắc thuần cho GET /products: lọc, sắp xếp và tóm tắt tầng con (docs/spec/hop-dong-tich-hop-backend.md §4.1)."""
+"""Quy tắc thuần cho GET /products: lọc, sắp xếp, trộn theo nhóm loại và tóm tắt tầng con
+(docs/spec/hop-dong-tich-hop-backend.md §4.1)."""
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, Mapping, Sequence
+from itertools import zip_longest
+from typing import Collection, Iterable, Mapping, Sequence
 
 from .models import Product
 
 PRODUCT_SORTS = ("popular", "price_asc", "price_desc")
+DIVERSIFY_MODES = ("taxonomy",)
+#: `diversify=taxonomy` (contract 1.25.0): nhóm trộn theo thứ tự cố định, chốt 2026-10-12. Golf chung nhóm vé tham quan.
+DIVERSIFY_GROUPS: tuple[tuple[str, frozenset[str]], ...] = (
+    ("hotel", frozenset({"hotel"})),
+    ("experience", frozenset({"attraction", "golf"})),
+    ("combo", frozenset({"combo"})),
+    ("flight", frozenset({"flight"})),
+)
 
 
 @dataclass(frozen=True)
@@ -37,14 +47,30 @@ def summarize_variants(children: Iterable[Product]) -> VariantSummary:
     )
 
 
-def filter_items(items: Iterable[ListingItem], *, destination: str | None = None, taxonomy: str | None = None,
-                 available_only: bool = False) -> list[ListingItem]:
+def filter_items(items: Iterable[ListingItem], *, destination: str | None = None,
+                 taxonomy: str | Collection[str] | None = None, available_only: bool = False) -> list[ListingItem]:
+    """`taxonomy` là một loại hoặc một tập loại (contract 1.25.0, `taxonomy=attraction,golf`)."""
+    wanted = None if taxonomy is None else ({taxonomy} if isinstance(taxonomy, str) else set(taxonomy))
     return [
         i for i in items
         if (destination is None or i.product.destination == destination)
-        and (taxonomy is None or i.product.taxonomy == taxonomy)
+        and (wanted is None or i.product.taxonomy in wanted)
         and (not available_only or i.product.available)
     ]
+
+
+def interleave_by_taxonomy(items: Sequence[ListingItem],
+                           groups: Sequence[tuple[str, Collection[str]]] = DIVERSIFY_GROUPS) -> list[ListingItem]:
+    """Trộn round-robin giữa các nhóm loại theo thứ tự của `groups`, giữ thứ tự sẵn có trong mỗi nhóm.
+
+    Kết quả là một hoán vị của `items` (nhóm hết món thì bỏ qua), nên `total` và phân trang không đổi. Taxonomy không thuộc
+    nhóm nào (giá trị enum thêm sau này) vào một nhóm cuối. Chỉ một nhóm có món thì thứ tự giữ nguyên.
+    """
+    slot = {taxonomy: n for n, (_, members) in enumerate(groups) for taxonomy in members}
+    buckets: list[list[ListingItem]] = [[] for _ in range(len(groups) + 1)]
+    for item in items:
+        buckets[slot.get(item.product.taxonomy, len(groups))].append(item)
+    return [item for row in zip_longest(*buckets) for item in row if item is not None]
 
 
 def _price_key(item: ListingItem, descending: bool) -> tuple:

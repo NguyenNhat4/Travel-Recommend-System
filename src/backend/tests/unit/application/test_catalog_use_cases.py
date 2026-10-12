@@ -104,11 +104,48 @@ def test_filters_and_pagination(products):
 @pytest.mark.parametrize("kwargs, field", [
     ({"sort": "newest"}, "sort"), ({"taxonomy": "cruise"}, "taxonomy"),
     ({"limit": 0}, "limit"), ({"limit": 51}, "limit"), ({"offset": -1}, "offset"),
+    ({"taxonomy": ["attraction", "cruise"]}, "taxonomy"), ({"taxonomy": ["attraction", ""]}, "taxonomy"),
+    ({"taxonomy": []}, "taxonomy"),
+    ({"diversify": "random"}, "diversify"), ({"diversify": ""}, "diversify"),
+    ({"diversify": "taxonomy", "sort": "price_asc"}, "diversify"),
+    ({"diversify": "taxonomy", "parent_product_id": "H1"}, "diversify"),
 ])
 def test_invalid_listing_arguments_are_validation_errors(products, kwargs, field):
     with pytest.raises(InvalidCatalogRequest) as err:
         run(ListProducts(products)(**kwargs))
     assert err.value.details == {"fields": [field]}
+
+
+def test_unknown_sort_with_diversify_reports_both_fields(products):
+    with pytest.raises(InvalidCatalogRequest) as err:
+        run(ListProducts(products)(sort="newest", diversify="taxonomy"))
+    assert err.value.details == {"fields": ["sort", "diversify"]}
+
+
+# --- nhiều taxonomy và diversify=taxonomy (contract 1.25.0) -----------------------------------
+
+def test_several_taxonomies_filter_as_union_and_ignore_duplicates(products):
+    page = run(ListProducts(products)(taxonomy=["attraction", "golf", "golf"], limit=50))
+    assert set(ids(page)) == {"A1", "A2", "G1"} and page["total"] == 3
+
+
+# Popular xếp vé bay đầu, như kệ Phổ biến trên prod; A2 không có lượt mua nên đứng cuối.
+POPULARITY = {"F1": 1.0, "C1": 0.9, "G1": 0.8, "A1": 0.7, "H3": 0.6, "H1": 0.5, "H2": 0.4}
+
+
+def test_diversify_interleaves_groups_before_paging(products):
+    listing = ListProducts(products, popularity=POPULARITY)
+    full = run(listing(diversify="taxonomy", limit=50))
+    assert ids(full) == ["H3", "G1", "C1", "F1", "H1", "A1", "H2", "A2"] and full["total"] == 8
+    first, second = run(listing(diversify="taxonomy", limit=4)), run(listing(diversify="taxonomy", limit=4, offset=4))
+    assert ids(first) + ids(second) == ids(full) and first["total"] == second["total"] == 8
+
+
+def test_diversify_with_one_group_keeps_popular_order(products):
+    listing = ListProducts(products, popularity=POPULARITY)
+    plain = run(listing(taxonomy=["attraction", "golf"], limit=50))
+    assert ids(run(listing(taxonomy=["attraction", "golf"], diversify="taxonomy", limit=50))) == ids(plain)
+    assert ids(plain) == ["G1", "A1", "A2"]
 
 
 # --- tương tự ---------------------------------------------------------------------------------

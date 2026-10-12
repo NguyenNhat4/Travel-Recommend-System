@@ -14,7 +14,7 @@ from src.backend.app.application.catalog.use_cases import GetProductDetail, GetS
 from src.backend.app.application.search import SimilarProducts
 from src.backend.app.application.tracking.behaviour import BehaviourTracker, CatalogProduct
 from src.backend.app.main import app
-from src.backend.tests.contract.test_booking_contract import assert_contract
+from src.backend.tests.contract.test_booking_contract import DOC, assert_contract
 from src.backend.tests.fakes.booking import PRINCIPAL
 from src.backend.tests.fakes.catalog import InMemoryProductQuery
 from src.backend.tests.unit.application.test_catalog_use_cases import ROWS_WITH_ROOMS
@@ -86,6 +86,37 @@ def test_listing_and_variants_match_contract(client):
 def test_bad_listing_query_is_400_validation_error(client):
     body = assert_contract(client.get("/api/v1/products", params={"limit": 99}), "/products", "get")
     assert body["error"]["code"] == "VALIDATION_ERROR" and body["error"]["details"] == {"fields": ["limit"]}
+
+
+# --- nhiều taxonomy và diversify=taxonomy (contract 1.25.0) -----------------------------------
+
+def test_listing_query_parameters_are_declared_in_contract():
+    params = {p["name"]: p for p in DOC["paths"]["/products"]["get"]["parameters"] if "name" in p}
+    taxonomy, diversify = params["taxonomy"], params["diversify"]
+    assert (taxonomy["style"], taxonomy["explode"], taxonomy["schema"]["type"]) == ("form", False, "array")
+    assert diversify["schema"]["enum"] == ["taxonomy"]
+
+
+def test_diversified_listing_matches_contract(client, state):
+    state["list_products"].popularity = {"F1": 1.0, "C1": 0.9, "G1": 0.8, "A1": 0.7, "H3": 0.6}
+    page = assert_contract(client.get("/api/v1/products", params={"diversify": "taxonomy", "sort": "popular",
+                                                                   "limit": 4}), "/products", "get")
+    assert [r["taxonomy"] for r in page["results"]] == ["hotel", "golf", "combo", "flight"] and page["total"] == 8
+
+
+@pytest.mark.parametrize("query", ["taxonomy=attraction,golf&limit=50", "taxonomy=attraction%2Cgolf&limit=50"])
+def test_comma_separated_taxonomies_match_contract(client, query):
+    page = assert_contract(client.get(f"/api/v1/products?{query}"), "/products", "get")
+    assert page["total"] == 3 and {r["taxonomy"] for r in page["results"]} == {"attraction", "golf"}
+
+
+@pytest.mark.parametrize("params, field", [
+    ({"diversify": "taxonomy", "sort": "price_asc"}, "diversify"),
+    ({"taxonomy": "hotel,"}, "taxonomy"),
+])
+def test_bad_diversify_or_taxonomy_list_is_400_validation_error(client, params, field):
+    body = assert_contract(client.get("/api/v1/products", params=params), "/products", "get")
+    assert body["error"]["code"] == "VALIDATION_ERROR" and body["error"]["details"] == {"fields": [field]}
 
 
 def test_similar_matches_contract(client):
