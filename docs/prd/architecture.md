@@ -172,43 +172,54 @@ Trợ lý lập lịch trình không phải là một chuỗi prompt đơn giả
 
 ```mermaid
 stateDiagram-v2
-    [*] --> ClassifyTurn: Người dùng gửi yêu cầu
-    ClassifyTurn --> Converse: Trò chuyện (chưa có điểm đến: mời nói điểm đến, gợi ý 3 điểm, không ép) / ngoài phạm vi (đặt chỗ, thanh toán) / tin nhắn rác, tục tĩu, chèn lệnh (luật tất định, không gọi LLM)
-    ClassifyTurn --> Converse: Người dùng không muốn đi/lên lịch nữa ("không đi nữa"): cảm ơn, hẹn gặp lại, không form, giữ chuyến đang lên
-    Converse --> [*]: Trả lời kèm nút gợi ý (ngoài phạm vi vẫn là câu trả lời 200); chỉ đầu vào bị luật chặn mới là lỗi 400; không gọi tool
-    ClassifyTurn --> Explore: Nêu hoặc hỏi về một điểm đến, một nơi khi chưa đồng ý lập lịch; hoặc hỏi vé máy bay (trước hay sau khi có lịch)
-    Explore --> [*]: Thẻ điểm tham quan, khách sạn thật từ Search + hỏi có muốn lập lịch không; hoặc giá vé từ chuyến bay của catalog + hàng thẻ ngày–giá. Không hỏi thông tin chuyến, lịch đã có giữ nguyên
-    Explore --> AnalyzeIntent: Không tra được nơi được nêu trong catalog (một lần)
-    ClassifyTurn --> AnalyzeIntent: Đồng ý lời mời lập lịch / câu có thông tin chuyến / tự yêu cầu lập lịch / bấm nút lập lịch / xác nhận form
-    ClassifyTurn --> AskUser: Đổi khách sạn, chuyến bay chưa nói rõ: hỏi lại kèm phương án đã tính, chuyến khác cùng ngày (luật, không gọi LLM)
-    ClassifyTurn --> SuggestForm: Đã đồng ý lập lịch mà câu trả lời không thêm được thông tin ("không biết") khi còn thiếu điểm đến/số ngày/ngày đi/số người; hoặc người dùng xin form
-    AnalyzeIntent --> CheckClarification: Trích xuất thông tin (Điểm đến, Nơi đi, Ngày, Số người, Ngân sách)
-    
-    CheckClarification --> AskUser: Lượt đầu thiếu thông tin, hoặc chưa hỏi ngày đi–số người–ngân sách
-    CheckClarification --> AskUser: Người dùng muốn đổi thông tin chuyến đi mà chưa nói đổi thành gì
-    AskUser --> SuggestForm: Đã hỏi một lượt mà vẫn thiếu điểm đến, số ngày, ngày đi hoặc số người
-    SuggestForm --> [*]: Nút mở form điền sẵn; xác nhận gửi ngay câu yêu cầu
-    AskUser --> [*]: Chờ phản hồi tiếp theo
-    
-    CheckClarification --> SearchCandidates: Đủ điểm đến, số ngày, ngày đi, số người
-    SearchCandidates --> ToolCatalogSearch: Gọi Tool tìm kiếm phòng, tour và chuyến bay thật (và Similar khi đổi món)
-    ToolCatalogSearch --> ValidateAvailability: Kiểm tra lịch trống & giá
-    
-    SearchCandidates --> NoResults: Không có sản phẩm thật phù hợp (ngày đi chưa mở bán mà vẫn có điểm tham quan thật thì lập lịch tham khảo kèm nút ngày gần nhất còn bán, không trả NO_RESULTS)
-    NoResults --> [*]: Trả NO_RESULTS, không lấp bằng sản phẩm do LLM tạo
-    ValidateAvailability --> Rerank: (tuỳ chọn) xếp lại bằng Recommendation
-    Rerank --> FilterCandidates
-    ValidateAvailability --> FilterCandidates: Bỏ điểm tham quan trùng (luật, rồi LLM chỉ ra cặp trùng)
-    FilterCandidates --> ComposeItinerary: Tạo cấu trúc lịch trình
-    ComposeItinerary --> SynthesizeResponse: Gắn thẻ sản phẩm Grounded + Tạo lời thoại
-    SynthesizeResponse --> [*]: Trả lời người dùng
+    [*] --> Intake
+    Intake --> Rules
+    Rules --> Finalize: Guardrail, chọn phương án, nút vé, luật dừng
+    Rules --> Orchestrator: Tin cần hiểu
+    Orchestrator --> Gatekeep: Trả lời hoặc hỏi lại
+    Orchestrator --> RunJobs: Explore và fare có cấu trúc
+    RunJobs --> Orchestrator: Kết quả rút gọn, việc còn chờ
+    RunJobs --> Gatekeep: Chỉ vé, không việc còn chờ
+    Orchestrator --> AnalyzeIntent: Đồng ý lập lịch đã kiểm
+    AnalyzeIntent --> AskUser: Thiếu hoặc sai thông tin
+    AnalyzeIntent --> SearchCandidates: Đủ thông tin
+    SearchCandidates --> ValidateAvailability
+    ValidateAvailability --> FilterCandidates
+    FilterCandidates --> ComposeItinerary
+    ComposeItinerary --> SynthesizeResponse
+    AskUser --> Finalize
+    SynthesizeResponse --> Finalize
+    Gatekeep --> Finalize
+    Finalize --> [*]
 ```
 
-*Nhánh `Explore`, luật đồng ý lập lịch chốt 2026-10-10 (đề xuất `update-archive/2026-10-09-goi-y-truoc-khi-lap-lich.md`); hỏi vé sau khi có lịch chốt 2026-10-11 (đề xuất `update-archive/2026-10-09-hoi-dap-doi-ve-khach-san-sau-lich.md`, không có node `FollowUp` riêng); tư vấn vé máy bay chốt 2026-10-11 (đề xuất `update-archive/2026-10-11-tu-van-ve-may-bay-va-sua-loi-chat-thu-lan-3.md`).*
+**Một orchestrator (LLM) làm đầu mối hội thoại** (chốt 2026-10-12,
+`update-archive/2026-10-12-orchestrator-va-kham-pha-llm.md`). Mỗi vòng chọn `answer`, `ask`, `plan` hoặc `execute`.
+`plan` giữ nhánh lập lịch hiện tại (`extract` → hỏi lại hoặc `tool` → `evaluate` → `filter` → `compose` → `narrate`).
+`execute` khai loại việc, ý định `new|more|about_shown|cheaper|dearer`, mã thẻ, phạm vi, điều kiện và việc còn chờ.
+Code chạy các việc độc lập song song; việc phụ thuộc chạy vòng sau. Explore là nhóm tool chỉ đọc, không có LLM riêng;
+fare dùng logic vé hiện tại. Code giữ kết quả đầy đủ và con trỏ; LLM nhận mã `#n`, dữ kiện rút gọn, số mục chưa liệt kê
+và cờ nguồn còn trang. Tin chỉ hỏi vé, vòng đầu đúng một việc fare và không còn việc chờ, dùng nguyên câu vé không thêm
+lời gọi LLM. Phanh: tối đa 3 việc/vòng, 3 vòng thực thi/lượt, trần tool (khởi đầu 10), ngân sách thời gian và chặn việc trùng.
+
+**Gác cổng trước finalize:** thẻ/link chỉ tới sản phẩm đã tra và đã có trong bản rút gọn của lượt; số liệu LLM viết chỉ qua
+placeholder được code điền. Lặp theo ý định: muốn thêm loại thẻ đã hiện trong cả hội thoại theo điểm đến + loại; hỏi thẻ
+cũ tra lại đúng thẻ; rẻ/đắt hơn so giá mới và giữ điều kiện chưa đổi; câu hỏi mới được gặp lại thẻ cũ. Tối đa 3 điểm
+tham quan/tour, 2 khách sạn khi hỏi chung hoặc 4 khi hỏi riêng chỗ ở. Nhãn “nhất” do code tính. Mỗi lượt chỉ một câu hỏi,
+kể cả nhiều việc vé thiếu thông tin: các việc khác chờ đúng lượt sau. Chỉ thay câu hỏi vé khi việc sau khai thay và
+code xác nhận cùng yêu cầu vừa điền đúng trường thiếu; không thay khối đã trả lời hoặc yêu cầu độc lập.
+Đồng ý lập lịch kiểm từ trường cấu trúc: trả lời lời mời đang chờ, xin lập lịch, thông tin chuyến đã trích được, xin form.
+Từ chối/dừng xoá lời mời ngay lượt đó; chỉ câu mời được chèn tạo lời mời đang chờ, nút không tạo lại.
+**Đã xem chỉ ghi ở finalize theo response cuối**; tìm được mà chưa hiện chưa tính.
+
+Orchestrator có model riêng (người dùng chọn GPT-6.1 Sol/OpenAI); các bước khác giữ model chung. Model ID/provider cấu
+hình tường minh, bỏ trống dùng chung; thiếu khoá hoặc dựng lỗi thì cảnh báo và dùng model chung. Nhiệt độ, reasoning,
+ngân sách thời gian đặt bằng số đo. Cờ mặc định tắt; chỉ chuyển sau bộ đo đạt ngưỡng.
 
 ### Tiêu chuẩn Grounding (Chống Bịa Đặt):
-- **Không suy đoán dữ liệu sản phẩm:** LLM chỉ đóng vai trò phân tích ý định ngôn ngữ và sắp xếp lịch trình thời gian. LLM được chỉ ra cặp điểm tham quan trùng nhau trong danh sách ứng viên (chỉ thấy mã và tên, node `filter`); hệ thống chỉ nhận cặp gồm hai mã có trong danh sách và tự chọn giữ mã nào bằng luật; LLM lỗi hoặc quá giờ thì chỉ dùng phần lọc bằng luật. Mọi thông tin về `productId`, `title`, `price`, `imageUrl` bắt buộc phải được lấy nguyên trạng từ kết quả trả về của công cụ truy xuất (`ToolCatalogSearch`): Search, Recommendation, hoặc Similar (`getSimilarProducts`) khi đổi một sản phẩm đã hiển thị. Câu trả lời khám phá (FR-AGT-06) chỉ nêu sản phẩm có trong kết quả Search của chính lượt đó; lý do chọn thẻ do code tính, LLM chỉ viết câu và số được code điền.
-- **Vé máy bay** chỉ lấy từ chuyến bay thật của catalog; `compose` chọn chuyến bằng luật tất định (AC-AGT-02), LLM không chọn hay tạo chuyến. Câu trả lời vé máy bay (FR-AGT-07, AC-AGT-05, AC-AGT-08) do code viết từ chuyến bay của catalog tra ngay lượt đó; LLM của `ClassifyTurn` chỉ hiểu câu hỏi (nơi đi, nơi đến, ngày, khung giờ, rẻ hay đắt nhất, hỏi lý do, hỏi ngày có chuyến), mọi tên nơi được đối chiếu với catalog trước khi dùng. Nút do code tạo cho câu trả lời vé đi thẳng nhánh vé, không qua LLM. Vị trí trình duyệt chỉ dùng ở Web để gợi ý nơi đi; toạ độ không vào state của agent (AC-AGT-03).
+- **Không suy đoán dữ liệu sản phẩm:** LLM chỉ đóng vai trò phân tích ý định ngôn ngữ và sắp xếp lịch trình thời gian. LLM được chỉ ra cặp điểm tham quan trùng nhau trong danh sách ứng viên (chỉ thấy mã và tên, node `filter`); hệ thống chỉ nhận cặp gồm hai mã có trong danh sách và tự chọn giữ mã nào bằng luật; LLM lỗi hoặc quá giờ thì chỉ dùng phần lọc bằng luật. Mọi thông tin về `productId`, `title`, `price`, `imageUrl` bắt buộc phải được lấy nguyên trạng từ kết quả trả về của công cụ truy xuất (`ToolCatalogSearch`): Search, Recommendation, hoặc Similar (`getSimilarProducts`) khi đổi một sản phẩm đã hiển thị. Câu trả lời khám phá (FR-AGT-06) chỉ nêu sản phẩm có trong kết quả Search của chính lượt đó; LLM chọn thẻ trong kết quả tool của chính lượt đó, chỉ nhắc sản phẩm qua mã ngắn `#n`; code kiểm mã, luật lặp theo ý định, tính nhãn so sánh và điền số.
+- **Ranh giới trí nhớ:** không gọi tool chỉ nhắc tên đã gợi ý và lúc nào, không thẻ/link/số/dữ kiện sản phẩm. Thẻ, giá, đơn vị giá, tiện ích, địa chỉ, giờ mở, còn chỗ đều tra lại đúng sản phẩm ngay lượt này. Mọi số liệu sản phẩm trong lời LLM là placeholder của mã đã tra; so với một mốc phải ghi đúng việc (khoảng cách, chênh giá). Code chỉ điền khi xác định đúng một giá trị, không đoán khi mơ hồ. Khối vé code viết được chèn nguyên văn sau kiểm số và được miễn quét số.
+- **Vé máy bay** chỉ lấy từ chuyến bay thật của catalog; `compose` chọn chuyến bằng luật tất định (AC-AGT-02), LLM không chọn hay tạo chuyến. Câu trả lời vé máy bay (FR-AGT-07, AC-AGT-05, AC-AGT-08) do code viết từ chuyến bay của catalog tra ngay lượt đó; LLM của orchestrator chỉ hiểu câu hỏi (nơi đi, nơi đến, ngày, khung giờ, rẻ hay đắt nhất, hỏi lý do, hỏi ngày có chuyến), mọi tên nơi được đối chiếu với catalog trước khi dùng. Nút do code tạo cho câu trả lời vé đi thẳng nhánh vé, không qua LLM. Vị trí trình duyệt chỉ dùng ở Web để gợi ý nơi đi; toạ độ không vào state của agent (AC-AGT-03).
 - **Response phân biệt theo `status`:** `ItineraryResponse` là `oneOf` gồm `COMPLETED`, `NEEDS_CLARIFICATION`, `NO_RESULTS`, `FALLBACK` (`src/shared/contracts/schemas/itinerary-agent.yaml`). `NEEDS_CLARIFICATION` có `searchResults` tuỳ chọn cho thẻ của lượt khám phá (1.24.0) và thẻ chuyến bay của câu trả lời vé (`searchResults.flight`, tối đa 4, 1.25.0); `COMPLETED` có `suggestions` tuỳ chọn, tối đa 3 (1.25.0), ví dụ nút lập lại lịch từ ngày gần nhất còn bán khi lịch chỉ là lịch tham khảo. Trường cụ thể theo contract, không theo ví dụ trong PRD.
 - **Backend tự tính tổng tiền.** Điểm tham quan tự do — điểm tham quan hoặc golf có `ticketed = false`, hoặc không có giá — tính 0 đ vào tổng và hiển thị là "tham quan tự do", không hiển thị là có giá 0 đ. Mục khác thiếu giá (khách sạn, vé máy bay, combo...) thì tổng là `null` kèm cảnh báo, không coi thiếu giá là 0.
 - **LLM lỗi:** dùng fallback dựa trên luật hoặc trả `FALLBACK`/lỗi có kiểm soát.

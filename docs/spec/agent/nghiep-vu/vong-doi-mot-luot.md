@@ -2,6 +2,21 @@
 
 Phục vụ FR-AGT-01..07, NFR-REL-01. Mô tả theo code tại 2026-10-11; khi lệch, PRD và contract thắng.
 
+## Đường orchestrator sau cờ (chốt 12/10)
+
+Mô tả bên dưới giữ đường cũ mặc định off. Cờ `ITINERARY_ORCHESTRATOR=on` dùng một LLM đầu mối để quyết trả lời,
+hỏi một câu, lập lịch khi đã đồng ý, hoặc thực thi explore/fare. Không đoán ý bằng regex mới.
+Chỉ nêu điểm đến thì tự khám phá chung; xin thêm thì loại thẻ đã hiện cả hội thoại theo điểm đến + loại. Hỏi 'khách sạn
+thứ hai', 'mấy chỗ đó có hồ bơi' chỉ tra lại đúng mã đã xem; giá/rẻ hơn/đắt hơn dùng dữ liệu mới và giữ điều kiện tìm.
+Câu hỏi mới được gặp lại thẻ cũ. Tối đa 3 điểm tham quan/tour, 2 khách sạn khi hỏi chung / 4 khi hỏi riêng.
+Tin nhiều việc được trả lời đủ trong một response; vé là khối code viết nguyên văn; việc phụ thuộc chạy vòng sau.
+Phanh 3 việc/vòng, 3 vòng execute, 10 lời gọi tool và thời gian; phần chưa làm phải nói rõ. Chỉ có một câu hỏi,
+các câu vé khác còn thiếu thông tin chờ đúng lượt tiếp theo. Từ chối xoá lời mời, nút lập lịch không tạo lại; đồng ý
+được kiểm trước nhánh lập lịch. Lịch đã có giữ nguyên khi đang hỏi vé/khám phá. Mọi đường qua finalize để kiểm và lưu.
+
+Runtime và sơ đồ: [langgraph-nodes.md](../langgraph-nodes.md#orchestrator-sau-cờ-chốt-2026-10-12).
+Hành vi chi tiết: [plan đã chốt](../../../plan/2026-10-12-nho-ket-qua-da-xem.md).
+
 ## Mục đích
 
 Người dùng gửi một tin nhắn, nhận về đúng một [response](glossary.md#response). Trợ lý quyết định nói chuyện, khám phá,

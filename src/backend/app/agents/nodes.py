@@ -32,11 +32,13 @@ from src.backend.app.application.itinerary.flights import flight_options
 from src.backend.app.application.itinerary.retrieval import hydrate
 from src.backend.app.application.ports.conversation_archive import ConversationArchivePort
 from src.backend.app.application.ports.itinerary_tools import ConversationStorePort, ToolExecutorPort
+from src.backend.app.domain.itinerary import gatekeeper
 from src.backend.app.domain.itinerary.normalization import normalize_intent
 from src.backend.app.domain.itinerary.planning import empty_intent
 
 from .steps import (changes, composition, consent, conversation, evaluation, exploration, fares, filtering,
-                    guardrails, messages, narration, option_swap, phase, tool_planning, turn_notes, validation)
+                    guardrails, messages, narration, option_swap, phase, shown, tool_planning, turn_notes,
+                    validation)
 from .steps.classification import (extract_result, extraction_input, picked_option, route_input, route_result,
                                    says_stop, stopped)
 from .steps.failures import terminal_failure
@@ -50,7 +52,7 @@ logger = logging.getLogger("uvicorn.error")
 MAX_ATTEMPTS = 2
 
 
-def intake_node(state: AgentState) -> dict:
+def intake_node(state: AgentState, *, orchestrator_enabled: bool = False) -> dict:
     """Khởi tạo state cho lượt này.
 
     Đọc: `query`/`message`, `conversation_id`, `conversation_history`, `intent`, `constraints`,
@@ -86,6 +88,7 @@ def intake_node(state: AgentState) -> dict:
             "final_answer": None, "http_status": 200, "decision": "", "validation_issues": [],
             "started_at": time(), "language": state.get("language") or "vi",
             **phase.carried(state), **phase.turn_defaults(),
+            **({**phase.orchestrator_carried(state), **deepcopy(phase.ORCHESTRATOR_TURN)} if orchestrator_enabled else {}),
             "flight_choices": None, "previous_flights": deepcopy(state.get("previous_flights") or []),
             "change_request": None,
             "events": [event("intake", "request initialized")]}
@@ -93,14 +96,14 @@ def intake_node(state: AgentState) -> dict:
 
 async def intake_node_async(state: AgentState, *, store: ConversationStorePort | None = None,
                             owner: str = "anonymous", archive: ConversationArchivePort | None = None,
-                            cdp_user_id: str | None = None) -> dict:
+                            cdp_user_id: str | None = None, orchestrator_enabled: bool = False) -> dict:
     """`intake` trên đường async: nạp intent/constraints/lịch sử đã lưu của hội thoại.
 
     Đọc thêm: bản ghi trong `ConversationStorePort` theo `conversation_id` và chủ sở hữu.
     Ghi thêm: intent/constraints/`previous_selection`/`previous_options`/`conversation_history` của lượt trước,
     hoặc lỗi `CONVERSATION_NOT_FOUND` (404).
     """
-    update = intake_node(state)
+    update = intake_node(state, orchestrator_enabled=orchestrator_enabled)
     if store is not None and state.get("conversation_id"):
         try:
             previous = await store.load(state["conversation_id"], owner)
@@ -131,7 +134,8 @@ async def intake_node_async(state: AgentState, *, store: ConversationStorePort |
                           previous_flights=previous.get("previous_flights") or [],
                           conversation_history=sanitize_conversation_history(
                               previous.get("conversation_history", [])),
-                          **phase.carried({**previous, "plan_consent": consent.restored(previous)}))
+                          **phase.carried({**previous, "plan_consent": consent.restored(previous)}),
+                          **(phase.orchestrator_carried(previous) if orchestrator_enabled else {}))
     return update
 
 
@@ -223,6 +227,18 @@ def classify_node(state: AgentState, *, llm=None) -> dict:
     if blocked is not None:
         return blocked
     picked = _stop_rule(state) or _option_pick(state) or changes.detected(state) or fares.chip_reply(state)
+    if state.get("orchestrator_active"):
+        from .steps import orchestration
+        if picked and picked.get("fare_question"):
+            return orchestration.fare_button_turn(state, picked)
+        if picked and picked.get("interaction_type") == "stop":
+            return {**picked, "decision": "orchestrate", "turn_stop": True}
+        if picked is None and consent.plan_consented(state):
+            # A known planning stage alone is not a route: let the orchestrator still handle fare/explore questions.
+            if consent.asks_for_plan(state.get("query")) or state.get("pending_offer") and consent.says_yes(state.get("query")):
+                return {"decision": "travel", "interaction_type": "travel", **consent.newly_consented(state)}
+        if picked is None:
+            return {"decision": "orchestrate", "events": [event("classify", "route orchestrator")]}
     if picked is not None:
         return phase.settled(state, picked)
     try:
@@ -236,6 +252,22 @@ def classify_node(state: AgentState, *, llm=None) -> dict:
 _fare_settled = phase.settled
 
 
+def _precheck_events(update: dict) -> dict:
+    """Reuse existing input rules while naming their rollout events accurately."""
+    return {**update, "events": [{**item, "node": "precheck"} if item.get("node") == "classify" else item
+                                for item in update.get("events") or []]}
+
+
+def precheck_node(state: AgentState) -> dict:
+    """Orchestrator input rules only: no legacy classification model is supplied or invoked."""
+    return _precheck_events(classify_node({**state, "orchestrator_active": True}))
+
+
+async def precheck_node_async(state: AgentState) -> dict:
+    """Async equivalent of the deterministic input rules, without a classification LLM."""
+    return _precheck_events(await classify_node_async({**state, "orchestrator_active": True}))
+
+
 async def classify_node_async(state: AgentState, *, llm=None, timeout_seconds: float = 2) -> dict:
     """`classify` trên đường async: LLM quá `timeout_seconds` thì coi như provider lỗi (`LLM_UNAVAILABLE`)."""
     if state.get("decision") == "error":
@@ -247,6 +279,18 @@ async def classify_node_async(state: AgentState, *, llm=None, timeout_seconds: f
     if blocked is not None:
         return blocked
     picked = _stop_rule(state) or _option_pick(state) or changes.detected(state) or fares.chip_reply(state)
+    if state.get("orchestrator_active"):
+        from .steps import orchestration
+        if picked and picked.get("fare_question"):
+            return orchestration.fare_button_turn(state, picked)
+        if picked and picked.get("interaction_type") == "stop":
+            return {**picked, "decision": "orchestrate", "turn_stop": True}
+        if picked is None and consent.plan_consented(state):
+            # A known planning stage alone is not a route: let the orchestrator still handle fare/explore questions.
+            if consent.asks_for_plan(state.get("query")) or state.get("pending_offer") and consent.says_yes(state.get("query")):
+                return {"decision": "travel", "interaction_type": "travel", **consent.newly_consented(state)}
+        if picked is None:
+            return {"decision": "orchestrate", "events": [event("classify", "route orchestrator")]}
     if picked is not None:
         return phase.settled(state, picked)
     try:
@@ -286,6 +330,10 @@ async def extract_node_async(state: AgentState, *, llm=None, timeout_seconds: fl
         result = await asyncio.wait_for(
             chat_model(llm).with_structured_output(Extraction).ainvoke(extraction_input(state)), timeout_seconds)
         update = extract_result(state, result)
+        if state.get("orchestrator_active") and state.get("turn_plan_reason") == "trip_details" \
+                and not state.get("plan_consent") and not update.get("plan_consent"):
+            from .steps.orchestration import plan_denied
+            return {**update, **plan_denied({**state, **update}), "missing_fields": []}
     except Exception:
         return _llm_failed(state, "extract", "async", timeout_seconds)
     return await tool_planning.check_destination(state, update, tools=tools, timeout_seconds=tool_timeout_seconds,
@@ -629,7 +677,7 @@ def finalize_node(state: AgentState) -> dict:
     Đọc: `response`, `http_status`, `candidates`, `sources`, `intent`, `constraints`,
     `conversation_history`, `query`, `started_at`.
     Ghi: `response` đã kiểm, `http_status`, `validation_issues`, `final_answer`,
-    `conversation_history`, `latency_ms`.
+    `conversation_history`, `shown` (sản phẩm vừa hiện, `steps/shown.record`), `latency_ms`.
     Sai schema hoặc lệch grounding (kể cả link sản phẩm trong `message` của `COMPLETED`) thì thay bằng
     `ITINERARY_VALIDATION_FAILED` (500). Câu chữ LLM tự viết (`question`/`error.message`/`message` của `COMPLETED`)
     lộ secret hoặc tuyên bố đã đặt/đã thanh toán thì thay bằng câu cố định (`guardrails.output_violations`;
@@ -638,6 +686,13 @@ def finalize_node(state: AgentState) -> dict:
     """
     response = deepcopy(state.get("response", {}))
     http_status = state.get("http_status", 200)
+    orchestrator_issues = []
+    if state.get("orchestrator_prefill") is not None:
+        orchestrator_issues = gatekeeper.inspect(state["orchestrator_prefill"], state.get("turn_jobs") or [],
+                                                 state.get("turn_codes") or {}, state.get("language", "vi"))["violations"]
+        if orchestrator_issues:
+            from .steps.orchestration import gatekeep_node, _fallback
+            response = gatekeep_node({**state, "orchestrator_turn": _fallback(state), "gate_repairs": 1})["response"]
     issues = validation.response_issues(state, response, http_status)
     guardrail_issues: list[str] = []
     if issues:
@@ -652,7 +707,7 @@ def finalize_node(state: AgentState) -> dict:
         elif guardrail_issues:
             # Câu chữ do luật tất định soạn lại, đúng theo `refusal` đã ghi lúc trước — không gọi LLM lần nữa.
             response = conversation.conversational_fallback(state).get("response", response)
-    all_issues = issues + [f"guardrail:{reason}" for reason in guardrail_issues]
+    all_issues = issues + [f"guardrail:{reason}" for reason in guardrail_issues] + [f"orchestrator:{reason}" for reason in orchestrator_issues]
     if response.get("status") == "COMPLETED" or all_issues:  # chỉ lượt có lịch trình mới có gì để kiểm grounding
         log_event(logger, "assistant.grounding", "WARNING" if all_issues else "INFO",
                   request_id=state.get("request_id"), checked=len(state.get("candidates", {})),
@@ -663,8 +718,10 @@ def finalize_node(state: AgentState) -> dict:
         if _silent_option_turn(state, all_issues) \
         else append_conversation_turn(state.get("conversation_history", []), state.get("query", ""), answer, note)
     outcome = "validation failed" if issues else "guardrail output filtered" if guardrail_issues else "response validated"
+    # Chỉ response đã qua kiểm tra mới thành "đã cho xem"; response lỗi không hiện sản phẩm nào.
+    seen = shown.current(state) if issues else shown.record(state, response)
     return {"response": response, "http_status": http_status, "validation_issues": all_issues,
-            "final_answer": answer, "conversation_history": history,
+            "final_answer": answer, "conversation_history": history, "shown": seen,
             "latency_ms": max(0, int((time() - state.get("started_at", time())) * 1000)),
             "events": [event("finalize", outcome, issues=all_issues)]}
 
@@ -701,7 +758,10 @@ async def finalize_node_async(state: AgentState, *, store: ConversationStorePort
                          "previous_plan": plan,
                          "previous_flights": state.get("flight_choices") if completed and state.get("flight_choices")
                          is not None else state.get("previous_flights", []),
-                         **phase.carried(state),
+                         **phase.carried({**state, "shown": update["shown"]}),
+                         **(phase.orchestrator_carried({**state, "waiting_jobs": state.get("waiting_jobs") or []
+                                                           if state.get("orchestrator_prefill") is not None else []})
+                            if state.get("orchestrator_active") else {}),
                          "last_suggestions": list(response.get("suggestions") or [])}
         await store.save(state["conversation_id"], working_state, owner)
         if archive is not None and cdp_user_id:
@@ -720,3 +780,7 @@ async def finalize_node_async(state: AgentState, *, store: ConversationStorePort
                 logger.exception("itinerary.conversation_archive_write_failed requestId=%s",
                                  state.get("request_id", "unknown"))
     return update
+
+
+# Rollout nodes live separately from the unchanged itinerary planning steps.
+from .steps.orchestration import orchestrate_node, run_jobs_node, gatekeep_node

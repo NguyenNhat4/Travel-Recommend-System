@@ -87,3 +87,30 @@ def restored(previous: dict) -> bool:
     """`plan_consent` của hội thoại đã lưu. Bản lưu trước khi có giai đoạn khám phá (đã có lịch hoặc đang hỏi thông tin
     chuyến) không có khoá này: coi như đã đồng ý."""
     return previous.get("plan_consent", bool(previous.get("start_date_asked") or previous.get("previous_plan")))
+
+
+def structured_plan_allowed(state: dict, reason: str | None) -> bool:
+    """The orchestrator declares why; code verifies the applicable consent condition."""
+    if state.get("plan_consent"):
+        return True
+    if state.get("turn_declines_offer") or state.get("turn_stop"):
+        return False
+    if reason == "accepts_offer":
+        return bool(state.get("pending_offer"))
+    return reason in ("asks_plan", "trip_details", "form")
+
+
+def structured_offer_update(state: dict, *, destination: str | None, inserted: bool) -> dict:
+    """Apply the PRD's ordered offer lifecycle. A button never creates a pending invitation."""
+    pending = state.get("pending_offer")
+    if state.get("turn_declines_offer") or state.get("turn_stop"):
+        return {"pending_offer": None}
+    if state.get("turn_plan_accepted"):
+        return {"pending_offer": None}
+    if inserted and destination:
+        return {"pending_offer": {"destination": destination},
+                "offered_destinations": list(dict.fromkeys([*(state.get("offered_destinations") or []), destination]))}
+    current = (pending or {}).get("destination")
+    if current and (current in (state.get("rejected_destinations") or []) or destination and destination != current):
+        return {"pending_offer": None}
+    return {"pending_offer": pending}

@@ -42,7 +42,8 @@ Chỗ LLM để trống được lấy từ câu hỏi vé còn dở (`pending_f
 | "ngày 20/10 thì sao" | Chuyến rẻ nhất ngày đó, so với cả đợt. Ngày đó không có chuyến: nói rõ, nêu tối đa 2 ngày gần nhất có chuyến và ngày rẻ nhất cả đợt |
 | "đi sớm thì sao" | Chuyến trong khung giờ: đi sớm < 09:00, sáng 05–12, chiều 12–18, tối ≥ 18:00. Không có thì nói rõ và tính mọi giờ |
 | "ngày nào không có chuyến" | Đợt mở bán và các ngày chưa có chuyến |
-| "ngày khác thì sao", "rẻ hơn nữa không" | Các ngày kế tiếp, không lặp ngày vừa hiện; đã là rẻ nhất thì nói rõ |
+| "ngày khác thì sao" | Các ngày kế tiếp, không lặp ngày vừa hiện |
+| "rẻ hơn nữa không" (sau khi đã báo giá cùng tuyến) | Nói rõ đây đã là vé rẻ nhất tới ngày cuối đợt, rồi nêu vé đó; kể cả khi lượt trước trả lời một ngày cụ thể như chặng về của lịch (chat thử M11 từng lặp y hệt câu ngày về) |
 | "tại sao đắt vậy" | Nói rõ dữ liệu không có hành lý, điều kiện vé, ghế còn lại. Chỉ nêu số: gấp mấy lần vé rẻ nhất, so với giá phổ biến, hạng ghế, hãng, bay sát ngày (≤ 7 ngày) |
 | "tao ở sài gòn, đi đâu cũng được miễn vé rẻ" | Chưa rõ loại vé nên hỏi lại trước. Chọn máy bay thì so vé rẻ nhất của nhiều tuyến từ Sài Gòn |
 | "chuyến bay về mấy giờ" (đã có lịch) | Chiều về của chính chuyến đi, đúng ngày cuối |

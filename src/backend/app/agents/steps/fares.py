@@ -168,7 +168,8 @@ def answer_text(state: dict, origin: str, destination: str, products: list[dict]
     chữ quá dài). Đã có ngày đi (ngày người dùng hỏi hoặc ngày của chuyến): các chuyến của đúng ngày đó, rồi so với cả đợt
     mở bán; không có chuyến ngày đó thì nêu ngày gần nhất có chuyến. `period`: chỉ tính chuyến trong khung giờ đó ("đi
     sớm", "buổi tối"), không có chuyến nào trong khung thì nói rõ và tính mọi giờ. `availability`: đợt mở bán và các
-    ngày chưa có chuyến. `more`: hỏi tiếp ngày khác, nêu các ngày kế tiếp. `cheaper`: nói rõ khi không còn vé rẻ hơn.
+    ngày chưa có chuyến. `more`: hỏi tiếp ngày khác, nêu các ngày kế tiếp. `cheaper`: hỏi rẻ hơn sau khi đã báo giá
+    cùng tuyến, nói rõ không còn vé rẻ hơn rồi nêu vé rẻ nhất cả đợt, bỏ qua ngày.
     """
     start = start or (state.get("intent") or {}).get("startDate")
     title = message(state, "fare_title", origin=origin, destination=destination)
@@ -190,6 +191,14 @@ def answer_text(state: dict, origin: str, destination: str, products: list[dict]
     shown: list[dict] = []
     if availability:
         lines += _availability_lines(state, fields, usable, ranked, period_text)
+        shown = [product for _, product in ranked[:MAX_FARE_CARDS]]
+    elif cheaper and kind == CHEAPEST:
+        # "rẻ hơn nữa ko" sau khi đã báo giá cùng tuyến (mọi câu trả lời vé đều đã nêu vé rẻ nhất cả đợt): nói thẳng là không
+        # còn vé rẻ hơn, kể cả khi lượt trước trả lời một ngày (chặng về của lịch, chat thử M11: LLM hiểu `cheaper` mà câu
+        # lặp y hệt câu ngày về).
+        lines.append(message(state, "fare_already_cheapest", end=window_end))
+        lines.append(message(state, "fare_cheapest", **fields, money=money(best["unitPrice"], language),
+                             day=_short(best_day), flight=_flight_text(state, best)))
         shown = [product for _, product in ranked[:MAX_FARE_CARDS]]
     elif start:
         day_asked = date.fromisoformat(start)
@@ -221,9 +230,6 @@ def answer_text(state: dict, origin: str, destination: str, products: list[dict]
         lines.append(message(state, f"fare_more_{kind}", **fields, day=_short(first_day),
                              money=money(first["unitPrice"], language)))
     else:
-        if cheaper and kind == CHEAPEST:
-            # "rẻ hơn nữa ko" sau khi đã báo giá rẻ nhất: nói thẳng là không còn vé rẻ hơn trong đợt mở bán.
-            lines.append(message(state, "fare_already_cheapest", end=window_end))
         lines.append(message(state, f"fare_{kind}", **fields, money=money(best["unitPrice"], language),
                              day=_short(best_day), flight=_flight_text(state, best)))
         shown = [product for _, product in ranked[:MAX_FARE_CARDS]]

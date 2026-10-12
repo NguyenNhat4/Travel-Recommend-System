@@ -109,6 +109,36 @@ class AgentState(TypedDict, total=False):
     open_understood: dict[str, Any] | None
     # - `skipped_details`: chi tiết không bắt buộc người dùng đã nói là không có ("không có ngân sách"); không hỏi lại.
     skipped_details: list[str]
+    # - `shown`: sản phẩm đã cho xem trong hội thoại (thẻ khám phá, thẻ vé, sản phẩm của lịch), mỗi cái một mã `#n` kèm
+    #   một dòng thông tin (`steps/shown.py`); `finalize` ghi từ response đã kiểm. Chỉ để nhớ, loại, so; không phải nguồn
+    #   sản phẩm hay giá của response.
+    shown: dict[str, Any]
+    # Rollout-only conversational state; the disabled graph preserves its original checkpoint payload.
+    orchestrator_active: bool
+    waiting_jobs: list[dict[str, Any]]
+    rejected_refs: list[str]
+    orchestrator_turn: dict[str, Any]
+    turn_jobs: list[dict[str, Any]]
+    turn_codes: dict[str, str]
+    turn_seq: int
+    turn_pending: list[dict[str, Any]]
+    turn_results: list[dict[str, Any]]
+    turn_rounds: int
+    turn_tool_calls: int
+    turn_signatures: list[str]
+    turn_unfinished: list[dict[str, Any]]
+    turn_violations: list[str]
+    force_answer: bool
+    gate_repairs: int
+    orchestrator_prefill: dict[str, Any] | None
+    orchestrator_fare_ids: list[str]
+    jobs_progress: bool
+    turn_declines_offer: bool
+    turn_stop: bool
+    turn_plan_reason: str | None
+    turn_plan_accepted: bool
+    button_jobs: bool
+    button_pending_jobs: list[dict[str, Any]]
     fare_question: bool
     # Những gì `classify` (LLM) hiểu từ câu chữ của lượt này, chỉ trong lượt; code đối chiếu với catalog rồi mới dùng:
     # - `fare_ask`: câu hỏi vé máy bay (`models.FareQuestion`: origin, destination, anywhere, dearest, return_leg,

@@ -67,6 +67,7 @@ Sau đợt review field (quyết định 2026-09-28, [`history/2026-09-28-ap-dun
 | `open_question` | `explore` (hỏi lại khi tên nơi khớp nhiều thành phố (`ask_which_place`) hoặc không tra được nơi và chuyển `extract` → `converse` hỏi lại: ghi câu hỏi gốc; lượt khám phá xong về `None`), `classify` (`phase.settled`: lượt đi nhánh khác `explore`/`travel` thì bỏ), `finalize` (lưu) | `explore` (`resumed`: câu trả lời ngắn ≤ 6 từ nêu điểm đến thì trả lời câu hỏi gốc ở điểm đến đó) | Câu hỏi còn dở khi trợ lý phải hỏi lại điểm đến (chat thử 10/10: "có khách sạn nào có hồ bơi gần phố cổ không?" → "hà nội cha ơi"). Khác field `pending_question` cũ đã gỡ ngày 28/09 |
 | `open_understood` | `explore` (cùng lúc ghi `open_question`: `explore_place`, `explore_focus`, `explore_price` của câu hỏi gốc), `classify` (`phase.settled`: bỏ cùng `open_question`), `finalize` (lưu) | `explore` (`resumed`: gộp vào lượt trả lời, lượt này đọc ra gì thì thắng) | Những gì LLM hiểu ở câu hỏi còn dở, để lượt trả lời ngắn ("Phố cổ Hội An") không mất "chỗ ở", "giá rẻ" |
 | `skipped_details` | `extract` (`Extraction.skipped_details` gộp với các lượt trước), `finalize` (lưu) | `extract` (`trip_details_missing`), `llm_context` (`trip_summary` không ghi là "chưa có") | Chi tiết không bắt buộc người dùng đã nói là không có hoặc sao cũng được ("ko có ngân sách", "đi từ đâu cũng được"); không hỏi lại (chat thử M10) |
+| `shown` | `finalize` (`steps/shown.record`: thêm sản phẩm response vừa hiện — thẻ khám phá, thẻ vé, vé, khách sạn, hoạt động của lịch — từ chính response đã qua kiểm tra; response lỗi thì giữ nguyên), `finalize` (lưu) | `llm_context` (khối `already_shown` qua `shown.context`, mọi lời gọi LLM trừ `filter`) | Sản phẩm đã cho xem trong hội thoại: `{turn, seq, items: [{ref "#n", productId, taxonomy, name, place, turn, where, facts}]}`, mục cũ trước. Mã `#n` giữ suốt hội thoại (hiện lại thì giữ mã cũ, không dùng lại); `facts` là một dòng thông tin theo loại (giá lúc gợi ý, hạng sao, điểm, tiện ích, giờ mở, thời lượng, chuyến bay); tối đa 40 mục mỗi điểm đến hoặc tuyến bay. Chỉ để nhớ, loại, so; sản phẩm và giá của response luôn từ tool của chính lượt đó. Hội thoại lưu trước 2026-10-12 nhận giá trị rỗng (`phase.carried`). Plan `docs/plan/2026-10-12-nho-ket-qua-da-xem.md` B2 |
 | `joint_date` | `compose` (bản sao state trong lượt, `composition._joint_date`) | `compose` (`_nearest_dates_sentence`, `missing_stay_note`) | Chỉ trong lượt: ngày đi chung có đủ vé hai chiều, khách sạn và vé tham quan khi các phần đó thiếu vì ngày |
 | `explore_pick` | `intake` (reset `False`), `classify` (bậc 2 của "không biết") | `explore` (`destination_for`) | Chỉ trong lượt: `explore` tự chọn điểm đến nhiều sản phẩm nhất |
 | `offer_suggestions` | `intake` (reset `False`), `classify`/`extract` (lượt trò chuyện, ngoài phạm vi, "không biết"), luật tin rác | `converse` (`with_suggestions`) | Chỉ trong lượt: câu trả lời trò chuyện có kèm nút gợi ý |
@@ -82,3 +83,27 @@ Sau đợt review field (quyết định 2026-09-28, [`history/2026-09-28-ap-dun
 | `form_request` | `intake` (reset `False`), `classify` (`understood`: `TurnRoute.form_request`, trừ nhãn `fare`/`out_of_scope`) | `classify` (đi thẳng `clarify` lý do `suggest_form`), `converse`/`clarify` (`_form_shown`) | Chỉ trong lượt: người dùng xin form để tự điền; lượt này luôn kèm form |
 | `price_scope` | `explore` (bản sao state trong lượt, `exploration.price_scope`) | `explore` (payload LLM) | Chỉ trong lượt: `city` khi thẻ khách sạn rẻ/đắt nhất lấy từ danh sách cả điểm đến xếp theo giá, `found` khi chỉ trong các khách sạn tìm được |
 | `other_questions` | `intake` (reset `[]`), `classify` (`understood`, bỏ câu dài hơn 60 ký tự) | `explore` nhánh giá vé (thành nút) | Chỉ trong lượt: các câu hỏi khác trong cùng tin nhắn |
+
+## State orchestrator (cờ on)
+
+Phục vụ FR-AGT-01/06/07, NFR-REL-01. Cờ off không thêm các field này vào payload lưu cũ.
+Ở cờ on, phần luật đầu vào trong các bảng cũ mang tên `precheck`, không phải `classify`; node/event chỉ kiểm code, không gọi LLM phân loại cũ.
+`phase.ORCHESTRATOR_CARRIED` là phần mở rộng của nhóm lưu qua lượt, `ORCHESTRATOR_TURN` đặt lại ở intake.
+
+| Field | Vòng đời | Nội dung |
+|---|---|---|
+| `waiting_jobs` | Lưu đúng một lượt sau | Việc vé asked chưa được hỏi vì chỉ giữ một câu; nút vé điền cùng trường thiếu và chạy lại bằng code; sau lượt tiếp theo xoá nếu không có câu hỏi mới |
+| `rejected_refs` | Qua hội thoại | Mã sản phẩm bị chê; hỏi lại rõ sản phẩm bằng new/refers_to thì phục hồi đúng mã |
+| `shown.seen` | Qua hội thoại, chỉ finalize ghi | Map productId → mã, điểm đến/tuyến, taxonomy và via của mọi thẻ đã hiện; giữ ổn định mã và phạm vi đã xem khi items cap 40 dòng facts/nơi |
+| `shown.items[].via` | Qua hội thoại | Điều kiện đã sinh ra thẻ (destination, taxonomy, query, near, sort); about_shown tra lại giá không xoá điều kiện này |
+| `orchestrator_active`, `orchestrator_turn` | Trong lượt | Cờ rollout, output có cấu trúc: hành động, jobs/pending/fare_only, thẻ, question, offer, lý do đồng ý, từ chối, chê, dừng |
+| `turn_jobs`, `turn_results` | Trong lượt | Kết quả đầy đủ + bản rút gọn; spec, products, listed, cursor, offset, source_more, anchor_product; con trỏ nguồn dùng chung qua continue_from; bản rút gọn không có productId, tối đa 1.500 ký tự/việc và 3.000 ký tự toàn bộ kể cả metadata/tóm tắt vòng trước |
+| `turn_codes`, `turn_seq` | Trong lượt | Mã #n → productId và mã lớn nhất đã cấp; mã chưa hiện cũng được dành, seq lưu vào shown, sản phẩm chưa hiện không vào seen/items |
+| `turn_pending`, `turn_unfinished` | Trong lượt | Việc phụ thuộc kết quả vòng trước và việc còn chưa làm khi chạm phanh |
+| `turn_rounds`, `turn_tool_calls`, `turn_signatures`, `jobs_progress` | Trong lượt | Phanh vòng/tool/thời gian và chống thực thi trùng; BudgetTools chia sẻ bộ đếm trước mỗi await |
+| `force_answer`, `gate_repairs`, `turn_violations` | Trong lượt | Chế độ không được execute/plan, tối đa một lần sửa, lý do cần sửa; tra lại mã cũ nằm trong phanh |
+| `orchestrator_prefill`, `orchestrator_fare_ids` | Trong lượt | Bản lời LLM trước khi điền số để finalize kiểm lại; các link của khối vé code viết đã tra trong lượt |
+| `turn_declines_offer`, `turn_stop`, `turn_plan_reason`, `turn_plan_accepted`, `button_jobs`, `button_pending_jobs` | Trong lượt | Cờ vòng đời lời mời/đồng ý, đường tắt nút vé và hàng đợi khi nút điền cùng trường cho hơn 3 yêu cầu |
+
+pending_offer cập nhật theo thứ tự: từ chối/dừng → xoá; plan được nhận → xoá; câu mời được chèn → tạo; chuyển/chê
+điểm đến cũ → xoá; còn lại giữ. Nút lập lịch không tạo hoặc khôi phục lời mời. Model runtime/credentials không vào state.

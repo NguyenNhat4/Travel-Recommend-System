@@ -71,6 +71,19 @@ class MessyFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['response']['searchResults']['flight'][0]['productId'], 'VJ2')
         self.assertNotIn('Khách sạn ở Hà Nội', result['response'].get('suggestions', []))
 
+    async def test_cheaper_after_the_return_flight_does_not_repeat_the_same_answer(self):
+        # Chat thử M11 lượt 3: LLM hiểu `cheaper` (giá trị thô có cả `return_leg`), code bỏ qua và lặp câu ngày về.
+        clients, store = MoreFlights(), InMemoryConversationStore()
+        await store.save('c-plan', {'intent': INTENT, 'previous_plan': PLAN, 'plan_consent': True}, 'u')
+        first = await self.turn(clients, store, 'chuyến bay về mấy giờ', fare_llm(return_leg=True), 'c-plan')
+        second = await self.turn(clients, store, 'có chuyến nào rẻ hơn ko',
+                                 fare_llm(return_leg=True, cheaper=True), 'c-plan')
+        question = second['response']['question']
+        self.assertNotEqual(question, first['response']['question'])
+        self.assertIn('Đây đã là vé rẻ nhất mình thấy', question)
+        self.assertIn('Nha Trang → Hà Nội', question)
+        self.assertNotIn('compose', [item['node'] for item in second['events']])
+
 
 class AnswerNoteTests(unittest.TestCase):
     def test_a_fare_answer_leaves_a_note_with_its_route_for_the_next_turn(self):
@@ -78,11 +91,12 @@ class AnswerNoteTests(unittest.TestCase):
         note = turn_notes.turn_note(state, {'status': 'NEEDS_CLARIFICATION'}, 200)
         self.assertEqual(note, 'báo giá vé máy bay một chiều Hà Nội → Nha Trang')
 
-    def test_an_explore_answer_leaves_a_note_with_the_places_shown(self):
+    def test_an_explore_answer_leaves_a_note_with_how_many_places_were_shown(self):
+        # Tên, giá từng thẻ nằm ở khối `already_shown` (`shown.context`), ghi chú chỉ nói đã làm gì.
         state = {'intent': {'destination': 'Hà Nội'}}
         response = {'status': 'NEEDS_CLARIFICATION',
                     'searchResults': {'attraction': [{'name': 'Văn Miếu – Quốc Tử Giám'}]}}
-        self.assertEqual(turn_notes.turn_note(state, response, 200), 'giới thiệu Hà Nội: Văn Miếu – Quốc Tử Giám')
+        self.assertEqual(turn_notes.turn_note(state, response, 200), 'giới thiệu 1 nơi ở Hà Nội (xem already_shown)')
 
 
 if __name__ == '__main__':

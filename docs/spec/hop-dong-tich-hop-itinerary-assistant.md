@@ -573,6 +573,20 @@ không hỏi thông tin chuyến và không gửi `clarificationForm`:
   khác cùng ngày của từng chặng, mỗi chuyến một nút ("Về chuyến VJ167 lúc 21:45"); gửi nút đó, hoặc "chuyến về muộn hơn/sớm
   hơn/rẻ hơn", thì trả `COMPLETED` với chuyến đã chọn. Không còn chuyến nào khác trong ngày thì gợi ý đổi ngày.
 
+**Orchestrator sau cờ (chốt 2026-10-12, FR-AGT-01/06/07, AC-AGT-05/06/07/08, NFR-REL-01).**
+Mô tả 2+2 thẻ ở trên là đường cũ mặc định `ITINERARY_ORCHESTRATOR=off`. Cờ on dùng schema nội bộ OrchestratorTurn,
+Job; không đổi OpenAPI hay field công khai. Một LLM quyết answer/ask/plan/execute; explore là nhóm tool code chạy,
+không LLM riêng, nhánh lập lịch và narrate giữ nguyên. Mỗi lượt tối đa 3 thẻ tham quan/tour, 2 khách sạn khi hỏi chung
+hoặc 4 khi chỉ hỏi chỗ ở. More loại thẻ đã hiện cả hội thoại theo điểm đến + taxonomy, giữ query/near/sort trong via.
+About_shown chỉ tra lại đúng mã được hỏi. So rẻ/đắt hơn tra lại mốc giá cùng đơn vị, giữ các điều kiện chưa đổi.
+Tin nhiều việc gộp trong question/searchResults; code chèn khối vé nguyên văn. Một câu hỏi; các việc vé asked khác chờ
+đúng một lượt sau. Chỉ thay asked khi việc sau khai replaces và chỉ điền đúng trường thiếu; giữ các yêu cầu độc lập.
+Thẻ/link/số chỉ từ dữ liệu tra và đưa vào bản rút gọn của lượt; LLM dùng #n và placeholder; so mốc ghi job. Không tra chỉ
+nhắc tên đã gợi ý lúc trước. Code có phanh 3 việc/vòng, 3 vòng execute, 10 tool và thời gian, nêu việc chưa làm.
+Từ chối/dừng xoá pending_offer ngay lượt; chỉ câu mời được chèn tạo lời mời, nút không tạo. Đồng ý kiểm trước extract,
+trip_details kiểm thông tin trích được trước clarify/tool. Finalize kiểm lại bản trước điền số và ghi shown từ response
+cuối; cap 40 dòng facts mỗi nơi không xoá bộ nhớ ID/mã/phạm vi của thẻ từng hiện. Model riêng cấu hình trong Backend README.
+
 **Tư vấn vé máy bay (contract 1.25.0, FR-AGT-07, chốt 2026-10-11).** Câu hỏi vé máy bay trả `NEEDS_CLARIFICATION`, không lập
 lịch (kể cả khi đã có lịch):
 
@@ -733,7 +747,7 @@ Lỗi thực sự không nằm trong `ItineraryResponse` và không dùng `statu
 
 - Mỗi conversation lưu trip intent đã chuẩn hóa gần nhất và lịch sử chat user/assistant gần đây.
 - Lịch sử chat chỉ nhận role `user`/`assistant`, tối đa 20 message, 1.000 ký tự/message và 8.000 ký tự tổng; khi vượt giới hạn thì bỏ message cũ nhất trước.
-- **Mọi** lượt gọi LLM (`classify`, `extract`, chọn tên điểm đến và lập tool plan ở `tool`, `converse`, `clarify`) nhận cùng ngữ cảnh hội thoại: lịch sử chat trong giới hạn trên, chuyến đi đã chốt (intent, ràng buộc), sản phẩm đã cho xem và câu hỏi gần nhất của trợ lý. Nhờ phần tóm tắt, thông tin của lượt cũ vẫn còn khi message cũ bị cắt. Ngữ cảnh là dữ liệu không tin cậy, không phải instruction, và message mới nhất vẫn có quyền cao hơn. Ngữ cảnh được diễn giải sẵn: chuyến đi đã chốt là một dòng tóm tắt, tin trợ lý cũ là ghi chú ngắn theo nghĩa ("gửi lịch trình Hà Nội 3 ngày: …") thay vì cả bài kèm giá; câu hỏi gần nhất giữ nguyên văn khi ngắn (`docs/spec/agent/langgraph-nodes.md`, mục "Ngữ cảnh cho LLM").
+- **Mọi** lượt gọi LLM (`classify`, `orchestrate` khi bật cờ, `extract`, chọn tên điểm đến và lập tool plan ở `tool`, `converse`, `clarify`, `explore`, `narrate`) nhận cùng ngữ cảnh hội thoại: lịch sử chat trong giới hạn trên, chuyến đi đã chốt (intent, ràng buộc), sản phẩm đã cho xem trong cả hội thoại (mỗi sản phẩm một mã `#n` và một dòng thông tin, kèm lịch gần nhất tóm theo mã; tối đa 2.000 ký tự) và câu hỏi gần nhất của trợ lý. Nhờ phần tóm tắt, thông tin của lượt cũ vẫn còn khi message cũ bị cắt. Ngữ cảnh là dữ liệu không tin cậy, không phải instruction, và message mới nhất vẫn có quyền cao hơn. Ngữ cảnh được diễn giải sẵn: chuyến đi đã chốt là một dòng tóm tắt, tin trợ lý cũ là ghi chú ngắn theo nghĩa ("gửi lịch trình Hà Nội 3 ngày: …") thay vì cả bài kèm giá; câu hỏi gần nhất giữ nguyên văn khi ngắn (`docs/spec/agent/langgraph-nodes.md`, mục "Ngữ cảnh cho LLM").
 - Hội thoại lưu thêm giai đoạn trò chuyện/khám phá (FR-AGT-06): đã đồng ý lập lịch chưa, lời mời đang chờ, điểm đến đã mời,
   số lần "không biết" liên tiếp và nút gợi ý lượt trước (`docs/spec/agent/state-fields.md`). Hội thoại lưu trước 2026-10-10
   đã hỏi gộp hoặc đã có lịch thì coi như đã đồng ý.
@@ -741,6 +755,7 @@ Lỗi thực sự không nằm trong `ItineraryResponse` và không dùng `statu
 - “Đổi thành Đà Nẵng” chỉ thay `destination`.
 - “Tăng ngân sách lên 20 triệu” chỉ thay `budget`.
 - Thực hiện tìm kiếm lại khi điểm đến, ngày, ngân sách, số người hoặc sở thích thay đổi.
+- Mọi lượt lưu thêm `shown`: sản phẩm response vừa hiện (thẻ khám phá, thẻ vé, sản phẩm của lịch), mỗi cái một mã `#n` giữ suốt hội thoại, tối đa 40 mục mỗi điểm đến hoặc tuyến bay (`docs/spec/agent/state-fields.md`). Chỉ để nhớ, loại, so; không phải nguồn sản phẩm hay giá của response.
 - Lượt `COMPLETED` lưu thêm `previous_selection` (`productId`, `name`, `taxonomy` của sản phẩm đã hiển thị). Lượt sau dùng danh sách này làm danh sách cho phép khi loại sản phẩm người dùng muốn đổi và khi chọn sản phẩm gốc cho Similar (§2.5).
 - Không dùng trạng thái hội thoại làm nguồn chính thức cho giá và availability.
 - Working memory trong Redis hết hạn sau 24 giờ; archive Postgres của user đăng nhập không tự xoá.

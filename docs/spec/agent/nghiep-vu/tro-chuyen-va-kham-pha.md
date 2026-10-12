@@ -2,6 +2,26 @@
 
 Phục vụ FR-AGT-01, FR-AGT-06, AC-AGT-06, AC-AGT-07. Mô tả theo code tại 2026-10-11; khi lệch, PRD và contract thắng.
 
+## Đường orchestrator sau cờ (chốt 12/10)
+
+Mô tả bên dưới giữ đường cũ mặc định off. Cờ `ITINERARY_ORCHESTRATOR=on` dùng một LLM đầu mối để quyết trả lời,
+hỏi một câu, lập lịch khi đã đồng ý, hoặc thực thi explore/fare. Không đoán ý bằng regex mới.
+Nêu chủ đề/loại nơi/tiện ích đủ rõ (ví dụ 'đi chùa', 'có chùa nào') thì tự tìm và đưa thẻ ngay trong lượt đó,
+không chờ khách nói 'tìm đi'. Chưa nêu thành phố và chưa có phạm vi đang nói thì tìm toàn catalog (`destination=null`);
+đã có điểm đến đang nói thì giữ phạm vi đó. Có kết quả trước rồi mới hỏi thu hẹp nếu cần. Model nhận điểm đến của từng
+mục từ tool, không tự chọn thành phố làm bộ lọc. Chỉ hỏi trước khi chưa rõ đối tượng hoặc thiếu thông tin bắt buộc
+để thực thi (ví dụ tuyến vé); không nói không có dữ liệu trước khi tìm.
+Chỉ nêu điểm đến thì tự khám phá chung; xin thêm thì loại thẻ đã hiện cả hội thoại theo điểm đến + loại. Hỏi 'khách sạn
+thứ hai', 'mấy chỗ đó có hồ bơi' chỉ tra lại đúng mã đã xem; giá/rẻ hơn/đắt hơn dùng dữ liệu mới và giữ điều kiện tìm.
+Câu hỏi mới được gặp lại thẻ cũ. Tối đa 3 điểm tham quan/tour, 2 khách sạn khi hỏi chung / 4 khi hỏi riêng.
+Tin nhiều việc được trả lời đủ trong một response; vé là khối code viết nguyên văn; việc phụ thuộc chạy vòng sau.
+Phanh 3 việc/vòng, 3 vòng execute, 10 lời gọi tool và thời gian; phần chưa làm phải nói rõ. Chỉ có một câu hỏi,
+các câu vé khác còn thiếu thông tin chờ đúng lượt tiếp theo. Từ chối xoá lời mời, nút lập lịch không tạo lại; đồng ý
+được kiểm trước nhánh lập lịch. Lịch đã có giữ nguyên khi đang hỏi vé/khám phá. Mọi đường qua finalize để kiểm và lưu.
+
+Runtime và sơ đồ: [langgraph-nodes.md](../langgraph-nodes.md#orchestrator-sau-cờ-chốt-2026-10-12).
+Hành vi chi tiết: [plan đã chốt](../../../plan/2026-10-12-nho-ket-qua-da-xem.md).
+
 ## Mục đích
 
 Người dùng chưa xin lập lịch thì trợ lý **không hỏi thông tin chuyến, không hiện form**. Nó trò chuyện, gợi ý điểm đến,

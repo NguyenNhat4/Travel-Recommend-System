@@ -59,6 +59,15 @@ class AnswerTextTests(unittest.TestCase):
         self.assertIn('rẻ nhất là 700.000 ₫', body)
         self.assertEqual({item['productId'] for item in shown}, {'VJ1', 'VJ3'})
 
+    def test_cheaper_after_a_dated_answer_says_it_was_already_the_cheapest(self):
+        # Chat thử M11: đã có lịch, "chuyến bay về mấy giờ" rồi "có chuyến nào rẻ hơn ko" lặp y hệt câu của ngày về.
+        state = {'intent': {'startDate': '2999-10-20'}}
+        _, body, shown = fares.answer_text(state, 'Hà Nội', 'Nha Trang', self.flights, TODAY, cheaper=True)
+        self.assertIn('Đây đã là vé rẻ nhất mình thấy trong đợt đang mở bán', body)
+        self.assertIn('rẻ nhất mình thấy là 700.000 ₫/khách, bay ngày 11/10', body)
+        self.assertNotIn('Ngày 20/10 chưa có chuyến', body)
+        self.assertEqual(shown[0]['productId'], 'VJ3')
+
     def test_the_other_days_are_cards_not_a_line_of_prices(self):
         _, body, shown = fares.answer_text({'intent': {}}, 'Hà Nội', 'Nha Trang', self.flights, TODAY)
         self.assertNotIn('Ngày khác:', body)

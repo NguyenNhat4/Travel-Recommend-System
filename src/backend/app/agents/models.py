@@ -127,6 +127,53 @@ class TurnRoute(StrictModel):
         description="Câu hỏi khác trong cùng tin nhắn chưa thuộc nhãn đã chọn, viết lại ngắn như lời người dùng.")
 
 
+class Job(StrictModel):
+    """Read-only work requested by the orchestrator; product identifiers stay in code."""
+    kind: Literal["explore", "fare"]
+    intent: Literal["new", "more", "about_shown", "cheaper", "dearer"] = "new"
+    refers_to: list[str] = Field(default_factory=list, max_length=40)
+    continue_from: int | None = Field(default=None, ge=1)
+    replaces: int | None = Field(default=None, ge=1)
+    destination: str | None = Field(default=None, max_length=150)
+    taxonomy: Literal["attraction", "hotel", "combo", "golf"] | None = None
+    query: str | None = Field(default=None, max_length=500)
+    near: str | None = Field(default=None, max_length=150)
+    sort: Literal["relevance", "price_asc", "price_desc"] = "relevance"
+    fare: FareQuestion | None = None
+
+
+class Pending(StrictModel):
+    kind: Literal["explore", "fare"]
+    goal: str = Field(max_length=300)
+
+
+class Question(StrictModel):
+    about: Literal["destination", "trip_kind", "which_place", "other"]
+
+
+class PlanOffer(StrictModel):
+    destination: str = Field(max_length=150)
+    text: str = Field(max_length=300)
+
+
+class OrchestratorTurn(StrictModel):
+    action: Literal["answer", "ask", "plan", "execute"]
+    jobs: list[Job] = Field(default_factory=list, max_length=3)
+    pending: list[Pending] = Field(default_factory=list, max_length=3)
+    fare_only: bool = False
+    title: str | None = Field(default=None, max_length=200)
+    message: str | None = Field(default=None, max_length=2000)
+    refers_to: list[str] = Field(default_factory=list, max_length=40)
+    cards: list[str] = Field(default_factory=list, max_length=20)
+    question: Question | None = None
+    offer: PlanOffer | None = None
+    suggestions: list[str] = Field(default_factory=list, max_length=6)
+    plan_reason: Literal["accepts_offer", "asks_plan", "trip_details", "form"] | None = None
+    rejected: list[str] = Field(default_factory=list, max_length=40)
+    declines_offer: bool = False
+    stop: bool = False
+
+
 class Extraction(StrictModel):
     """Output của `extract`: chỉ chạy khi `classify` đã xếp lượt này là `travel`."""
     patch: IntentUpdate = Field(default_factory=IntentUpdate)

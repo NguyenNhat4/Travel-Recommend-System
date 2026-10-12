@@ -77,6 +77,12 @@ POST /api/v1/assistant/itineraries hoặc /stream
 Kết quả tool quay lại `retrieval.py` để gộp, hậu kiểm và ghi nguồn; `planning.py` xếp lịch tất định;
 `finalize` kiểm OpenAPI, grounding và lưu conversation trước khi trả response.
 
+Với `ITINERARY_ORCHESTRATOR=on` (mặc định off, chốt 12/10): `precheck` giữ luật đầu vào (không LLM phân loại), chuyển hội thoại tới
+`steps/orchestration.py` (`orchestrate` → `run_jobs` → `gatekeep`). `steps/jobs.py` thực thi qua port, domain
+`gatekeeper.py` kiểm nguồn/phạm vi/số/thẻ; `steps/shown.py` ghi trí nhớ từ response ở finalize. Model riêng nằm tại
+`app.state.itinerary_orchestrator_llm`, không vào state. Nhánh lập lịch và narrate giữ nguyên.
+Các bước B11–B13 (bộ đo, chuyển mặc định, gỡ regex) chưa làm; cờ off phải giữ snapshot hiện có.
+
 ## 4. Trách nhiệm các lớp — dùng để tránh sửa sai chỗ
 
 | Lớp | Chịu trách nhiệm | Không đặt ở đây |

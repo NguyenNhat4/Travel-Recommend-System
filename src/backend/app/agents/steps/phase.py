@@ -18,7 +18,9 @@ from copy import deepcopy
 CARRIED = {"plan_consent": False, "pending_offer": None, "offered_destinations": [],
            "dont_know_count": 0, "last_suggestions": [], "rejected_destinations": [],
            "pending_fare": None, "open_question": None, "open_understood": None,
-           "skipped_details": []}
+           "skipped_details": [],
+           # Sản phẩm đã cho xem trong hội thoại, mỗi cái một mã `#n` (`steps/shown.py`); `finalize` ghi.
+           "shown": {"turn": 0, "seq": 0, "items": []}}
 
 #: Chỉ trong lượt; `intake` đặt về các giá trị này mỗi lượt.
 TURN_ONLY = {"explore_pick": False, "offer_suggestions": False, "explore_direct": False,
@@ -51,3 +53,17 @@ def settled(state: dict, update: dict) -> dict:
                                           or update.get("decision") not in ("explore", "travel")):
         update = {**update, "open_question": None, "open_understood": None}
     return update
+
+
+# Kept separately so the disabled rollout preserves the existing stored payload/snapshot byte for byte.
+ORCHESTRATOR_CARRIED = {"waiting_jobs": [], "rejected_refs": []}
+ORCHESTRATOR_TURN = {"orchestrator_active": True, "orchestrator_turn": {}, "turn_jobs": [], "turn_codes": {},
+                     "turn_seq": 0, "turn_pending": [], "turn_results": [], "turn_rounds": 0, "turn_tool_calls": 0,
+                     "turn_signatures": [], "turn_unfinished": [], "turn_violations": [], "force_answer": False,
+                     "gate_repairs": 0, "orchestrator_prefill": None, "orchestrator_fare_ids": [], "jobs_progress": False,
+                     "turn_declines_offer": False, "turn_stop": False, "turn_plan_reason": None,
+                     "turn_plan_accepted": False, "button_jobs": False, "button_pending_jobs": []}
+
+
+def orchestrator_carried(source: dict) -> dict:
+    return {key: deepcopy(source.get(key, default)) for key, default in ORCHESTRATOR_CARRIED.items()}

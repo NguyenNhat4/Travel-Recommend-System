@@ -4,6 +4,57 @@ Agent lập lịch trình là một LangGraph gồm mười lăm node. Tài li�
 
 Một lượt gọi API đi qua ba việc: **hiểu người dùng muốn gì**, **lấy sản phẩm thật từ catalog**, và **soạn câu trả lời**. Mỗi node lo một mẩu của ba việc đó, và tất cả cùng đọc/ghi vào một state chung.
 
+## Orchestrator sau cờ (chốt 2026-10-12)
+
+Phục vụ FR-AGT-01/06/07, AC-AGT-05/06/07/08, NFR-REL-01. Nội dung các mục cũ bên dưới mô tả đường mặc định
+`ITINERARY_ORCHESTRATOR=off`. Cờ `on` giữ các luật trước LLM và toàn bộ nhánh lập lịch, nhưng thay phân luồng hội thoại
+bằng một orchestrator. Không có LLM riêng cho explore.
+
+```mermaid
+flowchart TD
+    intake --> precheck
+    precheck -->|guardrails, đổi vé/khách sạn, chọn phương án| old[Nhánh luật hiện có]
+    precheck -->|tin cần hiểu hoặc lời tạm biệt| orchestrate
+    precheck -->|nút vé đã tạo| run_jobs
+    orchestrate -->|answer hoặc ask| gatekeep
+    orchestrate -->|execute| run_jobs
+    orchestrate -->|plan, đồng ý đã kiểm| extract
+    extract --> planning[Nhánh lập lịch hiện có]
+    extract -->|trip_details không trích được thông tin| gatekeep
+    run_jobs -->|kết quả và pending| orchestrate
+    run_jobs -->|chỉ vé đủ 5 điều kiện hoặc nút vé| gatekeep
+    gatekeep -->|tra lại mã cũ chưa tra| run_jobs
+    gatekeep -->|buộc sửa câu một lần| orchestrate
+    gatekeep --> finalize
+    old --> finalize
+    planning --> finalize
+```
+
+- `precheck` (`nodes.precheck_node`): chỉ luật đầu vào/thao tác có sẵn, không được tiêm model phân loại;
+  node và event mang cùng tên precheck. Cờ off giữ node classify và LLM phân loại cũ.
+- `orchestrate` (`steps/orchestration.py`, schema `models.OrchestratorTurn`): đọc ngữ cảnh và results rút gọn; hiểu
+  toàn bộ tin, khai `answer|ask|plan|execute`, ý định và phạm vi; số và ID không do model tạo. Model riêng do main.py tiêm. Nhu cầu khám phá có chủ đề rõ thì chủ động execute;
+  chưa có thành phố vẫn tìm toàn catalog, không chờ khách thúc tìm hay buộc chọn thành phố trước.
+- `run_jobs` (`steps/jobs.py`): các việc độc lập chạy song song qua port. `about_shown` chỉ tra đúng mã; `more` kế thừa
+  `via`, loại thẻ đã hiện cả hội thoại theo điểm đến + loại; rẻ/đắt hơn dùng mốc giá mới, giữ điều kiện. Tìm quanh giữ
+  mốc toạ độ; nếu cùng cần so giá, giữ riêng mốc giá để không so với giá của địa danh. Danh sách xếp giá có query được
+  giao với phạm vi Search vừa tra, không bỏ điều kiện query. `continue_from` dùng chung con trỏ nguồn, lấy unlisted
+  trước khi tải trang kế. 8 mục/1.500 ký tự mỗi việc, 3.000 ký tự cho toàn bộ bản rút gọn (kể cả metadata và tóm tắt vòng trước) là số khởi đầu cho B12.
+  Tìm không giới hạn thành phố thì mỗi dòng kèm điểm đến từ catalog. Dòng cũ chuyển thành `earlier_refs`; dữ liệu đầy đủ vẫn ở code để kiểm grounding và chèn khối vé.
+- `gatekeep` (`domain/itinerary/gatekeeper.py`, hàm thuần + node điều phối): mã phải có trong bản rút gọn lượt này;
+  số qua placeholder, so mốc ghi job; lặp theo intent, giới hạn 3 thẻ tham quan/tour và 2/4 khách sạn; nhãn so sánh do code
+  tính; chèn nguyên khối vé còn hiệu lực, một câu hỏi. Chỉ câu mời được chèn tạo pending_offer; từ chối thắng tạo lời mời.
+- Phanh: 3 việc/vòng, 3 vòng execute, 10 lời gọi tool, ngân sách request, việc trùng/con trỏ không dời. Chạm phanh thì
+  buộc trả lời, nêu việc chưa làm; model lỗi hoặc vẫn sai thì dùng lời dự phòng từ dữ liệu hiện có.
+- `finalize` kiểm lại bản trước điền số, kiểm contract/grounding và là chỗ duy nhất ghi shown. Cap 40 dòng facts mỗi
+  nơi; bộ nhớ ID/mã/phạm vi/điều kiện tìm gọn vẫn giữ cả hội thoại để cap facts không làm more lặp lại thẻ cũ.
+- `waiting_jobs` giữ các câu vé chưa được hỏi đúng một lượt sau. Bấm nút vé do code tạo chạy các yêu cầu đang chờ thiếu
+  đúng trường vừa điền, không gọi LLM; quá 3 yêu cầu thì chia vòng, phần chưa làm khi chạm phanh được nêu rõ.
+  Trả lời bằng chữ đi orchestrator. Chuyển việc khác thì các việc chờ hết hạn.
+
+Đặc tả đã chốt: [plan](../../plan/2026-10-12-nho-ket-qua-da-xem.md),
+[đề xuất đã áp dụng](../../prd/update-archive/2026-10-12-orchestrator-va-kham-pha-llm.md).
+
 ## 1. Bốn giai đoạn
 
 Đừng nhớ mười lăm node rời rạc. Nhớ bốn giai đoạn, mỗi giai đoạn trả lời một câu hỏi:
@@ -96,7 +147,7 @@ Vượt ngưỡng → 429 `TOO_MANY_ATTEMPTS`, `retryable: true`, `details.retry
 Kiểm thử: `tests/unit/agents/test_guardrails.py` (bảng dương/âm, không gọi LLM, và **không câu nào trong
 `evaluation/datasets/agent_test_cases_nhat.yaml` bị chặn nhầm**), `tests/contract/test_assistant_rate_limit.py` (429 đã khai báo, đúng ngưỡng).
 
-**Node nào gọi LLM:** chỉ `classify`, `extract`, `tool` (bước chọn tên điểm đến theo catalog và lập tool plan), `filter` (chỉ ra cặp điểm tham quan trùng), `converse`, `clarify` và `narrate`. Mọi lượt gọi LLM (trừ `filter`, chỉ nhận mã + tên điểm tham quan và điểm đến) nhận cùng ngữ cảnh hội thoại qua `steps/history.llm_context`: lịch sử gần nhất (giới hạn 20 message, 8.000 ký tự), chuyến đi đã chốt (`trip_so_far`, `known_constraints`), sản phẩm đã cho xem và câu hỏi gần nhất của trợ lý.
+**Node nào gọi LLM:** chỉ `classify`, `extract`, `tool` (bước chọn tên điểm đến theo catalog và lập tool plan), `filter` (chỉ ra cặp điểm tham quan trùng), `converse`, `clarify` và `narrate`. Mọi lượt gọi LLM (trừ `filter`, chỉ nhận mã + tên điểm tham quan và điểm đến) nhận cùng ngữ cảnh hội thoại qua `steps/history.llm_context`: lịch sử gần nhất (giới hạn 20 message, 8.000 ký tự), chuyến đi đã chốt (`trip_so_far`, `known_constraints`), sản phẩm đã cho xem trong cả hội thoại (`already_shown`) và câu hỏi gần nhất của trợ lý.
 
 **Ngữ cảnh cho LLM là bản đã diễn giải, không phải dump thô.** Trace thật (01/10/2026): lịch trình cũ kèm giá xuất hiện hai lần trong payload, câu 5 chữ của người dùng chìm giữa đó, `extract` chép giá và tên khách sạn cũ thành ràng buộc mới, còn `clarify` mượn lý do từ chối cũ trong lịch sử. Nay `llm_context` gồm:
 
@@ -104,9 +155,13 @@ Kiểm thử: `tests/unit/agents/test_guardrails.py` (bảng dương/âm, không
 |---|---|
 | `trip_so_far` | Chuyến đi đã biết trong một dòng kèm trường còn thiếu (`turn_notes.trip_summary`): "Hà Nội, 3 ngày; chưa có: ngày khởi hành, số người, ngân sách" |
 | `stage` | Đã gửi lịch trình (có `previous_selection`), đang hỏi thông tin, hay đầu hội thoại |
-| `conversation_history` | Mỗi mục một khoá theo người nói: `user` là tin người dùng nguyên văn, `assistant_did` là **ghi chú theo nghĩa** của tin trợ lý (`note`), không còn cả bài lịch trình kèm giá: "gửi lịch trình Hà Nội 3 ngày", "không dùng được điểm đến "biển": không có trong danh sách điểm đến; hỏi điểm đến". Ghi chú lịch trình không kèm tên sản phẩm: sản phẩm đã cho xem chỉ nằm ở `previous_selection` (kèm id). Trace 02/10/2026: cặp `role`/`content` phẳng và tên sản phẩm lặp ở mỗi ghi chú làm payload dài, dễ đọc nhầm ghi chú trợ lý thành lời người dùng |
+| `conversation_history` | Mỗi mục một khoá theo người nói: `user` là tin người dùng nguyên văn, `assistant_did` là **ghi chú theo nghĩa** của tin trợ lý (`note`), không còn cả bài lịch trình kèm giá: "gửi lịch trình Hà Nội 3 ngày", "giới thiệu 4 nơi ở Hà Nội (xem already_shown)", "không dùng được điểm đến "biển": không có trong danh sách điểm đến; hỏi điểm đến". Ghi chú không kèm tên sản phẩm: tên và thông tin nằm ở `already_shown`. Trace 02/10/2026: cặp `role`/`content` phẳng và tên sản phẩm lặp ở mỗi ghi chú làm payload dài, dễ đọc nhầm ghi chú trợ lý thành lời người dùng |
 | `last_assistant_message` | Câu cuối của trợ lý: nguyên văn khi ≤ 500 ký tự (câu hỏi lại, để hiểu câu trả lời ngắn), ghi chú khi dài hơn (lịch trình) |
-| `known_constraints`, `previous_selection` | Như trước |
+| `known_constraints` | Ràng buộc đã chốt |
+| `already_shown` | Sản phẩm đã cho xem trong cả hội thoại (state `shown`, `steps/shown.context`): `items` mỗi sản phẩm một dòng — mã `#n`, tên ngắn (vé: hãng và số hiệu), một dòng thông tin theo loại (khách sạn: giá kèm đơn vị theo `priceUnit`, hạng sao, điểm và số đánh giá làm tròn, tối đa 5 tiện ích; điểm tham quan, tour, combo: "tham quan tự do" hoặc giá kèm đơn vị "/khách", "/gói", giờ mở, thời lượng, tối đa 3 nhãn; vé: tuyến, ngày, giờ, hạng, giá), lượt và chỗ đã hiện ("khám phá", "vé máy bay", "lịch, ngày 2 chiều"); `current_plan` tóm lịch gần nhất theo mã ("khách sạn #1 (đêm 1–2); ngày 1: sáng #2, chiều #3"); `about` nói giá là giá lúc gợi ý, không phải ngân sách. Không có mô tả, ảnh, địa chỉ đủ, tổng tiền lịch. Các dòng sản phẩm tối đa 2.000 ký tự: quá thì bỏ lượt cũ nhất trước, giữ lượt gần nhất và sản phẩm của lịch gần nhất. Lỗi 12/10/2026: "hà nội" → "ngoài ra còn gì nữa" trả lại 4 thẻ cũ vì không lượt nào nhớ đã hiện gì (plan `docs/plan/2026-10-12-nho-ket-qua-da-xem.md`) |
+| `previous_selection` | Sản phẩm của lịch gần nhất kèm id, để `extract` loại đúng sản phẩm và `tool` chọn sản phẩm gốc cho Similar |
+
+Tin nhắn hiện tại (`message`) do node thêm, đứng **đầu** payload. Đo lặp `classify` 12/10/2026 (plan B3): đưa tin nhắn xuống cuối payload (để tránh *lost in the middle*) làm câu hỏi vé hiểu sai nhiều hơn rõ rệt — "vé nha trang đi phú quốc bao nhiêu" hỏi lại loại vé (AC-AGT-08) 24/24 lần → 10/24, "đi đâu cũng được, miễn đắt nhất" sau một câu báo giá hiểu đúng 8/10 → 4/10 — còn thêm khối `already_shown` ở vị trí trên thì không đổi kết quả (20/30 cả hai; bản cuối 15/16 so với 11/16 khi chưa có khối). Đổi thứ tự payload phải đo lại như vậy trước.
 
 `finalize` dựng ghi chú bằng luật (`steps/turn_notes.turn_note`, không gọi LLM) từ state đã chốt và lưu kèm tin nhắn trợ lý trong `conversation_history` (khoá `note`, tối đa 300 ký tự). Lịch sử lưu trước khi có ghi chú thì dùng câu gọn ≤ 500 ký tự hoặc dòng tiêu đề. `clarify`/`converse` nhận thêm `this_turn` — ghi chú của chính lượt đang trả lời — để câu trả lời biết vì sao đang hỏi. Message `human` gửi LLM là YAML đọc được (`history.prompt_yaml`: giữ nguyên tiếng Việt, chuỗi nhiều dòng dạng khối `|`, nội dung người dùng được quote nên không phá được cấu trúc), không phải chuỗi JSON. Đây là chỗ hay bị hiểu sai — **`compose` không gọi LLM**, nó xếp lịch bằng quy tắc cố định (mục 5); LLM của `narrate` chỉ viết lời về lịch đã dựng, không chọn hay đổi sản phẩm.
 
