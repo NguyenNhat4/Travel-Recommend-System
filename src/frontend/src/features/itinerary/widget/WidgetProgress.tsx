@@ -1,7 +1,7 @@
 import React from 'react';
 import { Check, Clock, Loader2 } from 'lucide-react';
 import type { AssistantProgress } from '../../../context/assistantState';
-import { progressView } from './widgetProgress';
+import { progressView } from './widgetProgressView';
 
 export function WidgetProgress({ progress, isSlow }: { progress: AssistantProgress[]; isSlow: boolean }) {
   const view = progressView(progress);

@@ -41,7 +41,11 @@ flowchart LR
   bỏ "hòn Thơm"), rồi nguồn Search trước Recommendation, rồi giá thấp, rồi `productId`; duyệt theo thứ tự này, một mã chỉ
   bị bỏ khi nó cặp với một mã đang được giữ. Mã bị bỏ ra khỏi
   ứng viên nên không vào lịch lẫn phương án khác, và có cảnh báo `PRODUCT_DROPPED_DUPLICATE` ("Bỏ "X" vì trùng với "Y".").
-- Khách sạn, vé máy bay, combo, gói nhiều ngày không qua bước này. LLM lỗi hoặc quá `ITINERARY_LLM_TIMEOUT_SECONDS`: chỉ dùng luật cùng tên.
+- Khách sạn, vé máy bay, combo không qua bước này. LLM lỗi hoặc quá `ITINERARY_LLM_TIMEOUT_SECONDS`: chỉ dùng luật cùng tên.
+- [Gói nhiều ngày](glossary.md#goi-nhieu-ngay) chỉ so với nhau, bằng luật, không qua LLM: hai gói có cùng các từ trong tên
+  (không kể thứ tự, dấu, chữ hoa) là một gói, giữ một theo thứ tự trên và có cùng cảnh báo `PRODUCT_DROPPED_DUPLICATE`.
+  Trace 09/10/2026: Vinpearl bán "[02 ngày không giới hạn] - VinWonders + Vinpearl Safari …" và "… Vinpearl Safari +
+  VinWonders …" là hai mã, mục "Gói nhiều ngày" từng hiện cả hai.
 
 **Chỗ ở** — tối đa 2 khách sạn cho `max(1, days − 1)` đêm, chọn **sau** khi đã biết số hoạt động mỗi ngày, cùng lúc với
 việc ghép ngày (xem [tối ưu quãng đường](#gom-theo-khoang-cach)). Chỉ khách sạn rõ vị trí, cùng mức nguồn tốt nhất
@@ -162,7 +166,7 @@ timeline
 
 | Đơn vị giá | Tiền |
 |---|---|
-| `PER_NIGHT` (chỗ ở) | giá × số đêm |
+| `PER_NIGHT` (chỗ ở) | giá × số đêm × số phòng |
 | `PER_PERSON` | giá × (người lớn + trẻ em) |
 | `PER_PACKAGE` | giá × 1 |
 | Vé máy bay | giá một khách × số khách |
@@ -172,7 +176,13 @@ timeline
 - Một khoản chưa biết thì cả tổng là chưa biết (`UNKNOWN_TOTAL`). Không coi giá thiếu là 0.
 - Có ngân sách thì so: `WITHIN_BUDGET` / `OVER_BUDGET`; không có thì `NO_BUDGET`. Ngân sách cũng quyết định khách sạn
   (xem [chọn lịch](#gom-theo-khoang-cach)).
-- Nhiều khách sạn: mỗi khách sạn giá × số đêm ở đó.
+- Nhiều khách sạn: mỗi khách sạn giá × số đêm ở đó × số phòng.
+- Số phòng (`stays[].rooms`, contract 1.23.0, chốt 2026-10-09, `planning.stay_rooms`) = `ceil(người lớn / priceAdults)`;
+  `priceAdults` là số người lớn mà giá một đêm của khách sạn đã gồm (catalog 09/10: 2.728/2.782 khách sạn có, đều = 2).
+  Trẻ em ở cùng phòng người lớn. Khách sạn cần quá 9 phòng (FR-BKG-08) không được chọn. Thiếu `priceAdults` thì tính
+  1 phòng và cảnh báo `STAY_ROOMS_UNKNOWN`. Lời diễn giải và widget ghi "× N phòng" sau giá một đêm khi từ 2 phòng.
+  Thứ tự khách sạn ở nhánh không có toạ độ vẫn theo giá một đêm; nhánh khoảng cách (`routing.optimize`) so tiền đã nhân
+  số phòng.
 - Tổng chỉ gồm sản phẩm trong lịch, chưa gồm ăn uống, đi lại (`PRODUCT_COST_ONLY`, `BUDGET_ON_PRODUCT_COST`).
 - `costBreakdown` (contract 1.21.0, "Ngân sách dự tính" chốt 2026-10-09, `planning.cost_breakdown`/`price_plan`): tổng
   chia thành `flights` (vé), `stays` (khách sạn), `activities` (tour, điểm tham quan, golf; tự do 0 đ), cộng lại bằng
@@ -184,7 +194,6 @@ timeline
   `drop_summary` (vd chỉ mở bán từ ngày X) và ngày gần nhất còn phòng.
 - Ngày không có sản phẩm: cảnh báo `DAY_WITHOUT_PRODUCTS`. Riêng ngày mà giờ bay không chừa buổi nào thì không cảnh báo.
 - Luật tự bác lịch do chính nó đề xuất: đây là lỗi backend, được log `itinerary.composition_failed` rồi trả `FALLBACK`.
-- ⚠️ cần xác nhận: tiền chỗ ở = giá × số đêm, **không tính số phòng**. Đoàn đông người vẫn tính như một phòng.
 - ⚠️ cần xác nhận: nhận diện toạ độ tâm thành phố là cách tạm. Staging 07/10/2026 có khoảng 270/953 điểm tham quan dùng
   toạ độ tâm thành phố (Vũng Tàu 48/48, Huế 64/80). Số ứng viên chung toạ độ được đếm trong lượt, nên khi ít hơn 5 tour
   về cùng một điểm, chúng vẫn bị coi là rõ vị trí. Cần nguồn đánh dấu độ chính xác (ví dụ `attributes.geoPrecision`).

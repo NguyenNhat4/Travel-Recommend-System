@@ -53,7 +53,7 @@ from src.backend.app.application.itinerary.contracts import valid
 from src.backend.app.core.config import get_settings
 from src.backend.app.domain.itinerary.normalization import fold
 from src.backend.app.domain.itinerary.planning import (
-    MAX_ACTIVITIES_PER_DAY, SLOT_TAXONOMIES, STAY_TAXONOMY, _stay_order,
+    MAX_ACTIVITIES_PER_DAY, SLOT_TAXONOMIES, STAY_TAXONOMY,
 )
 from src.backend.app.infrastructure.clients.itinerary_http_clients import ItineraryHttpClients
 from src.backend.app.infrastructure.llm import build_chat_model, chat_model_name
@@ -111,6 +111,8 @@ EXPECT_KEYS = {
     "httpStatus", "status", "errorCode", "intent", "missingFieldsInclude", "toolCalled", "nodesInclude",
     "nodesExclude", "forbiddenText", "excludeProductsFromTurn", "minActivities", "hasStay", "warningsExclude",
     "toolsInclude", "titleFirstLine", "formMatchesAnswer", "judge",
+    # Kịch bản bản 5 và chat thử 10/10 (agent_scenarios_v5.yaml): lượt khám phá, giá vé, lịch tham khảo.
+    "textIncludes", "phraseMaxCount", "cardsMin", "cardsMax", "cardTaxonomies", "suggestionsMin", "warningsInclude",
 }
 
 
@@ -302,11 +304,18 @@ def _product_ids(response: dict[str, Any], role: str) -> set[str]:
     return ids
 
 
+#: Thứ tự buổi trong ngày (contract `slots[].time`).
+_TIME_ORDER = {"MORNING": 0, "NOON": 1, "AFTERNOON": 2, "EVENING": 3}
+
+
 def schedule_findings(response: dict[str, Any], candidates: dict[str, dict[str, Any]],
                       sources: dict[str, str] | None = None) -> list[str]:
-    """Nhóm B (cấu trúc) + C1 (chỗ ở rẻ nhất) — chỉ áp dụng khi status=COMPLETED.
+    """Nhóm B (cấu trúc) — chỉ áp dụng khi status=COMPLETED.
 
-    C1 dùng đúng thứ tự của `compose_plan`: chỉ hotel còn chỗ, Search trước Recommendation (`sources`), rồi giá.
+    Bỏ hai kiểm tra lỗi thời (10/10/2026, `history/2026-10-08-node-filter-loc-trung-lap.md` đã ghi): "chỗ ở là hotel rẻ nhất"
+    (AC-AGT-04 chọn khách sạn gần các điểm, vừa ngân sách) và "hoạt động đầu là buổi sáng, thứ hai là buổi chiều" (lịch xếp
+    theo giờ bay, ngày hạ cánh có thể bắt đầu buổi chiều). Thay bằng: các buổi trong một ngày đi đúng thứ tự thời gian.
+    `sources` giữ cho tương thích chữ ký cũ.
     """
     if response.get("status") != "COMPLETED":
         return []
@@ -324,12 +333,6 @@ def schedule_findings(response: dict[str, Any], candidates: dict[str, dict[str, 
         if stay.get("taxonomy") != STAY_TAXONOMY:
             failures.append(f"stay taxonomy={stay.get('taxonomy')!r}, phải là {STAY_TAXONOMY!r}")
         seen_ids.add(stay["productId"])
-        hotel_candidates = [p for p in candidates.values()
-                            if p.get("taxonomy") == STAY_TAXONOMY and p.get("available")]
-        if hotel_candidates:
-            cheapest = min(hotel_candidates, key=lambda product: _stay_order(sources or {}, product))
-            if stay["productId"] != cheapest["productId"]:
-                failures.append(f"stay={stay['productId']} nhưng hotel rẻ nhất là {cheapest['productId']}")
 
     for day in days:
         slots = day.get("slots") or []
@@ -351,11 +354,10 @@ def schedule_findings(response: dict[str, Any], candidates: dict[str, dict[str, 
             if name and name in seen_names:
                 failures.append(f"tên {product.get('name')!r} lặp lại trong itinerary (khác productId)")
             seen_names.add(name)
-        times = [s.get("time") for s in slots if s.get("product")]
-        if times and times[0] != "MORNING":
-            failures.append(f"ngày {day.get('day')} hoạt động đầu ở {times[0]!r}, phải là MORNING")
-        if len(times) >= 2 and times[1] != "AFTERNOON":
-            failures.append(f"ngày {day.get('day')} hoạt động thứ hai ở {times[1]!r}, phải là AFTERNOON")
+        order = [_TIME_ORDER.get(s.get("time"), -1) for s in slots if s.get("product")]
+        if any(later < earlier for earlier, later in zip(order, order[1:])):
+            failures.append(f"ngày {day.get('day')} có buổi không theo thứ tự thời gian: "
+                            f"{[s.get('time') for s in slots if s.get('product')]}")
     return failures
 
 
@@ -455,6 +457,44 @@ def dataset_findings(
     for code in expect.get("warningsExclude", []):
         if any(w.get("code") == code for w in response.get("warnings") or []):
             failures.append(f"response có warning {code!r} không được phép")
+    failures += scenario_findings(response, expect)
+    return failures
+
+
+def _cards(response: dict[str, Any]) -> list[dict[str, Any]]:
+    """Thẻ sản phẩm của lượt khám phá (`searchResults` theo taxonomy) hoặc của lượt dự phòng."""
+    results = response.get("searchResults") or {}
+    if isinstance(results, dict):
+        return [item for items in results.values() if isinstance(items, list) for item in items]
+    return []
+
+
+def scenario_findings(response: dict[str, Any], expect: dict[str, Any]) -> list[str]:
+    """Các khoá của bộ kịch bản: chữ phải có (không phân biệt hoa thường), cụm không được lặp quá n lần, số thẻ, loại
+    thẻ được phép, số nút gợi ý tối thiểu, cảnh báo phải có."""
+    failures: list[str] = []
+    text = answer_text(response).casefold()
+    for phrase in expect.get("textIncludes", []):
+        if str(phrase).casefold() not in text:
+            failures.append(f"câu trả lời thiếu {phrase!r}")
+    for phrase, limit in (expect.get("phraseMaxCount") or {}).items():
+        count = text.count(str(phrase).casefold())
+        if count > limit:
+            failures.append(f"cụm {phrase!r} xuất hiện {count} lần, tối đa {limit}")
+    cards = _cards(response)
+    if "cardsMin" in expect and len(cards) < expect["cardsMin"]:
+        failures.append(f"có {len(cards)} thẻ, kỳ vọng ít nhất {expect['cardsMin']}")
+    if "cardsMax" in expect and len(cards) > expect["cardsMax"]:
+        failures.append(f"có {len(cards)} thẻ, kỳ vọng tối đa {expect['cardsMax']}")
+    if "cardTaxonomies" in expect:
+        extra = {card.get("taxonomy") for card in cards} - set(expect["cardTaxonomies"])
+        if extra:
+            failures.append(f"thẻ loại {sorted(map(str, extra))} không được phép (chỉ {expect['cardTaxonomies']})")
+    if "suggestionsMin" in expect and len(response.get("suggestions") or []) < expect["suggestionsMin"]:
+        failures.append(f"có {len(response.get('suggestions') or [])} nút gợi ý, kỳ vọng ít nhất {expect['suggestionsMin']}")
+    for code in expect.get("warningsInclude", []):
+        if not any(w.get("code") == code for w in response.get("warnings") or []):
+            failures.append(f"thiếu warning {code!r}")
     return failures
 
 

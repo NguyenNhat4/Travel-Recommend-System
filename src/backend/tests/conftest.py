@@ -1,4 +1,4 @@
-import asyncio, json, os, sys, pathlib
+import asyncio, hashlib, json, os, sys, pathlib
 import numpy as np, pytest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
 
@@ -36,7 +36,7 @@ class FakeEmbedder:
     """Vector giả, xác định theo hash text — đủ để test luồng, không test chất lượng."""
     name = "fake"
     def _v(self, t):
-        r = np.random.default_rng(abs(hash(t)) % (2**32)); v = r.normal(size=64).astype(np.float32); return v / np.linalg.norm(v)
+        r = np.random.default_rng(int.from_bytes(hashlib.sha256(t.encode("utf-8")).digest()[:4], "big")); v = r.normal(size=64).astype(np.float32); return v / np.linalg.norm(v)
     def embed_docs(self, texts): return np.stack([self._v(t) for t in texts])
     def embed_query(self, q): return self._v(q)
 

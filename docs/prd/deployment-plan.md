@@ -18,10 +18,18 @@ Hệ thống được thiết kế để vận hành trên ba cấp môi trườ
 | **Mục đích** | Phát triển tính năng, debug | Tích hợp liên tục, kiểm thử E2E | Phục vụ người dùng thực tế |
 | **Cơ sở dữ liệu** | PostgreSQL 16 local qua Docker | PostgreSQL Cloud | Managed Cloud Database Cluster |
 | **Session store** | Redis local qua Docker (bind `127.0.0.1`, có mật khẩu); hội thoại dùng DB index riêng | Redis dùng chung, hội thoại dùng DB index riêng | Redis managed, `noeviction`; hội thoại dùng DB index riêng |
-| **Cơ sở dữ liệu vector** | Weaviate local qua Docker (volume riêng) | Weaviate dùng chung | Weaviate Cloud hoặc self-host có backup |
+| **Cơ sở dữ liệu vector** | Weaviate local qua Docker (volume riêng) | Weaviate Cloud (cluster chung của nhóm, eu-central-1) | Weaviate Cloud hoặc self-host có backup |
 | **Cổng thanh toán** | Stripe test mode, `stripe listen` chuyển webhook về máy | Stripe test mode, webhook trỏ về URL staging | Ngoài phạm vi (live mode) |
 | **Dữ liệu mẫu** | Snapshot nén hoặc dữ liệu tổng hợp | Toàn bộ dữ liệu snapshot chuẩn hóa | Dữ liệu giao dịch thực tế |
 | **Dịch vụ AI** | Local LLM hoặc API dev key | API key chia sẻ nội bộ | Dedicated API quota / Enterprise |
+
+### 1.1. Tầng DB HA riêng cho `staging-ha`
+
+`staging-ha` là Terraform root và state riêng (`infra/staging-ha`), tách khỏi root/state `infra/staging`. Vì hai root có state khác nhau, thay đổi Patroni không làm thay đổi tài nguyên do workflow `infra-terraform-staging.yml` quản lý; các workflow CI/CD ứng dụng và crawler cũng không bị sửa trong phạm vi này.
+
+Khi được bật có chủ đích bằng `create_patroni = true`, staging-ha tạo hai node PostgreSQL + Patroni ở hai zone, một witness etcd ở zone thứ ba và một ILB private. ILB chỉ gửi kết nối ghi tới node trả HTTP `200` ở `/primary`; Patroni tự bầu leader khi mất node. `create_patroni = false` vẫn là mặc định, nên việc merge mã không tự dựng cụm.
+
+Di trú từ primary cũ là một cửa sổ vận hành riêng: dừng ghi, clone một lần vào node `a`, để node `b` gia nhập cụm qua DCS, đối chiếu dữ liệu và xác nhận replication lag trước khi đổi `db.vota.internal` sang ILB. Primary cũ giữ nguyên cho rollback có điều kiện. Vì clone là một điểm thời gian, do đó mọi ghi phát sinh sau clone phải bị dừng cho tới khi cutover hoàn tất mà không được mở lại ghi sớm.
 
 ---
 
@@ -44,7 +52,7 @@ Hệ thống phân tách ranh giới bảo mật bằng các chuỗi kết nối
 | `VECTOR_COLLECTION` | Collection vector — mặc định `ProductE5Small` (vector e5-small). Biến cũ `WEAVIATE_COLLECTION` (collection `Product`, vector Cohere) không còn được đọc | Tất cả | Không bí mật. Job embed từ chối ghi vào collection đang chứa vector của model khác |
 | `SEARCH_CUTOFF` / `SEARCH_LEXICAL_CUTOFF` | Ngưỡng cosine của Search — mặc định 0,84 (hiệu chỉnh cho e5-small) / 0,50; `SEARCH_NO_DIACRITICS_CUTOFF` **0,80** cho câu không dấu (chỉ khi `SEARCH_NO_DIACRITICS_MODE=relax`, mặc định production) | Tất cả | Không bí mật. Hiệu chỉnh trên gold khi đổi model. Cutoff tuyệt đối không làm câu ngoài catalog trả rỗng — giới hạn đã biết |
 | `SEARCH_LLM_FALLBACK` / `SEARCH_LLM_FALLBACK_MIN_CONFIDENCE` / `SEARCH_LLM_FALLBACK_TIMEOUT_MS` | LLM fallback của query plan: `off` (mặc định) \| `shadow` \| `on`; ngưỡng độ tin cậy kích hoạt; hạn thời gian mỗi lượt | Tất cả | Không bí mật; dùng khoá LLM có sẵn (`LLM_API_KEY`) |
-| `WEAVIATE_URL` | Endpoint Weaviate (local: `http://localhost:8080`) | Tất cả | Không mở ra mạng ngoài ở local |
+| `WEAVIATE_URL` | Endpoint Weaviate (dev: `http://localhost:8080`; staging: URL cluster Weaviate Cloud, dạng `https://<cluster>.weaviate.cloud`) | Tất cả | Không mở ra mạng ngoài ở local |
 | `WEAVIATE_GRPC_PORT` | Cổng gRPC của Weaviate (mặc định `50051`). Search, Similar và Recommendation truy vấn top-K qua gRPC; Weaviate Cloud tự dùng cổng 443 của host `grpc-<cluster>` nên bỏ qua biến này | Tất cả | Không mở ra mạng ngoài ở local |
 | `JWT_PRIVATE_KEY_PATH` / `JWT_PUBLIC_KEY_PATH` | Khoá RS256 để FastAPI ký và kiểm JWT; public key công bố qua JWKS | Tất cả | Khoá riêng bí mật: không commit, không vào image. Chỉ FastAPI giữ |
 | `JWT_ISSUER` / `JWT_AUDIENCE` | Giá trị `iss`/`aud` bắt buộc khớp khi kiểm token | Tất cả | Không bí mật |
@@ -147,7 +155,7 @@ Hệ thống cung cấp các endpoint kiểm tra trạng thái sức khỏe đ�
 ```
 1. Xác nhận toàn bộ automated tests và contract validation đều PASS trên CI.
 2. Thực thi migration cơ sở dữ liệu bằng `db/migrations/run.py`.
-3. Triển khai phiên bản Backend mới (hỗ trợ Zero-downtime rolling update).
+3. Triển khai phiên bản Backend mới. Staging-HA thay toàn bộ VM app một lượt và chấp nhận downtime ngắn (vài phút) để rút ngắn thời gian phát hành; không dùng VM surge. Cổng sẵn sàng là LB báo đủ VM HEALTHY và `/health/ready` qua public endpoint đạt 6 lần liên tiếp. Quyết định này áp dụng cho staging-HA; production chưa có quyết định riêng. *(Chốt 2026-10-09, đề xuất `update-archive/2026-10-09-rut-ngan-cd-chap-nhan-downtime.md`.)*
 4. Triển khai phiên bản Frontend mới tương ứng.
 5. Thực hiện kịch bản Smoke Test trên Staging/Production để xác nhận luồng tìm kiếm và đặt hàng hoạt động bình thường.
 
@@ -159,3 +167,17 @@ Khi phát hiện lỗi nghiêm trọng sau phát hành:
 2. **Rollback Dữ liệu (Data Rollback):**
    - Nếu migration tạo ra lỗi dữ liệu, thực thi script hoàn tác tương ứng `NNN_ten_thay_doi.down.sql`.
    - Trong trường hợp lỗi đơn hàng giao dịch, sử dụng cơ chế bù trừ sự kiện của CDP (`cancel_purchase`) để bảo toàn tính toàn vẹn của hồ sơ khách hàng.
+
+### 6.3. Hoàn tác có điều kiện khi di trú DB `staging-ha`
+
+Vì primary cũ không bị promote hay xoá trong giai đoạn dựng cụm, do đó có thể đưa `db.vota.internal` về IP primary cũ nếu kiểm tra leader Patroni, dữ liệu hoặc replication không đạt. Việc này chỉ an toàn trước khi mở lại ghi trên primary cũ: mọi ghi đã nhận sau cutover trên Patroni không tự quay ngược về primary cũ, nên phải giữ cửa sổ bảo trì và ghi nhận rõ điểm dữ liệu trước khi rollback.
+
+Lệnh rollback DNS phải dùng đúng private zone của staging-ha và được kiểm tra từ một app VM trước khi mở lại ứng dụng:
+
+```bash
+gcloud dns record-sets update db.vota.internal. \
+  --zone=vota-ha-internal --type=A --ttl=30 \
+  --rrdatas=<old-primary-private-ip>
+```
+
+Không chạy `terraform apply` của root `infra/terraform/environments/staging` để rollback Patroni; hai state có ranh giới riêng.

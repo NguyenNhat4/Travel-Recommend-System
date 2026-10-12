@@ -61,3 +61,8 @@ src/evaluation/search_bench/gold/**/.*.tmp
 
 # Kết quả per-user của bench theme_study (hàng chục MB / lượt) — chỉ commit JSON tổng hợp + SHA256SUMS
 src/evaluation/recsys_bench/theme_study/results/**/*.jsonl
+# Backend state của infra/monitoring (README: không commit)
+infra/monitoring/backend.staging.hcl
+
+# Worktree lồng do Claude Code tạo: mỗi thư mục là một git worktree riêng (có file .git), không commit.
+.claude/worktrees/

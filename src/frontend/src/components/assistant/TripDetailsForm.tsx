@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { Calendar, LocateFixed, Loader2, MapPin, PlaneTakeoff, RotateCcw, Send, Users, Wallet } from 'lucide-react';
+import { Calendar, LocateFixed, Loader2, MapPin, PlaneTakeoff, RotateCcw, Send, Sparkles, Users, Wallet } from 'lucide-react';
 import { listDestinations } from '../../services/destinations';
 import { listDepartureAirports, nearestDepartureCity } from '../../services/flights';
 import type { components } from '../../types/api.gen';
@@ -24,8 +24,11 @@ function formatBudget(value: number): string {
   return `${(value / 1_000_000).toLocaleString('vi-VN', { maximumFractionDigits: 1 })} triệu`;
 }
 
-/** Câu yêu cầu hoàn chỉnh dựng từ form; đặt vào ô nhập để người dùng đọc lại, sửa rồi mới gửi. */
-export function tripDetailsPrompt(intent: TripIntent): string {
+/**
+ * Câu yêu cầu hoàn chỉnh dựng từ form; đặt vào ô nhập để người dùng đọc lại, sửa rồi mới gửi. Sở thích khách sạn chọn
+ * trong form (`interestOptions`, contract 1.24.0) đứng cuối câu sau chữ "ưu tiên": backend coi đó là ưu tiên, không bắt buộc.
+ */
+export function tripDetailsPrompt(intent: TripIntent, interestOptions: readonly string[] = []): string {
   const parts: string[] = [];
   parts.push(`Lên lịch trình ${intent.days ?? MIN_DAYS} ngày tại ${intent.destination ?? 'điểm đến bạn chọn'}`);
   if (intent.startDate) parts.push(`bắt đầu từ ngày ${intent.startDate}`);
@@ -36,6 +39,8 @@ export function tripDetailsPrompt(intent: TripIntent): string {
   }
   if (intent.budget) parts.push(`ngân sách khoảng ${formatBudget(intent.budget)}`);
   if (intent.origin?.trim()) parts.push(`đi từ ${intent.origin.trim()}`);
+  const preferred = (intent.interests ?? []).filter((value) => interestOptions.includes(value));
+  if (preferred.length > 0) parts.push(`ưu tiên khách sạn có ${preferred.join(', ')}`);
   return `${parts.join(', ')}.`;
 }
 
@@ -138,9 +143,15 @@ export function TripDetailsForm({
     setIntent((prev) => ({ ...prev, budget: parsed && parsed > 0 ? parsed : null }));
   };
 
+  const interestOptions = form.interestOptions ?? [];
+  const toggleInterest = (label: string) => setIntent((prev) => {
+    const current = prev.interests ?? [];
+    return { ...prev, interests: current.includes(label) ? current.filter((value) => value !== label) : [...current, label] };
+  });
+
   const confirm = (event: React.FormEvent) => {
     event.preventDefault();
-    onConfirm(tripDetailsPrompt(intent));
+    onConfirm(tripDetailsPrompt(intent, interestOptions));
   };
 
   const chipClass = (selected: boolean) => `min-h-9 rounded-lg border px-2.5 py-1 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ai-500 focus-visible:ring-offset-2 ${
@@ -277,6 +288,25 @@ export function TripDetailsForm({
             {(departure.state === 'denied' || departure.state === 'failed') && (
               <p role="status" className="text-xs text-slate-500">{LOCATE_MESSAGE[departure.state]}</p>
             )}
+          </fieldset>
+        )}
+
+        {form.fields.includes('interests') && interestOptions.length > 0 && (
+          <fieldset>
+            <legend className="mb-1.5 flex items-center gap-1.5 text-xs font-bold text-slate-700">
+              <Sparkles className="h-3.5 w-3.5 text-ai-600" aria-hidden="true" /> Sở thích nơi ở (không bắt buộc)
+            </legend>
+            <div className="flex flex-wrap gap-1.5" aria-label="Sở thích nơi ở">
+              {interestOptions.map((label) => {
+                const selected = (intent.interests ?? []).includes(label);
+                return (
+                  <button key={label} type="button" disabled={disabled} aria-pressed={selected}
+                    onClick={() => toggleInterest(label)} className={chipClass(selected)}>
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
           </fieldset>
         )}
 

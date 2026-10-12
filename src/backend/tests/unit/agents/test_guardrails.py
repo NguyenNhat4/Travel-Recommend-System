@@ -158,11 +158,20 @@ class FinalizeGuardrailTests(unittest.TestCase):
         self.assertTrue(any(issue.startswith("guardrail:secret") for issue in result["validation_issues"]))
 
     def test_a_booking_claim_in_the_refusal_message_is_replaced_and_status_kept(self):
+        # Từ FR-AGT-06 (chốt 2026-10-10) câu ngoài phạm vi là câu trả lời thường 200, không còn là lỗi 400.
+        response = {"status": "NEEDS_CLARIFICATION", "conversationId": "conv-1",
+                    "question": "Mình đã đặt phòng giúp bạn rồi nhé.", "knownIntent": empty_intent()}
+        state = {**self.base_state(response, 200), "refusal": True}
+        result = nodes.finalize_node(state)
+        self.assertEqual(result["http_status"], 200)
+        self.assertEqual(result["response"]["question"], messages.REFUSAL)
+
+    def test_a_booking_claim_in_a_blocked_input_refusal_keeps_the_error(self):
         response = error_response("VALIDATION_ERROR", "Mình đã đặt phòng giúp bạn rồi nhé.", "req-1")
-        state = {**self.base_state(response, 400), "refusal": True}
+        state = {**self.base_state(response, 400), "refusal": True, "blocked_by_guardrail": "prompt_injection"}
         result = nodes.finalize_node(state)
         self.assertEqual(result["http_status"], 400)
-        self.assertEqual(result["response"]["error"]["message"], messages.REFUSAL)
+        self.assertEqual(result["response"]["error"]["message"], messages.REFUSAL_BLOCKED)
         self.assertTrue(any(issue.startswith("guardrail:booking_claim") for issue in result["validation_issues"]))
 
     def test_a_clean_response_is_not_touched(self):

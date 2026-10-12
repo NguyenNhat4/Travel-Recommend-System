@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta
 import re
 from typing import Any
 
+from ..booking.party import MAX_ROOMS
 from .flights import flight_cost, flight_times
 from .geo import Point, band, haversine_km, located, medoid
 from .routing import NO_AIRPORTS, Airports, DayShape, STAY_CHANGE_MIN_DAYS, STAY_MIN_NIGHTS, optimize
@@ -144,14 +145,41 @@ def free_to_visit(product: Product) -> bool:
     return product.get("unitPrice") is None and product.get("taxonomy") in SLOT_TAXONOMIES
 
 
-def _known_cost(product: Product, *, nights: int, party: Party | None) -> int | None:
+def stay_rooms(product: Product, party: Party | None) -> int | None:
+    """Số phòng cho cả đoàn (AC-AGT-04, chốt 2026-10-09): ceil(người lớn / `priceAdults`), `priceAdults` là số người lớn
+    mà giá một đêm của khách sạn đã gồm. Trẻ em ở cùng phòng người lớn. None khi khách sạn không khai `priceAdults`."""
+    basis = (product.get("attributes") or {}).get("priceAdults")
+    if isinstance(basis, bool) or not isinstance(basis, int) or basis < 1:
+        return None
+    adults = (party or {}).get("adults")
+    return -(-adults // basis) if isinstance(adults, int) and adults >= 1 else 1
+
+
+def rooms_of(product: Product, party: Party | None) -> int:
+    """Số phòng dùng để tính tiền: chưa biết thì 1 phòng (kèm cảnh báo ở tầng agent)."""
+    return stay_rooms(product, party) or 1
+
+
+def room_guests(party: Party | None) -> dict[str, int] | None:
+    """Số khách của một phòng gửi cho Search khách sạn (FR-AGT-01, chốt 2026-10-09): ít nhất mỗi phòng để cả đoàn ở vừa
+    tối đa `MAX_ROOMS` phòng, tức ceil(tổng / 9). Contract lọc `adults + children` của MỘT phòng nên không gửi cả đoàn."""
+    adults = (party or {}).get("adults")
+    if not isinstance(adults, int) or adults < 1:
+        return None
+    children = int((party or {}).get("children") or 0)
+    per_room = -(-(adults + children) // MAX_ROOMS)
+    adults_per_room = -(-adults // MAX_ROOMS)
+    return {"adults": adults_per_room, "children": max(0, per_room - adults_per_room)}
+
+
+def _known_cost(product: Product, *, nights: int, party: Party | None, rooms: int = 1) -> int | None:
     if free_to_visit(product):
         return 0
     price, unit = product.get("unitPrice"), product.get("priceUnit", "UNKNOWN")
     if price is None or unit == "UNKNOWN":
         return None
     if unit == "PER_NIGHT":
-        return int(price * nights) if party is not None else None
+        return int(price * nights * rooms) if party is not None else None
     if unit == "PER_PERSON":
         return int(price * (party["adults"] + party["children"])) if party is not None else None
     return int(price) if unit == "PER_PACKAGE" else None
@@ -164,7 +192,7 @@ def cost_breakdown(plan: Plan, intent: TripIntent) -> dict[str, int] | None:
     party = intent.get("party")
     groups = {
         "flights": [flight_cost(leg) for leg in plan.get("flights", [])],
-        "stays": [_known_cost(stay["product"], nights=stay["nights"], party=party)
+        "stays": [_known_cost(stay["product"], nights=stay["nights"], party=party, rooms=stay.get("rooms", 1))
                   for stay in plan.get("stays") or ([plan["stay"]] if plan.get("stay") else [])],
         "activities": [_known_cost(slot["product"], nights=1, party=party) for day in plan.get("days", [])
                        for slot in day.get("slots", []) if slot.get("product") is not None],
@@ -363,8 +391,11 @@ def compose_plan(candidates: Candidates, sources: Sources, intent: TripIntent,
         point = positions.get(product["productId"])
         return band(None if point is None else sum(haversine_km(point, other) for other in scheduled) / len(scheduled))
 
+    party = intent.get("party")
+    # Khách sạn cần quá 9 phòng cho cả đoàn thì không đặt được trong một mục (FR-BKG-08).
     stays = sorted((p for p in usable if p.get("taxonomy") == STAY_TAXONOMY
-                    and _parent_key(p) not in taken and p["productId"] not in taken),
+                    and _parent_key(p) not in taken and p["productId"] not in taken
+                    and (stay_rooms(p, party) or 1) <= MAX_ROOMS),
                    key=lambda product: _stay_order(sources, product, to_activities(product)))
     nights = max(1, days_count - 1)
     chosen_stays = [{"stay_id": stays[0]["productId"], "from_night": 1, "nights": nights}] if stays else []
@@ -372,10 +403,10 @@ def compose_plan(candidates: Candidates, sources: Sources, intent: TripIntent,
         best_rank = min((_source_rank(sources, p) for p in stays), default=0)
         hotels = [p for p in stays if p["productId"] in positions and _source_rank(sources, p) == best_rank]
         placed = {p["productId"] for products in per_day for p in products}
-        party = intent.get("party")
 
         def money(route_stays, scheduled_products) -> tuple[int, int]:
-            amounts = [_known_cost(stay.product, nights=stay.nights, party=party) for stay in route_stays]
+            amounts = [_known_cost(stay.product, nights=stay.nights, party=party, rooms=rooms_of(stay.product, party))
+                       for stay in route_stays]
             amounts += [_known_cost(product, nights=1, party=party) for product in scheduled_products]
             known = [amount for amount in amounts if amount is not None]
             return len(amounts) - len(known), sum(known)
@@ -472,8 +503,11 @@ def render_proposal(proposal: Proposal, candidates: Candidates,
             raise ValueError("duplicate parent selection")
         used.add(stay_id)
         parent_keys.add(parent)
+        rooms = rooms_of(product, intent.get("party"))
+        if rooms > MAX_ROOMS:
+            raise ValueError("too many rooms")
         stays.append({"product": summary(product), "nights": proposed["nights"], "fromNight": proposed["from_night"],
-                      "note": NOTES["RELAX"], "source": _source(sources.get(stay_id)),
+                      "rooms": rooms, "note": NOTES["RELAX"], "source": _source(sources.get(stay_id)),
                       "because": _because(product, sources.get(stay_id))})
     if _stay_issue(stays, days_count):
         raise ValueError("invalid stays")
@@ -500,7 +534,11 @@ def render_proposal(proposal: Proposal, candidates: Candidates,
         if parent in parent_keys or product_id in parent_keys:
             raise ValueError("duplicate parent selection")
         duration = product.get("attributes", {}).get("durationMinutes")
-        if day_number in occupied_full_days or (isinstance(duration, (int, float)) and duration >= 360 and days[day_number - 1]["slots"]):
+        # Hoạt động cả ngày không chung ngày với hoạt động khác. Dòng di chuyển (đến nơi, ra sân bay, đổi khách sạn) không
+        # phải hoạt động: chuyến bay đêm hạ cánh rạng sáng vẫn để lại trọn ngày (`day_windows` ghi `full_day`), nên tour cả
+        # ngày được xếp sau dòng đến nơi (FALLBACK "full-day overlap", chat thử 10/10).
+        booked = [slot for slot in days[day_number - 1]["slots"] if slot.get("product")]
+        if day_number in occupied_full_days or (isinstance(duration, (int, float)) and duration >= 360 and booked):
             raise ValueError("full-day overlap")
         if isinstance(duration, (int, float)) and duration >= 360:
             occupied_full_days.add(day_number)
@@ -531,6 +569,11 @@ def validate_plan(plan: Plan, candidates: Candidates,
     # Khách sạn theo đêm (AC-AGT-04): `stay` là khách sạn đầu tiên để client cũ vẫn chạy.
     if plan.get("stays") and (plan.get("stay") != plan["stays"][0] or _stay_issue(plan["stays"], len(days))):
         issues.append("stays")
+    # Số phòng quyết tiền khách sạn (AC-AGT-04): phải đúng luật trên bản đầy đủ của candidate, không tin giá trị trong plan.
+    for stay in stays:
+        source = candidates.get(stay["product"].get("productId"))
+        if source is not None and stay.get("rooms", 1) != rooms_of(source, intent.get("party")):
+            issues.append("stays")
     seen: set[str] = set()
     for product in selected:
         product_id = product.get("productId")
