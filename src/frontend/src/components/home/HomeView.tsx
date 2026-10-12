@@ -21,13 +21,13 @@ import { useInstantSearchBox } from '../../features/search/instant/useInstantSea
 const RECOMMENDATION_TIMEOUT_MS = 10000;
 
 const AI_PLACEHOLDERS = [
-  'Tìm resort X-OTA view biển cho gia đình 4 người, ngân sách 10 triệu...',
+  'Tìm resort Sota view biển cho gia đình 4 người, ngân sách 10 triệu...',
   'Combo Phú Quốc 3N2Đ vé máy bay + khách sạn + vui chơi VinWonders...',
-  'Tư vấn khách sạn X-OTA Nha Trang gần bãi biển, có bể bơi vô cực...',
+  'Tư vấn khách sạn Sota Nha Trang gần bãi biển, có bể bơi vô cực...',
   'Gợi ý lịch trình 4N3Đ Đà Nẵng - Hội An nghỉ dưỡng cao cấp...',
 ];
 
-const AI_CHIPS = ['Resort X-OTA Nha Trang cho gia đình', 'Combo Phú Quốc 3N2Đ giá tốt', 'Villa ven biển view hoàng hôn'];
+const AI_CHIPS = ['Resort Sota Nha Trang cho gia đình', 'Combo Phú Quốc 3N2Đ giá tốt', 'Villa ven biển view hoàng hôn'];
 
 /** Tab của khối "Phổ biến": chỉ tab đang chọn mới gọi API. `Tất cả` không lọc danh mục (gồm cả sân golf). */
 const POPULAR_TABS: Array<{ id: string; label: string; taxonomy?: Taxonomy }> = [
@@ -144,7 +144,7 @@ export const HomeView: React.FC = () => {
 
   const submitAi = (event: React.FormEvent) => {
     event.preventDefault();
-    instant.search(aiQuery.trim() || placeholder || 'Resort X-OTA');
+    instant.search(aiQuery.trim() || placeholder || 'Resort Sota');
   };
 
   return (
@@ -171,7 +171,7 @@ export const HomeView: React.FC = () => {
               Khám phá kỳ nghỉ tiếp theo
             </h1>
             <p className="type-hero-sub mx-auto mt-3 max-w-2xl text-white/90 drop-shadow">
-              Mô tả chuyến đi bằng lời của bạn, X-OTA tìm dịch vụ phù hợp
+              Mô tả chuyến đi bằng lời của bạn, Sota tìm dịch vụ phù hợp
             </p>
           </div>
 
@@ -188,7 +188,7 @@ export const HomeView: React.FC = () => {
                 onChange={(e) => { setAiQuery(e.target.value); instant.onType(); }}
                 {...instant.inputProps}
                 aria-label="Mô tả chuyến đi bạn muốn"
-                placeholder={placeholder || 'Hỏi AI: Tìm resort X-OTA view biển cho gia đình 4 người...'}
+                placeholder={placeholder || 'Hỏi AI: Tìm resort Sota view biển cho gia đình 4 người...'}
                 className="min-w-0 flex-1 truncate bg-transparent pl-3.5 text-base font-medium text-slate-800 outline-none placeholder:text-slate-500 sm:pl-4"
               />
               <button

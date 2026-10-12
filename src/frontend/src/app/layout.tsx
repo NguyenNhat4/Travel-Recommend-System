@@ -3,11 +3,11 @@ import Providers from './providers';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'X-OTA - Nền tảng Du lịch Thông minh AI',
-  description: 'Nền tảng du lịch cá nhân hóa X-OTA với gợi ý thông minh, tìm kiếm ngữ nghĩa và trợ lý lịch trình AI.',
+  title: 'Sota - Nền tảng Du lịch Thông minh AI',
+  description: 'Nền tảng du lịch cá nhân hóa Sota với gợi ý thông minh, tìm kiếm ngữ nghĩa và trợ lý lịch trình AI.',
   openGraph: {
-    title: 'X-OTA - Nền tảng Du lịch Thông minh AI',
-    description: 'Nền tảng du lịch cá nhân hóa X-OTA với gợi ý thông minh, tìm kiếm ngữ nghĩa và trợ lý lịch trình AI.',
+    title: 'Sota - Nền tảng Du lịch Thông minh AI',
+    description: 'Nền tảng du lịch cá nhân hóa Sota với gợi ý thông minh, tìm kiếm ngữ nghĩa và trợ lý lịch trình AI.',
     type: 'website',
   },
   twitter: {

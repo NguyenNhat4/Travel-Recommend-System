@@ -125,7 +125,7 @@ export function cardNote(summary: BookingSummary): CardNote | null {
     switch (summary.paymentStatus) {
       case 'REFUNDED': return { tone: 'off', title: 'Bạn đã huỷ đơn này', text: `Khoản hoàn ${formatVnd(summary.total)} đã về thẻ của bạn.` };
       case 'REFUND_PENDING': return { tone: 'off', title: 'Bạn đã huỷ đơn này', text: `Đang hoàn ${formatVnd(summary.total)}. Tiền về thẻ trong 5–10 ngày làm việc.` };
-      case 'REFUND_FAILED': return { tone: 'bad', title: 'Hoàn tiền đang gặp sự cố', text: 'X-OTA sẽ liên hệ với bạn để hoàn tất.' };
+      case 'REFUND_FAILED': return { tone: 'bad', title: 'Hoàn tiền đang gặp sự cố', text: 'Sota sẽ liên hệ với bạn để hoàn tất.' };
       default: return { tone: 'off', title: 'Bạn đã huỷ đơn này', text: 'Đơn chưa thanh toán nên không phát sinh hoàn tiền.' };
     }
   }

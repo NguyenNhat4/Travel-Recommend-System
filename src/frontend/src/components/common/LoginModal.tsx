@@ -54,7 +54,7 @@ export const LoginModal: React.FC = () => {
               <Lock className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-slate-900">Đăng nhập X-OTA</h3>
+              <h3 className="text-sm font-bold text-slate-900">Đăng nhập Sota</h3>
               <p className="text-xs text-slate-500">Nhận gợi ý cá nhân hóa theo chuyến đi của bạn</p>
             </div>
           </div>

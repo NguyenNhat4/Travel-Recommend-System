@@ -228,7 +228,7 @@ export const ConfirmationView: React.FC<ConfirmationViewProps> = ({ referenceCod
             </h3>
             {booking.status === 'CONFIRMED' ? (
               <p className="text-xs text-slate-600">
-                X-OTA hoàn <strong>{formatVnd(booking.payment?.amount ?? booking.total)}</strong> về thẻ đã dùng (5–10 ngày làm
+                Sota hoàn <strong>{formatVnd(booking.payment?.amount ?? booking.total)}</strong> về thẻ đã dùng (5–10 ngày làm
                 việc). Hạn huỷ có hoàn tiền: {booking.cancellableUntil && formatDateTimeVn(booking.cancellableUntil)}.
                 Thao tác này không thể hoàn tác.
               </p>
@@ -373,7 +373,7 @@ const StatusCard: React.FC<{
     : payment?.status === 'REFUND_PENDING'
       ? `Đang hoàn ${formatVnd(refund)}. Tiền về thẻ trong 5–10 ngày làm việc.`
       : payment?.status === 'REFUND_FAILED'
-        ? 'Hoàn tiền đang gặp sự cố; X-OTA sẽ liên hệ với bạn.'
+        ? 'Hoàn tiền đang gặp sự cố; Sota sẽ liên hệ với bạn.'
         : 'Đơn chưa thanh toán nên không phát sinh hoàn tiền.';
   return (
     <CenteredCard icon={<XCircle className="w-10 h-10 text-slate-400" />} title="Đã huỷ đơn">
