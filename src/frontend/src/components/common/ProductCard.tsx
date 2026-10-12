@@ -2,6 +2,7 @@ import React from 'react';
 import Link from 'next/link';
 import { Product, BecauseItem, Strategy, Taxonomy } from '../../types/travel';
 import { PriceTag } from './PriceTag';
+import { TaxonomyBadge } from './TaxonomyBadge';
 import { useTravel } from '../../context/TravelContext';
 import { flightProductHref } from '../../features/flights/results/flightHref';
 import { placeholderImage } from '../../services/catalog';
@@ -30,6 +31,11 @@ interface ProductCardProps {
   /** compact: hiện điểm đánh giá (nếu có) và địa chỉ thay cho điểm đến. */
   showRatingAndAddress?: boolean;
   quickAddState?: 'adding' | 'added';
+  /**
+   * tile: gắn nhãn loại ở góc ảnh. Chỉ bật ở kệ trộn nhiều loại (product.md §4.0; ngoại lệ của quyết định bỏ nhãn
+   * ngày 2026-10-01); các biến thể khác bỏ qua prop này.
+   */
+  showTaxonomy?: boolean;
 }
 
 export const ProductCard: React.FC<ProductCardProps> = ({
@@ -50,6 +56,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   priceLabel,
   showRatingAndAddress = false,
   quickAddState,
+  showTaxonomy = false,
 }) => {
   const { navigate, debugMode, recordEvent } = useTravel();
 
@@ -87,6 +94,13 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             referrerPolicy="no-referrer"
             className={`h-full w-full object-cover transition-transform duration-500 group-hover:scale-105 ${!product.available ? 'grayscale' : ''}`}
           />
+          {showTaxonomy && (
+            // Chữ nhãn nằm trong tên truy cập của liên kết (không aria-hidden): trình đọc màn hình cũng cần biết loại,
+            // vì có combo tên mở đầu bằng "Vé máy bay khứ hồi … +".
+            <div className="absolute left-3 top-3">
+              <TaxonomyBadge taxonomy={product.taxonomy} size="sm" className="shadow-sm" />
+            </div>
+          )}
           {!product.available && (
             <div className="absolute inset-0 flex items-center justify-center bg-slate-900/55 text-xs font-bold uppercase tracking-wider text-white">
               Tạm hết chỗ

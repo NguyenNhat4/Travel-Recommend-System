@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { HelpCircle, Search } from 'lucide-react';
 import { useTravel } from '../../context/TravelContext';
 import { fetchRecommendations } from '../../services/recsys';
-import type { RecommendationResponse, Taxonomy } from '../../types/travel';
+import type { ListProductsParams } from '../../services/catalog';
+import type { RecommendationResponse } from '../../types/travel';
 import { ProductCard } from '../common/ProductCard';
 import { GuestRecommendationBanner } from './GuestRecommendationBanner';
 import { WhyPopover } from '../common/WhyPopover';
@@ -29,13 +30,22 @@ const AI_PLACEHOLDERS = [
 
 const AI_CHIPS = ['Resort Sota Nha Trang cho gia đình', 'Combo Phú Quốc 3N2Đ giá tốt', 'Villa ven biển view hoàng hôn'];
 
-/** Tab của khối "Phổ biến": chỉ tab đang chọn mới gọi API. `Tất cả` không lọc danh mục (gồm cả sân golf). */
-const POPULAR_TABS: Array<{ id: string; label: string; taxonomy?: Taxonomy }> = [
-  { id: 'all', label: 'Tất cả' },
-  { id: 'hotel', label: 'Khách sạn', taxonomy: 'hotel' },
-  { id: 'flight', label: 'Vé máy bay', taxonomy: 'flight' },
-  { id: 'attraction', label: 'Vé tham quan', taxonomy: 'attraction' },
-  { id: 'combo', label: 'Combo', taxonomy: 'combo' },
+/**
+ * Tab của khối "Phổ biến" (frontend §4.1 ④): chỉ tab đang chọn gọi API, mỗi tab một request. `Tất cả` nhờ Backend trộn theo
+ * nhóm loại (`diversify`, contract 1.25.0) và là kệ duy nhất gắn nhãn loại trên thẻ; `Vé tham quan` gồm cả sân golf
+ * (chốt 2026-10-12).
+ */
+const POPULAR_TABS: Array<{
+  id: string;
+  label: string;
+  params: Pick<ListProductsParams, 'taxonomy' | 'diversify'>;
+  showTaxonomy?: boolean;
+}> = [
+  { id: 'all', label: 'Tất cả', params: { diversify: 'taxonomy' }, showTaxonomy: true },
+  { id: 'hotel', label: 'Khách sạn', params: { taxonomy: 'hotel' } },
+  { id: 'flight', label: 'Vé máy bay', params: { taxonomy: 'flight' } },
+  { id: 'attraction', label: 'Vé tham quan', params: { taxonomy: ['attraction', 'golf'] } },
+  { id: 'combo', label: 'Combo', params: { taxonomy: 'combo' } },
 ];
 
 /** Chữ gõ dần ở ô tìm kiếm AI; người dùng chọn giảm chuyển động thì đứng yên ở câu đầu. */
@@ -324,7 +334,8 @@ export const HomeView: React.FC = () => {
           <CatalogShelf
             key={popularTab.id}
             title="Phổ biến tại các điểm đến Việt Nam"
-            params={{ ...(popularTab.taxonomy ? { taxonomy: popularTab.taxonomy } : {}), sort: 'popular', availableOnly: true, limit: 8 }}
+            params={{ ...popularTab.params, sort: 'popular', availableOnly: true, limit: 8 }}
+            showTaxonomy={popularTab.showTaxonomy}
             empty={{ text: 'Chưa có dịch vụ nào trong danh mục này.' }}
           />
         </div>
