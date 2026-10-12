@@ -43,26 +43,7 @@ env:
   BACKEND_SERVICE: vota-ha-app
 
 jobs:
-  window-guard:
-    # CD staging-ha bị vô hiệu trong khung 23:45–08:40 (giờ VN): runner và app/crawler tắt theo lịch ban đêm.
-    # Job này chạy trên runner tự host vì repo không dùng GitHub-hosted runner; nó chỉ được xếp hàng khi push/dispatch.
-    name: Chặn CD ngoài khung giờ runner
-    runs-on: [self-hosted, vota-staging-ha]
-    outputs:
-      allowed: ${{ steps.check.outputs.allowed }}
-    steps:
-      - id: check
-        run: |
-          h=$((10#$(TZ=Asia/Ho_Chi_Minh date +%H%M)))
-          if (( h >= 2345 || h < 840 )); then
-            echo "allowed=false" >> "$GITHUB_OUTPUT"
-            echo "CD bị vô hiệu trong khung 23:45–08:40 (giờ VN). Chạy lại sau 08:40." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "allowed=true" >> "$GITHUB_OUTPUT"
-          fi
   build:
-    needs: window-guard
-    if: ${{ needs.window-guard.outputs.allowed == 'true' }}
     name: Build backend image
     permissions:
       contents: read
@@ -71,9 +52,8 @@ jobs:
     secrets: inherit
 
   deploy:
-    if: ${{ needs.window-guard.outputs.allowed == 'true' }}
     name: Apply, verify and roll back backend on staging-ha
-    needs: [window-guard, build]
+    needs: build
     runs-on: [self-hosted, vota-staging-ha]
     # Khoá dùng chung với Staging-HA Frontend CD. Đặt ở job chứ không ở workflow để job build không phải chờ.
     # GitHub chỉ giữ MỘT job chờ trong nhóm: job chờ cũ hơn bị huỷ khi có job mới vào.

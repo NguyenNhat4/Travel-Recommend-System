@@ -66,10 +66,16 @@ google_compute_instance.patroni["a"]|update
 google_compute_instance.patroni["b"]|update
 google_compute_instance.patroni["w"]|update
 google_monitoring_dashboard.ha|update
-# Lịch tắt 23:59 / bật 08:30 (commit a8ef14f3): chỉ gắn resource_policies vào VM, policy đã có trong GCP. Plan 2026-10-12:
-# bastion, crawler và patroni a/b/w đổi đúng thuộc tính resource_policies (patroni đã có ở trên), không đổi gì khác.
+# VM bastion và crawler: chỉ bỏ resource_policies (gỡ lịch tắt/bật, 2026-10-12, PR #180). Không đổi gì khác.
 google_compute_instance.bastion[0]|update
 google_compute_instance.crawler[0]|update
+# Xoá job Cloud Scheduler tắt/bật app và khung cào thêm (PR #180, 2026-10-12). Không có VM nào tham chiếu, nên không có
+# ràng buộc thứ tự với bước gỡ resource_policies. Ba resource policy lịch chưa nằm trong danh sách: xoá ở PR sau.
+google_cloud_scheduler_job.app_autoscaler_off|delete
+google_cloud_scheduler_job.app_autoscaler_on|delete
+google_cloud_scheduler_job.app_resize_zero|delete
+google_cloud_scheduler_job.crawler_extra_start[0]|delete
+google_cloud_scheduler_job.crawler_extra_stop[0]|delete
 '
 unexpected="$(terraform show -json "$plan_file" | jq -r '
   .resource_changes[]

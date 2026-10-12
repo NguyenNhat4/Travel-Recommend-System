@@ -33,26 +33,7 @@ env:
   STAGING_HA_LAST_GOOD_OBJECT: deploy/staging-ha-last-good-crawler.json
 
 jobs:
-  window-guard:
-    # CD staging-ha bị vô hiệu trong khung 23:45–08:40 (giờ VN): runner và app/crawler tắt theo lịch ban đêm.
-    # Job này chạy trên runner tự host vì repo không dùng GitHub-hosted runner; nó chỉ được xếp hàng khi push/dispatch.
-    name: Chặn CD ngoài khung giờ runner
-    runs-on: [self-hosted, vota-staging-ha]
-    outputs:
-      allowed: ${{ steps.check.outputs.allowed }}
-    steps:
-      - id: check
-        run: |
-          h=$((10#$(TZ=Asia/Ho_Chi_Minh date +%H%M)))
-          if (( h >= 2345 || h < 840 )); then
-            echo "allowed=false" >> "$GITHUB_OUTPUT"
-            echo "CD bị vô hiệu trong khung 23:45–08:40 (giờ VN). Chạy lại sau 08:40." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "allowed=true" >> "$GITHUB_OUTPUT"
-          fi
   images:
-    needs: window-guard
-    if: ${{ needs.window-guard.outputs.allowed == 'true' }}
     name: Build and publish crawler image
     runs-on: [self-hosted, vota-staging-ha]
     timeout-minutes: 30
@@ -134,9 +115,8 @@ jobs:
           echo "crawler_digest=$CRAWLER_DIGEST" >> "$GITHUB_OUTPUT"
 
   deploy_crawler:
-    if: ${{ needs.window-guard.outputs.allowed == 'true' }}
     name: Install crawler on staging-ha VM
-    needs: [window-guard, images]
+    needs: images
     runs-on: [self-hosted, vota-staging-ha]
     timeout-minutes: 30
     environment: staging
@@ -170,9 +150,8 @@ jobs:
         run: bash scripts/deploy-staging-ha-crawler.sh
 
   verify:
-    if: ${{ needs.window-guard.outputs.allowed == 'true' }}
     name: Verify staging-ha crawler VM
-    needs: [window-guard, images, deploy_crawler]
+    needs: [images, deploy_crawler]
     runs-on: [self-hosted, vota-staging-ha]
     timeout-minutes: 15
     environment: staging

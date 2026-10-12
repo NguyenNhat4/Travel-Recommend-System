@@ -46,7 +46,7 @@ locals {
   crawler_tag     = "vota-crawler"
 }
 
-# Lịch bật/tắt riêng cho VM job cào. Chỉ áp dụng cho VM đơn này, không dùng cho MIG app.
+# Lịch bật/tắt của VM job cào. Đã gỡ khỏi VM (2026-10-12, không còn tham chiếu); xoá ở PR sau, xem scheduler.tf.
 resource "google_compute_resource_policy" "crawler_schedule" {
   count  = local.crawler_enabled ? 1 : 0
   name   = "${var.name_prefix}-crawler-schedule"
