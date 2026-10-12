@@ -358,9 +358,10 @@ class QualityTests(unittest.TestCase):
                          ["https://pic.tripcdn.com/airline_logo/3x/vj.png", None, "giữ", None])
 
     def test_points_hidden_on_production_are_in_the_reviewed_exclusion_list(self):
-        """22 điểm Trip không phải điểm tham quan đã ẩn trên production 12/10/2026: lượt cào sau không được bật lại."""
+        """27 điểm Trip không phải điểm tham quan đã ẩn trên production 12/10/2026: lượt cào sau không được bật lại."""
         excluded = n.load_excluded_products()
-        for ref in ("trip:attraction:146226495", "trip:attraction:146505433", "trip:attraction:149736329"):
+        for ref in ("trip:attraction:146226495", "trip:attraction:146505433", "trip:attraction:149736329",
+                    "trip:attraction:141660854", "trip:attraction:147617028"):
             self.assertIn(ref, excluded)
             self.assertTrue(excluded[ref].startswith("không phải sản phẩm du lịch"))
 

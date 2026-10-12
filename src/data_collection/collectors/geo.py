@@ -215,6 +215,7 @@ DESTINATION_CENTERS: dict[str, tuple[float, float]] = {
     "Tam Kỳ": (15.5736, 108.4740),
     "Gia Nghĩa": (12.0037, 107.6876),
     "Thái Bình": (20.4463, 106.3366),
+    "Tuyên Quang": (21.8167, 105.2167),  # TP. Tuyên Quang (Wikipedia, 12/10/2026); Vinpearl Onsen (Mỹ Lâm) cách ~13 km
 }
 
 # Bán kính hợp lý quanh tâm (km). Xa hơn thì toạ độ (hoặc chính điểm đến) đáng ngờ. Rộng hơn mặc định khi alias
