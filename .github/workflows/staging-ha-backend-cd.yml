@@ -130,13 +130,14 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          python3 -m venv "$RUNNER_TEMP/migrate-venv"
-          "$RUNNER_TEMP/migrate-venv/bin/pip" install -q 'psycopg[binary]>=3.2,<4'
+          # Runner Debian không có python3-venv (ensurepip thiếu), và pip hệ thống bị PEP 668 chặn; cài vào thư mục tạm.
+          python3 -m pip install -q --target "$RUNNER_TEMP/migrate-deps" 'psycopg[binary]>=3.2,<4'
+          export PYTHONPATH="$RUNNER_TEMP/migrate-deps"
           dsn="$(gcloud secrets versions access latest --secret="$MIGRATE_DSN_SECRET" --project="$GCP_PROJECT_ID")"
           echo "::add-mask::$dsn"
           export SEED_DATABASE_URL="$dsn"
-          "$RUNNER_TEMP/migrate-venv/bin/python" db/migrations/run.py --status
-          "$RUNNER_TEMP/migrate-venv/bin/python" db/migrations/run.py
+          python3 db/migrations/run.py --status
+          python3 db/migrations/run.py
 
       - name: Apply backend image
         env:

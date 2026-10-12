@@ -29,6 +29,15 @@ resource "google_cloud_scheduler_job" "alert_mute_on" {
   schedule  = var.alert_mute_start_schedule
   time_zone = var.ops_schedule_timezone
 
+  # Khai báo đúng giá trị mặc định đang có trên job, để plan không đòi xóa retry_config (drift provider, 2026-10-12).
+  retry_config {
+    retry_count          = 3
+    min_backoff_duration = "30s"
+    max_backoff_duration = "300s"
+    max_doublings        = 5
+    max_retry_duration   = "0s"
+  }
+
   http_target {
     http_method = "PATCH"
     uri         = "https://monitoring.googleapis.com/v3/${local.ha_alert_channel_name}?updateMask=enabled"
@@ -47,6 +56,15 @@ resource "google_cloud_scheduler_job" "alert_mute_off" {
   region    = var.region
   schedule  = var.alert_mute_end_schedule
   time_zone = var.ops_schedule_timezone
+
+  # Khai báo đúng giá trị mặc định đang có trên job, để plan không đòi xóa retry_config (drift provider, 2026-10-12).
+  retry_config {
+    retry_count          = 3
+    min_backoff_duration = "30s"
+    max_backoff_duration = "300s"
+    max_doublings        = 5
+    max_retry_duration   = "0s"
+  }
 
   http_target {
     http_method = "PATCH"
