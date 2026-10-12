@@ -24,6 +24,8 @@ die() {
 [ -s "$SLOT_SCRIPT" ] || die "không có script slot: $SLOT_SCRIPT"
 bash -n "$SLOT_SCRIPT" || die "script slot lỗi cú pháp"
 
+# Không ghim khoá host: VM app bị MIG tạo lại (autohealing, thay template) sinh khoá SSH host mới, và known_hosts của runner
+# giữ khoá cũ nên `Host key verification failed` làm cả bước roll lỗi. Kênh vẫn qua IAP tới đúng instance, đăng nhập bằng OS Login.
 script_b64="$(base64 < "$SLOT_SCRIPT" | tr -d '\n')"
 
 vms="$(gcloud compute instance-groups managed list-instances "$MIG_NAME" --region "$MIG_REGION" --project "$GCP_PROJECT_ID" --format=json \
@@ -37,7 +39,7 @@ while read -r name zone; do
   [ -n "$name" ] || continue
   echo "=== $name ($zone) ==="
   remote="echo '$script_b64' | base64 -d | sudo -n tee /usr/local/sbin/vota-slot-deploy.sh >/dev/null && sudo -n chmod 0755 /usr/local/sbin/vota-slot-deploy.sh && sudo -n env BACKEND_IMAGE='$BACKEND_REF' FRONTEND_IMAGE='$FRONTEND_REF' /usr/local/sbin/vota-slot-deploy.sh deploy"
-  if ! gcloud compute ssh "$name" --project "$GCP_PROJECT_ID" --zone "$zone" --tunnel-through-iap --quiet --command "$remote" 2>&1 | tee "$result_file"; then
+  if ! gcloud compute ssh "$name" --project "$GCP_PROJECT_ID" --zone "$zone" --tunnel-through-iap --quiet --strict-host-key-checking=no --command "$remote" 2>&1 | tee "$result_file"; then
     die "cập nhật $name lỗi; VM này vẫn phục vụ bằng bản cũ, các VM sau chưa bị đụng"
   fi
   line="$(grep -E '^SLOT_RESULT ' "$result_file" | tail -n 1 || true)"

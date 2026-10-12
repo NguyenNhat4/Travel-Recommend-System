@@ -143,6 +143,10 @@ class WiringWithTerraformAndCd(unittest.TestCase):
         self.assertIn("SLOT_RESULT", ROLL)
         self.assertIn('backend=$BACKEND_REF', ROLL)
 
+    def test_roll_does_not_pin_ssh_host_keys(self):
+        # Lỗi thật 2026-10-12: MIG tạo lại fn9m (autohealing) -> khoá host mới -> "Host key verification failed" trên runner.
+        self.assertIn("--strict-host-key-checking=no", ROLL)
+
     def test_pin_script_matches_main_tf_policy(self):
         self.assertIn('"type":"OPPORTUNISTIC"', PIN)
         self.assertIn('"maxSurge":{"fixed":0}', PIN)
