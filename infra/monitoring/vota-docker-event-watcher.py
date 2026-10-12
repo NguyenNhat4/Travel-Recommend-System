@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Persist Docker lifecycle events before --rm containers disappear."""
 
+import re
 import json
 import os
 import select
@@ -49,6 +50,18 @@ def container_class(name, image):
     return "service"
 
 
+SLOT_CONTAINER = re.compile(r"^vota-(backend|frontend)-(blue|green)$")
+
+
+def is_planned_slot_stop(name, exit_code):
+    """Slot cũ bị rút sau khi proxy đã chuyển sang slot mới (slot-deploy.sh): dừng êm, exit 0 hoặc 143 (SIGTERM).
+
+    Không tính là `die` để alert "service container stopped" không kêu ở mỗi lần deploy. Crash hoặc OOM
+    (exit code khác) vẫn là `die`/`oom`.
+    """
+    return bool(SLOT_CONTAINER.match(name)) and exit_code in (0, 143)
+
+
 def normalise_event(event):
     actor = event.get("Actor") or {}
     attrs = actor.get("Attributes") or {}
@@ -63,6 +76,8 @@ def normalise_event(event):
     oom_killed = str(attrs.get("oomKilled", "false")).lower() == "true"
     if action == "die" and oom_killed:
         event_kind = "oom"
+    elif action == "die" and is_planned_slot_stop(name, exit_code):
+        event_kind = "planned_stop"
     else:
         event_kind = action
     return {
