@@ -1,0 +1,11 @@
+missing in after: 0 extra: 0
+coldstart            n= 5233 nDiscordant4=0 nDiscordant20=0
+llbo                 n= 4023 nDiscordant4=0 nDiscordant20=0
+nexttrip             n= 1835 nDiscordant4=0 nDiscordant20=0
+syn_between          n=  240 nDiscordant4=0 nDiscordant20=0
+syn_booked_browse    n=  193 nDiscordant4=0 nDiscordant20=0
+syn_dormant          n=  240 nDiscordant4=0 nDiscordant20=0
+syn_noisy_paired     n=  240 nDiscordant4=0 nDiscordant20=0
+syn_open             n=  240 nDiscordant4=0 nDiscordant20=0
+syn_session_multi    n=  239 nDiscordant4=0 nDiscordant20=0
+temporal             n=  773 nDiscordant4=0 nDiscordant20=0

@@ -521,6 +521,73 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(result['intent']['days'])
         self.assertFalse(clients.calls)
 
+    async def test_not_wanting_to_travel_any_more_says_goodbye_and_the_trip_can_be_picked_up_later(self):
+        # Báo lỗi 12/10/2026 (AC-AGT-01, chốt 2026-10-12): "ko đi nữa" lúc còn thiếu số ngày từng ra form thông tin chuyến.
+        store = InMemoryConversationStore()
+        clients = Clients()
+        first = await self.run_graph(ScriptedLlm(extraction=Extraction(patch={'destination': 'Nha Trang'})), clients,
+                                     state={'query': 'Lập lịch Nha Trang', 'start_date_asked': False},
+                                     store=store, owner='one')
+        self.assertEqual(first['response']['status'], 'NEEDS_CLARIFICATION')
+        conversation_id = first['conversation_id']
+
+        llm = ScriptedLlm(route='stop', conversational_message='Cảm ơn bạn đã ghé! Khi nào muốn đi, bạn cứ nhắn mình nhé.')
+        second = await self.run_graph(llm, clients, store=store, owner='one',
+                                      state={'query': 'ko đi nữa', 'conversation_id': conversation_id})
+        self.assertEqual([e['node'] for e in second['events']], ['intake', 'classify', 'converse', 'finalize'])
+        # "ko đi nữa" khớp luật câu dừng: không gọi LLM `classify`, chỉ một lời gọi LLM viết lời chào.
+        self.assertEqual(llm.calls, ['ConversationalAnswer'])
+        self.assertIn('route stop (rule)', [e['message'] for e in second['events']])
+        response = second['response']
+        self.assertEqual(response['status'], 'NEEDS_CLARIFICATION')
+        self.assertEqual(response['question'], llm.conversational_message)
+        for key in ('missingFields', 'suggestedValues', 'clarificationForm', 'suggestions'):
+            self.assertNotIn(key, response)
+        self.assertEqual(clients.calls, [])
+        saved = await store.load(conversation_id, 'one')
+        self.assertEqual(saved['intent']['destination'], 'Nha Trang')
+        self.assertTrue(saved['plan_consent'])
+
+        # Nối lại: chuyến cũ vẫn còn, nói nốt số ngày, ngày đi, số người là lập lịch.
+        third = await self.run_graph(
+            ScriptedLlm(extraction=Extraction(patch={'days': 3, 'startDate': START, 'party': SOLO})), clients,
+            store=store, owner='one', state={'query': 'thôi mình đi tiếp', 'conversation_id': conversation_id})
+        self.assertEqual(third['response']['status'], 'COMPLETED')
+        self.assertEqual(third['intent']['destination'], 'Nha Trang')
+
+    async def test_not_wanting_to_travel_before_agreeing_to_plan_drops_the_offer_without_exploring(self):
+        intent = {**empty_intent(), 'destination': 'Hà Nội'}
+        llm = ScriptedLlm(route='stop', conversational_message='Cảm ơn bạn, hẹn gặp lại nhé!')
+        result = await self.run_graph(llm, state={'query': 'thôi không đi đâu', 'intent': intent,
+                                                  'pending_offer': {'destination': 'Hà Nội'}})
+        self.assertEqual([e['node'] for e in result['events']], ['intake', 'classify', 'converse', 'finalize'])
+        self.assertIsNone(result['pending_offer'])
+        self.assertFalse(result['plan_consent'])
+        self.assertEqual(result['intent']['destination'], 'Hà Nội')
+        self.assertNotIn('suggestions', result['response'])
+
+    async def test_not_wanting_to_travel_after_an_itinerary_does_not_search_again(self):
+        store = InMemoryConversationStore()
+        clients = Clients()
+        first = await self.run_graph(ScriptedLlm(), clients, store=store, owner='one')
+        self.assertEqual(first['response']['status'], 'COMPLETED')
+        before = await store.load(first['conversation_id'], 'one')
+        calls = list(clients.calls)
+        second = await self.run_graph(ScriptedLlm(route='stop', conversational_message='Cảm ơn bạn, hẹn gặp lại!'),
+                                      clients, store=store, owner='one',
+                                      state={'query': 'thôi không đi nữa', 'conversation_id': first['conversation_id']})
+        self.assertEqual(second['response']['status'], 'NEEDS_CLARIFICATION')
+        self.assertEqual(clients.calls, calls)
+        after = await store.load(first['conversation_id'], 'one')
+        for key in ('intent', 'previous_selection', 'previous_options', 'previous_plan'):
+            self.assertEqual(after[key], before[key], key)
+
+    async def test_a_goodbye_falls_back_to_fixed_words_when_the_model_fails(self):
+        result = await self.run_graph(ScriptedLlm(route='stop', fail_conversation=True), state={'query': 'ko đi nữa'})
+        self.assertEqual(result['response']['question'], 'Cảm ơn bạn đã trò chuyện cùng mình! Khi nào muốn đi, bạn cứ '
+                                                         'nhắn mình để lên kế hoạch nhé. Hẹn gặp lại bạn lần sau!')
+        self.assertNotIn('missingFields', result['response'])
+
     async def test_intent_override_skips_the_classify_llm(self):
         llm = ScriptedLlm()
         result = await self.run_graph(llm, state={'query': '', 'intent_override': {'days': 2}})

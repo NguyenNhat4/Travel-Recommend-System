@@ -58,7 +58,7 @@ jobs:
   quality:
     name: Crawler quality checks
     if: ${{ github.event_name == 'push' || github.event.action == 'opened' || github.event.action == 'synchronize' || github.event.action == 'reopened' || (github.event.action == 'closed' && github.event.pull_request.merged == true) || (github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3')) }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vota-staging-ha]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -74,9 +74,29 @@ jobs:
   build:
     name: Build crawler image
     needs: quality
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vota-staging-ha]
+    permissions:
+      contents: read
+      id-token: write
+    # Cache: PR chỉ đọc GHA cache, không ghi. Push/dispatch ghi cache layer vào Artifact Registry (`:buildcache`)
+    # vì GHA cache của repo sát giới hạn 10 GB và bị evict (layer torch + e5 rất lớn, mode=max ghi cả layer trung gian).
     steps:
       - uses: actions/checkout@v4
+      - name: Authenticate to Google Cloud
+        if: ${{ github.event_name != 'pull_request' }}
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_CI_SERVICE_ACCOUNT }}
+          token_format: access_token
+      - name: Log in to Artifact Registry
+        if: ${{ github.event_name != 'pull_request' }}
+        uses: docker/login-action@v3
+        with:
+          registry: asia-southeast1-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v6
         with:
@@ -84,14 +104,14 @@ jobs:
           file: ./Dockerfile.fresh-catalog
           push: false
           tags: vota-fresh-catalog-ci:${{ github.sha }}
-          cache-from: type=gha,scope=crawler
-          cache-to: type=gha,mode=max,scope=crawler
+          cache-from: ${{ github.event_name == 'pull_request' && 'type=gha,scope=crawler' || format('type=registry,ref={0}:buildcache', secrets.GAR_FRESH_IMAGE) }}
+          cache-to: ${{ github.event_name != 'pull_request' && format('type=registry,mode=max,ref={0}:buildcache', secrets.GAR_FRESH_IMAGE) || '' }}
 
   publish:
-    name: Publish fresh crawler SHA and latest image
+    name: Publish fresh crawler SHA image
     if: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vota-staging-ha]
     environment: staging
     permissions:
       contents: read
@@ -145,9 +165,8 @@ jobs:
           push: true
           tags: |
             ${{ env.CRAWLER_IMAGE }}:${{ github.sha }}
-            ${{ env.CRAWLER_IMAGE }}:latest
-          cache-from: type=gha,scope=crawler-publish
-          cache-to: type=gha,mode=max,scope=crawler-publish
+          # Chỉ đọc: build job đã ghi `:buildcache` trước (needs: build), không ghi lại để tránh ghi trùng.
+          cache-from: type=registry,ref=${{ env.CRAWLER_IMAGE }}:buildcache
 
   deploy:
     name: Deploy crawler on application VM
@@ -155,7 +174,7 @@ jobs:
     # staging-ha-backend-cd.yml, staging-ha-frontend-cd.yml, staging-ha-crawler-cd.yml.
     if: ${{ false }}
     needs: publish
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vota-staging-ha]
     # Two 15-minute health windows (deploy and rollback) plus image pull and SSH.
     timeout-minutes: 45
     concurrency:

@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from src.backend.app.application.auth.errors import AuthError, RateLimited
 from src.backend.app.application.booking.errors import BookingError
 from src.backend.app.application.catalog.errors import CatalogError
+from src.backend.app.application.errors import DatabaseUnavailableError
 from src.backend.app.application.itinerary.contracts import error_response
 from src.backend.app.application.ports.embedder import EmbeddingUnavailableError
 from src.backend.app.application.tracking.behaviour import ProductNotFoundError
@@ -106,8 +107,21 @@ async def embedding_unavailable(_: Request, exc: EmbeddingUnavailableError):
     return _catalog_response("SEARCH_UNAVAILABLE", 503, exc.retryable, {"reason": exc.reason})
 
 
-def install_error_handlers(app: FastAPI) -> None:
+async def database_unavailable(_: Request, __: Exception):
+    """PostgreSQL không với tới được: 503 chuẩn, thử lại được, không lộ chi tiết kết nối."""
+    body = error_response(
+        "DATABASE_UNAVAILABLE", "Hệ thống dữ liệu tạm thời không phản hồi. Vui lòng thử lại sau ít phút.",
+        current_request_id() or "database", True)
+    return JSONResponse(status_code=503, content=body, headers={"Retry-After": "5"})
+
+
+def install_error_handlers(app: FastAPI, database_driver_errors: tuple[type[Exception], ...] = ()) -> None:
+    """`database_driver_errors`: lỗi của driver DB (ví dụ psycopg.OperationalError) cho lỗi rớt giữa chừng.
+    Composition root truyền vào để lớp `api` không phải import driver (architecture.md §2, quy tắc 6)."""
     app.add_exception_handler(EmbeddingUnavailableError, embedding_unavailable)
+    app.add_exception_handler(DatabaseUnavailableError, database_unavailable)
+    for error_type in database_driver_errors:
+        app.add_exception_handler(error_type, database_unavailable)
     app.add_exception_handler(BookingError, booking_error)
     app.add_exception_handler(CatalogError, catalog_error)
     app.add_exception_handler(ProductNotFoundError, tracked_product_not_found)

@@ -6,10 +6,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-import psycopg
-
 # Giữ tên cũ cho caller đang import từ đây; hiện thực nằm ở domain để api/application dùng chung.
 from src.backend.app.domain.auth.privacy import hash_email, ip_prefix  # noqa: F401
+from src.backend.app.infrastructure.persistence.db_connection import connect_async
 
 
 class PostgresLoginAttemptLog:
@@ -27,7 +26,7 @@ class PostgresLoginAttemptLog:
         failure_reason: str | None,
         at: datetime | None = None,
     ) -> None:
-        async with await psycopg.AsyncConnection.connect(self._database_url) as conn:
+        async with await connect_async(self._database_url) as conn:
             await conn.execute(
                 """
                 INSERT INTO app.login_attempts

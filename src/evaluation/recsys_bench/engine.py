@@ -61,9 +61,17 @@ class OfflineEngine:
     (cap 2 mỗi taxonomy) — dùng cho arm `engine_prod` và lệnh `user`."""
 
     def __init__(self, index: UnitIndex, vectors: VectorSearchPort, purchases: list[dict], *,
-                 candidate_k: int = 200, popular_k: int = 50, popularity_cache: int = 8, mode: str = "eval"):
+                 candidate_k: int = 200, popular_k: int = 50, popularity_cache: int = 8, mode: str = "eval",
+                 explore_fill: bool = True, next_trip_scoring: bool = True, max_per_destination: int | None = None):
+        """`explore_fill`: ô khám phá khi có chuyến mở (FR-REC-02, 09/10) — mặc định như production (`Settings` bật);
+        False = tắt như `RECOMMEND_EXPLORE_FILL=false`, để đo riêng phần ô B (ghi vào `engine_config`)."""
         if mode not in ("eval", "prod"):
             raise ValueError(f"mode phải là eval | prod, gặp {mode!r}")
+        self.explore_fill = explore_fill
+        # PR-B (FR-REC-04, 09/10): mặc định như production (`Settings`); max_per_destination None → hằng MAX_PER_DESTINATION
+        from src.backend.app.domain.recommendation.profile import MAX_PER_DESTINATION
+        self.next_trip_scoring = next_trip_scoring
+        self.max_per_destination = MAX_PER_DESTINATION if max_per_destination is None else (max_per_destination or None)
         rows = sorted((e for e in purchases if e.get("eventName") == "purchase"), key=lambda e: parse_ts(e["timestamp"]))
         self.index, self.vectors = index, vectors
         self.candidate_k, self.popular_k, self.mode = candidate_k, popular_k, mode
@@ -92,7 +100,9 @@ class OfflineEngine:
         from src.backend.app.domain.recommendation.profile import MAX_PER_VERTICAL
         engine = RecommendForUser(self.index, self.vectors, self.reader_at(as_of), self.popularity_at(popularity_as_of or as_of),
                                   candidate_k=self.candidate_k, popular_k=self.popular_k,
-                                  max_per_vertical=None if self.mode == "eval" else MAX_PER_VERTICAL)
+                                  max_per_vertical=None if self.mode == "eval" else MAX_PER_VERTICAL,
+                                  explore_fill=self.explore_fill, next_trip_scoring=self.next_trip_scoring,
+                                  max_per_destination=self.max_per_destination)
         return engine(cdp_user_id, k=k, now=as_of, events=[dict(e) for e in events])
 
 
@@ -106,6 +116,8 @@ def engine_config(engine: OfflineEngine) -> dict:
               if name.isupper() and isinstance(value, (int, float, str, dict, tuple, list)) and not isinstance(value, bool)}
     return {"mode": engine.mode, "candidateK": engine.candidate_k, "popularK": engine.popular_k,
             "maxPerVertical": None if engine.mode == "eval" else profile.MAX_PER_VERTICAL,
+            "exploreFill": engine.explore_fill, "nextTripScoring": engine.next_trip_scoring,
+            "maxPerDestination": engine.max_per_destination,
             "popularityWindowDays": POPULARITY_WINDOW_DAYS, "purchaseLookbackDays": PURCHASE_LOOKBACK_DAYS,
             "profile": consts}
 

@@ -64,6 +64,7 @@ if ! "${SUDO[@]}" docker container inspect "$CONTAINER_NAME" >/dev/null 2>&1; th
   "${SUDO[@]}" docker run -d \
     --name "$CONTAINER_NAME" \
     --restart unless-stopped \
+    --log-opt max-size=50m --log-opt max-file=5 \
     --network "$NETWORK_NAME" \
     --publish="${db_private_ip}:5432:5432" \
     --env POSTGRES_DB=vota \

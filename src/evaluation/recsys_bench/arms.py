@@ -16,7 +16,7 @@ from time import perf_counter
 import numpy as np
 
 from src.backend.app.application.ports import UnitIndex
-from src.backend.app.domain.recommendation.profile import MAX_REPEAT_PER_TRIP, local_today, trip_is_open
+from src.backend.app.domain.recommendation.profile import CAP_EXEMPT_EVENTS, MAX_REPEAT_PER_TRIP, W_TYPE, local_today, trip_is_open
 
 from .engine import POPULARITY_WINDOW_DAYS, OfflineEngine   # cửa sổ 90 ngày khai một chỗ, vào configHash (B3)
 from .events import parse_ts, trip_ends_on
@@ -61,9 +61,17 @@ def trip_destination(index: UnitIndex, events: list[dict], as_of: datetime) -> s
         rows.append((days_ago, e, unit, e.get("eventGroupId") or f"_solo_{e['productId']}"))
     trips: dict[str, list[tuple[float, int]]] = defaultdict(list)     # sau cap lặp: điểm đến, như build_profile
     raw: dict[str, list[tuple[float, dict]]] = defaultdict(list)      # mọi event: tuổi, ngày kết thúc
+    conf: dict[str, float] = defaultdict(float)                       # Σ W_TYPE sau cap của engine (miễn CAP_EXEMPT_EVENTS)
     seen: Counter = Counter()
+    seen_x: Counter = Counter()
     for days_ago, e, unit, tid in sorted(rows, key=lambda r: -r[0]):     # cũ trước; mỗi (trip, unit) giữ MAX_REPEAT như build_profile
         raw[tid].append((days_ago, e))
+        if e.get("eventName") in CAP_EXEMPT_EVENTS:
+            conf[tid] += W_TYPE.get(str(e.get("eventName")), 0.1)
+        else:
+            seen_x[(tid, unit)] += 1
+            if seen_x[(tid, unit)] <= MAX_REPEAT_PER_TRIP:
+                conf[tid] += W_TYPE.get(str(e.get("eventName")), 0.1)
         seen[(tid, unit)] += 1
         if seen[(tid, unit)] > MAX_REPEAT_PER_TRIP:
             continue
@@ -73,8 +81,16 @@ def trip_destination(index: UnitIndex, events: list[dict], as_of: datetime) -> s
     ages = {tid: min(d for d, _ in evs) for tid, evs in raw.items()}
     today = local_today(as_of)
     open_trips = [tid for tid, age in ages.items() if trip_is_open(age, trip_ends_on(e for _, e in raw[tid]), today)]
-    chosen = min(open_trips or ages, key=lambda tid: ages[tid])
-    return Counter(str(index.destination[u]) for _, u in trips[chosen]).most_common(1)[0][0]
+    booked = [tid for tid in open_trips if any(e.get("eventName") == "purchase" for _, e in raw[tid])]
+    browse = [tid for tid in open_trips if tid not in booked]
+    dest_of = {tid: Counter(str(index.destination[u]) for _, u in trips[tid]).most_common(1)[0][0] for tid in trips}
+    if not booked and len(browse) >= 2:                  # chuyến ảo (FR-REC-02, 09/10) — như `profile.session_trip`
+        from .ceiling import TripView, session_view
+        views = [TripView(tid, ages[tid], len(trips[tid]), set(), dest_of[tid], set(), True, None, min(1.0, conf[tid]))
+                 for tid in browse]
+        return session_view(views).destination
+    chosen = min(booked or open_trips or ages, key=lambda tid: ages[tid])   # chuyến đã đặt còn mở đứng trước (09/10)
+    return dest_of[chosen]
 
 
 class MostPopularArm:
@@ -128,6 +144,8 @@ class EngineArm:
     """Engine production (`RecommendForUser`) qua `OfflineEngine`: `engine` = mode eval (đủ k món), `engine_prod` = đúng
     list production (cap 2 mỗi taxonomy) — báo cả hai để biết khách thật sự thấy gì."""
 
+    mean_meta = ("exploreFilled",)    # số ô khám phá trung bình mỗi khách (FR-REC-02, 09/10) → `explore_filled` trong summary
+
     def __init__(self, engine: OfflineEngine):
         self.engine = engine
         self.family = self.key = "engine" if engine.mode == "eval" else "engine_prod"
@@ -138,7 +156,8 @@ class EngineArm:
         return Ranked([r["productId"] for r in response.get("recommendations", [])], latency, {
             "strategy": response.get("strategy"), "destination": response.get("destination"),
             "nextVertical": response.get("nextVertical"), "eventsUsed": diagnostics.get("eventsUsed"),
-            "coldStart": diagnostics.get("coldStart"), "excludedVerticals": diagnostics.get("excludedVerticals"), **extra,
+            "coldStart": diagnostics.get("coldStart"), "excludedVerticals": diagnostics.get("excludedVerticals"),
+            "exploreFilled": int(diagnostics.get("exploreFilled") or 0), **extra,
         })
 
     def recommend(self, cdp_user_id: str, as_of: datetime, k: int, events: list[dict]) -> Ranked:
@@ -151,7 +170,7 @@ class EngineNoMmrArm(EngineArm):
     """`engine_nommr` (B5 / B8, 01/10): cùng engine mode eval nhưng `mmr_select` thay bằng "lấy theo score" và k = `pool_k`
     (mặc định 200 = `candidate_k`) → list = **toàn bộ pool ứng viên** xếp theo score. `rank` của target trong list này
     (poolRank) tách "không vào pool" (lọc / ngoài top-K vector / không đủ phổ biến) khỏi "vào pool nhưng MMR đẩy xuống".
-    Không phải số báo cáo; dùng cho 20 ca (B8) và ablation MMR (M7)."""
+    Ô khám phá (09/10) không phải pool nên tắt ở arm này. Không phải số báo cáo; dùng cho 20 ca (B8) và ablation MMR (M7)."""
 
     family = key = "engine_nommr"
 
@@ -159,12 +178,13 @@ class EngineNoMmrArm(EngineArm):
         self.engine, self.pool_k = engine, pool_k or engine.candidate_k     # = candidate_k: pool đúng bằng pool của engine
 
     @staticmethod
-    def _by_score(score, E, candidates, taxonomy, k, max_per_vertical=None):
+    def _by_score(score, E, candidates, taxonomy, k, max_per_vertical=None, destination=None, max_per_destination=None):
+        # cap taxonomy / điểm đến (PR-B, 09/10) đều bỏ qua: arm này trả nguyên pool theo score
         return sorted(candidates, key=lambda i: -float(score[i]))[:k]
 
     def recommend(self, cdp_user_id: str, as_of: datetime, k: int, events: list[dict]) -> Ranked:
         from unittest.mock import patch
         started = perf_counter()
-        with patch("src.backend.app.application.recommendation.use_cases.mmr_select", self._by_score):
+        with patch("src.backend.app.application.recommendation.use_cases.mmr_select", self._by_score),                 patch("src.backend.app.application.recommendation.use_cases.explore_fill", lambda *a, **kw: []):
             response = self.engine.recommend(cdp_user_id, as_of, self.pool_k, events)
         return self._ranked(response, (perf_counter() - started) * 1000, poolK=self.pool_k)

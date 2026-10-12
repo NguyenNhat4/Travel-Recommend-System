@@ -140,6 +140,12 @@ WHERE  combo_product_id = :combo_id
 AND    item_kind IN ('hotel','flight','attraction','golf');   -- {attraction, hotel}
 ```
 
+   *Trạng thái 09/10/2026:* luật loại **vertical** theo combo ở trên **chưa cài** trong engine (engine chỉ loại taxonomy của
+   chính event purchase). Luật đã chốt và đang chạy là loại **sản phẩm**: mua combo → không gợi các thành phần đã map tin cậy
+   (`item_product_id NOT NULL` và `confidence ≥ 0,8` hoặc `source = 'manual'`); mua một sản phẩm → không gợi combo chứa nó; một
+   bậc, mọi lần mua (PRD FR-REC-02, `hop-dong-tich-hop-search-recommendation.md` §4.5). Vì thế ngưỡng 0,8 / `manual` ở §4
+   giờ cũng quyết định combo nào bị kéo theo khi loại trừ.
+
 ## 6. Bảng và view
 
 | Đối tượng | Schema | Loại | Vai trò | Khoá / ràng buộc |

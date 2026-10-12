@@ -174,6 +174,7 @@ Trợ lý lập lịch trình không phải là một chuỗi prompt đơn giả
 stateDiagram-v2
     [*] --> ClassifyTurn: Người dùng gửi yêu cầu
     ClassifyTurn --> Converse: Trò chuyện (chưa có điểm đến: mời nói điểm đến, gợi ý 3 điểm, không ép) / ngoài phạm vi (đặt chỗ, thanh toán) / tin nhắn rác, tục tĩu, chèn lệnh (luật tất định, không gọi LLM)
+    ClassifyTurn --> Converse: Người dùng không muốn đi/lên lịch nữa ("không đi nữa"): cảm ơn, hẹn gặp lại, không form, giữ chuyến đang lên
     Converse --> [*]: Trả lời kèm nút gợi ý (ngoài phạm vi vẫn là câu trả lời 200); chỉ đầu vào bị luật chặn mới là lỗi 400; không gọi tool
     ClassifyTurn --> Explore: Nêu hoặc hỏi về một điểm đến, một nơi khi chưa đồng ý lập lịch; hoặc hỏi vé máy bay (trước hay sau khi có lịch)
     Explore --> [*]: Thẻ điểm tham quan, khách sạn thật từ Search + hỏi có muốn lập lịch không; hoặc giá vé từ chuyến bay của catalog + hàng thẻ ngày–giá. Không hỏi thông tin chuyến, lịch đã có giữ nguyên

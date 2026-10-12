@@ -77,7 +77,7 @@ done
 [ -n "$compose_file" ] || die '--compose-file is required'
 [[ "$backend_image" =~ ^asia-southeast1-docker\.pkg\.dev/[a-z0-9][a-z0-9._/-]*@sha256:[a-f0-9]{64}$ ]] || die 'Backend image must be pinned by Artifact Registry digest'
 if [ -n "$crawler_image" ]; then
-  [[ "$crawler_image" =~ :latest$ ]] || die 'Crawler image must use the :latest tag'
+  [[ "$crawler_image" =~ @sha256:[a-f0-9]{64}$ ]] || die 'Crawler image must be pinned by digest (IMAGE@sha256:DIGEST)'
 fi
 [[ "$backend_health_url" =~ ^https?://[a-zA-Z0-9.:-]+/health/ready$ ]] || die 'Backend health URL must target /health/ready'
 [[ "$compose_file" == /* ]] || die '--compose-file must be an absolute path'

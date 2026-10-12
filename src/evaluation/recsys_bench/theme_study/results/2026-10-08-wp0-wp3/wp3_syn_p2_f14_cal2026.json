@@ -1,0 +1,138 @@
+{
+ "parity_mismatch_llbo200": 0,
+ "parity_mismatch_by_field": {},
+ "F14_calibration": {
+  "profile": "P2_confidence",
+  "calSeed": 2026,
+  "requests": 120,
+  "q_low_p10": 0.854425060749054,
+  "q_high_p99": 0.9378809118270874,
+  "q_display": [
+   0.8544,
+   0.9379
+  ]
+ },
+ "P2_confidence/stats": {
+  "trips_p50": 4.0,
+  "share_trips_without_purchase": 0.635,
+  "share_open": 1.0
+ },
+ "P2_confidence+F14_betweenQuantilePop30": {
+  "syn_between": {
+   "themePrec": 0.784,
+   "themePrec_beach": 0.825,
+   "themePrec_mountain": 0.756,
+   "themePrec_city": 0.77,
+   "distinctDestsTotal": 45,
+   "top5Dests": [
+    [
+     "Nha Trang",
+     160
+    ],
+    [
+     "Sa Pa",
+     127
+    ],
+    [
+     "Hội An",
+     124
+    ],
+    [
+     "Hạ Long",
+     112
+    ],
+    [
+     "Phú Quốc",
+     111
+    ]
+   ]
+  },
+  "syn_open": {
+   "themePrec": 0.8,
+   "themePrec_beach": 0.808,
+   "themePrec_mountain": 0.796,
+   "themePrec_city": 0.796,
+   "distinctDestsTotal": 41,
+   "top5Dests": [
+    [
+     "Đà Lạt",
+     148
+    ],
+    [
+     "TP. Hồ Chí Minh",
+     144
+    ],
+    [
+     "Hà Nội",
+     136
+    ],
+    [
+     "Huế",
+     132
+    ],
+    [
+     "Phú Quốc",
+     128
+    ]
+   ]
+  },
+  "syn_noisy": {
+   "themePrec": 0.739,
+   "themePrec_beach": 0.781,
+   "themePrec_mountain": 0.734,
+   "themePrec_city": 0.702,
+   "distinctDestsTotal": 46,
+   "top5Dests": [
+    [
+     "Nha Trang",
+     180
+    ],
+    [
+     "Hội An",
+     100
+    ],
+    [
+     "TP. Hồ Chí Minh",
+     92
+    ],
+    [
+     "Sa Pa",
+     90
+    ],
+    [
+     "Hạ Long",
+     84
+    ]
+   ]
+  },
+  "syn_noisy_paired": {
+   "themePrec": 0.728,
+   "themePrec_beach": 0.753,
+   "themePrec_mountain": 0.732,
+   "themePrec_city": 0.699,
+   "distinctDestsTotal": 46,
+   "top5Dests": [
+    [
+     "Nha Trang",
+     170
+    ],
+    [
+     "Hội An",
+     106
+    ],
+    [
+     "Sa Pa",
+     94
+    ],
+    [
+     "Hạ Long",
+     77
+    ],
+    [
+     "TP. Hồ Chí Minh",
+     77
+    ]
+   ]
+  }
+ }
+}

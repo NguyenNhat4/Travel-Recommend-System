@@ -11,8 +11,9 @@ import time
 
 
 def substep_line(step: str, entry: dict) -> str:
-    """Một dòng log cho bước con đã xong, để tab Log của monitor lọc theo `name=<bước>` (ô lớn) hoặc
-    `name=<bước>:<bước con>` (ô con). Nhận cả khoá của stage_log (in/out) lẫn normalise.StepClock (rowsIn/rowsOut)."""
+    """Một dòng log cho bước con (lúc bắt đầu: `status=running`; lúc xong: kết quả), để tab Log của monitor lọc theo
+    `name=<bước>` (ô lớn) hoặc `name=<bước>:<bước con>` (ô con). Nhận cả khoá của stage_log (in/out) lẫn
+    normalise.StepClock (rowsIn/rowsOut)."""
     fields = {"status": entry.get("status"), "in": entry.get("in", entry.get("rowsIn")),
               "out": entry.get("out", entry.get("rowsOut")), "changed": entry.get("changed"),
               "ok": f"{entry['ok']}/{entry['total']}" if entry.get("total") else None, "seconds": entry.get("seconds")}
@@ -23,8 +24,8 @@ def substep_line(step: str, entry: dict) -> str:
 
 class Stages:
     """`sink`: danh sách nhận bước con (thường là `detail['substeps']`); `on_change`: gọi sau mỗi lần đổi để run.json có
-    bước con đang chạy (fresh_catalog.save_run); `step` + `emit`: ghi một dòng log khi mỗi bước con xong (substep_line).
-    Không có sink thì chỉ chạy, không ghi gì."""
+    bước con đang chạy (fresh_catalog.save_run); `step` + `emit`: ghi một dòng log khi bước con bắt đầu (`status=running`,
+    để tab Log thấy bước con đang chạy) và một dòng khi xong (substep_line). Không có sink thì chỉ chạy, không ghi gì."""
 
     def __init__(self, sink: list | None = None, on_change=None, step: str | None = None, emit=None):
         self.sink = sink
@@ -46,6 +47,7 @@ class Stages:
         if self.sink is not None:
             self.sink.append(entry)
             self._changed()
+        self._log(entry)
         started = time.monotonic()
         try:
             yield entry

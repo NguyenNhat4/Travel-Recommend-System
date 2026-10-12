@@ -47,19 +47,21 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  PIP_BREAK_SYSTEM_PACKAGES: '1'
   PYTHON_VERSION: '3.11'
 
 jobs:
   quality:
     name: CI checks
     if: ${{ github.event_name == 'push' || github.event.action == 'opened' || github.event.action == 'synchronize' || github.event.action == 'reopened' || (github.event.action == 'closed' && github.event.pull_request.merged == true) || (github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3')) }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vota-staging-ha]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
+        if: ${{ runner.environment == 'github-hosted' }}
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -67,7 +69,7 @@ jobs:
 
       - name: Install backend test dependencies
         # torch bản CPU trước (bản mặc định của PyPI kéo CUDA vài GB); e5-small chạy CPU như trong image.
-        run: python -m pip install --upgrade pip && python -m pip install --index-url https://download.pytorch.org/whl/cpu "torch>=2.3" && python -m pip install -r src/backend/requirements.txt
+        run: python3 -m pip install --upgrade pip && python3 -m pip install --index-url https://download.pytorch.org/whl/cpu "torch>=2.3" && python3 -m pip install -r src/backend/requirements.txt
 
       - name: Validate contract
         run: PYTHONDONTWRITEBYTECODE=1 python3 src/shared/contracts/tests/validate_contract.py
@@ -90,7 +92,9 @@ jobs:
   build:
     name: Build images
     needs: quality
-    runs-on: ubuntu-latest
+    # Chỉ kiểm Dockerfile trên PR. Trên push, image staging-ha do staging-ha-backend-build.yml build; không build hai lần.
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: [self-hosted, vota-staging-ha]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -105,14 +109,17 @@ jobs:
           file: ./Dockerfile.backend
           push: false
           tags: vota-backend-ci:${{ github.sha }}
+          # Chỉ đọc cache: không ghi GHA cache từ PR, vì cache repo sát giới hạn 10 GB và bị evict.
           cache-from: type=gha,scope=backend
-          cache-to: type=gha,mode=max,scope=backend
 
   publish:
-    name: Publish SHA and latest images
-    if: ${{ (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true) || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') }}
+    name: Publish SHA image
+    # Tắt: image staging-ha do staging-ha-backend-build.yml build một lần mỗi push; job này build lại từ đầu và chỉ
+    # phục vụ VM cũ đã ngừng nhận deploy. Không đẩy tag latest: mọi nơi tham chiếu image dùng digest. Giữ job vì scripts/tests/test-backend-vm-cd-sync.sh kiểm chuỗi
+    # needs.publish.outputs.backend_digest trong file này.
+    if: ${{ false }}
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vota-staging-ha]
     environment: staging
     permissions:
       contents: read
@@ -169,11 +176,9 @@ jobs:
           context: .
           file: ./Dockerfile.backend
           push: true
-          tags: |
-            ${{ env.BACKEND_IMAGE }}:${{ github.sha }}
-            ${{ env.BACKEND_IMAGE }}:latest
-          cache-from: type=gha,scope=backend-publish
-          cache-to: type=gha,mode=max,scope=backend-publish
+          tags: ${{ env.BACKEND_IMAGE }}:${{ github.sha }}
+          # Chỉ đọc cache của job build (đã export xong trong cùng run). Không export lại và không build từ đầu khi cache miss.
+          cache-from: type=gha,scope=backend
 
 
   deploy:
@@ -181,7 +186,7 @@ jobs:
     # Tắt: VM staging cũ không nhận deploy nữa. Triển khai lên staging-ha qua các workflow staging-ha-*-cd.yml.
     if: ${{ false }}
     needs: publish
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vota-staging-ha]
     # Two 15-minute health windows (deploy and rollback) plus image pull and SSH.
     timeout-minutes: 45
     concurrency:
@@ -292,7 +297,7 @@ jobs:
           instance: ${{ secrets.GCE_INSTANCE }}
           zone: ${{ secrets.GCE_ZONE }}
 
-      - name: Deploy latest Backend image
+      - name: Deploy Backend image by digest
         env:
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           GCE_INSTANCE: ${{ secrets.GCE_INSTANCE }}

@@ -156,6 +156,9 @@ describe('ProductDetailView', () => {
     api.getProduct.mockResolvedValue(hotelProperty());
     render(<ProductDetailView productId="nt-h-10" />);
     await findRoomButtons();
+    // Ngày nhận/trả được đặt bởi useEffect sau khi phòng hiện ra; chờ hết báo lỗi ngày trước khi bấm tìm,
+    // nếu không onSubmit thấy ngày trống và return sớm (lỗi flaky khi CI chạy song song).
+    await waitFor(() => expect(screen.queryByTestId('date-error')).toBeNull(), WAIT);
     const input = screen.getByRole('combobox', { name: 'Địa điểm hoặc tên khách sạn' }) as HTMLInputElement;
     expect(input.value).toBe('Vinpearl Resort & Spa Nha Trang Bay');
     fireEvent.change(input, { target: { value: 'Đà Nẵng' } });

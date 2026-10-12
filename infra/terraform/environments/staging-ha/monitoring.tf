@@ -6,6 +6,8 @@ locals {
   alert_channels        = concat([for c in google_monitoring_notification_channel.email : c.id], var.notification_channel_ids)
   lb_rule_filter_prefix = "resource.type=\"https_lb_rule\" metric.type=\"loadbalancing.googleapis.com/https/request_count\""
   group_vm_filter       = "resource.type=\"gce_instance\" metric.type=\"compute.googleapis.com/instance/cpu/utilization\" metric.labels.instance_name=starts_with(\"${local.vm_name_prefix}\")"
+  # Số VM của MIG theo metric của Google (không đếm theo tiền tố tên). Tên MIG = ${var.name_prefix}-app.
+  group_size_filter = "resource.type=\"instance_group\" metric.type=\"compute.googleapis.com/instance_group/size\" resource.labels.instance_group_name=\"${local.vm_name_prefix}\""
 }
 
 resource "google_monitoring_notification_channel" "email" {
@@ -16,6 +18,11 @@ resource "google_monitoring_notification_channel" "email" {
   labels = {
     email_address = each.value
   }
+
+  lifecycle {
+    # Kênh này bị tắt/bật theo khung mute ban đêm (alert_mute.tf). Terraform không đưa enabled về true khi plan.
+    ignore_changes = [enabled]
+  }
 }
 
 # 1. Nhóm có ít VM đang chạy hơn mức tối thiểu (mất VM mà autohealing chưa bù kịp, hoặc template không khởi động được).
@@ -25,9 +32,9 @@ resource "google_monitoring_alert_policy" "group_below_min" {
   notification_channels = local.alert_channels
 
   conditions {
-    display_name = "VM đang báo CPU < min_replicas trong 5 phút"
+    display_name = "Số VM của MIG < min_replicas trong 5 phút"
     condition_threshold {
-      filter          = local.group_vm_filter
+      filter          = local.group_size_filter
       comparison      = "COMPARISON_LT"
       threshold_value = var.min_replicas
       duration        = "300s"
@@ -35,22 +42,22 @@ resource "google_monitoring_alert_policy" "group_below_min" {
       aggregations {
         alignment_period     = "60s"
         per_series_aligner   = "ALIGN_MEAN"
-        cross_series_reducer = "REDUCE_COUNT"
+        cross_series_reducer = "REDUCE_MAX"
       }
     }
   }
 
-  # Không còn VM nào báo metric (nhóm bị xoá sạch) thì ngưỡng "nhỏ hơn" không bao giờ kích hoạt: dùng điều kiện vắng mặt.
+  # Metric số VM của MIG biến mất (nhóm bị xoá hẳn) thì ngưỡng "nhỏ hơn" không bao giờ kích hoạt: dùng điều kiện vắng mặt.
   conditions {
-    display_name = "Không VM nào báo metric trong 5 phút"
+    display_name = "Metric số VM của MIG vắng mặt trong 5 phút"
     condition_absent {
-      filter   = local.group_vm_filter
+      filter   = local.group_size_filter
       duration = "300s"
 
       aggregations {
         alignment_period     = "60s"
         per_series_aligner   = "ALIGN_MEAN"
-        cross_series_reducer = "REDUCE_COUNT"
+        cross_series_reducer = "REDUCE_MAX"
       }
     }
   }
@@ -65,24 +72,43 @@ resource "google_monitoring_alert_policy" "group_below_min" {
   }
 }
 
-# 2. Autoscaler chạm trần: không còn chỗ co giãn thêm trong khi tải vẫn cao.
+# 2. Autoscaler chạm trần VÀ tải vẫn cao: đủ hai điều kiện cùng lúc trong 15 phút (combiner AND).
+#    Chỉ đếm VM thì báo cả khi 2 VM đang nhàn rỗi, vì scale-in chậm (600 s). CPU trung bình nhóm vượt cpu_target
+#    nghĩa là autoscaler đã muốn scale-out nhưng không còn chỗ.
 resource "google_monitoring_alert_policy" "group_at_max" {
-  display_name          = "${var.name_prefix} HA: autoscaler chạm max_replicas"
-  combiner              = "OR"
+  display_name          = "${var.name_prefix} HA: autoscaler chạm max_replicas và CPU vẫn cao"
+  combiner              = "AND"
   notification_channels = local.alert_channels
 
   conditions {
-    display_name = "Số VM bằng max_replicas trong 15 phút"
+    display_name = "Số VM của MIG bằng max_replicas trong 15 phút"
     condition_threshold {
-      filter          = local.group_vm_filter
-      comparison      = "COMPARISON_GE"
-      threshold_value = var.max_replicas
+      filter = local.group_size_filter
+      # Cloud Monitoring chỉ nhận COMPARISON_GT / COMPARISON_LT. Số VM là số nguyên nên "> max-0,5" tương đương ">= max".
+      comparison      = "COMPARISON_GT"
+      threshold_value = var.max_replicas - 0.5
       duration        = "900s"
 
       aggregations {
         alignment_period     = "60s"
         per_series_aligner   = "ALIGN_MEAN"
-        cross_series_reducer = "REDUCE_COUNT"
+        cross_series_reducer = "REDUCE_MAX"
+      }
+    }
+  }
+
+  conditions {
+    display_name = "CPU trung bình nhóm > cpu_target trong 15 phút"
+    condition_threshold {
+      filter          = local.group_vm_filter
+      comparison      = "COMPARISON_GT"
+      threshold_value = var.cpu_target
+      duration        = "900s"
+
+      aggregations {
+        alignment_period     = "60s"
+        per_series_aligner   = "ALIGN_MEAN"
+        cross_series_reducer = "REDUCE_MEAN"
       }
     }
   }
@@ -92,7 +118,7 @@ resource "google_monitoring_alert_policy" "group_at_max" {
   }
 
   documentation {
-    content   = "Nhóm đã ở trần ${var.max_replicas} VM liên tục 15 phút. Xem p95 và CPU; cân nhắc nâng max_replicas hoặc machine_type."
+    content   = "Nhóm đã ở trần ${var.max_replicas} VM và CPU trung bình vẫn trên ${var.cpu_target} trong 15 phút: autoscaler hết chỗ co giãn. Xem dashboard HA (ô CPU từng VM và p95), cân nhắc nâng max_replicas hoặc machine_type (xem ngưỡng p95 và 5xx trước khi quyết)."
     mime_type = "text/markdown"
   }
 }

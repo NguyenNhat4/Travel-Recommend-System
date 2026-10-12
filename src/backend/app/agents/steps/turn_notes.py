@@ -82,6 +82,8 @@ def question_note(state: dict) -> str:
         return message(state, "note_unclear")
     if state.get("refusal"):
         return message(state, "note_refusal")
+    if state.get("interaction_type") == "stop":
+        return message(state, "note_stop")
     if state.get("decision") == "constraint_clarification":
         return message(state, "note_constraint")
     reason = state.get("clarification_reason")

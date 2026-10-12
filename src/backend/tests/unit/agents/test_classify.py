@@ -2,7 +2,8 @@ import json
 import unittest
 
 import yaml
-from src.backend.app.agents.steps.classification import extract_result, picked_option, route_input, route_result
+from src.backend.app.agents.steps.classification import (extract_result, picked_option, route_input, route_result,
+                                                         says_stop)
 from src.backend.app.agents.nodes import classify_node, intake_node
 from src.backend.app.agents.models import Extraction, TurnRoute
 from src.backend.app.agents.steps.prompts import CLASSIFY_PROMPT
@@ -81,6 +82,24 @@ class RouteTests(unittest.TestCase):
         for result in (first, second, third):
             self.assertNotIn('clarification_reason', result)
 
+    def test_not_wanting_to_travel_any_more_says_goodbye_and_keeps_the_trip(self):
+        # Báo lỗi 12/10/2026 (AC-AGT-01, chốt 2026-10-12): "ko đi nữa" đi `extract` rồi hiện form; giờ `converse` cảm ơn, hẹn
+        # gặp lại. Không hỏi gì, không nút, bỏ lời mời đang chờ; chuyến và việc đã đồng ý lập lịch giữ để nối lại.
+        for consent in (True, False):
+            with self.subTest(plan_consent=consent):
+                state = {**self.vague_state(days=None), 'query': 'ko đi nữa', 'plan_consent': consent,
+                         'pending_offer': {'destination': 'Đà Nẵng'}, 'clarification_reason': 'suggest_form',
+                         'clarification_rounds': 3}
+                result = route_result(state, TurnRoute(route='stop', place='Văn Miếu', city='Hà Nội'))
+                self.assertEqual(result['decision'], 'simple')
+                self.assertEqual(result['interaction_type'], 'stop')
+                self.assertFalse(result['refusal'])
+                self.assertEqual(result['missing_fields'], [])
+                self.assertIsNone(result['clarification_reason'])
+                self.assertIsNone(result['pending_offer'])
+                for key in ('intent', 'plan_consent', 'explore_place', 'offer_suggestions', 'clarification_rounds'):
+                    self.assertNotIn(key, result)
+
     def test_postponing_a_plan_offer_drops_the_offer_without_a_form(self):
         state = {**intake_node({'query': 'để sau'}), 'pending_offer': {'destination': 'Hà Nội'},
                  'intent': {**empty_intent(), 'destination': 'Hà Nội'}}
@@ -117,10 +136,18 @@ class ClassifyPromptTests(unittest.TestCase):
         self.assertNotIn('Return only the label', CLASSIFY_PROMPT)
         self.assertIn('Set `route`', CLASSIFY_PROMPT)
 
-    def test_dropping_or_vaguely_changing_the_trip_is_travel(self):
-        travel = CLASSIFY_PROMPT.split('conversation:')[0]
-        for phrase in ('đổi ngày', 'ngày nào cũng được', 'không đi nữa'):
+    def test_vaguely_changing_or_resuming_the_trip_is_travel(self):
+        travel = CLASSIFY_PROMPT.split('travel:')[1].split('\nexplore:')[0]
+        for phrase in ('đổi ngày', 'đi tiếp'):
             self.assertIn(phrase, travel)
+        self.assertNotIn('không đi nữa', travel)
+
+    def test_not_wanting_to_travel_any_more_has_its_own_label(self):
+        # Báo lỗi 12/10/2026: "ko đi nữa" là `travel` nên hiện form (AC-AGT-01, chốt 2026-10-12).
+        stop = CLASSIFY_PROMPT.split('\nstop:')[1].split('\nconversation:')[0]
+        for phrase in ('không đi nữa', 'ko đi du lịch nữa', 'huỷ chuyến', 'không đổi nữa', 'để sau'):
+            self.assertIn(phrase, stop)
+        self.assertIn('exactly one of the seven labels', CLASSIFY_PROMPT)
 
     def test_prompt_defines_the_vague_label_from_the_trip_context(self):
         self.assertIn('vague:', CLASSIFY_PROMPT)
@@ -138,6 +165,50 @@ class ClassifyPromptTests(unittest.TestCase):
         out_of_scope = CLASSIFY_PROMPT.split('out_of_scope:')[1]
         self.assertIn('cancel or change an existing order', out_of_scope)
         self.assertNotIn('cancellation actions', CLASSIFY_PROMPT)
+
+
+class StopRuleTests(unittest.TestCase):
+    """Câu dừng chắc chắn nhận bằng luật, bỏ qua LLM `classify`; câu khác vẫn qua LLM (AC-AGT-01, chốt 2026-10-12)."""
+
+    STOPS = ('ko đi nữa', 'ko di nua', 'Ko đi du lịch nữa!', 'k đi nữa nhé', 'thôi, mình không đi nữa đâu',
+             'hong đi du lịch nữa nha', 'không muốn đi nữa', 'không cần lên lịch nữa', 'thôi huỷ chuyến này',
+             'Hủy lịch trình', 'thôi khỏi lên lịch', 'tạm biệt', 'bye bye', 'ok bye', 'cảm ơn, tạm biệt', 'hẹn gặp lại')
+    # Ý khác hoặc mơ hồ: câu có tên nơi, số, chữ ngoài danh sách, câu hỏi, hay cụm hay dùng để từ chối một gợi ý.
+    OTHERS = ('không đổi nữa', 'không đi Đà Nẵng nữa', 'ko đi nữa, đi Huế', 'không đi được nữa', 'ko đi nữa hả?',
+              'ko đi nữa à', 'không đi 3 ngày nữa', 'không đi', 'không', 'không biết', 'để sau', 'thôi', 'thôi khỏi',
+              'thôi cảm ơn', 'cảm ơn', 'thôi mình không muốn đi nữa đâu bạn ơi', 'lấy phương án 2', 'đổi ngày')
+
+    def test_sure_stop_phrases_match_the_whole_message(self):
+        for text in self.STOPS:
+            self.assertTrue(says_stop(text), text)
+
+    def test_other_or_unclear_messages_are_left_to_the_llm(self):
+        for text in self.OTHERS:
+            self.assertFalse(says_stop(text), text)
+
+    def test_a_matched_stop_skips_the_llm(self):
+        def no_call(*_):
+            raise AssertionError('no LLM call')
+        llm = type('LLM', (), {'with_structured_output': no_call})()
+        state = {**intake_node({'query': 'ko đi nữa'}), 'intent': {**empty_intent(), 'destination': 'Huế'},
+                 'pending_offer': {'destination': 'Huế'}}
+        result = classify_node(state, llm=llm)
+        self.assertEqual((result['decision'], result['interaction_type']), ('simple', 'stop'))
+        self.assertEqual(result['missing_fields'], [])
+        self.assertIsNone(result['pending_offer'])
+        self.assertEqual(result['events'][-1]['message'], 'route stop (rule)')
+
+    def test_an_unmatched_stop_is_still_read_by_the_llm(self):
+        calls = []
+
+        class Llm:
+            def with_structured_output(self, schema):
+                calls.append(schema.__name__)
+                return type('Runnable', (), {'invoke': lambda _self, _prompt: TurnRoute(route='stop')})()
+        result = classify_node(intake_node({'query': 'thôi mình không muốn đi nữa đâu bạn ơi'}), llm=Llm())
+        self.assertEqual(calls, ['TurnRoute'])
+        self.assertEqual(result['interaction_type'], 'stop')
+        self.assertEqual(result['events'][-1]['message'], 'route stop')
 
 
 class PromptYamlTests(unittest.TestCase):

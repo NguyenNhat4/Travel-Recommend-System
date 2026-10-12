@@ -49,7 +49,7 @@ Các API trả về danh sách sử dụng cơ chế phân trang dựa trên `pa
 |---|---|---|---|
 | `POST` | `/api/v1/auth/login` | Đăng nhập tài khoản | `email`, `password` $\rightarrow$ Auth token / Cookie session |
 | `POST` | `/api/v1/auth/logout` | Hủy phiên đăng nhập | Thu hồi token |
-| `GET` | `/api/v1/auth/me` | Lấy thông tin hồ sơ hiện tại | Trả về `userId`, `email`, `fullName`, `phone`, `personaTag` |
+| `GET` | `/api/v1/auth/me` | Lấy thông tin hồ sơ hiện tại | Trả về `userId`, `email`, `fullName`, `phone` |
 | `PATCH` | `/api/v1/auth/me` | Sửa hồ sơ (FR-USR-04) | `fullName?`, `phone?` (`null` xoá số) $\rightarrow$ hồ sơ mới |
 | `PUT` | `/api/v1/auth/password` | Đổi mật khẩu (FR-USR-04) | `currentPassword`, `newPassword` $\rightarrow$ `204`, thu hồi các phiên khác |
 

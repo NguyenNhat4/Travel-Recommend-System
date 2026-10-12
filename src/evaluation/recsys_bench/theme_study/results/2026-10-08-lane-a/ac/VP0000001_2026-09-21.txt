@@ -1,0 +1,73 @@
+{
+  "asOf": "2026-09-21T00:00:00+00:00",
+  "user": "VP0000001",
+  "historyEvents": 12,
+  "strategy": "cross_vertical",
+  "destination": "Nha Trang",
+  "nextVertical": "flight",
+  "diagnostics": {
+    "eventsUsed": 12,
+    "coldStart": false,
+    "excludedVerticals": [
+      "hotel"
+    ],
+    "trips": 8,
+    "latencyMs": 42
+  },
+  "extraFields": [
+    "sections"
+  ],
+  "items": [
+    {
+      "rank": 1,
+      "productId": "211e2eed-7047-530a-b61f-c7d76137bb9d",
+      "name": "Vé máy bay TP. Hồ Chí Minh - Nha Trang",
+      "taxonomy": "flight",
+      "destination": "Nha Trang",
+      "because": 1,
+      "becauseDaysAgo": [
+        0
+      ]
+    },
+    {
+      "rank": 2,
+      "productId": "83b5cf28-6d82-5037-9b05-f4bf2feb6edb",
+      "name": "[Vinpearl Golf Nha Trang] - Voucher Golf không giới hạn",
+      "taxonomy": "golf",
+      "destination": "Nha Trang",
+      "because": 1,
+      "becauseDaysAgo": [
+        0
+      ]
+    },
+    {
+      "rank": 3,
+      "productId": "0171db25-0c70-5126-add8-d837e9216545",
+      "name": "Vé máy bay Hà Nội - Nha Trang",
+      "taxonomy": "flight",
+      "destination": "Nha Trang",
+      "because": 1,
+      "becauseDaysAgo": [
+        0
+      ]
+    },
+    {
+      "rank": 4,
+      "productId": "d4656520-221c-5498-a1ca-031930842a26",
+      "name": "[Aquafield] - Combo Cáp treo + Xông hơi chuẩn Hàn + Spa trị liệu toàn thân",
+      "taxonomy": "combo",
+      "destination": "Nha Trang",
+      "because": 1,
+      "becauseDaysAgo": [
+        0
+      ]
+    }
+  ],
+  "contractErrors": [],
+  "day1Check": {
+    "strategy == cross_vertical": true,
+    "excludedVerticals == ['hotel']": true,
+    "không có item hotel": true,
+    "nextVertical ∈ {flight, attraction}": true
+  }
+}

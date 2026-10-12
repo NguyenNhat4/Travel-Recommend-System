@@ -18,9 +18,16 @@ Thứ tự kiểm trong `classify`; bước nào khớp thì dừng ở đó:
 2. **Chèn lệnh / đòi secret** khớp mẫu → từ chối 400, không gọi LLM nào nữa.
 3. **Tin rác** (tầng 1): rác → hỏi "chưa hiểu" (200); chỉ có tục tĩu → từ chối 400. Không gọi LLM. Câu cụt giữa hội
    thoại ("2 ng", "3n") không bị coi là rác.
-4. **Luật tất định, không LLM:** chọn "phương án N", đổi khách sạn/chuyến bay
+4. **Câu dừng chắc chắn** (`classification.says_stop`) → `stop`, không gọi LLM `classify`; lời chào ở `converse` vẫn do LLM
+   viết. So nguyên câu sau khi `fold` và bỏ từ đệm cuối câu (nhé, nha, đâu, luôn, rồi, mà, bạn), từ vựng đóng:
+   `[thôi | vậy thôi] [mình | tôi | tui | tao | em | anh | chị] không/ko/k/kh/khg/hong/hok/hk/hem/chẳng/chả [muốn | cần]
+   đi / đi du lịch / du lịch / đi chơi / lên lịch / lập lịch / lên kế hoạch + nữa`; `[thôi] huỷ chuyến [đi] / lịch trình [này]`;
+   `thôi khỏi lên/lập lịch`; `[ok | cảm ơn | thanks] tạm biệt / bye / goodbye / hẹn gặp lại`. Câu có "?", có thêm tên nơi, số,
+   ngày hay chữ ngoài danh sách không khớp và đi bước 6. Cố ý không nhận "thôi khỏi", "thôi cảm ơn", "cảm ơn" đứng riêng
+   (hay là từ chối một gợi ý hoặc còn nói tiếp) và "không đi" thiếu "nữa".
+5. **Luật tất định, không LLM:** chọn "phương án N", đổi khách sạn/chuyến bay
    ([sua-lich-qua-nhieu-luot.md](sua-lich-qua-nhieu-luot.md#doi-ve-khach-san)), bấm nút của câu trả lời vé.
-5. **LLM gắn một nhãn** (`TurnRoute`) và đọc ra tên nơi, thành phố, câu hỏi vé, có xin lập lịch/xin form không:
+6. **LLM gắn một nhãn** (`TurnRoute`) và đọc ra tên nơi, thành phố, câu hỏi vé, có xin lập lịch/xin form không:
 
 | Nhãn | Đi đâu |
 |---|---|
@@ -28,10 +35,11 @@ Thứ tự kiểm trong `classify`; bước nào khớp thì dừng ở đó:
 | `explore` (hỏi về một nơi) | `explore` |
 | `fare` (hỏi giá, giờ vé máy bay) | `explore`, nhánh giá vé → [tu-van-ve-may-bay.md](tu-van-ve-may-bay.md) |
 | `vague` ("không biết", "tuỳ") | Đã đồng ý và còn thiếu trường bắt buộc: hỏi kèm form. Chưa đồng ý: bậc gợi ý của trò chuyện |
+| `stop` (không muốn đi hoặc lên lịch nữa: "ko đi nữa", "thôi huỷ lịch trình") | `converse` cảm ơn, hẹn gặp lại; không form, không hỏi thêm, không nút; chuyến đang lên giữ nguyên, chỉ bỏ lời mời lập lịch đang chờ (AC-AGT-01, chốt 2026-10-12) |
 | `conversation` | `converse` |
 | `out_of_scope` | `converse`, trả lời 200: nói rõ không làm được, kèm nút việc gần nhất |
 
-"Không đi nữa", "đổi ngày" vẫn là `travel`. Luật guardrail chi tiết: [../langgraph-nodes.md](../langgraph-nodes.md) mục
+"Đổi ngày", "không đổi nữa", "không đi Đà Nẵng nữa" (chê một nơi) vẫn là `travel`; "không đi nữa" là `stop`, không phải huỷ đơn. Nối lại sau khi dừng ("thôi đi tiếp") là `travel` trên chuyến đã giữ. Luật guardrail chi tiết: [../langgraph-nodes.md](../langgraph-nodes.md) mục
 Guardrail.
 
 ## Trường của chuyến đi

@@ -113,3 +113,37 @@ class GenerationTests(unittest.TestCase):
         for profile in p['profiles']:
             self.assertEqual(profile['lifetime_order_count'],len(groups[profile['cdp_user_id']]))
         self.assertEqual(C.MESSY_PURCHASE_BAD_PRODUCT,0.02)
+
+    def test_g6_profile_produces_themes_sidecar_and_append_v1_unchanged(self):
+        """MOCK_DATA_SPEC §4.3: --profile g6-pref-v1 → khóa payload "profile", nhãn chủ đề ẩn NGOÀI payload (themes.json);
+        append-v1 giữ nguyên artifact (không khóa profile, không themes, cùng sha giữa hai lần build và với g6 tắt sở thích)."""
+        from unittest.mock import patch
+        from data_collection.seed import config as C
+        from data_collection.seed.append_histories import build
+        from data_collection.tests.test_seed_histories import make_catalog
+        catalog = make_catalog()
+        with patch.dict(C.PROFILES['append-v1'], DEFAULT_USERS=604), patch.dict(C.PROFILES['g6-pref-v1'], DEFAULT_USERS=604):
+            base = build(catalog, batch='g6-test', as_of=date(2026, 9, 20), seed=7)
+            again = build(catalog, batch='g6-test', as_of=date(2026, 9, 20), seed=7, profile='append-v1')
+            g6 = build(catalog, batch='g6-test', as_of=date(2026, 9, 20), seed=7, profile='g6-pref-v1')
+            g6_off = build(catalog, batch='g6-test', as_of=date(2026, 9, 20), seed=7, profile='g6-pref-v1', theme_pref=0.0)
+        self.assertEqual(C.THEME_PREF_RATE, 0.0)
+        self.assertEqual(base['sha256'], again['sha256'])
+        self.assertEqual(set(base), {'payload', 'sha256'})
+        self.assertNotIn('profile', base['payload'])
+        self.assertEqual(validate(base)['format'], 1)
+        # g6: format vẫn 1, có khóa profile, validate chấp nhận; themes chỉ khách VPX:<batch>:, không trùng persona, không nằm trong payload
+        p = validate(g6)
+        self.assertEqual((p['format'], p['profile']), (1, 'g6-pref-v1'))
+        self.assertNotIn('themes', p)
+        self.assertEqual(set(g6['themes']), {r['cdp_user_id'] for r in p['profiles']})
+        self.assertTrue(all(u.startswith('VPX:g6-test:') for u in g6['themes']))
+        self.assertTrue(set(g6['themes'].values()) <= set(C.DEST_THEMES) | {None})
+        self.assertGreater(sum(1 for t in g6['themes'].values() if t), 300)
+        self.assertNotEqual(g6['sha256'], base['sha256'])
+        # g6 với THEME_PREF_RATE = 0: không themes, lịch sử trùng append-v1 (chỉ khác khóa profile trong payload)
+        self.assertNotIn('themes', g6_off)
+        self.assertEqual((g6_off['payload']['profiles'], g6_off['payload']['events']), (base['payload']['profiles'], base['payload']['events']))
+        self.assertEqual(g6_off['payload']['profile'], 'g6-pref-v1')
+        with self.assertRaises(ValueError):
+            build(catalog, batch='g6-test', as_of=date(2026, 9, 20), seed=7, profile='khong-co')

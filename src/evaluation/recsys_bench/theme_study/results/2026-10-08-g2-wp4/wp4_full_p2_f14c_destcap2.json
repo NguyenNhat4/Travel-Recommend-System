@@ -1,0 +1,139 @@
+{
+ "parity_mismatch_llbo200": 0,
+ "parity_mismatch_by_field": {},
+ "F14_calibration": {
+  "profile": "P2_confidence",
+  "calSeed": 99,
+  "requests": 120,
+  "q_low_p10": 0.8529405653476715,
+  "q_high_p99": 0.9387040108442306,
+  "q_display": [
+   0.8529,
+   0.9387
+  ]
+ },
+ "P2_confidence/stats": {
+  "trips_p50": 4.0,
+  "share_trips_without_purchase": 0.635,
+  "share_open": 1.0
+ },
+ "P2_confidence+F14c_betweenQuantilePop35+destCap2": {
+  "llbo": {
+   "n": 4072,
+   "hit@20": 0.8084,
+   "ndcg@10": 0.4957,
+   "hit@4": 0.5324
+  },
+  "temporal": {
+   "n": 775,
+   "hit@20": 0.1277,
+   "ndcg@10": 0.0875,
+   "hit@4": 0.1045
+  },
+  "nexttrip": {
+   "n": 1835,
+   "hit@20": 0.0469,
+   "ndcg@10": 0.0185,
+   "hit@4": 0.0202
+  },
+  "syn_between": {
+   "themePrec": 0.756,
+   "themePrec_beach": 0.83,
+   "themePrec_mountain": 0.715,
+   "themePrec_city": 0.724,
+   "nextDestHit@20": 0.4181,
+   "nextDestHit@4": 0.0861,
+   "tgtHit@20": 0.0111,
+   "tgtHit@4": 0.0056,
+   "distinctDestsTotal": 45,
+   "top5Dests": [
+    [
+     "Nha Trang",
+     192
+    ],
+    [
+     "Phú Quốc",
+     143
+    ],
+    [
+     "TP. Hồ Chí Minh",
+     123
+    ],
+    [
+     "Sa Pa",
+     113
+    ],
+    [
+     "Hội An",
+     94
+    ]
+   ]
+  },
+  "syn_open": {
+   "themePrec": 0.8,
+   "themePrec_beach": 0.808,
+   "themePrec_mountain": 0.796,
+   "themePrec_city": 0.796,
+   "nextDestHit@20": 1.0,
+   "nextDestHit@4": 1.0,
+   "tgtHit@20": 0.4042,
+   "tgtHit@4": 0.0903,
+   "distinctDestsTotal": 41,
+   "top5Dests": [
+    [
+     "Đà Lạt",
+     148
+    ],
+    [
+     "TP. Hồ Chí Minh",
+     144
+    ],
+    [
+     "Hà Nội",
+     136
+    ],
+    [
+     "Huế",
+     132
+    ],
+    [
+     "Phú Quốc",
+     128
+    ]
+   ]
+  },
+  "syn_noisy_paired": {
+   "themePrec": 0.698,
+   "themePrec_beach": 0.771,
+   "themePrec_mountain": 0.692,
+   "themePrec_city": 0.63,
+   "nextDestHit@20": 0.3972,
+   "nextDestHit@4": 0.0722,
+   "tgtHit@20": 0.0125,
+   "tgtHit@4": 0.0014,
+   "distinctDestsTotal": 43,
+   "top5Dests": [
+    [
+     "Nha Trang",
+     316
+    ],
+    [
+     "Sa Pa",
+     93
+    ],
+    [
+     "TP. Hồ Chí Minh",
+     81
+    ],
+    [
+     "Hội An",
+     78
+    ],
+    [
+     "Cao Bằng",
+     61
+    ]
+   ]
+  }
+ }
+}

@@ -1,7 +1,7 @@
 name: Staging-HA Crawler CD
 
 # CD job cào (fresh catalog) lên VM vota-ha-crawler (staging-ha). Crawler không nằm trong MIG app và không đổi
-# Terraform ở đây. Ba workflow staging-ha-*-cd.yml dùng chung concurrency group `staging-ha-cd` vì cùng ghi
+# Terraform ở đây. Dùng concurrency group `staging-ha-crawler` riêng, và ghi last-good riêng (không ghi chung với app).
 # last-good. Lỗi crawler không kích hoạt rollback app.
 
 on:
@@ -24,25 +24,44 @@ permissions:
   contents: read
 
 concurrency:
-  group: staging-ha-cd
+  group: staging-ha-crawler
   cancel-in-progress: false
 
 env:
   CRAWLER_INSTANCE: vota-ha-crawler
   CRAWLER_ZONE: asia-southeast1-a
-  STAGING_HA_LAST_GOOD_OBJECT: deploy/staging-ha-last-good.json
+  STAGING_HA_LAST_GOOD_OBJECT: deploy/staging-ha-last-good-crawler.json
 
 jobs:
+  window-guard:
+    # CD staging-ha bị vô hiệu trong khung 23:45–08:40 (giờ VN): runner và app/crawler tắt theo lịch ban đêm.
+    # Job này chạy trên runner tự host vì repo không dùng GitHub-hosted runner; nó chỉ được xếp hàng khi push/dispatch.
+    name: Chặn CD ngoài khung giờ runner
+    runs-on: [self-hosted, vota-staging-ha]
+    outputs:
+      allowed: ${{ steps.check.outputs.allowed }}
+    steps:
+      - id: check
+        run: |
+          h=$((10#$(TZ=Asia/Ho_Chi_Minh date +%H%M)))
+          if (( h >= 2345 || h < 840 )); then
+            echo "allowed=false" >> "$GITHUB_OUTPUT"
+            echo "CD bị vô hiệu trong khung 23:45–08:40 (giờ VN). Chạy lại sau 08:40." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "allowed=true" >> "$GITHUB_OUTPUT"
+          fi
   images:
+    needs: window-guard
+    if: ${{ needs.window-guard.outputs.allowed == 'true' }}
     name: Build and publish crawler image
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vota-staging-ha]
     timeout-minutes: 30
     environment: staging
     permissions:
       contents: read
       id-token: write
     outputs:
-      crawler_ref: ${{ steps.refs.outputs.crawler_ref }}
+      crawler_digest: ${{ steps.refs.outputs.crawler_digest }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -105,12 +124,13 @@ jobs:
             echo "CRAWLER_DIGEST không hợp lệ: $CRAWLER_DIGEST" >&2
             exit 1
           fi
-          echo "crawler_ref=$CRAWLER_IMAGE@$CRAWLER_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "crawler_digest=$CRAWLER_DIGEST" >> "$GITHUB_OUTPUT"
 
   deploy_crawler:
+    if: ${{ needs.window-guard.outputs.allowed == 'true' }}
     name: Install crawler on staging-ha VM
-    needs: images
-    runs-on: ubuntu-latest
+    needs: [window-guard, images]
+    runs-on: [self-hosted, vota-staging-ha]
     timeout-minutes: 30
     environment: staging
     permissions:
@@ -129,18 +149,24 @@ jobs:
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
 
+      - name: Build immutable crawler reference
+        env:
+          CRAWLER_IMAGE: ${{ secrets.GAR_FRESH_IMAGE }}
+          CRAWLER_DIGEST: ${{ needs.images.outputs.crawler_digest }}
+        run: echo "CRAWLER_REF=$CRAWLER_IMAGE@$CRAWLER_DIGEST" >> "$GITHUB_ENV"
+
       - name: Install crawler cron and monitor
         env:
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           CRAWLER_INSTANCE: ${{ env.CRAWLER_INSTANCE }}
           CRAWLER_ZONE: ${{ env.CRAWLER_ZONE }}
-          CRAWLER_REF: ${{ needs.images.outputs.crawler_ref }}
         run: bash scripts/deploy-staging-ha-crawler.sh
 
   verify:
+    if: ${{ needs.window-guard.outputs.allowed == 'true' }}
     name: Verify staging-ha crawler VM
-    needs: [images, deploy_crawler]
-    runs-on: ubuntu-latest
+    needs: [window-guard, images, deploy_crawler]
+    runs-on: [self-hosted, vota-staging-ha]
     timeout-minutes: 15
     environment: staging
     permissions:
@@ -174,10 +200,15 @@ jobs:
             --filter='tags.items=vota-crawler' --format='value(name)' | grep -c . || true)"
           [ "$count" = 1 ] || { echo "Có $count VM mang tag vota-crawler, cần đúng 1." >&2; exit 1; }
 
+      - name: Build immutable crawler reference
+        env:
+          CRAWLER_IMAGE: ${{ secrets.GAR_FRESH_IMAGE }}
+          CRAWLER_DIGEST: ${{ needs.images.outputs.crawler_digest }}
+        run: echo "CRAWLER_REF=$CRAWLER_IMAGE@$CRAWLER_DIGEST" >> "$GITHUB_ENV"
+
       - name: Record crawler as last good
         # Chỉ ghi khi VM đang chạy. Giữ nguyên backend_ref và frontend_ref đang có trong object.
         env:
-          CRAWLER_REF: ${{ needs.images.outputs.crawler_ref }}
           TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
         run: |
           if gcloud storage objects describe "gs://$TF_STATE_BUCKET/$STAGING_HA_LAST_GOOD_OBJECT" >/dev/null 2>&1; then

@@ -1,9 +1,11 @@
 """Đồ thị bước (pipeline_graph.py, P3 của docs/plan/2026-09-29-bo-cho-doi-giua-cac-buoc.md): tự nhất quán, và job chạy các
 bước đúng thứ tự `deps` khai báo."""
 import contextlib
+import inspect
 import io
 import json
 import os
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -164,3 +166,37 @@ class JobOrderTests(unittest.TestCase):
                     fresh_catalog.resume_run(rec, {'scope.destinations': ''}, Path(tmp), Path(tmp), from_step, 'db', None,
                                              source=source)
                 self.assertEqual(tuple(calls), graph.resume_plan(from_step))
+
+
+class SubstepPlanTests(unittest.TestCase):
+    """pipeline_graph.SUBSTEPS (monitor hiện sẵn cả bước con chưa chạy) khớp tên và thứ tự bước con trong code."""
+    STAGE = re.compile(r"""stages\.(?:stage|add)\(\s*(['"])(.+?)\1""")
+    CLOCK = re.compile(r"""clock\.begin\(\s*(['"])(.+?)\1""")
+
+    def names(self, pattern, *functions):
+        found = []
+        for function in functions:
+            for match in pattern.finditer(inspect.getsource(function)):
+                if match.group(2) not in found:
+                    found.append(match.group(2))
+        return found
+
+    def test_declared_substeps_match_the_code(self):
+        import fresh_catalog_db
+        import normalise
+        in_code = {'maintain': self.names(self.STAGE, fresh_catalog_db.maintain_catalog),
+                   'db': self.names(self.STAGE, fresh_catalog_db.load_into_db),
+                   'validate': self.names(self.STAGE, fresh_catalog.validate_run, fresh_catalog.validate_step),
+                   'index': self.names(self.STAGE, fresh_catalog.index_substeps),
+                   'normalise': self.names(self.CLOCK, normalise._normalise, normalise.merge_catalog)}
+        self.assertEqual(set(in_code), set(graph.SUBSTEPS))
+        for step, names in in_code.items():
+            plan = graph.SUBSTEPS[step]
+            self.assertEqual(set(names), set(plan) | set(graph.SUBSTEP_EXTRAS.get(step, ())), step)
+            self.assertEqual([name for name in names if name in plan], list(plan), f'{step}: thứ tự chạy')
+
+    def test_merge_only_plan_starts_at_reading_checkpoints(self):
+        self.assertEqual(graph.planned_substeps('normalise', merge_only=True)[0], graph.MERGE_ONLY_FROM)
+        self.assertNotIn('ánh xạ nguồn', graph.planned_substeps('normalise', merge_only=True))
+        self.assertEqual(graph.planned_substeps('db', merge_only=True), graph.SUBSTEPS['db'])
+        self.assertEqual(graph.planned_substeps('vinpearl'), ())

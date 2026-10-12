@@ -14,7 +14,7 @@ flowchart TD
     S([tin nhắn + conversationId]) --> intake
     intake -->|bấm/gõ 'phương án N'| apply_option
     intake --> classify
-    classify -->|trò chuyện, ngoài phạm vi,<br/>tin rác, guardrail chặn| converse
+    classify -->|trò chuyện, không muốn đi nữa,<br/>ngoài phạm vi, tin rác, guardrail chặn| converse
     classify -->|hỏi về một nơi, hỏi giá vé,<br/>'cứ chọn đại'| explore
     classify -->|đã đồng ý + 'không biết'<br/>xin form, đổi vé/KS chưa rõ| clarify
     classify -->|câu du lịch| extract

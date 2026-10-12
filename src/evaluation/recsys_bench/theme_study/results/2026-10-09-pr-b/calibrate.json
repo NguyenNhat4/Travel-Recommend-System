@@ -1,0 +1,41 @@
+{
+ "modelVersion": "intfloat/multilingual-e5-small:catalog-text-v2",
+ "shipped": {
+  "q_low": 0.8529,
+  "q_high": 0.9387,
+  "modelVersion": "intfloat/multilingual-e5-small:catalog-text-v2"
+ },
+ "tagMatches": true,
+ "runs": [
+  {
+   "calSeed": 99,
+   "requests": 120,
+   "q_low_p10": 0.8529405653476715,
+   "q_high_p99": 0.9387040108442306,
+   "q_display": [
+    0.8529,
+    0.9387
+   ]
+  },
+  {
+   "calSeed": 7,
+   "requests": 120,
+   "q_low_p10": 0.8510191559791564,
+   "q_high_p99": 0.9403376793861389,
+   "q_display": [
+    0.851,
+    0.9403
+   ]
+  },
+  {
+   "calSeed": 2026,
+   "requests": 120,
+   "q_low_p10": 0.854425060749054,
+   "q_high_p99": 0.9378809118270874,
+   "q_display": [
+    0.8544,
+    0.9379
+   ]
+  }
+ ]
+}

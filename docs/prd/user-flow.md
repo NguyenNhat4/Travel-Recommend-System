@@ -4,7 +4,7 @@ Tài liệu này đặc tả toàn bộ hành trình trải nghiệm người d�
 
 ---
 
-## 1. Hành Trình Người Dùng Theo Persona (User Journeys)
+## 1. Hành Trình Người Dùng Theo Phong Cách Du Lịch (User Journeys)
 
 Hệ thống được tối ưu hóa cho 4 luồng trải nghiệm chính tương ứng với các nhóm người dùng:
 
@@ -12,13 +12,13 @@ Hệ thống được tối ưu hóa cho 4 luồng trải nghiệm chính tươn
 [Khách truy cập] ──> [Định danh / Đăng nhập] ──> [Khám phá / Tìm kiếm] ──> [Lập lịch trình AI] ──> [Đặt dịch vụ] ──> [Nhận gợi ý chặng kế tiếp]
 ```
 
-### 1.1. Hành trình Khách nghỉ dưỡng gia đình (Persona P1)
+### 1.1. Hành trình khách thích nghỉ dưỡng biển cùng gia đình
 1. **Khám phá:** Truy cập trang chủ, nhìn thấy các resort ven biển có hồ bơi trẻ em và không gian xanh kèm lý do gợi ý *"Phù hợp cho chuyến đi gia đình"*.
 2. **Tìm kiếm:** Gõ *"resort yên tĩnh gần biển có buffet sáng"*, nhận kết quả các khu nghỉ dưỡng đã được lọc sẵn tiện ích gia đình.
 3. **Đặt phòng:** Chọn phòng Family Suite, tiến hành xác nhận đặt phòng.
 4. **Hậu mãi tức thì:** Màn hình xác nhận ngay lập tức hiển thị gợi ý vé máy bay khứ hồi và vé tham quan công viên giải trí tại điểm đến vừa đặt.
 
-### 1.2. Hành trình Khách du lịch tự túc / Trải nghiệm (Persona P3)
+### 1.2. Hành trình khách thích khám phá văn hoá, ẩm thực
 1. **Tiếp cận:** Mở widget Trợ lý AI, yêu cầu *"Lập lịch trình 3 ngày khám phá ẩm thực và văn hóa Hội An - Đà Nẵng ngân sách tiết kiệm"*.
 2. **Tương tác AI:** Trợ lý AI phân tích ý định, gửi lại lịch trình chia theo buổi với các địa điểm nổi tiếng kèm thẻ sản phẩm homestay và tour trải nghiệm thực tế.
 3. **Điều chỉnh:** Bấm vào thẻ sản phẩm để xem chi tiết đánh giá và ảnh, yêu cầu AI đổi một điểm tham quan buổi chiều.
@@ -202,7 +202,7 @@ Toàn màn hình (desktop):
 
 > **Phân loại thẻ khách sạn:** Tiết kiệm nhất · Ít di chuyển nhất · Cân bằng · Cao cấp (Được yêu thích khi đủ dữ liệu đánh giá theo AC-AGT-04). Nhãn loại nổi bật, tách trạng thái Đang chọn; mỗi loại có giải thích. Tiền lưu trú toàn chuyến, tổng lịch trình, km đường chim bay ước tính hiện bằng số tuyệt đối; chênh lệch là phụ. Không tạo thẻ trùng để đủ loại.
 
-> **Form thông tin chuyến đi:** sau khi đồng ý lập lịch, khi cần làm rõ, lời trả lời có lời gợi mở và nút **Điền thông tin chuyến đi**; bấm mới mở form hiện có với thông tin đã biết. Người dùng trực tiếp xin form thì mở ngay. Xác nhận gửi ngay yêu cầu hoàn chỉnh. Sở thích gồm 5 lựa chọn cố định (Hồ bơi, Phù hợp trẻ nhỏ, View biển, Có bữa sáng, Spa) và một ô tự nhập tối đa 150 ký tự; không có nút AI. Trường và giới hạn theo AC-AGT-01. *(Chốt 2026-10-12, `update-archive/2026-10-12-form-theo-followup-va-so-thich-linh-hoat.md`, `update-archive/2026-10-12-so-thich-chip-co-dinh-va-o-tu-nhap.md`.)*
+> **Form thông tin chuyến đi:** sau khi đồng ý lập lịch, khi cần làm rõ, lời trả lời có lời gợi mở và nút **Điền thông tin chuyến đi**; bấm mới mở form hiện có với thông tin đã biết. Người dùng trực tiếp xin form thì mở ngay. Xác nhận gửi ngay yêu cầu hoàn chỉnh. Lượt người dùng nói không muốn đi hoặc lên lịch nữa thì không có nút hay form: trợ lý cảm ơn, hẹn gặp lại (AC-AGT-01, chốt 2026-10-12). Sở thích gồm 5 lựa chọn cố định (Hồ bơi, Phù hợp trẻ nhỏ, View biển, Có bữa sáng, Spa) và một ô tự nhập tối đa 150 ký tự; không có nút AI. Trường và giới hạn theo AC-AGT-01. *(Chốt 2026-10-12, `update-archive/2026-10-12-form-theo-followup-va-so-thich-linh-hoat.md`, `update-archive/2026-10-12-so-thich-chip-co-dinh-va-o-tu-nhap.md`.)*
 
 ### 4.3. Màn hình Xác Nhận Đơn Hàng & Vòng Lặp Gợi Ý Tiếp Theo (`/booking/:referenceCode`)
 ```

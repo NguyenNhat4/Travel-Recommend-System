@@ -1,0 +1,75 @@
+{
+  "asOf": "2026-10-08T00:00:00+00:00",
+  "user": "VP0000003",
+  "historyEvents": 6,
+  "strategy": "dormant",
+  "destination": null,
+  "nextVertical": "hotel",
+  "diagnostics": {
+    "eventsUsed": 6,
+    "coldStart": false,
+    "excludedVerticals": [],
+    "trips": 4,
+    "latencyMs": 45
+  },
+  "extraFields": [
+    "sections"
+  ],
+  "items": [
+    {
+      "rank": 1,
+      "productId": "78d99b32-1150-5e38-beef-99dd98785b09",
+      "name": "Vé máy bay TP. Hồ Chí Minh - Phú Quốc",
+      "taxonomy": "flight",
+      "destination": "Phú Quốc",
+      "because": 2,
+      "becauseDaysAgo": [
+        204,
+        204
+      ]
+    },
+    {
+      "rank": 2,
+      "productId": "bfc1d7fa-5a0b-5b49-aa07-78ad02fe5ac9",
+      "name": "Vinpearl Resort & Spa Nha Trang Bay",
+      "taxonomy": "hotel",
+      "destination": "Nha Trang",
+      "because": 2,
+      "becauseDaysAgo": [
+        204,
+        204
+      ]
+    },
+    {
+      "rank": 3,
+      "productId": "bf50ae1a-7637-5240-ae4c-ccdfb9535ee4",
+      "name": "JW Marriott Phu Quoc Emerald Bay Resort & Spa",
+      "taxonomy": "hotel",
+      "destination": "Phú Quốc",
+      "because": 2,
+      "becauseDaysAgo": [
+        204,
+        204
+      ]
+    },
+    {
+      "rank": 4,
+      "productId": "06fe96e5-5226-50a8-bac2-015038d8e8a6",
+      "name": "[Vinpearl Golf Phú Quốc] - Voucher Tee time giá siêu ưu đãi",
+      "taxonomy": "golf",
+      "destination": "Phú Quốc",
+      "because": 2,
+      "becauseDaysAgo": [
+        204,
+        204
+      ]
+    }
+  ],
+  "contractErrors": [],
+  "p3Check": {
+    "strategy == dormant": true,
+    "excludedVerticals == []": true,
+    "coldStart == False": true,
+    "because có và mọi daysAgo > DORMANT_AFTER_DAYS (180)": true
+  }
+}

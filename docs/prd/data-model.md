@@ -106,6 +106,7 @@ erDiagram
         string item_type "hotel, flight, experience"
         float confidence "Độ tin cậy trích xuất"
         string evidence "Căn cứ từ văn bản mô tả"
+        numeric price_share "Phần giá combo của thành phần có sản phẩm; tổng = giá combo; dịch vụ đi kèm: NULL"
     }
 
     WEAVIATE_PRODUCT {
@@ -138,7 +139,7 @@ erDiagram
         string full_name
         string phone
         string role "customer, admin"
-        string persona_tag "P1_family, P2_biz, P3_explorer, P4_deal"
+        string persona "P1_frequent, P2_first_time, P3_dormant, P4_no_history"
         timestamp email_verified_at "NULL = chưa xác minh"
         timestamp created_at
     }
@@ -328,6 +329,35 @@ Vé có báo giá theo ngày cố định giữ `level: flight`, `fixedDeparture
 - Ngày, giờ, chiều về, `available`, cửa sổ đặt chỗ và `priceValidUntil` chép từ vé gốc, cập nhật lại mỗi lần nạp.
 - Vé gốc hết đặt được, có vé Thương gia thật thay thế, hoặc tắt cấu hình → vé mô phỏng chuyển `available = false`. Không xoá dòng, vì đơn cũ có thể trỏ tới.
 
+**Vé phủ ngày (demo).** *(Chốt 2026-10-09, đề xuất `update-archive/2026-10-09-mo-phong-thanh-phan-combo-va-ve-phu-ngay.md`.)*
+
+- Chạy sau mỗi lần nạp catalog, sau bước vé Thương gia mô phỏng. Mặc định bật; tắt bằng `SIMULATED_FILL_FLIGHTS=0`.
+- Với mỗi tuyến và mỗi ngày trong cửa sổ đặt chỗ chưa có vé một chiều đặt được (hạng không phải Thương gia), sinh một vé một chiều; chưa có vé khứ hồi đặt được thì sinh một vé khứ hồi.
+- Chặng đi chép từ một vé thật của tuyến (hãng, số hiệu, giờ đi/đến, sân bay); chọn cố định theo ngày (`crc32`) trong các vé thật để các ngày không giống hệt nhau. Chặng về chép từ vé thật của tuyến ngược chiều, ngày về = ngày đi + 2–5 ngày (cố định theo `crc32`); tuyến không có chiều ngược thì đảo sân bay của chặng đi, giữ hãng, không có số hiệu.
+- Giá = giá của vé thật đã chép (khứ hồi: giá vé khứ hồi thật của tuyến nếu có, không thì cộng hai chặng). `cabinClass: ECONOMY`.
+- `sourceRef` = `demo:fill:<sourceRef tuyến>:<oneWay|roundTrip>:<ngày đi>`; `productId` sinh cố định từ `sourceRef`. Đánh dấu như vé Thương gia mô phỏng: `simulated: true`, `fieldSources.unitPrice = "mô phỏng"`, tên có hậu tố "(giá minh hoạ)".
+- Hiện ở trang vé máy bay như vé thường. Không sinh vé Thương gia mô phỏng từ vé phủ ngày.
+- Ngày đó có vé thật đặt được, ngày đã qua, hoặc tắt cấu hình → vé phủ ngày chuyển `available = false`; không xoá dòng.
+- **Tuyến chiều ngược** *(chốt 2026-10-09, đề xuất `update-archive/2026-10-09-mo-phong-tuyen-nguoc-va-phong-cho-khach-san.md`)*: tuyến thật A → B có vé thật mà chưa có tuyến B → A (thật) thì sinh tuyến B → A mô phỏng (hiện như tuyến thường): thành phố, sân bay, toạ độ đảo chiều từ tuyến A → B; chặng mẫu (`templateFlight`) = một vé thật A → B đảo sân bay, giữ hãng và giờ cất cánh, không có số hiệu; giá một chiều = giá vé thật đó, `roundTripFrom` = `roundTripFrom` của A → B. `sourceRef` = `demo:reverse:<sourceRef tuyến A → B>`, `simulated: true`, tên có "(giá minh hoạ)". Vé của tuyến này do bước vé phủ ngày sinh. Có tuyến thật B → A thì tuyến mô phỏng `available = false`.
+
+**Thành phần combo mô phỏng (demo).** *(Chốt 2026-10-09, cùng đề xuất.)*
+
+- Chạy sau bước parse combo (`catalog.combo_items`). Mặc định bật; tắt bằng `SIMULATED_COMBO_ITEMS=0`.
+- Khách sạn: trỏ tới hạng phòng thật khi tên khách sạn và tên hạng phòng trong combo khớp catalog (sau chuẩn hoá, độ giống ≥ 0,9); không thì sinh một khách sạn tổng + một hạng phòng mô phỏng riêng cho combo (tên, địa chỉ, sao, ảnh lấy từ combo; nếu khớp được khách sạn thật thì chép thông tin khách sạn đó và ghi `comboBaseProductId`). Không gắn phòng mô phỏng vào khách sạn thật, để trang khách sạn thật không đổi.
+- Vé máy bay: trỏ tới tuyến theo sân bay đi/đến của combo; tuyến chưa có thì sinh tuyến mô phỏng. Tuyến (thật hoặc mô phỏng) được phủ vé mọi ngày theo khối "Vé phủ ngày"; tuyến mô phỏng lấy chặng mẫu từ giờ bay ghi trong combo.
+- Vé tham quan: giữ liên kết tới vé đặt được; chưa nối hoặc trỏ tới điểm không bán vé thì sinh vé mô phỏng (tên = nhãn thành phần + khu vui chơi của combo).
+- Ăn uống, xe đưa đón, voucher, khác (`meal | transfer | other`): không thuộc loại catalog nào, là phần đi kèm combo — không sinh sản phẩm, `item_product_id` và `price_share` để NULL. *(Chốt 2026-10-09, đề xuất `update-archive/2026-10-09-thanh-phan-combo-chi-theo-loai-catalog.md`.)*
+- Sản phẩm thành phần mô phỏng mang `attributes.comboOnly = true`: `catalog.product_meta` trả `is_search_unit = false` và `is_recommendable = false` (không ra tìm kiếm, gợi ý, không embed), `is_bookable` giữ quy tắc chung. Mỗi combo có bộ sản phẩm riêng: `sourceRef` = `demo:combo:<sourceRef combo>:<position>`. Đánh dấu `simulated: true`, tên có hậu tố "(giá minh hoạ)".
+- **Phần giá:** chỉ thành phần có sản phẩm: `catalog.combo_items.price_share` = giá combo × giá tham khảo của thành phần / tổng giá tham khảo, làm tròn nghìn đồng, phần lẻ dồn vào thành phần lớn nhất, nên tổng đúng bằng giá combo (cùng `priceBasis` với combo). Giá tham khảo × số lượng của dòng: phòng = giá hạng phòng (thật hoặc khách sạn đã khớp), vé máy bay = giá khứ hồi rẻ nhất của tuyến, vé tham quan / golf = giá vé (vé mô phỏng: số tiền ghi trong nhãn nếu có). Thành phần không có giá tham khảo lấy bằng thành phần rẻ nhất của combo; không thành phần nào có giá thì chia đều. Combo chỉ gồm dịch vụ đi kèm thì không có phần giá nào.
+- **Giá trong combo và giá lẻ:** khi tách combo, mỗi thành phần tính theo `price_share` của chính combo đó. Giá lẻ (`unit_price`) của sản phẩm không đổi theo combo: sản phẩm thật giữ giá thật (người đặt lẻ trả giá này, không được giá combo); sản phẩm mô phỏng lấy giá thật nếu có (phòng của khách sạn đã khớp catalog: giá khách sạn; vé có số tiền ghi trong nhãn: số tiền đó), không có thì `price_share / số lượng`. *(Chốt 2026-10-09, đề xuất `update-archive/2026-10-09-gia-le-san-pham-mo-phong-cua-combo.md`.)*
+- Combo đổi thành phần, hết bán, hoặc tắt cấu hình → sản phẩm thành phần mô phỏng chuyển `available = false`; không xoá dòng.
+
+**Hạng phòng cho khách sạn chưa có phòng (demo).** *(Chốt 2026-10-09, đề xuất `update-archive/2026-10-09-mo-phong-tuyen-nguoc-va-phong-cho-khach-san.md`.)*
+
+- Chạy sau mỗi lần nạp catalog. Mặc định bật; tắt bằng `SIMULATED_ROOMS=0`.
+- Khách sạn tổng (không gộp, không mô phỏng) có giá mà không có hạng phòng con nào thì sinh một hạng phòng "Phòng tiêu chuẩn": giá = giá của khách sạn (giá thấp nhất nguồn báo), `maxOccupancy` 2, lịch mở đủ cửa sổ, ảnh = ảnh khách sạn. `sourceRef` = `demo:room:<sourceRef khách sạn>`, `simulated: true`, tên có "(giá minh hoạ)". Khách sạn được bật lại theo FR-CAT-02.
+- Khách sạn có hạng phòng thật, hoặc tắt cấu hình → hạng phòng mô phỏng `available = false`; không xoá dòng.
+
 ### 3.2. Cấu trúc `app.messages.structured_data` (Grounded Itinerary)
 Dữ liệu lịch trình do AI Assistant trả về phải tuân thủ cấu trúc định dạng chuẩn:
 ```json
@@ -382,7 +412,7 @@ CONFIRMED       PAYMENT_FAILED         EXPIRED        CANCELLED
 Trạng thái xuất vé máy bay (FR-BKG-12) thuộc từng mục đơn (`booking_items.metadata.ticketing`), không đổi vòng đời đơn.
 
 ### 4.2. Vòng đời Sản phẩm & Khả năng phục vụ
-- **is_search_unit = true:** Sản phẩm đại diện cho một thực thể tìm kiếm (Ví dụ: Một resort/khách sạn tổng quan). Xuất hiện trong kết quả tìm kiếm và danh mục gợi ý. Khách sạn tổng quan không có hạng phòng con nào đặt được thì `available = false` (giữ dòng, tự bật lại khi có phòng đặt được), nên không ra ở tìm kiếm mặc định và trợ lý.
+- **is_search_unit = true:** Sản phẩm đại diện cho một thực thể tìm kiếm (Ví dụ: Một resort/khách sạn tổng quan). Xuất hiện trong kết quả tìm kiếm và danh mục gợi ý. Khách sạn tổng quan không có hạng phòng con nào đặt được thì `available = false` (giữ dòng, tự bật lại khi có phòng đặt được), nên không ra ở tìm kiếm mặc định và trợ lý. Sản phẩm thành phần combo mô phỏng (`attributes.comboOnly = true`) không phải đơn vị tìm kiếm và không được gợi ý; chỉ đặt qua combo.
 - **is_bookable = true:** Đơn vị có thể đặt chỗ. Khách sạn và vé máy bay chỉ đặt trực tiếp; các loại khác thêm được vào giỏ (Ví dụ: Từng loại phòng cụ thể, từng chuyến bay trong ngày).
 - **is_recommendable = true:** Đủ tiêu chuẩn chất lượng và tính khả dụng để đưa vào các thuật toán gợi ý tự động.
 

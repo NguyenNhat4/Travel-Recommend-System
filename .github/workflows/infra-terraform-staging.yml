@@ -9,8 +9,8 @@ name: Staging Infra Terraform
 #   dispatch sets allow_vm_update=true, or the Environment variable
 #   INFRA_ALLOW_VM_UPDATE=true is set and the blocked run is re-run (dispatch only works
 #   for workflows on the default branch). Unset the variable after use.
-# After a successful apply, the replication job brings the primary and the replica to the
-# replicating state through IAP SSH (ops/ci-db-replication.sh); it is idempotent.
+# Job nối primary/replica (ops/ci-db-replication.sh) đã gỡ: cặp DB cũ đã nghỉ, DB staging chạy trên cụm Patroni.
+# Biến GCE_DB_INSTANCE / GCE_DB_REPLICA_INSTANCE vẫn được plan/apply và monitoring đọc, nên giữ nguyên.
 # All branches share one state (prefix infra/staging), so keep infra/terraform in
 # step across branches; a branch with older code plans a delete and is blocked.
 on:
@@ -65,7 +65,7 @@ env:
 jobs:
   validate:
     name: Validate infra Terraform
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vota-staging-ha]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -74,6 +74,7 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: '~1.9'
+          terraform_wrapper: false
 
       - name: Check replica scripts and layout
         run: bash ops/tests/test_infra_layout.sh
@@ -91,7 +92,7 @@ jobs:
     name: Plan and apply staging infra
     if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') }}
     needs: validate
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vota-staging-ha]
     environment: staging
     timeout-minutes: 20
     permissions:
@@ -117,6 +118,7 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: '~1.9'
+          terraform_wrapper: false
 
       - name: Validate required staging configuration
         run: |
@@ -196,44 +198,3 @@ jobs:
 
       - name: Apply staging infra
         run: terraform -chdir="$TF_ROOT" apply -input=false -auto-approve staging.tfplan
-
-  replication_staging:
-    name: Connect DB primary and replica
-    needs: plan_apply_staging
-    runs-on: ubuntu-latest
-    environment: staging
-    timeout-minutes: 30
-    permissions:
-      contents: read
-      id-token: write
-    env:
-      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-      GCE_ZONE: ${{ secrets.GCE_ZONE }}
-      GCE_REPLICA_ZONE: ${{ vars.GCE_DB_REPLICA_ZONE || 'asia-southeast1-b' }}
-      PRIMARY_VM: ${{ vars.GCE_DB_INSTANCE }}
-      REPLICA_VM: ${{ vars.GCE_DB_REPLICA_INSTANCE }}
-      DB_IMAGE: ${{ vars.DB_IMAGE || 'pgvector/pgvector:0.8.6-pg18-bookworm' }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Validate required staging configuration
-        run: |
-          for name in GCP_PROJECT_ID GCE_ZONE PRIMARY_VM REPLICA_VM; do
-            if [ -z "${!name:-}" ]; then
-              echo "Missing staging configuration: $name" >&2
-              exit 1
-            fi
-          done
-
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
-          service_account: ${{ secrets.GCP_CI_SERVICE_ACCOUNT }}
-
-      - name: Set up gcloud
-        uses: google-github-actions/setup-gcloud@v2
-
-      - name: Bring primary and replica to the replicating state
-        run: bash ops/ci-db-replication.sh

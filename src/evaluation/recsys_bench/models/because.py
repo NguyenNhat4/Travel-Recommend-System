@@ -15,7 +15,7 @@ bit với `content_profile`:
 
 `contract_items` đổi sang dạng `BecauseItem` của contract (`productName` = tên unit cha như `use_cases.py:175-176`) + khoá `kind`
 (chỉ trong harness, ngoài contract). `violations` kiểm ràng buộc contract (spec tích hợp search–rec §4.4): popular ⟹ [], coldStart ⟹ [],
-dormant ⟹ có `daysAgo > 90` (90 của contract, không phải `DORMANT_AFTER_DAYS` 180 của engine — I-8).
+dormant ⟹ có `daysAgo > 90` (90 của contract, không phải `DORMANT_AFTER_DAYS` 365 của engine — I-8).
 """
 from __future__ import annotations
 
@@ -38,7 +38,8 @@ def event_weights(profile: Profile) -> tuple[list[tuple[float, ResolvedEvent]], 
     contribs: list[tuple[float, ResolvedEvent]] = []
     Z = 0.0
     for t in src:
-        wt = 1.0 if profile.active_trip is not None else 2 ** (-t.age_days / P.H_LONG_DAYS)
+        # 09/10 (P2): nhánh u_long nhân thêm độ tin cậy chuyến, đúng phân rã của u_long
+        wt = 1.0 if profile.active_trip is not None else 2 ** (-t.age_days / P.H_LONG_DAYS) * t.confidence
         for e in t.events:
             c = wt * P.W_TYPE.get(e.event_name, 0.1) * 2 ** (-e.days_ago / P.H_SHORT_DAYS)
             contribs.append((c, e))

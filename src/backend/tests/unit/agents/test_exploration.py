@@ -451,6 +451,22 @@ class ExploreFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(yes['response']['clarificationForm']['autoOpen'])
         self.assertIn('days', yes['response']['missingFields'])
 
+    async def test_yes_after_the_offer_plans_even_when_the_llm_calls_it_conversation(self):
+        """Snapshot sau merge release-mvp-v2 (12/10): prompt mới gọi "ok" ngay sau lời chào tạm biệt là `conversation`,
+        LLM thật gắn cả "ok" sau lời mời lập lịch là `conversation` và trợ lý hỏi bằng câu, không có nút form."""
+        store = InMemoryConversationStore()
+        clients = self.clients()
+        first = await self.run_graph(ExploringLlm(route='explore', extraction=Extraction(patch={'destination': 'Hà Nội'})),
+                                     clients, store=store, owner='u', state={'query': 'Hà Nội có gì?',
+                                                                             'start_date_asked': False})
+        yes = await self.run_graph(ExploringLlm(route='conversation', extraction=Extraction()), clients, store=store,
+                                   owner='u', state={'query': 'ok', 'conversation_id': first['conversation_id']})
+        self.assertTrue(yes['plan_consent'])
+        self.assertEqual(yes['response']['status'], 'NEEDS_CLARIFICATION')
+        self.assertIn('clarificationForm', yes['response'])
+        # Hỏi gộp mọi trường còn thiếu (AC-AGT-01), không chỉ số ngày như nhánh trò chuyện.
+        self.assertTrue({'days', 'startDate', 'party'} <= set(yes['response']['missingFields']))
+
     async def test_not_knowing_twice_lets_the_assistant_pick_and_explore_a_place(self):
         clients = Clients(products=[dict(item, destination='Đà Nẵng') for item in HANOI], destinations=['Đà Nẵng'])
         result = await self.run_graph(ExploringLlm(route='vague'), clients,

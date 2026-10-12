@@ -1,4 +1,6 @@
 .git
+# worktree của agent (.claude/worktrees) có thể nặng vài GB; không đưa vào build context.
+.claude
 .venv
 **/.venv
 **/__pycache__

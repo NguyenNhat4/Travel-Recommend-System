@@ -11,7 +11,8 @@ Mirror phần glue của `RecommendForUser.__call__` (`use_cases.py:131-169`) v�
   với `pool mask` là khoá `(score↓, pop_D↓, item_id↑)` để scorer có nhiều điểm 0 không đưa 200 unit "chỉ số nhỏ nhất" vào MMR.
 
 `mode`: `noexcl` (05/10) = mask engine bỏ riêng category exclusion (ablation Day 7); `funnel` = mask engine (có trip mở: destination ∧ taxonomy ∉ đã mua ∧ recommendable/available, mask rỗng → bỏ destination; không
-trip mở: recommendable/available; luôn bỏ bought_units); `raw` = recommendable/available trừ bought_units. Khách không có trip nào
+trip mở: recommendable/available; luôn bỏ món đã mua = `use_cases.bought_units` — mọi purchase thô theo search unit + closure combo ↔
+thành phần, 09/10); `raw` = recommendable/available trừ cùng tập đã mua đó. Khách không có trip nào
 (engine đi `_cold_start`): funnel xếp mask theo pop_D toàn cục, `strategy = popular` — không mô phỏng section của `_cold_start`.
 """
 from __future__ import annotations
@@ -23,6 +24,7 @@ from time import perf_counter
 import numpy as np
 
 from src.backend.app.application.ports import UnitIndex, VectorSearchPort
+from src.backend.app.application.recommendation.use_cases import bought_units, explore_fill
 from src.backend.app.domain.recommendation import profile as P
 from src.backend.app.domain.recommendation.profile import Profile
 
@@ -54,9 +56,11 @@ class FunnelCfg:
         return {"mode": self.mode, "pool": self.pool, "rerank": self.rerank, "poolK": self.pool_k, "popularK": self.popular_k, "k": self.k}
 
 
-def engine_mask(index: UnitIndex, profile: Profile, *, exclude_taxonomy: bool = True) -> tuple[np.ndarray, str | None, set[str]]:
-    """Mirror `use_cases.py:131-142` với `destination=None` (harness). Trả (mask, dest, taxonomy bị loại).
-    `exclude_taxonomy=False` (mode `noexcl`): giữ khoá điểm đến của trip mở và bỏ món đã mua, chỉ tắt category exclusion."""
+def engine_mask(index: UnitIndex, profile: Profile, *, exclude_taxonomy: bool = True,
+                bought: set[int] | None = None) -> tuple[np.ndarray, str | None, set[str]]:
+    """Mirror mask ứng viên của `RecommendForUser.__call__` với `destination=None` (harness). Trả (mask, dest, taxonomy bị loại).
+    `exclude_taxonomy=False` (mode `noexcl`): giữ khoá điểm đến của trip mở và bỏ món đã mua, chỉ tắt category exclusion.
+    `bought`: tập đã mua sau closure combo (`use_cases.bought_units`); None → `profile.bought_units` (chỉ event có vector, luật cũ)."""
     if profile.active_trip is not None:
         t = profile.active_trip
         dest, done = t.destination, set(t.purchased_taxonomies) if exclude_taxonomy else set()
@@ -66,14 +70,14 @@ def engine_mask(index: UnitIndex, profile: Profile, *, exclude_taxonomy: bool = 
     else:
         dest, done = None, set()
         m = index.mask(only_recommendable=True)
-    for u in profile.bought_units:
+    for u in (profile.bought_units if bought is None else bought):
         m[u] = False
     return m, dest, done
 
 
-def raw_mask(index: UnitIndex, profile: Profile) -> np.ndarray:
+def raw_mask(index: UnitIndex, profile: Profile, bought: set[int] | None = None) -> np.ndarray:
     m = index.mask(only_recommendable=True)
-    for u in profile.bought_units:
+    for u in (profile.bought_units if bought is None else bought):
         m[u] = False
     return m
 
@@ -106,9 +110,12 @@ def rank_none(score_full: np.ndarray, cand: np.ndarray, pop: np.ndarray, product
     return [int(cand[i]) for i in order[:k]]
 
 
-def rank_mmr(score_full: np.ndarray, E: np.ndarray, cand_sorted: list[int], taxonomy: np.ndarray, k: int) -> list[int]:
-    """`mmr_select` của engine, không cap (mode eval); λ đọc từ `profile.MMR_LAMBDA` lúc gọi."""
-    return [int(i) for i in P.mmr_select(score_full, E, cand_sorted, taxonomy, k, max_per_vertical=None)]
+def rank_mmr(score_full: np.ndarray, E: np.ndarray, cand_sorted: list[int], taxonomy: np.ndarray, k: int,
+             destination: np.ndarray | None = None, max_per_destination: int | None = None) -> list[int]:
+    """`mmr_select` của engine, không cap taxonomy (mode eval); λ đọc từ `profile.MMR_LAMBDA` lúc gọi. `max_per_destination`:
+    cap điểm đến của engine khi không có chuyến mở (FR-REC-04, PR-B 09/10)."""
+    return [int(i) for i in P.mmr_select(score_full, E, cand_sorted, taxonomy, k, max_per_vertical=None, destination=destination,
+                                         max_per_destination=max_per_destination)]
 
 
 class CtxCache:
@@ -126,7 +133,11 @@ class CtxCache:
         if ctx is not None and ctx.as_of == as_of:
             return ctx
         data = self.data
-        profile = profile_for(resolved_events(events, data.index, as_of, data.has_vec), data, as_of)
+        resolved = resolved_events(events, data.index, as_of, data.has_vec)
+        profile = profile_for(resolved, data, as_of)
+        # như `use_cases`: điểm xuất phát từ mọi event đã resolve; F14c khi engine bật và tag model khớp
+        origin = P.infer_origin(resolved, data.index.taxonomy, data.index.attrs.origin_city)
+        next_trip = bool(getattr(self.engine, "next_trip_scoring", False)) and P.calibration_applies(data.index.model_version)
         dest = profile.active_trip.destination if profile.active_trip is not None else None
         excluded = set(profile.active_trip.purchased_taxonomies) if profile.active_trip is not None else set()
         pop_dict = self.pop_scores(as_of, dest)
@@ -134,7 +145,8 @@ class CtxCache:
         for g, s in pop_dict.items():
             pop[g] = s
         ctx = UserCtx(user=user, as_of=as_of, profile=profile, seeds=seeds_for(profile), pop=pop, pop_dict=pop_dict, destination=dest,
-                      excluded=excluded, bought=set(profile.bought_units), user_row=data.user_rows.get(user))
+                      excluded=excluded, bought=bought_units(data.index, events), user_row=data.user_rows.get(user),
+                      origin=origin, next_trip_scoring=next_trip)
         self._cache[user] = ctx
         return ctx
 
@@ -142,10 +154,10 @@ class CtxCache:
 class AlgoArm:
     """Bọc một scorer thành arm của `bench.evaluate` (key, family, recommend → Ranked). `key = name` hoặc `name+mmr`."""
 
-    mean_meta = ("collabCoverage", "poolTruncated", "maskSize", "poolSize", "becauseCoverage", "becauseViolations")
+    mean_meta = ("collabCoverage", "poolTruncated", "maskSize", "poolSize", "becauseCoverage", "becauseViolations", "exploreFilled")
 
     def __init__(self, name: str, scorer: Scorer, cfg: FunnelCfg, ctx_cache: CtxCache, vector_search: VectorSearchPort | None,
-                 *, seed: int | None = None, because_k: int = 0):
+                 *, seed: int | None = None, because_k: int = 0, explore_fill: bool = True):
         """`seed` (ials/bpr nhiều seed): key `name-s<seed>[+mmr]`, family `name[+mmr]` → `bench.aggregate` gộp như arm random.
         `because_k` > 0: ghi because[] (dạng contract + `kind`) cho `ids[:because_k]` vào meta, cùng `becauseCoverage` (tỉ lệ item có
         ≥ 1 lý do; chỉ khách không phải popular) và `becauseViolations` (0/1 theo luật contract) — không đổi ids / metric chính."""
@@ -153,6 +165,7 @@ class AlgoArm:
             raise ValueError(f"because_k={because_k}: phải ≥ 0")
         self.name, self.scorer, self.cfg, self.ctx, self.vector_search, self.seed = name, scorer, cfg, ctx_cache, vector_search, seed
         self.because_k = int(because_k)
+        self.explore_fill = explore_fill    # như `OfflineEngine.explore_fill`; tắt khi engine chạy RECOMMEND_EXPLORE_FILL=false
         suffix = "+mmr" if cfg.rerank == "mmr" else ""
         self.family = name + suffix
         self.key = (f"{name}-s{seed}" if seed is not None else name) + suffix
@@ -167,9 +180,9 @@ class AlgoArm:
         ctx = self.ctx.get(cdp_user_id, as_of, events)
         profile = ctx.profile
         if cfg.mode == "raw":
-            mask, dest, done = raw_mask(index, profile), ctx.destination, ctx.excluded
+            mask, dest, done = raw_mask(index, profile, ctx.bought), ctx.destination, ctx.excluded
         else:
-            mask, dest, done = engine_mask(index, profile, exclude_taxonomy=cfg.mode != "noexcl")
+            mask, dest, done = engine_mask(index, profile, exclude_taxonomy=cfg.mode != "noexcl", bought=ctx.bought)
         pool_truncated = 0
         if cfg.pool == "engine" and profile.trips:
             cand = np.asarray(engine_pool(index, self.vector_search, ctx.pop_dict, profile, mask, data.has_vec, cfg), dtype=np.int64)
@@ -196,10 +209,25 @@ class AlgoArm:
             # vào MMR là các món phổ biến nhất trong số điểm cao nhất, không phải chỉ số unit nhỏ nhất
             cand_sorted = np.asarray(rank_none(score_full, cand, ctx.pop, data.product_ids, len(cand)), dtype=np.int64)
         if cfg.rerank == "mmr":
-            chosen = rank_mmr(score_full, data.E, [int(i) for i in cand_sorted[: cfg.pool_k]], index.taxonomy, k)
+            # cap điểm đến như engine (khi không có chuyến mở; request bench không khoá điểm đến) — chỉ ở cấu hình gương engine
+            # (mode funnel + pool engine), như ô khám phá; cấu hình nghiên cứu pool mask giữ MMR thuần
+            mirror = cfg.mode == "funnel" and cfg.pool == "engine"
+            cap = getattr(self.ctx.engine, "max_per_destination", None) if mirror and profile.active_trip is None else None
+            chosen = rank_mmr(score_full, data.E, [int(i) for i in cand_sorted[: cfg.pool_k]], index.taxonomy, k,
+                              destination=index.destination if cap else None, max_per_destination=cap)
         else:
             chosen = rank_none(score_full, cand, ctx.pop, data.product_ids, k)
         meta["poolTruncated"] = pool_truncated
+        # Ô khám phá của engine (FR-REC-02, 09/10): chỉ ở cấu hình gương engine (mode funnel + pool engine + mmr; `+mmr` ≡ arm
+        # `engine`, không mmr ≡ `engine_nommr` vốn không lấp) — cùng hàm `explore_fill`, nối sau món tại X; `exploreFilled` để tách
+        # phần ô B khi đọc bảng.
+        explore_n = 0
+        if (cfg.mode == "funnel" and cfg.pool == "engine" and cfg.rerank == "mmr" and self.explore_fill
+                and profile.active_trip is not None and len(chosen) < k):
+            picked = explore_fill(index, self.vector_search, profile.u_long, dest, ctx.bought, set(int(i) for i in chosen), k - len(chosen))
+            chosen = list(chosen) + [g for g, _ in picked]
+            explore_n = len(picked)
+        meta["exploreFilled"] = explore_n
         collab = self.scorer.collab_part(ctx, np.asarray(chosen, dtype=np.int64)) if chosen else None
         if collab is not None:
             meta["collabCoverage"] = float(np.mean(np.asarray(collab) > 0)) if len(collab) else 0.0

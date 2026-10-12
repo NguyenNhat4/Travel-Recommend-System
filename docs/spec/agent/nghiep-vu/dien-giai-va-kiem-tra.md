@@ -52,7 +52,7 @@ sequenceDiagram
 - **Không bịa giờ, giá.** Khám phá mà không tra ra nơi được hỏi: LLM được báo để tự nói là chưa kiểm được. Lượt trò chuyện
   (`converse`) mà câu LLM nêu giờ, giá, vé không có dữ liệu: code thay bằng câu cố định. Câu trả lời vé do code viết hoàn
   toàn.
-- Mọi câu trả lời (trừ chào hỏi) mở đầu bằng **Tiêu đề** in đậm.
+- Mọi câu trả lời (trừ chào hỏi, cảm ơn, chào tạm biệt khi người dùng không muốn đi nữa) mở đầu bằng **Tiêu đề** in đậm.
 
 ## Kiểm tra ở `finalize`
 

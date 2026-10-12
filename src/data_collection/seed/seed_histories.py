@@ -3,6 +3,7 @@
 Theo MOCK_DATA_SPEC §4–§5 (diễn giải cho chỗ mơ hồ: §0 "Điểm chốt 21/09"). **Không sửa products.jsonl**; đầu ra là file để nạp vào DB.
 
     python -m data_collection.seed.seed_histories [--data-dir data] [--out-dir data/seed] [--as-of YYYY-MM-DD] [--seed 42] [--profiles 2000]
+                                                  [--profile eval-v2|append-v1|g6-pref-v1] [--theme-pref 0.8]
 
 Quy tắc (mọi tỷ lệ, khoảng, trọng số nằm trong config.py):
   * 2.000 profile, cdp_user_id "VP" + 7 số tuần tự từ VP0000001 (4 persona giữ 1–4). Stage đích new 25 · active 45 · dormant 20 · churned 10.
@@ -156,9 +157,36 @@ class World:
             self.dest_cum.append(total)
         # hết lượt bốc lại: chuyến chỉ khách sạn ở điểm đến nặng nhất có phòng
         self.fallback_dest = max((d for d in self.dest_names if (d, "hotel") in self.buy), key=lambda d: (weight[d], d))
+        # §4.3 (g6-pref-v1): bể điểm đến theo chủ đề, CÙNG trọng số bookable tuyến tính của lần bốc toàn cục; chỉ điểm đến có trong
+        # cả DEST_THEMES[t] lẫn catalog. theme_mass = khối lượng bookable của chủ đề (mix mặc định khi THEME_MIX = None).
+        self.theme_pools: dict[str, tuple[list[str], list[float]]] = {}
+        self.theme_mass: dict[str, float] = {}
+        for theme, dests in C.DEST_THEMES.items():
+            members = set(dests)
+            names = [d for d in self.dest_names if d in members]
+            if not names:
+                continue
+            cum, total = [], 0.0
+            for d in names:
+                total += weight[d]
+                cum.append(total)
+            self.theme_pools[theme] = (names, cum)
+            self.theme_mass[theme] = total
 
-    def destination(self, rng: random.Random) -> str:
+    def destination(self, rng: random.Random, theme: str | None = None) -> str:
+        """Điểm đến theo trọng số bookable. `theme` (g6-pref-v1): với xác suất THEME_PREF_RATE bốc trong bể của chủ đề, còn lại bốc
+        toàn cục. theme None / THEME_PREF_RATE ≤ 0 / chủ đề không có bể → đúng đường cũ, cùng số lần gọi rng."""
+        if theme is not None and C.THEME_PREF_RATE > 0 and theme in self.theme_pools:
+            if rng.random() < C.THEME_PREF_RATE:
+                names, cum = self.theme_pools[theme]
+                return names[min(bisect.bisect_left(cum, rng.random() * cum[-1]), len(names) - 1)]
         return self.dest_names[min(bisect.bisect_left(self.dest_cum, rng.random() * self.dest_cum[-1]), len(self.dest_names) - 1)]
+
+    def theme_mix(self) -> dict[str, float]:
+        """Trọng số chọn chủ đề cho khách: THEME_MIX nếu đặt, không thì tỷ lệ khối lượng bookable của từng chủ đề trong catalog."""
+        if C.THEME_MIX:
+            return {t: w for t, w in C.THEME_MIX.items() if t in self.theme_pools}
+        return dict(self.theme_mass)
 
     @staticmethod
     def origin(home: str) -> str:
@@ -186,13 +214,14 @@ class World:
 
 
 # ------------------------------------------------------------------ chuyến đi
-def plan_trip(w: World, rng: random.Random, home: str) -> tuple[str, list[str]]:
-    """(điểm đến, danh sách vertical theo thứ tự checkout). 3% chuyến có golf, 65% chuyến ≥ 2 vertical (MOCK_DATA_SPEC §4)."""
+def plan_trip(w: World, rng: random.Random, home: str, theme: str | None = None) -> tuple[str, list[str]]:
+    """(điểm đến, danh sách vertical theo thứ tự checkout). 3% chuyến có golf, 65% chuyến ≥ 2 vertical (MOCK_DATA_SPEC §4).
+    `theme`: chủ đề ẩn của khách (§4.3), chuyển vào mọi lần bốc điểm đến."""
     r = rng.random()
     golf = r < C.GOLF_TRIP_RATE
     if golf or r < C.MULTI_VERTICAL_RATE:
         for _ in range(C.DEST_REDRAWS):
-            dest = w.destination(rng)
+            dest = w.destination(rng, theme)
             can_flight, can_ticket = w.has(dest, "flight", home), w.has(dest, "ticket", home)
             if w.has(dest, "hotel", home) and (w.has(dest, "golf", home) if golf else (can_flight or can_ticket)):
                 break
@@ -209,7 +238,7 @@ def plan_trip(w: World, rng: random.Random, home: str) -> tuple[str, list[str]]:
         return dest, ["hotel"] + ["flight"] * add_flight + ["ticket"] * add_ticket + ["golf"] * golf
     vertical = weighted(rng, C.SINGLE_VERTICAL_WEIGHTS)
     for _ in range(C.DEST_REDRAWS):
-        dest = w.destination(rng)
+        dest = w.destination(rng, theme)
         if w.has(dest, vertical, home):
             return dest, [vertical]
     return w.fallback_dest, ["hotel"]
@@ -321,17 +350,19 @@ def stage_plan(n_profiles: int) -> list[str]:
     return [s for s, n in counts.items() for _ in range(n)]
 
 
-def plan_generic(w: World, b: Builder, rng: random.Random, user: str, stage: str, home: str, as_of: date, max_events: int) -> None:
-    """Một khách thường: sinh chuyến theo giai đoạn; lifecycle_stage được tính lại từ event sau đó."""
+def plan_generic(w: World, b: Builder, rng: random.Random, user: str, stage: str, home: str, as_of: date, max_events: int,
+                 theme: str | None = None) -> None:
+    """Một khách thường: sinh chuyến theo giai đoạn; lifecycle_stage được tính lại từ event sau đó.
+    `theme`: chủ đề ẩn (§4.3, None = không sở thích) đi vào mọi lần bốc điểm đến của khách này."""
     views = lambda: rng.choices(range(1, len(C.VIEWS_PER_TRIP) + 1), C.VIEWS_PER_TRIP)[0]  # noqa: E731
     if stage == "new":
         if rng.random() >= C.NEW_VIEW_TRIP_RATE:
             return
-        dest = w.destination(rng)
+        dest = w.destination(rng, theme)
         for _ in range(C.DEST_REDRAWS):
             if dest in w.views:
                 break
-            dest = w.destination(rng)
+            dest = w.destination(rng, theme)
         t0 = at(as_of - timedelta(days=inclusive(rng, C.NEW_VIEW_DAYS_AGO)), rng)
         for k, target in enumerate(distinct_picks(w.views[dest], rng, views())):   # một chuyến chỉ có product_view, không mua
             ts = min(t0 + timedelta(minutes=inclusive(rng, C.NEW_VIEW_GAP_MIN) * k), end_of_day(t0))
@@ -344,7 +375,7 @@ def plan_generic(w: World, b: Builder, rng: random.Random, user: str, stage: str
     for _ in range(n_trips):
         if days_ago > oldest:
             break
-        dest, verticals = plan_trip(w, rng, home)
+        dest, verticals = plan_trip(w, rng, home, theme)
         if purchases and purchases + len(verticals) > max_events:   # purchase không bị cắt, nên không nhận thêm chuyến cũ vượt cap
             break
         purchases += len(b.trip(user, rng, dest, home, verticals, at(as_of - timedelta(days=days_ago), rng), n_views=views(),
@@ -352,7 +383,7 @@ def plan_generic(w: World, b: Builder, rng: random.Random, user: str, stage: str
         if C.ABANDONED_CART_RATE and rng.random() < C.ABANDONED_CART_RATE:   # profile eval: bỏ giỏ trước chuyến này
             back = days_ago + inclusive(rng, C.ABANDONED_DAYS_BEFORE)
             if back <= oldest:
-                a_dest, a_verticals = (dest, verticals) if rng.random() < C.ABANDONED_SAME_DEST_RATE else plan_trip(w, rng, home)
+                a_dest, a_verticals = (dest, verticals) if rng.random() < C.ABANDONED_SAME_DEST_RATE else plan_trip(w, rng, home, theme)
                 b.abandoned(user, rng, a_dest, home, a_verticals, at(as_of - timedelta(days=back), rng), n_views=views())
         days_ago += inclusive(rng, C.TRIP_GAP_DAYS)
 
@@ -419,7 +450,7 @@ def seed_personas(w: World, b: Builder, rng: random.Random, as_of: date) -> dict
     for days_ago, prop in zip(C.P2["view_days_ago"], distinct_picks(props, rng, n_views)):
         b.events.append(b.event(p2, "product_view", at(as_of - timedelta(days=days_ago), rng), prop))
 
-    for days_ago in C.P3["trip_days_ago"]:                              # P3: 2 chuyến Phú Quốc, chuyến cuối as_of − 190
+    for days_ago in C.P3["trip_days_ago"]:                              # P3: 2 chuyến Phú Quốc, chuyến cuối as_of − 400
         persona_trip(p3, C.P3, C.P3["verticals"], days_ago)
     return info
 
@@ -448,12 +479,14 @@ def messy_edges(w: World, b: Builder, rng: random.Random, max_events: int, n_pro
 
 # ------------------------------------------------------------------ chính
 class profile_overrides:
-    """Ghi đè hằng của config.py theo `config.PROFILES[name]` trong lúc sinh (None → seed demo, không đổi gì); khôi phục khi xong."""
+    """Ghi đè hằng của config.py theo `config.PROFILES[name]` trong lúc sinh (None → seed demo, không đổi gì); khôi phục khi xong.
+    `extra`: ghi đè thêm sau profile (vd `--theme-pref` → THEME_PREF_RATE)."""
 
-    def __init__(self, name: str | None):
+    def __init__(self, name: str | None, extra: dict | None = None):
         if name is not None and name not in C.PROFILES:
             raise SystemExit(f"--profile {name!r}: chỉ có {', '.join(C.PROFILES)}")
         self.values = dict(C.PROFILES[name]) if name else {}
+        self.values.update(extra or {})
         self.saved: dict = {}
 
     def __enter__(self):
@@ -468,9 +501,11 @@ class profile_overrides:
 
 
 def generate(rows: list[dict], as_of: date, seed: int = C.DEFAULT_SEED, n_profiles: int | None = None, zipf: float = C.ZIPF_S,
-             boost: float = C.VINPEARL_BOOST, max_events: int | None = None, profile: str | None = None) -> dict:
-    """`profile` (vd `eval-v2`): ghi đè tham số theo `config.PROFILES`; `n_profiles` / `max_events` None → giá trị của profile / demo."""
-    with profile_overrides(profile):
+             boost: float = C.VINPEARL_BOOST, max_events: int | None = None, profile: str | None = None,
+             theme_pref: float | None = None) -> dict:
+    """`profile` (vd `eval-v2`): ghi đè tham số theo `config.PROFILES`; `n_profiles` / `max_events` None → giá trị của profile / demo.
+    `theme_pref`: ghi đè THEME_PREF_RATE sau profile (None = theo profile / config)."""
+    with profile_overrides(profile, {"THEME_PREF_RATE": theme_pref} if theme_pref is not None else None):
         res = _generate(rows, as_of, seed, C.DEFAULT_USERS if n_profiles is None else n_profiles, zipf, boost,
                         C.MAX_EVENTS_PER_USER if max_events is None else max_events)
     res["profile"] = profile
@@ -488,10 +523,21 @@ def _generate(rows: list[dict], as_of: date, seed: int, n_profiles: int, zipf: f
     rng.shuffle(stages)
     homes: dict[str, str] = {p[0]: p[4] for p in C.PERSONAS}
     tiers: dict[str, str] = {p[0]: p[5] for p in C.PERSONAS}
+    # §4.3: chủ đề ẩn cho khách thường, stream RNG RIÊNG `{seed}|theme|{user}` nên không stream nào sẵn có bị dịch; persona luôn None.
+    # THEME_PREF_RATE = 0 (demo / eval-v2 / append-v1): không tạo stream, themes = {} → output không đổi byte.
+    themes: dict[str, str | None] = {}
+    theme_mix = w.theme_mix() if C.THEME_PREF_RATE > 0 else {}
+    if C.THEME_PREF_RATE > 0 and not theme_mix:
+        raise SystemExit("THEME_PREF_RATE > 0 nhưng catalog không có điểm đến nào thuộc DEST_THEMES (hoặc THEME_MIX không khớp)")
     for user, stage in zip(generic_ids, stages):
         homes[user] = weighted(rng, C.HOME_CITIES)
         tiers[user] = weighted(rng, C.VINCLUB_TIERS)
-        plan_generic(w, b, random.Random(f"{seed}|{user}"), user, stage, homes[user], as_of, max_events)
+        theme = None
+        if theme_mix:
+            trng = random.Random(f"{seed}|theme|{user}")
+            theme = None if trng.random() < C.THEME_NO_PREF_SHARE else weighted(trng, theme_mix)
+            themes[user] = theme
+        plan_generic(w, b, random.Random(f"{seed}|{user}"), user, stage, homes[user], as_of, max_events, theme)
 
     by_user: dict[str, list[dict]] = defaultdict(list)
     for e in b.events:
@@ -549,7 +595,36 @@ def _generate(rows: list[dict], as_of: date, seed: int, n_profiles: int, zipf: f
                "product_id": e["product_id"], "taxonomy": e["taxonomy"], "event_group_id": e["event_group_id"], "quantity": e["quantity"],
                "unit_price": e["unit_price"], "using_date": e["using_date"]} for e in b.events]
     return {"profiles": profiles, "events": events, "users": users, "bookings": b.bookings, "booking_items": b.booking_items,
-            "persona": persona_info, "world": w}
+            "persona": persona_info, "world": w, "themes": themes,
+            "theme_params": {"rate": C.THEME_PREF_RATE, "no_pref_share": C.THEME_NO_PREF_SHARE, "mix": theme_mix}}
+
+
+def theme_stats(res: dict) -> dict | None:
+    """§4.3: số khách theo chủ đề, số khách không sở thích, tỷ lệ chuyến (event_group_id, khách có chủ đề) đến điểm đến cùng chủ đề
+    và mức kỳ vọng ≈ p + (1 − p)·mass (mass = khối lượng bookable của chủ đề / tổng mọi điểm đến). None khi không có khách nào có nhãn."""
+    themes = res.get("themes") or {}
+    if not themes:
+        return None
+    w, params = res["world"], res["theme_params"]
+    counts = Counter(t for t in themes.values() if t)
+    seen: set[str] = set()
+    same = total = 0
+    expected = 0.0
+    total_mass = w.dest_cum[-1] if w.dest_cum else 0.0
+    pool_of = {t: set(names) for t, (names, _) in w.theme_pools.items()}
+    for e in res["events"]:
+        if e["event_name"] != "purchase" or not e["event_group_id"] or e["event_group_id"] in seen or e["product_id"] not in w.by_id:
+            continue
+        theme = themes.get(e["cdp_user_id"])
+        if not theme:
+            continue
+        seen.add(e["event_group_id"])
+        total += 1
+        same += w.by_id[e["product_id"]]["destination"] in pool_of.get(theme, set())
+        mass = w.theme_mass.get(theme, 0.0) / total_mass if total_mass else 0.0
+        expected += params["rate"] + (1 - params["rate"]) * mass
+    return {"per_theme": dict(sorted(counts.items())), "no_pref": sum(1 for t in themes.values() if not t), "trips": total,
+            "same_theme_share": same / total if total else None, "expected_share": expected / total if total else None}
 
 
 def recall_at_k(res: dict, k: int = C.RECALL_K) -> tuple[Counter, Counter]:
@@ -652,7 +727,15 @@ def report(res: dict, as_of: date, args: dict) -> tuple[str, dict]:
              f"- app.users: {len(res['users'])} ({len(C.PERSONAS)} persona + {C.TEST_USERS} test) · app.bookings: {len(res['bookings'])} · "
              f"app.booking_items: {len(res['booking_items'])}",
              f"- Profile sinh: **{res.get('profile') or 'demo'}** · khách thường có mua: {buyers}, quay lại (≥ 2 chuyến có event_group_id): "
-             f"{returning} ({100 * returning / max(1, buyers):.0f}%) · add_to_cart bỏ giỏ (không mua sau đó): {abandoned_carts}", "",
+             f"{returning} ({100 * returning / max(1, buyers):.0f}%) · add_to_cart bỏ giỏ (không mua sau đó): {abandoned_carts}"]
+    th = theme_stats(res)
+    if th:   # §4.3: chỉ khi profile có sở thích chủ đề (THEME_PREF_RATE > 0); demo không có dòng này
+        share = f"{100 * th['same_theme_share']:.1f}%" if th["same_theme_share"] is not None else "n/a"
+        target = f"{100 * th['expected_share']:.1f}%" if th["expected_share"] is not None else "n/a"
+        lines.append(f"- Sở thích chủ đề (ẩn, sidecar `user_themes.jsonl`): " + " · ".join(f"{k} {v}" for k, v in th["per_theme"].items())
+                     + f" · không sở thích {th['no_pref']} · chuyến của khách có chủ đề tới điểm đến cùng chủ đề: {share} / {th['trips']} "
+                     f"(mục tiêu ≈ p + (1 − p)·mass = {target}, p = {res['theme_params']['rate']})")
+    lines += ["",
              "`app.users.password_hash` là Argon2id của mật khẩu demo chung; email / số điện thoại là dữ liệu giả. "
              "Event `search` không có câu truy vấn (cdp.events không có cột này; `app.search_logs` không seed). "
              "Insider clone (`partners`, `insider_profiles`, `identifiers`, `insider_events`, `channel_events`) sinh từ các file này ở bước sau."]
@@ -677,15 +760,19 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--max-events", type=int, default=None, help=f"mặc định {C.MAX_EVENTS_PER_USER} (demo) hoặc theo --profile")
     ap.add_argument("--profile", choices=sorted(C.PROFILES), default=None,
                     help="bộ đánh giá RecSys (vd eval-v2): ghi đè tham số theo config.PROFILES; nạp vào database RIÊNG, không phải demo")
+    ap.add_argument("--theme-pref", type=float, default=None,
+                    help="ghi đè THEME_PREF_RATE (MOCK_DATA_SPEC §4.3) sau --profile; mặc định theo profile / config (demo 0 = tắt)")
     a = ap.parse_args(argv)
     out = a.out_dir or a.data_dir / "seed"
     with open(a.data_dir / "products.jsonl", encoding="utf-8") as f:
         rows = [json.loads(line) for line in f if line.strip()]
-    res = generate(rows, a.as_of, a.seed, a.profiles, a.zipf, a.vinpearl_boost, a.max_events, profile=a.profile)
+    res = generate(rows, a.as_of, a.seed, a.profiles, a.zipf, a.vinpearl_boost, a.max_events, profile=a.profile, theme_pref=a.theme_pref)
     out.mkdir(parents=True, exist_ok=True)
     for name, key in (("cdp_profiles", "profiles"), ("cdp_events", "events"), ("app_users", "users"), ("app_bookings", "bookings"),
                       ("app_booking_items", "booking_items")):
         write_jsonl(out / f"{name}.jsonl", res[key])
+    if res["themes"]:   # §4.3: nhãn chủ đề ẩn chỉ ra sidecar, không có cột DB
+        write_jsonl(out / "user_themes.jsonl", [{"cdp_user_id": u, "theme": t} for u, t in res["themes"].items()])
     max_events = a.max_events or (C.PROFILES.get(a.profile, {}).get("MAX_EVENTS_PER_USER") if a.profile else None) or C.MAX_EVENTS_PER_USER
     text, stats = report(res, a.as_of, {"seed": a.seed, "max_events": max_events})
     (out / "seed_report.md").write_text(text, encoding="utf-8")

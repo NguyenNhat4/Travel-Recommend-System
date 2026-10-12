@@ -1044,6 +1044,9 @@ def run_job(mode: str, trigger: str | None = None, run_id: str | None = None, fr
         print(chosen or '', flush=True)  # stdout = tên chế độ cho run_fresh_catalog_container.sh; log chỉ đi stderr
         with log.use_stream(sys.stderr):
             log.emit('catalog.due', f'catalog.due {chosen or "-"}: {reason}', mode=chosen or '-', reason=reason)
+            # run_fresh_catalog_container.sh chỉ gọi `due` rồi thoát khi không có lượt (tick rảnh không tới nhánh tick),
+            # nên dòng freshness phải phát ở đây thì mới có mỗi 15 phút (xem crawler_monitoring.tf).
+            emit_freshness(state_dir, run_root, values)
         return 0
     # An idle cron tick needs neither DB credentials nor an index connection.
     if mode == 'tick' and (lock_busy(state_dir) or scheduled()[0] is None):

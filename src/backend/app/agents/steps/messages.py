@@ -90,6 +90,9 @@ MESSAGES = {
         "fallback_noun_other": "sản phẩm",
         "note_unclear": "chưa hiểu tin nhắn, nhờ người dùng nói rõ hơn",
         "note_chat": "trò chuyện",
+        "note_stop": "người dùng dừng lên lịch: cảm ơn, hẹn gặp lại, không hỏi thêm",
+        "farewell": "Cảm ơn bạn đã trò chuyện cùng mình! Khi nào muốn đi, bạn cứ nhắn mình để lên kế hoạch nhé. "
+                    "Hẹn gặp lại bạn lần sau!",
         "note_fare": "báo giá vé máy bay một chiều {origin} → {destination}",
         "note_fare_anywhere": "so giá vé máy bay từ {origin} đi các nơi, rẻ/đắt nhất là {destination}",
         "note_explore": "giới thiệu {destination}: {names}",
@@ -485,6 +488,9 @@ MESSAGES = {
         "fallback_noun_other": "product(s)",
         "note_unclear": "did not understand the message, asked the user to rephrase",
         "note_chat": "small talk",
+        "note_stop": "the user stopped planning: thanked them and said goodbye, asked nothing",
+        "farewell": "Thanks for chatting with me! Whenever you'd like to travel, just message me and we'll plan it "
+                    "together. See you next time!",
         "note_fare": "gave one-way flight fares {origin} → {destination}",
         "note_fare_anywhere": "compared flight fares from {origin}; top pick {destination}",
         "note_explore": "introduced {destination}: {names}",
