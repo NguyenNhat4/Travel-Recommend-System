@@ -42,6 +42,10 @@ def event_datetime(event):
 def container_class(name, image):
     if name == "vota-fresh-catalog" or "vota-fresh-catalog@" in image:
         return "crawler"
+    # Container một lần của startup (docker:27-cli chạy `docker compose up -d` rồi thoát). Thoát là bình thường,
+    # không được đếm như service dừng (staging_container_stop lọc container_class="service").
+    if image.startswith("docker:"):
+        return "helper"
     return "service"
 
 

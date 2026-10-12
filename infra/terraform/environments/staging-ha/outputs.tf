@@ -12,6 +12,11 @@ output "instance_group" {
   value = google_compute_region_instance_group_manager.app.instance_group
 }
 
+output "ha_dashboard_url" {
+  description = "Dashboard nhóm HA trên Cloud Console (số VM, CPU và RAM từng VM, p95)."
+  value       = "https://console.cloud.google.com/monitoring/dashboards/builder/${basename(google_monitoring_dashboard.ha.id)}?project=${var.project_id}"
+}
+
 output "weaviate_url" {
   description = "Put in WEAVIATE_URL of the env secret (gRPC port stays 50051). Run the index job against it before the group takes traffic."
   value       = try("http://${google_compute_address.weaviate[0].address}:8080", null)
