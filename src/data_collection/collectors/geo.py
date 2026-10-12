@@ -80,6 +80,7 @@ DESTINATION_ALIASES: dict[str, list[str]] = {
     "Tam Kỳ": ["tam ky"],
     "Gia Nghĩa": ["gia nghia", "dak nong"],
     "Thái Bình": ["thai binh"],
+    "Tuyên Quang": ["tuyen quang"],  # "Vinpearl Onsen Resort Tuyên Quang" không có city → tên khách sạn từng thành điểm đến
 }
 
 # Tên tỉnh / thành cấp tỉnh: yếu hơn tên thành phố, địa danh. Sau sáp nhập 2025 nhiều địa chỉ ghi

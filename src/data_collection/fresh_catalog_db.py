@@ -349,7 +349,8 @@ def match_existing_hotels(fresh: list[dict], existing: list[dict], matches: dict
     by_dest: dict[str, list[dict]] = defaultdict(list)
     for row in existing:
         attrs = row["attributes"] or {}
-        if is_property(row.get("taxonomy"), attrs) and not attrs.get("mergedInto"):
+        # dòng mô phỏng (khách sạn của thành phần combo trùng tên khách sạn thật) không bao giờ nhận dữ liệu cào
+        if is_property(row.get("taxonomy"), attrs) and not attrs.get("mergedInto") and not str(row["source_ref"]).startswith("demo:"):
             by_dest[row.get("destination")].append(row)
     taken = {str(hits[0]["product_id"]) for hits in matches.values() if hits}
     out: dict[str, dict] = {}
@@ -463,6 +464,9 @@ def resolve_ref_conflicts(existing: list[dict]) -> tuple[dict[str, dict], list[t
 
 CALENDAR_VARIANTS = ("hotel_room", "attraction", "golf")
 SIMULATED_PREFIX = "demo:business:"
+# Dòng mô phỏng do seed/demo_data.py tự quản (cửa sổ, lịch, khoá theo ngày): apply_window không cuộn chúng (data-model.md §3.1).
+# `demo:room:*` không nằm đây: hạng phòng mô phỏng cuộn cửa sổ / lịch như phòng thật để khách sạn cha giữ trạng thái đặt được.
+MANAGED_PREFIXES = (SIMULATED_PREFIX, "demo:fill:", "demo:combo:", "demo:reverse:")
 
 
 def _seed_rules():
@@ -528,7 +532,7 @@ def apply_window(rows: list[dict], as_of: date) -> dict[str, dict]:
     after: dict[str, dict] = {}
     kinds: dict[str, str] = {}
     flight_days: dict[str, list[date]] = defaultdict(list)
-    simulated = {pid for pid, row in before.items() if str(row["source_ref"]).startswith(SIMULATED_PREFIX)}
+    simulated = {pid for pid, row in before.items() if str(row["source_ref"]).startswith(MANAGED_PREFIXES)}
     fixed = [row["attributes"] for pid, row in before.items() if pid not in simulated
              and meta.variant({"taxonomy": row["taxonomy"], "attributes": row["attributes"] or {}}) == "flight"
              and (row["attributes"] or {}).get("fixedDepartureDate")]
@@ -542,6 +546,11 @@ def apply_window(rows: list[dict], as_of: date) -> dict[str, dict]:
             trip_ids[trip] = min(trip_ids.get(trip, pid), pid)
     for pid, row in before.items():
         if pid in simulated:
+            fill = row["attributes"] or {}
+            day = _as_date(row.get("available_from"))
+            if (str(row["source_ref"]).startswith("demo:fill:") and row["available"] and day is not None
+                    and lo <= day <= hi):  # vé phủ ngày vẫn tính vào cửa sổ của tuyến, không cuộn lại
+                flight_days[fill.get("parentProductId") or ""].append(day)
             continue
         attrs = row["attributes"] or {}
         name, description = row.get("name"), row.get("description")
@@ -680,7 +689,9 @@ def maintain_catalog(url: str, *, today: date | None = None, now: datetime | Non
         with stages.stage("parse thành phần combo") as stage:
             combos = sync_combo_items(conn, rows=list(state.values()))
             stage.update({"in": combos.get("combos"), "changed": combos.get("combosChanged")})
-    return {"staleTrip": counts["staleTrip"], "windowRows": len(windowed), **simulated, **combos}
+        from data_collection.seed import demo_data
+        demo = demo_data.sync(conn, today)  # data-model.md §3.1: sau parse combo; dữ liệu demo, không ghi bước con cho monitor
+    return {"staleTrip": counts["staleTrip"], "windowRows": len(windowed), **simulated, **combos, **demo}
 
 
 def row_action(row: dict, previous: dict | None, fresh_ids: set[str]) -> str:
@@ -769,7 +780,7 @@ def combo_items_from_db(rows: list[dict], manual: dict[tuple[str, int], dict]) -
     gia mô phỏng. Trả (combo_product_id → dòng, số dòng duyệt tay bị bỏ vì trỏ tới sản phẩm không có / sai loại)."""
     from data_collection.seed import parse_combos
     live = [row for row in rows if not (row["attributes"] or {}).get("mergedInto")
-            and not str(row["source_ref"]).startswith(SIMULATED_PREFIX)]
+            and not str(row["source_ref"]).startswith("demo:")]  # chỉ khớp sản phẩm thật; dòng mô phỏng do demo_data nối
     views = [_catalog_view(row) for row in live]
     taxonomy = {view["productId"]: view["taxonomy"] for view in views}
     canonical = _canonical_ids(rows)
@@ -947,9 +958,10 @@ def load_into_db(products_path: Path, coverage_path: Path | None, url: str,
             combos = sync_combo_items(conn)
             counts.update(combos)
             stage.update({"in": combos.get("combos"), "changed": combos.get("combosChanged")})
-        from data_collection.seed import simulated_business
+        from data_collection.seed import demo_data, simulated_business
         # sau upsert + cửa sổ, cùng transaction (data-model.md §3); dữ liệu demo nên không hiện thành bước con trên monitor
         counts.update(simulated_business.sync(conn))
+        counts.update(demo_data.sync(conn, date.fromisoformat(seen_at)))  # data-model.md §3.1, sau parse combo
     # Publish the report only after the connection context has committed successfully.
     if report_path is not None and quarantine:
         (report_path.parent / "db_quarantine.jsonl").write_text(

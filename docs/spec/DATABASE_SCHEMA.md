@@ -87,8 +87,8 @@ erDiagram
         uuid product_id PK "VIEW — suy từ products"
         text variant "7 biến thể"
         boolean is_bookable
-        boolean is_search_unit
-        boolean is_recommendable "false: property không có phòng đặt được"
+        boolean is_search_unit "false: phòng, chuyến bay, comboOnly"
+        boolean is_recommendable "false: property không có phòng đặt được, comboOnly"
         uuid parent_product_id
         float latitude
         float longitude
@@ -108,6 +108,7 @@ erDiagram
         text source "description_parse · manual · api"
         numeric confidence "0–1, độ tin của bước map"
         text evidence "đoạn description đã khớp"
+        numeric price_share "phần giá của dòng có sản phẩm; tổng = giá combo; dịch vụ đi kèm NULL"
     }
     dịch vụ vector bên ngoài {
         uuid product_id PK,FK "chỉ is_search_unit"
@@ -440,7 +441,7 @@ erDiagram
 | `profiles` | cdp | Profile Store: lifecycle, đơn hàng, tier, vertical đã mua, opt-in | seed_histories · rebuild_profiles | 2.000 |
 | `events` | cdp | Event Store: view · search · add_to_cart · purchase, theo chuyến | seed_histories · backend | ~7.000 |
 | `product_meta`, `product_parents`, `search_rows` | catalog | View suy từ products | — | — |
-| `combo_items` | catalog | Thành phần combo, parse từ description | parse_combos | 93 combo → ~250 dòng |
+| `combo_items` | catalog | Thành phần combo, parse từ description; `price_share` = phần giá combo, sản phẩm thành phần mô phỏng (migration `0010`) | parse_combos · combo_components | 93 combo → ~250 dòng |
 | `users` | app | Credential + persona demo, 1:1 profile | seed + register | 4 persona + 50 test |
 | `carts`, `cart_items` | app | Giỏ phía server, một giỏ / user. Chỉ chứa `attraction`, `golf`, `combo` (FR-BKG-01); khách sạn và vé máy bay đi qua đơn nháp | backend | 0 |
 | `booking_drafts`, `booking_draft_items` | app | Đơn nháp của một lần "Đặt ngay" (FR-BKG-01, migration `0007_booking_drafts.sql`): chỉ các mục của lần đặt đó, hết hiệu lực sau 30 phút, không giữ chỗ; xoá khi tạo đơn giữ chỗ hoặc khi dọn bản ghi hết hạn. Giỏ và đơn nháp của khách chưa đăng nhập nằm ở Redis, không có bảng (`docs/spec/booking/dat-truc-tiep-theo-don-nhap.md` §8) | backend | 0 |
@@ -639,10 +640,13 @@ SELECT
     (COALESCE(p.attributes->>'level', '') NOT IN ('property', 'route')
      AND COALESCE((p.attributes->>'ticketed')::boolean, true)
      AND p.unit_price IS NOT NULL)                              AS is_bookable,
-    (COALESCE(p.attributes->>'level', '') NOT IN ('room', 'flight')) AS is_search_unit,
+    -- comboOnly: sản phẩm thành phần combo mô phỏng (PRD data-model §3.1, chốt 09/10/2026) — chỉ đặt qua combo, không tìm/gợi ý.
+    (COALESCE(p.attributes->>'level', '') NOT IN ('room', 'flight')
+     AND NOT COALESCE((p.attributes->>'comboOnly')::boolean, false)) AS is_search_unit,
     -- được gợi ý: search unit và (tự đặt được, hoặc có ít nhất một con đặt được).
     -- 243 property không có hạng phòng → false: vẫn search ra, chỉ hiển thị, không vào /recommendations (availability precision ≥ 95%).
     (COALESCE(p.attributes->>'level', '') NOT IN ('room', 'flight')
+     AND NOT COALESCE((p.attributes->>'comboOnly')::boolean, false)
      AND (
         (COALESCE(p.attributes->>'level', '') NOT IN ('property', 'route')
          AND COALESCE((p.attributes->>'ticketed')::boolean, true) AND p.unit_price IS NOT NULL)
@@ -683,6 +687,7 @@ CREATE TABLE catalog.combo_items (
                       CHECK (source IN ('description_parse','manual','api')),
     confidence        numeric(3,2) CHECK (confidence BETWEEN 0 AND 1), -- độ tin của bước map sang product
     evidence          text,                                          -- đoạn description đã khớp, để soát tay
+    price_share       numeric(14,2) CHECK (price_share >= 0),        -- phần giá combo của dòng có sản phẩm; tổng = giá combo (09/10)
     PRIMARY KEY (combo_product_id, position),
     CONSTRAINT combo_items_combo_fk FOREIGN KEY (combo_product_id, combo_taxonomy)
         REFERENCES cdp.products (product_id, taxonomy) ON DELETE CASCADE,

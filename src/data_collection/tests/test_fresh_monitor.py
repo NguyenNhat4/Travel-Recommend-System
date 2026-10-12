@@ -85,7 +85,7 @@ class SettingsTests(Workspace):
 
     def test_schedule_once_per_vietnam_day(self):
         cfg = settings.load(self.state, {})
-        now = datetime(2026, 9, 25, 2, 15, tzinfo=VN)
+        now = datetime(2026, 9, 25, 8, 45, tzinfo=VN)  # sau giờ mặc định 08:35
         self.assertIsNone(settings.scheduled_mode(cfg, self.state, now.replace(hour=1))[0])
         self.assertEqual(settings.scheduled_mode(cfg, self.state, now)[0], 'full')
         settings.mark_scheduled(self.state, RUN_ID, now.date())

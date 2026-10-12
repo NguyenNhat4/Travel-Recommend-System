@@ -100,6 +100,7 @@ details{margin:10px 0}summary{cursor:pointer}
 .sx b{display:block;font-size:12px}.sx small{display:block;color:var(--muted)}
 .sx[data-st=ok]{border-left-color:var(--good)}.sx[data-st=running]{border-left-color:var(--brand)}
 .sx[data-st=error]{border-left-color:var(--bad)}.sx[data-st=partial],.sx[data-st=skipped]{border-left-color:#d69a00}
+.sx[data-planned],.substep[data-planned]{opacity:.6;border-style:dashed}
 .strip{display:flex;gap:3px}.cell{display:inline-block;width:22px;height:18px;padding:0;border-radius:4px;border:1px solid var(--line);background:#eef0f3;cursor:pointer}
 .cell[data-st=ok]{background:#9bd9bb;border-color:#7cc8a4}.cell[data-st=running],.cell[data-st=waiting],.cell[data-st=draft]{background:#a9c5ff;border-color:#86abf5}
 .cell[data-st=error],.cell[data-st=dead],.cell[data-st=failed]{background:#f19aa6;border-color:#e27584}.cell[data-st=blocked],.cell[data-st=timeout],.cell[data-st=stopped],.cell[data-st=skipped]{background:#ffd27a;border-color:#eab54a}
@@ -131,7 +132,7 @@ const $=s=>document.querySelector(s), main=$('#main');
 const esc=v=>String(v??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const pretty=v=>`<pre>${esc(typeof v==='string'?v:JSON.stringify(v,null,2))}</pre>`;
 const labels={ok:'Xong',running:'Đang chạy',partial:'Chưa đủ dữ liệu',failed:'Thất bại',dead:'Mất tiến trình',stopped:'Đã dừng',error:'Lỗi',blocked:'Bị chặn',timeout:'Quá giờ',unknown:'Chưa rõ',
- waiting:'Chờ tới lượt',skipped:'Bị bỏ qua',notRun:'Không chạy',empty:'Không có dữ liệu',disabled:'Đã tắt',notInMode:'Không thuộc lượt',
+ waiting:'Chờ tới lượt',skipped:'Bị bỏ qua',notRun:'Không chạy',noData:'Chưa ghi số liệu',empty:'Không có dữ liệu',disabled:'Đã tắt',notInMode:'Không thuộc lượt',
  lost:'Mất nguồn',draft:'Đang gộp dần',embedded:'Nhúng mới',unchanged:'Giữ nguyên',deleted:'Đã xoá',orphan:'Mồ côi',pending:'Chưa nhúng',paused:'Tạm dừng'};
 const reasons={new:'sản phẩm mới',text:'text đổi',model:'đổi model',uuid:'dời id object'};
 const badge=v=>`<span class="status ${esc(v)}">${esc(labels[v]||v)}</span>`;
@@ -143,7 +144,7 @@ const card=(title,body,extra='')=>`<section class="card" ${extra}><h2>${esc(titl
 const table=(heads,rows,rowClass=()=> '')=>rows.length?`<div class="scroll"><table><thead><tr>${heads.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map((r,i)=>`<tr class="${rowClass(i)}">${r.map(c=>`<td>${c??'—'}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`:'<div class="empty-box">Chưa có dữ liệu.</div>';
 const bar=(done,total)=>total?`<div class="bar"><i style="width:${Math.min(100,Math.round(100*done/total))}%"></i></div>`:'';
 const select=(name,options,value,all='Tất cả')=>`<select name="${esc(name)}" aria-label="${esc(name)}"><option value="">${esc(all)}</option>${Object.entries(options||{}).map(([k,n])=>`<option value="${esc(k)}" ${k===value?'selected':''}>${esc(k)} (${num(n)})</option>`).join('')}</select>`;
-const S={expanded:new Set(),view:'overview',run:null,tab:null,node:null,graph:null,gtimer:null,timer:null,es:null,list:null,runData:null,preview:false,log:{lines:[],group:'',level:'',q:'',follow:true,paused:false,ended:false},settings:null};
+const S={expanded:new Set(),view:'overview',run:null,tab:null,node:null,graph:null,gtimer:null,timer:null,es:null,list:null,runData:null,preview:false,log:{lines:[],group:'',level:'',q:'',step:'',sub:'',follow:true,paused:false,ended:false},settings:null};
 
 const PREVIEWABLE=/^\/api\/(normalise|products?|cities)(\/|$)/;
 async function api(path,params={},body){const url=new URL(path,location.origin);if(S.view==='run'&&S.preview&&PREVIEWABLE.test(path))url.searchParams.set('preview','1');Object.entries(params).forEach(([k,v])=>{if(v!==undefined&&v!==null&&v!=='')url.searchParams.set(k,v)});const response=await fetch(url,{cache:'no-store',...(body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json','X-Requested-With':'vota-monitor'},body:JSON.stringify(body)})});const data=await response.json();if(!response.ok)throw Error(typeof data.error==='string'?data.error:JSON.stringify(data.error||data));return data}
@@ -220,8 +221,8 @@ function streamControl(e){if(!e)return '';if(!e.enabled)return `<p class="muted"
 const RESUME_LABEL={crawl:'Cào lại nguồn này',normalise:'Chạy lại từ bước này',merge:'Chỉ gộp lại từ checkpoint',validate:'Chạy lại từ bước này',db:'Chạy lại từ bước này',index:'Chạy lại từ bước này'};
 function resumeButtons(n){if(!n?.resume?.length)return '';const crawl=n.resume.includes('crawl');return `<div class="actions">${n.resume.map(f=>button(RESUME_LABEL[f],'resume',f==='crawl'?{run:S.run,from:f,source:n.lane}:{run:S.run,from:f},f==='merge'?'small':'primary small')).join('')}<small class="muted">${crawl?'Chỉ cào lại nguồn này (tiếp tục từ tiến độ đã lưu), dùng lại dữ liệu của các nguồn khác rồi chạy tiếp tới nạp DB và index.':'Không cào lại; dùng lại interim, checkpoint, catalog của lượt này rồi chạy tiếp tới nạp DB và index.'}</small></div>`}
 function nodeStreamControl(n){const key=streamKey(n);if(!key||S.runData?.status!=='running'||!S.live?.running||S.live.runId!==S.run)return '';return streamControl((S.live.stream||[]).find(x=>x.key===key))}
-const BIG_STEPS=new Set(['maintain','normalise','validate','db','index']);  // log: catalog.step.* + catalog.substep name=<bước>:…
-function nodeLog(n){if(!n)return {group:'',q:''};if(n.col==='crawl')return {group:LANE_LOG[n.lane]||'',q:''};if(n.id.startsWith(NS))return {group:'',q:`[normalise:${n.id.slice(NS.length)}]`};if(BIG_STEPS.has(n.id))return {group:'',q:`name=${n.id}`};return {group:'job',q:''}}
+const BIG_STEPS=new Set(['maintain','normalise','validate','db','index']);  // log: catalog.step.* + catalog.substep name=<bước>:… (stepLine)
+function nodeLog(n){const f={group:'',q:'',step:'',sub:''};if(!n)return f;if(n.col==='crawl')return {...f,group:LANE_LOG[n.lane]||''};if(n.id.startsWith(NS))return {...f,q:`[normalise:${n.id.slice(NS.length)}]`};if(BIG_STEPS.has(n.id))return {...f,step:n.id};return {...f,group:'job'}}
 const currentNode=()=>S.graph?.nodes.find(n=>n.id===S.node)||null;
 const stepOf=id=>[...(S.runData?.steps||[])].reverse().find(s=>s.name===id);
 // UI6: % hoàn thành (node.progress / bước con .percent) — đang chạy chưa biết tổng thì sọc chạy
@@ -234,7 +235,7 @@ function subHtml(x,parent){// vào → ra (bớt = dòng bị lọc / gộp); b�
  const dropped=x.changed==null&&x.in!=null&&x.out!=null&&x.out<x.in?` <span class="wtext">(bớt ${num(x.in-x.out)})</span>`:'';
  const okt=x.ok!=null&&x.total?`<span class="pct">${x.percent}%</span> · ${num(x.ok)}/${num(x.total)} đạt`:'';
  const tip=[x.description,x.note,x.error].filter(Boolean).join('\n');
- return `<button type="button" class="sx${fillClass(x,x.status)}" data-subof="${esc(parent)}" data-sub="${esc(x.name)}" data-st="${esc(x.status)}"${fillAttrs(x,x.status)} title="${esc((tip?tip+'\n':'')+'Bấm để xem log của bước này')}"><b>${esc(x.name)}</b><small>${esc(labels[x.status]||x.status)}${x.seconds!=null?` · ${esc(x.seconds)} s`:''}${x.ramMb!=null?` · RAM ${num(x.ramMb)} MB`:''}</small>${io?`<small>${io}${dropped}</small>`:''}${okt?`<small>${okt}</small>`:''}${x.note?`<small>${esc(x.note)}</small>`:''}${x.error?`<small class="minus">${esc(x.error)}</small>`:''}</button>`}
+ return `<button type="button" class="sx${fillClass(x,x.status)}" data-subof="${esc(parent)}" data-sub="${esc(x.name)}" data-st="${esc(x.status)}"${x.planned?' data-planned':''}${fillAttrs(x,x.status)} title="${esc((x.status==='noData'?'Bước con đã chạy cùng bước lớn, nhưng lượt này chạy trước khi job ghi số liệu từng bước con (từ 08/10/2026).\n':x.planned?'Chưa có số liệu ở lượt này.\n':'')+(tip?tip+'\n':'')+'Bấm để xem log của bước này')}"><b>${esc(x.name)}</b><small>${esc(labels[x.status]||x.status)}${x.seconds!=null?` · ${esc(x.seconds)} s`:''}${x.ramMb!=null?` · RAM ${num(x.ramMb)} MB`:''}</small>${io?`<small>${io}${dropped}</small>`:''}${okt?`<small>${okt}</small>`:''}${x.note?`<small>${esc(x.note)}</small>`:''}${x.error?`<small class="minus">${esc(x.error)}</small>`:''}</button>`}
 function chainHtml(n){return `<div class="chain" aria-label="Các bước bên trong ${esc(n.label)}">${n.substeps.map(x=>subHtml(x,n.id)).join('<span class="arr" aria-hidden="true">→</span>')}</div>`}
 const expandable=n=>S.view==='run'&&(n.substeps||[]).length>0;
 function nodeHtml(n){const bits=[];const secs=n.seconds??(n.status==='running'&&n.startedAt?Math.round((Date.now()-new Date(n.startedAt))/1000):null);if(secs!=null)bits.push(`${esc(secs)} s`);
@@ -309,7 +310,7 @@ const VARIANT_HELP={official:'Bước Gộp chính thức sau khi mọi site cà
 async function renderSteps(){const d=await api('/api/substeps',{run:S.run,node:S.node,variant:S.variant||''});const t=$('#tab');if(S.tab!=='steps'||!t)return;
  const max=Math.max(...d.steps.map(x=>x.seconds||0),0.001),total=d.steps.reduce((a,x)=>a+(x.seconds||0),0);
  const pick=d.variants.length>1?`<div class="actions">${d.variants.map(v=>button(VARIANTS[v],'variant',{variant:v},v===d.variant?'primary small':'small')).join('')}</div>`:'';
- const flow=d.steps.length?`<div class="substeps">${d.steps.map((x,i)=>`<div class="substep" data-st="${esc(x.status)}"><div class="meta"><strong>${i+1}. ${esc(x.name)}</strong>${badge(x.status)}<small>${x.seconds==null?'—':esc(x.seconds)+' s'} · ${num(x.rowsIn)} → ${num(x.rowsOut)}${x.peakRssMb?` · RAM ${num(x.peakRssMb)} MB`:''}</small></div>${bar(x.seconds||0,max)}<p class="muted">${esc(x.description||'')}</p>${x.error?`<p class="minus">${esc(x.error)}</p>${x.traceback?button('Xem traceback','json',{title:x.name,data:x.traceback},'small'):''}`:''}</div>`).join('<span class="arrow">↓</span>')}</div>`:'<p class="muted">Chưa có số liệu bước con: bước chưa chạy, hoặc lượt chạy bằng bản cũ.</p>';
+ const flow=(d.steps.length&&d.steps.every(x=>x.planned)?'<p class="muted">Chưa gộp lần nào ở lượt này: dưới đây là các bước con sẽ chạy.</p>':'')+(d.steps.length?`<div class="substeps">${d.steps.map((x,i)=>`<div class="substep" data-st="${esc(x.status)}"${x.planned?' data-planned':''}><div class="meta"><strong>${i+1}. ${esc(x.name)}</strong>${badge(x.status)}<small>${x.seconds==null?'—':esc(x.seconds)+' s'} · ${num(x.rowsIn)} → ${num(x.rowsOut)}${x.peakRssMb?` · RAM ${num(x.peakRssMb)} MB`:''}</small></div>${bar(x.seconds||0,max)}<p class="muted">${esc(x.description||'')}</p>${x.error?`<p class="minus">${esc(x.error)}</p>${x.traceback?button('Xem traceback','json',{title:x.name,data:x.traceback},'small'):''}`:''}</div>`).join('<span class="arrow">↓</span>')}</div>`:'<p class="muted">Chưa có số liệu bước con: bước chưa chạy, hoặc lượt chạy bằng bản cũ.</p>');
  const drafts=d.drafts.length?card(`Các lần gộp trong lúc cào (${d.drafts.length})`,table(['Lần','Lúc','Nhóm site đã xong','Nguồn','Dòng','Giây','Trạng thái'],d.drafts.slice().reverse().map(x=>[esc(x.n),esc(when(x.startedAt)),esc((x.groups?Object.keys(x.groups):[]).join(', ')),esc((x.sources||[]).join(', ')),num(x.rows),esc(x.seconds),badge(x.status)]))):'';
  const batches=d.batches.length?card(`Các lô chạy liên tục (${d.batches.length} gần nhất)`,table(['Lô','Lúc','Bản ghi mới','Bản ghi sau bỏ trùng','Ánh xạ mới','Dòng','Lỗi','Giây'],d.batches.slice().reverse().map(x=>[esc(x.n)+(x.final?' <small>(chốt)</small>':''),esc(when(x.at)),num(x.newRecords),num(x.records),num(x.mapped),num(x.rows),x.errors?`<span class="minus">${num(x.errors)}</span>`:'0',esc(x.seconds)]))):'';
  t.innerHTML=card(`Các bước bên trong${d.variant?' — '+VARIANTS[d.variant]:''}`,`${pick}<p class="muted">${esc(VARIANT_HELP[d.variant]||'')} ${d.steps.length?`Tổng ${total.toFixed(3)} giây.`:''}</p>${flow}`)+drafts+batches}
@@ -378,14 +379,30 @@ async function tabCities(){await renderCities();if(S.runData?.status==='running'
 const GROUPS={'':'Tất cả',vinpearl:'Vinpearl',trip:'trip.com vé/điểm',booking:'booking.com',agoda:'agoda.com',tripHotels:'Khách sạn Trip',preview:'Catalog đang gộp',job:'Job (bước, DB, index)'};
 function lineGroup(line){const m=line.match(/^\d\d:\d\d:\d\d \[([a-z]+)\]/);if(m)return m[1];if(/ Trip meta | Trip \d+@|trip_hotels/.test(line))return 'tripHotels';return 'job'}
 function lineClass(line){if(/ (ERROR|CRITICAL) |Traceback|failed|Error:/.test(line))return 'e';if(/ WARNING |bị chặn|Bị chặn/.test(line))return 'w';if(/catalog\.(step|group)\./.test(line))return 's';if(/live\.control/.test(line))return 'g';return ''}
-function lineMatch(line){const L=S.log;if(L.group&&lineGroup(line)!==L.group)return false;if(L.level==='warn'&&!lineClass(line).match(/[we]/))return false;if(L.level==='error'&&lineClass(line)!=='e')return false;if(L.q&&!line.toLowerCase().includes(L.q))return false;return true}
+// Dòng của một bước lớn / bước con: catalog.step.* và catalog.substep name=<bước>[:<con>]. Bước Gộp thêm dòng
+// normalise.step.* của normalise.StepClock (gộp chính thức trong tiến trình job; bản nháp có tiền tố [preview]), cả log
+// "Catalog đang gộp" (mọi dòng [preview], catalog.preview.*, start/done của normalise.preview); dòng của chuẩn hoá theo nguồn ([normalise:<nguồn>]) thuộc ô
+// của nguồn đó. `name=<bước>` khớp đúng tên bước (không lấy normalise.source:… / normalise.preview của ô khác).
+// Gộp chính thức chạy trong tiến trình job nên log của nó (Đọc …jsonl, Khách sạn: …, Đã ghi …, WARNING) không có tiền tố:
+// lấy mọi dòng không tiền tố nằm giữa `catalog.step.start name=normalise` và dòng catalog.step / run.end kế tiếp
+// (trackMerge, gọi theo thứ tự dòng; renderLog đặt lại trạng thái trước khi lọc).
+const CLOCK_LINE=/ normalise\.step\.(?:start|done|failed) name=(.+?) (?:in|seconds|error)=/;
+const reEsc=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+function trackMerge(line){const L=S.log;if(/catalog\.step\.start name=normalise(?: |$)/.test(line)){L.inMerge=true;return true}
+ const was=!!L.inMerge;if(/catalog\.step\.(?:start|done) name=| run\.end /.test(line))L.inMerge=false;return was}
+function stepLine(line,step,sub,inMerge){if(step==='normalise'&&!line.includes('[normalise:')){const m=line.match(CLOCK_LINE);if(m)return !sub||m[1]===sub;if(!sub&&(lineGroup(line)==='preview'||/catalog\.(?:preview\.|step\.\w+ name=normalise\.preview )/.test(line)||(inMerge&&lineGroup(line)==='job')))return true}
+ return sub?line.includes(`catalog.substep name=${step}:${sub} `):new RegExp(`name=${reEsc(step)}(?:[ :]|$)`).test(line)}
+function stepChip(){const L=S.log;if(!L.step)return '';const n=S.graph?.nodes.find(x=>x.id===L.step);
+ return `<small class="muted">Đang lọc theo bước:</small> <span class="status running">${esc(n?.label||L.step)}${L.sub?' › '+esc(L.sub):''}</span> <button type="button" id="logStepClear" class="small">Bỏ lọc bước</button>`}
+function lineMatch(line){const L=S.log;const inMerge=trackMerge(line);if(L.group&&lineGroup(line)!==L.group)return false;if(L.step&&!stepLine(line,L.step,L.sub,inMerge))return false;if(L.level==='warn'&&!lineClass(line).match(/[we]/))return false;if(L.level==='error'&&lineClass(line)!=='e')return false;if(L.q&&!line.toLowerCase().includes(L.q))return false;return true}
 function lineHtml(line){const m=line.match(/^(\d\d:\d\d:\d\d) (\[[a-z]+\] )?(.*)$/);const cls=lineClass(line);return m?`<div class="${cls}"><span class="d">${esc(m[1])}</span> <span class="tag">${esc((m[2]||'').trim())}</span>${esc(m[3])}</div>`:`<div class="${cls}">${esc(line)}</div>`}
-function renderLog(){const box=$('#logbox');if(!box)return;const shown=S.log.lines.filter(lineMatch).slice(-4000);box.innerHTML=shown.map(lineHtml).join('')||'<div class="d">Chưa có dòng nào khớp bộ lọc.</div>';$('#logCount').textContent=`${num(shown.length)} / ${num(S.log.lines.length)} dòng`;if(S.log.follow)box.scrollTop=box.scrollHeight}
+function renderLog(){const box=$('#logbox');if(!box)return;S.log.inMerge=false;const shown=S.log.lines.filter(lineMatch).slice(-4000);box.innerHTML=shown.map(lineHtml).join('')||'<div class="d">Chưa có dòng nào khớp bộ lọc.</div>';$('#logCount').textContent=`${num(shown.length)} / ${num(S.log.lines.length)} dòng`;if(S.log.follow)box.scrollTop=box.scrollHeight}
 function appendLog(lines){S.log.lines.push(...lines);if(S.log.lines.length>20000)S.log.lines.splice(0,S.log.lines.length-20000);if(S.log.paused)return;const box=$('#logbox');if(!box)return;const add=lines.filter(lineMatch);if(!add.length)return;box.insertAdjacentHTML('beforeend',add.map(lineHtml).join(''));while(box.childElementCount>4000)box.firstElementChild.remove();$('#logCount').textContent=`${num(box.childElementCount)} / ${num(S.log.lines.length)} dòng`;if(S.log.follow)box.scrollTop=box.scrollHeight}
 async function tabLog(){const L=S.log;L.lines=[];L.ended=false;const t=$('#tab');
- t.innerHTML=card('Log trực tiếp (job.log của lượt)',`<div class="logbar"><select id="logGroup" aria-label="Nguồn">${Object.entries(GROUPS).map(([k,v])=>`<option value="${k}" ${k===L.group?'selected':''}>${esc(v)}</option>`).join('')}</select><select id="logLevel" aria-label="Mức"><option value="">Mọi mức</option><option value="warn" ${L.level==='warn'?'selected':''}>Cảnh báo + lỗi</option><option value="error" ${L.level==='error'?'selected':''}>Chỉ lỗi</option></select><input id="logQ" type="search" placeholder="Lọc chữ (URL, mã HTTP, id…)" value="${esc(L.q)}" aria-label="Lọc log"><label><input id="logFollow" type="checkbox" ${L.follow?'checked':''}> Tự cuộn</label><button type="button" id="logPause">${L.paused?'Tiếp tục hiển thị':'Tạm dừng hiển thị'}</button><button type="button" id="logReload">Tải lại</button><span id="logState" class="status running">Đang kết nối…</span><small id="logCount"></small></div><div id="logbox" class="logbox" tabindex="0" aria-label="Log"></div><p class="muted">Dòng có [nhóm] là của tiến trình crawl.py từng site; “Trip meta”/“Trip &lt;id&gt;@ngày” là khách sạn Trip; “catalog.step/group” là mốc bước. Nguồn cần hiển thị nhiều hơn: bật “Log chi tiết từng request” ở Cấu hình.</p>`);
+ t.innerHTML=card('Log trực tiếp (job.log của lượt)',`<div class="logbar"><select id="logGroup" aria-label="Nguồn">${Object.entries(GROUPS).map(([k,v])=>`<option value="${k}" ${k===L.group?'selected':''}>${esc(v)}</option>`).join('')}</select><select id="logLevel" aria-label="Mức"><option value="">Mọi mức</option><option value="warn" ${L.level==='warn'?'selected':''}>Cảnh báo + lỗi</option><option value="error" ${L.level==='error'?'selected':''}>Chỉ lỗi</option></select><input id="logQ" type="search" placeholder="Lọc chữ (URL, mã HTTP, id…)" value="${esc(L.q)}" aria-label="Lọc log"><label><input id="logFollow" type="checkbox" ${L.follow?'checked':''}> Tự cuộn</label><button type="button" id="logPause">${L.paused?'Tiếp tục hiển thị':'Tạm dừng hiển thị'}</button><button type="button" id="logReload">Tải lại</button><span id="logState" class="status running">Đang kết nối…</span><small id="logCount"></small></div><div id="logStep" class="badge-row">${stepChip()}</div><div id="logbox" class="logbox" tabindex="0" aria-label="Log"></div><p class="muted">Dòng có [nhóm] là của tiến trình crawl.py từng site; “Trip meta”/“Trip &lt;id&gt;@ngày” là khách sạn Trip; “catalog.step/group” là mốc bước. Nguồn cần hiển thị nhiều hơn: bật “Log chi tiết từng request” ở Cấu hình.</p>`);
  $('#logGroup').onchange=e=>{L.group=e.target.value;renderLog()};$('#logLevel').onchange=e=>{L.level=e.target.value;renderLog()};$('#logQ').oninput=e=>{L.q=e.target.value.toLowerCase();renderLog()};
  $('#logFollow').onchange=e=>{L.follow=e.target.checked;if(L.follow)renderLog()};$('#logPause').onclick=e=>{L.paused=!L.paused;e.target.textContent=L.paused?'Tiếp tục hiển thị':'Tạm dừng hiển thị';if(!L.paused)renderLog()};$('#logReload').onclick=()=>tabLog();
+ if($('#logStepClear'))$('#logStepClear').onclick=()=>{L.step='';L.sub='';$('#logStep').innerHTML='';renderLog()};
  const es=new EventSource(`/api/log/stream?run=${encodeURIComponent(S.run)}&lines=2000`);S.es=es;const st=$('#logState');
  es.addEventListener('init',e=>{L.lines=JSON.parse(e.data).lines;renderLog();st.className='status running';st.textContent='Đang nhận log'});
  es.addEventListener('lines',e=>appendLog(JSON.parse(e.data).lines));
@@ -479,7 +496,7 @@ async function settings(){S.settings=await api('/api/settings');const values=Obj
   groups.map(g=>`<section class="card" data-group="${esc(g.id)}" ${g.id===active?'':'hidden'}><h2>${esc(g.label)}</h2>${g.id==='strategy'?button('Áp ngân sách Trip 30 / 10 / 180','tripBudget')+' ':''}${S.settings.fields.filter(f=>f.group===g.id).map(fieldHtml).join('')}</section>`).join('')+
   `<div class="actions"><button class="primary" type="submit">Lưu thay đổi (mọi tab)</button></div></form>`}
 
-async function navigate(name,push=true){stopLive();clearInterval(S.gtimer);S.gtimer=null;clearInterval(S.rtTimer);S.rtTimer=null;S.view=name;S.run=null;S.list=null;notice('');if(push)writeHash();document.querySelectorAll('nav button').forEach(b=>b.setAttribute('aria-current',b.dataset.view===name));main.innerHTML='<p class="muted">Đang tải…</p>';if(name==='overview')await overview();if(name==='runs')await historyPage();if(name==='system'||name==='hotels')await system();if(name==='settings')await settings();if(name==='storage')await storagePage();if(name==='db')await dbPage();if(name==='realtime')await realtimePage()}
+async function navigate(name,push=true){stopLive();clearInterval(S.gtimer);S.gtimer=null;clearInterval(S.rtTimer);S.rtTimer=null;clearInterval(S.dbTimer);S.dbTimer=null;S.view=name;S.run=null;S.list=null;notice('');if(push)writeHash();document.querySelectorAll('nav button').forEach(b=>b.setAttribute('aria-current',b.dataset.view===name));main.innerHTML='<p class="muted">Đang tải…</p>';if(name==='overview')await overview();if(name==='runs')await historyPage();if(name==='system'||name==='hotels')await system();if(name==='settings')await settings();if(name==='storage')await storagePage();if(name==='db')await dbPage();if(name==='realtime')await realtimePage()}
 
 // ------------------------------------------------------------------ tab Dung lượng: đĩa VM và dọn lượt cào cũ
 const gb=n=>n==null?'—':n>=1073741824?`${(n/1073741824).toFixed(1)} GB`:bytes(n);
@@ -500,9 +517,19 @@ function dbCell(d,r,c){const v=r[c];if(d.secret?.includes(c))return `<span class
  if(fk&&v!==null&&v!==undefined)return button(String(v).slice(0,40),'dbRow',{table:fk.target,key:{[fk.targetColumns[0]]:v}},'link');
  if(d.pk?.length===1&&d.pk[0]===c&&v!==null)return button(String(v).slice(0,40),'dbRow',{table:d.table,key:{[c]:v}},'link');
  return dbShort(v)}
+// Tự làm mới (10 giây): mặc định bật khi đang có lượt chạy; bỏ qua lần làm mới khi đang mở cửa sổ dòng, đang gõ ô lọc
+// hoặc tab trình duyệt bị ẩn. Mỗi lần làm mới đếm lại số dòng mọi bảng (count(*)).
+function dbAutoOn(){return S.dbAuto==null?!!S.globalRunning:S.dbAuto}  // S.dbAuto: người dùng bật / tắt, giữ khi đổi bảng
+function dbSchedule(){clearInterval(S.dbTimer);S.dbTimer=setInterval(()=>{if(dbAutoOn())dbRefresh().catch(()=>{})},10000)}
+async function dbRefresh(){if(S.view!=='db'){clearInterval(S.dbTimer);S.dbTimer=null;return}const a=document.activeElement;
+ if(document.hidden||$('#detail').open||(a&&main.contains(a)&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)))return;
+ const keep=[...main.querySelectorAll('.scroll')].map(x=>[x.scrollLeft,x.scrollTop]);await dbPage();
+ main.querySelectorAll('.scroll').forEach((x,i)=>{if(keep[i])[x.scrollLeft,x.scrollTop]=keep[i]})}
+document.addEventListener('change',e=>{if(e.target.id==='dbAuto'){S.dbAuto=e.target.checked;dbSchedule()}});
 async function dbPage(){const D=S.db=S.db||{table:null,filters:{},offset:0};writeHash();
- const modes=`<div class="tabs" role="tablist">${[['list','Bảng dữ liệu'],['diagram','Sơ đồ quan hệ']].map(([m,l])=>`<button type="button" data-action="dbMode" data-args='{"mode":"${m}"}' aria-current="${(D.mode||'list')===m}">${l}</button>`).join('')}</div>`;
- if(D.mode==='diagram'){const g=await api('/api/dbx/graph');if(S.view!=='db')return;main.innerHTML=modes+card('Sơ đồ quan hệ giữa các bảng',dbDiagram(g));dbDiagramHover();return}const list=await api('/api/dbx/tables');if(S.view!=='db')return;
+ const modes=`<div class="tabs" role="tablist">${[['list','Bảng dữ liệu'],['diagram','Sơ đồ quan hệ']].map(([m,l])=>`<button type="button" data-action="dbMode" data-args='{"mode":"${m}"}' aria-current="${(D.mode||'list')===m}">${l}</button>`).join('')}</div>`+
+  `<div class="actions">${button('Tải lại','dbReload',{},'small')}<label><input type="checkbox" id="dbAuto" ${dbAutoOn()?'checked':''}> Tự làm mới mỗi 10 giây</label><small class="muted">số liệu lúc ${esc(when(new Date().toISOString()))}</small></div>`;
+ if(D.mode==='diagram'){const g=await api('/api/dbx/graph');if(S.view!=='db')return;main.innerHTML=modes+card('Sơ đồ quan hệ giữa các bảng',dbDiagram(g));dbDiagramHover();dbSchedule();return}const list=await api('/api/dbx/tables');if(S.view!=='db')return;
  const groups={};for(const t of list.tables)(groups[t.schema]=groups[t.schema]||[]).push(t);
  const side=Object.entries(groups).map(([sc,ts])=>`<h3>${esc(sc)}</h3>`+ts.map(t=>button(`${t.table}${t.view?' (view)':''} · ${num(t.rows)}`,'dbTable',{table:t.name},t.name===D.table?'primary':'')).join(' ')).join('');
  let body='<p class="muted">Chọn một bảng. Chỉ đọc; cột bí mật (password / token / secret / hash) hiện "(ẩn)". Bấm ô khoá (id) để xem dòng và các bảng liên kết.</p>';
@@ -512,7 +539,7 @@ async function dbPage(){const D=S.db=S.db||{table:null,filters:{},offset:0};writ
    <p class="muted">${esc(d.table)} · ${num(d.total)} dòng · hiển thị ${num(d.total?d.offset+1:0)}–${num(Math.min(d.offset+d.rows.length,d.total))}${d.fks?.length?` · khoá ngoại: ${esc(d.fks.map(f=>f.columns.join('+')+' → '+f.target).join(', '))}`:''}</p>`+
    `<div class="scroll"><table><thead><tr>${d.columns.map(c=>`<th>${button(c+(D.sort===c?(D.desc?' ↓':' ↑'):''),'dbSort',{col:c},'link')}</th>`).join('')}</tr></thead><tbody>${d.rows.map(r=>`<tr>${d.columns.map(c=>`<td>${dbCell(d,r,c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`+
    `<div class="actions">${d.offset>0?button('← Trước','dbOffset',{offset:Math.max(0,d.offset-d.limit)}):''}${d.offset+d.rows.length<d.total?button('Sau →','dbOffset',{offset:d.offset+d.limit}):''}</div>`}
- main.innerHTML=modes+`<div class="dbgrid">${card('Bảng',side)}${card(D.table||'Database',body)}</div>`}
+ main.innerHTML=modes+`<div class="dbgrid">${card('Bảng',side)}${card(D.table||'Database',body)}</div>`;dbSchedule()}
 // Sơ đồ: mỗi bảng một ô (đủ cột, khoá chính / ngoại, số dòng), cột theo schema; cạnh khoá ngoại nét liền, quy ước nét đứt.
 function dbDiagram(g){const W=270,RH=17,HH=34,GAP=26,CG=110,TOP=30;const by={};for(const t of g.tables)(by[t.schema]=by[t.schema]||[]).push(t);
  const order=['cdp','catalog','app'].filter(k=>by[k]).concat(Object.keys(by).filter(k=>!['cdp','catalog','app'].includes(k)));
@@ -612,6 +639,7 @@ async function action(name,args){notice('');
   case 'tripBudget':for(const [key,value] of Object.entries({'tripHotels.initialPerCity':30,'tripHotels.newPerCity':10,'tripHotels.dailyHotels':180}))main.querySelector(`[data-key="${key}"]`).value=value;return notice('Đã điền ngân sách Trip. Bấm Lưu thay đổi để áp dụng.',true);
   case 'dbTable':S.db={table:args.table,filters:{},offset:0,mode:'list'};return dbPage();
   case 'dbMode':S.db={...S.db,mode:args.mode};return dbPage();
+  case 'dbReload':return dbPage();
   case 'dbZoom':S.db.fit=!S.db.fit;return dbPage();
   case 'dbOffset':S.db.offset=args.offset;return dbPage();
   case 'dbSort':S.db.desc=S.db.sort===args.col?!S.db.desc:false;S.db.sort=args.col;S.db.offset=0;return dbPage();
@@ -625,7 +653,7 @@ document.addEventListener('click',e=>{const sg=e.target.closest('[data-setgroup]
  const nav=e.target.closest('nav [data-view]'),tab=e.target.closest('[data-tab]'),b=e.target.closest('[data-action]'),node=e.target.closest('[data-node]');
  if(nav)navigate(nav.dataset.view).catch(fail);
  const sx=e.target.closest('[data-sub]');  // UI6: bấm ô con → tab Log lọc đúng bước con
- if(sx&&S.view==='run'){S.node=sx.dataset.subof;S.tab='log';Object.assign(S.log,{group:'',q:`name=${sx.dataset.subof}:${sx.dataset.sub}`.toLowerCase()});markSelected();renderPanel().then(()=>$('#panel')?.scrollIntoView({behavior:'smooth'})).catch(fail);return}
+ if(sx&&S.view==='run'){S.node=sx.dataset.subof;S.tab='log';Object.assign(S.log,{group:'',q:'',step:sx.dataset.subof,sub:sx.dataset.sub});markSelected();renderPanel().then(()=>$('#panel')?.scrollIntoView({behavior:'smooth'})).catch(fail);return}
  if(node&&S.view==='run'){const n=S.graph?.nodes.find(x=>x.id===node.dataset.node);  // UI6: bấm ô lớn có bước con thì bung / thu
   if(n&&expandable(n)){S.expanded.has(n.id)?S.expanded.delete(n.id):S.expanded.add(n.id);$('#graphBox').innerHTML=graphHtml(S.graph);drawEdges();
    document.querySelector(`#graph [data-node="${CSS.escape(n.id)}"]`)?.scrollIntoView({block:'nearest',inline:'nearest'})}}
