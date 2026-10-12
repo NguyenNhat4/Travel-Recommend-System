@@ -45,8 +45,11 @@ Tổng tối đa 5 lời gọi một lượt. Quá trần thì Similar bị bỏ
 - **Phủ đủ loại xếp được lịch.** Code tự thêm search cho `hotel`, `attraction` còn thiếu, trừ loại người dùng loại trừ.
   `golf` chỉ được tìm khi người dùng nhắc tới golf; không ai nhắc thì search golf planner tự thêm bị bỏ. Một search không
   lọc loại được coi là đã phủ mọi loại.
-- **Khách sạn: nhiều vị trí, đủ chỗ.** Search `hotel` lấy 50 kết quả (các loại khác 10) để luật ít di chuyển có khách sạn
-  gần các điểm đã xếp; số khách trong intent đi kèm làm filter sức chứa phòng.
+- **Khách sạn: nhiều vị trí, đủ chỗ.** Mọi search lấy 50 kết quả (tối đa contract): khách sạn để luật ít di chuyển có
+  khách sạn gần các điểm đã xếp, loại khác để chuyến dài đủ hoạt động cho cả sáng lẫn chiều. Search `hotel` kèm filter
+  sức chứa của **một phòng** (`planning.room_guests`, chốt 2026-10-09): số khách mỗi phòng để cả đoàn ở vừa tối đa
+  9 phòng, tức `ceil(tổng / 9)` — 10 người lớn gửi 2, đoàn đến 9 người gửi 1. Không gửi cả đoàn: contract hiểu `guests`
+  là sức chứa một phòng, nên gửi 10 làm mọi khách sạn có phòng đôi bị loại (trace 09/10, `total: 0`).
 - **Điểm đến luôn là tên catalog,** không theo cách planner viết.
 - **Query chỉ mang phần ngữ nghĩa.** Code cắt giá, ngân sách, ngày, số ngày, số người, số sao, phủ định và tên điểm đến khỏi
   query. Lý do: `/search` đọc các cụm đó thành filter **từng sản phẩm** ("ngân sách 5 triệu" thành trần giá mỗi sản phẩm),

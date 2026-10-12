@@ -11,12 +11,21 @@ def route_after_intake(state: AgentState) -> str:
 
 
 def route_after_classify(state: AgentState) -> str:
-    return {"simple": "converse", "travel": "extract", "missing_info": "clarify",
-            "error": "dead_letter"}.get(state.get("decision"), "dead_letter")
+    # `tool`: chọn chuyến bay khác bằng luật (`steps/changes.py`), chuyến đi đã đủ thông tin nên tìm và lập lại lịch ngay.
+    return {"simple": "converse", "travel": "extract", "missing_info": "clarify", "explore": "explore",
+            "tool": "tool", "error": "dead_letter"}.get(state.get("decision"), "dead_letter")
 
 
 def route_after_extract(state: AgentState) -> str:
-    return {"tool": "tool", "missing_info": "clarify", "error": "dead_letter"}.get(state.get("decision"), "dead_letter")
+    """Chưa đồng ý lập lịch thì `extract` chọn `explore` (có điểm đến) hoặc `converse` (chưa có), FR-AGT-06."""
+    return {"tool": "tool", "missing_info": "clarify", "explore": "explore", "simple": "converse",
+            "error": "dead_letter"}.get(state.get("decision"), "dead_letter")
+
+
+def route_after_explore(state: AgentState) -> str:
+    """`explore` đi thẳng từ `classify` mà không tra được tên nơi ("Bangkok có gì?") thì quay lại `extract` một lần; `extract`
+    ghi điểm đến (hoặc hỏi lại khi ngoài catalog) rồi mới khám phá. Còn lại kết thúc ở `finalize`."""
+    return "extract" if state.get("decision") == "needs_extract" else "finalize"
 
 
 def route_after_evaluate(state: AgentState) -> str:

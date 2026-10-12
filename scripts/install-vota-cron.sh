@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Install or replace the managed data-collection cron entry without touching
-# unrelated crontab entries. Deployments should use an immutable digest reference;
-# :latest remains accepted for manual compatibility and rollback preparation.
+# unrelated crontab entries. Images must be an immutable digest reference (IMAGE@sha256:DIGEST);
+# the :latest tag is rejected.
 # Exactly ONE crawler job may write to the catalog DB: --job legacy (daily.py, `run`; the default, so the current
 # CD keeps its behaviour) or --job fresh (fresh_catalog.py, `fresh-run tick` every 15 minutes). Both use the same
 # managed block, so installing one replaces the other (docs/guide/trien-khai-job-cao-du-lieu.md).
@@ -22,7 +22,7 @@ dry_run=0
 usage() {
   cat <<'EOF'
 Usage:
-  install-vota-cron.sh --image IMAGE:latest|IMAGE@sha256:DIGEST --runner /absolute/path/run_daily_docker.sh
+  install-vota-cron.sh --image IMAGE@sha256:DIGEST --runner /absolute/path/run_daily_docker.sh
                        [--job legacy|fresh] [--data-dir PATH] [--env-file PATH] [--log-dir PATH]
                        [--schedule CRON] [--crontab-file PATH] [--dry-run]
 
@@ -103,7 +103,7 @@ case "$job" in
 esac
 [ -n "$image" ] || die '--image is required'
 [ -n "$runner" ] || die '--runner is required'
-[[ "$image" =~ :latest$ || "$image" =~ @sha256:[a-f0-9]{64}$ ]] || die '--image must use :latest or an immutable sha256 digest'
+[[ "$image" =~ @sha256:[a-f0-9]{64}$ ]] || die '--image must be an immutable sha256 digest (IMAGE@sha256:DIGEST); :latest is not accepted'
 [[ "$runner" == /* ]] || die '--runner must be an absolute path'
 if [[ "$runner" == *" "* || "$runner" == *$'\t'* || "$runner" == *"'"* ]]; then
   die '--runner cannot contain whitespace or single quotes'

@@ -27,6 +27,7 @@ from concurrent.futures import Executor, ThreadPoolExecutor
 from contextlib import AsyncExitStack, asynccontextmanager
 
 import httpx
+import psycopg
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
@@ -39,6 +40,7 @@ from src.backend.app.api.middleware import (
     install_http_logging,
     install_request_id,
 )
+from src.backend.app.infrastructure.persistence import db_connection
 from src.backend.app.api.ops import ops_router
 from src.backend.app.api.v1.router import api_router, root_router
 from src.backend.app.application.auth.use_cases import (
@@ -314,7 +316,10 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
         "listing_units": [ListingItem(p, bool(index.recommendable[i])) for i, p in enumerate(index.units)],
         "product_popularity": product_popularity,
         "recommend": RecommendForUser(
-            index, vector_search, cdp_reader, popularity, candidate_k=settings.recommend_candidate_k
+            index, vector_search, cdp_reader, popularity, candidate_k=settings.recommend_candidate_k,
+            explore_fill=settings.recommend_explore_fill,
+            next_trip_scoring=settings.recommend_next_trip_scoring,
+            max_per_destination=settings.recommend_max_per_destination or None,
         ),
     }
 
@@ -614,6 +619,10 @@ def _forward_langsmith_env(settings) -> None:
 async def lifespan(app: FastAPI):
     settings = get_settings()
     app.state.ready = False
+    db_connection.configure(
+        connect_timeout_seconds=settings.db_connect_timeout_seconds,
+        tcp_user_timeout_ms=settings.db_tcp_user_timeout_ms,
+    )
     if settings.ready_requires_db:
         app.state.db_probe = DatabaseProbe(
             settings.database_url, timeout_seconds=settings.ready_db_timeout_seconds,
@@ -785,7 +794,7 @@ settings = get_settings()
 app = FastAPI(
     title=settings.app_name,
     description="Travel recommendation and itinerary API",
-    version="1.22.0",
+    version="1.24.0",
     lifespan=lifespan,
 )
 
@@ -794,7 +803,7 @@ install_cors(app, settings.cors_origins)
 install_call_telemetry(app)
 install_http_logging(app)  # trước install_request_id: nằm trong, đọc được X-Request-ID
 install_request_id(app)
-install_error_handlers(app)
+install_error_handlers(app, (psycopg.OperationalError,))
 app.include_router(api_router, prefix="/api/v1")
 app.include_router(root_router)
 app.include_router(ops_router)

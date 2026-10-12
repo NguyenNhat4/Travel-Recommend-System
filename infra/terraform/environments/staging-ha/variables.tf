@@ -52,7 +52,7 @@ variable "frontend_image" {
 variable "boot_image" {
   description = "Boot image for the instance template."
   type        = string
-  default     = "projects/cos-cloud/global/images/family/cos-stable"
+  default     = "projects/debian-cloud/global/images/family/debian-12"
 }
 
 variable "backend_env_secret" {
@@ -68,51 +68,57 @@ variable "uvicorn_workers" {
 }
 
 variable "min_replicas" {
-  description = "Số VM tối thiểu. 3 (một VM mỗi zone) để mất 1 VM chỉ đẩy phần còn lại lên N/(N-1) = 150% tải thay vì 200%."
+  description = "Số VM tối thiểu của nhóm app. Quy tắc chốt 2026-10-08: 1 VM tối thiểu, tối đa 2 VM. Mất VM duy nhất là mất dịch vụ app (chấp nhận có chủ đích)."
   type        = number
-  default     = 3
+  default     = 1
 
   validation {
-    condition     = var.min_replicas >= 2
-    error_message = "min_replicas must be >= 2, otherwise the group is not highly available."
+    condition     = var.min_replicas >= 1
+    error_message = "min_replicas must be >= 1."
   }
 }
 
 variable "max_replicas" {
-  type    = number
-  default = 4
+  description = "Số VM tối đa của nhóm app. 2 theo quy tắc chốt 2026-10-08 (ngân sách kết nối DB: 2 × 2 × 12 + 10 = 58 <= max_connections 100)."
+  type        = number
+  default     = 2
+
+  validation {
+    condition     = var.max_replicas >= var.min_replicas
+    error_message = "max_replicas phải >= min_replicas."
+  }
 }
 
 variable "cpu_target" {
-  description = "Autoscaler target CPU utilization (0-1). Để sống sót khi mất 1 trong N VM, mức dùng ở trạng thái ổn định phải <= (N-1)/N: N=3 -> 0.667, N=2 -> 0.5."
+  description = "Autoscaler target CPU utilization (0-1). Với min_replicas = 1 không còn đảm bảo sống sót khi mất VM; ràng buộc (N-1)/N đã gỡ theo quy tắc chốt 2026-10-08."
   type        = number
   default     = 0.55
 
   validation {
-    condition     = var.cpu_target <= (var.min_replicas - 1) / var.min_replicas
-    error_message = "cpu_target phải <= (min_replicas-1)/min_replicas, nếu không mất 1 VM làm các VM còn lại quá tải (docs/plan/2026-10-07-ha-vung-crawler-rolling.md §5.2)."
+    condition     = var.cpu_target > 0 && var.cpu_target <= 1
+    error_message = "cpu_target phải trong khoảng (0, 1]."
   }
 }
 
 variable "memory_target_percent" {
-  description = "Autoscaler target memory percent_used (needs Ops Agent on the VM). 0 disables the memory signal. Cùng công thức (N-1)/N với CPU."
+  description = "Autoscaler target memory percent_used (needs Ops Agent on the VM). 0 disables the memory signal."
   type        = number
   default     = 60
 
   validation {
-    condition     = var.memory_target_percent == 0 || var.memory_target_percent <= 100 * (var.min_replicas - 1) / var.min_replicas
-    error_message = "memory_target_percent phải <= 100*(min_replicas-1)/min_replicas (hoặc 0 để tắt)."
+    condition     = var.memory_target_percent >= 0 && var.memory_target_percent <= 100
+    error_message = "memory_target_percent phải trong khoảng [0, 100]."
   }
 }
 
 variable "boot_to_ready_seconds" {
-  description = "Thời gian từ lúc VM tạo đến lúc /health/ready = 200 (kéo image, nạp RecSys). Dùng cho min_ready_sec của rolling update, cooldown autoscaler và initial_delay autohealing. CHƯA đo trên GCP: đo lại sau lần apply đầu (log startup.recsys.ready so với thời điểm tạo VM) rồi chỉnh."
+  description = "Thời gian từ lúc VM tạo đến lúc /health/ready = 200 (kéo image, nạp RecSys). Dùng cho cooldown autoscaler và initial_delay autohealing (không còn là min_ready_sec của rolling update từ 2026-10-09). Đã đo 2026-10-09 trên Debian 12: tạo VM -> startup.recsys.ready ~230 giây (2 lần, VM thử và VM MIG gsc1). Đặt 300 để có dự phòng ~25%."
   type        = number
   default     = 360
 
   validation {
-    condition     = var.boot_to_ready_seconds >= 360
-    error_message = "boot_to_ready_seconds < 360 thấp hơn thời gian boot-to-ready ước tính (4-6 phút)."
+    condition     = var.boot_to_ready_seconds >= 240
+    error_message = "boot_to_ready_seconds < 240 thấp hơn thời gian boot-to-ready đã đo (~230 giây, Debian 12, 2026-10-09)."
   }
 }
 
@@ -321,14 +327,32 @@ variable "patroni_clone_from_host" {
 }
 
 variable "db_client_tags" {
-  description = "Network tag BỔ SUNG được nối tới Postgres qua load balancer nội bộ. App VM của nhóm HA và job cào (tag vota-crawler) luôn được phép."
+  description = "Network tag BỔ SUNG được nối tới Postgres qua load balancer nội bộ. App VM của nhóm HA và job cào (tag vota-crawler) luôn được phép. ci-runner: runner tự host chạy CD, cần tới Postgres để áp db/migrations (2026-10-12)."
   type        = list(string)
-  default     = []
+  default     = ["ci-runner"]
 }
 
 # --- Cảnh báo job cào (chạy bằng cron trên VM) ---
 variable "crawler_alerts_enabled" {
   description = "Bật cảnh báo catalog không đổi / job không chạy / lượt thất bại (cron trên VM phát catalog.freshness từ bản crawler mới). Chỉ bật SAU KHI crawler bản có catalog.freshness đã deploy, nếu không cảnh báo vắng mặt kêu giả."
   type        = bool
+  default     = true
+}
+
+variable "origin_tls_enabled" {
+  description = "Thêm listener HTTPS :443 trên LB bằng chứng chỉ Cloudflare Origin CA (Secret Manager). Dùng khi Cloudflare proxy với SSL mode Full (strict)."
+  type        = bool
   default     = false
+}
+
+variable "origin_cert_secret" {
+  description = "Secret Manager secret id chứa PEM chứng chỉ Origin CA."
+  type        = string
+  default     = "praxis-origin-cert"
+}
+
+variable "origin_key_secret" {
+  description = "Secret Manager secret id chứa PEM private key của chứng chỉ Origin CA."
+  type        = string
+  default     = "praxis-origin-key"
 }

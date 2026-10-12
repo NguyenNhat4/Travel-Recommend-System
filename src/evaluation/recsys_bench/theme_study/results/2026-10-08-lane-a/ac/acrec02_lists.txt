@@ -1,0 +1,11 @@
+room 04fd4200-ab7a-59f8-987c-004eafab0cbc -> hotel 06bc207c-8ba4-5c4d-b57e-78df00071b8a Caro Premium Danang Hotel
+== trang chu | strategy cross_vertical | dest Đà Nẵng | nextVertical attraction | excluded ['hotel']
+   #1 [flight] Vé máy bay TP. Hồ Chí Minh - Đà Nẵng — Đà Nẵng — because 1
+   #2 [attraction] Charming Danang Show — Đà Nẵng — because 1
+   #3 [combo] Vé máy bay khứ hồi Hà Nội - Đà Nẵng + Phòng Superior Ki — Đà Nẵng — because 1
+   #4 [attraction] Sun World Bà Nà Hills — Đà Nẵng — because 1
+== trang xac nhan | strategy cross_vertical | dest Đà Nẵng | nextVertical attraction | excluded ['hotel']
+   #1 [flight] Vé máy bay TP. Hồ Chí Minh - Đà Nẵng — Đà Nẵng — because 1
+   #2 [attraction] Charming Danang Show — Đà Nẵng — because 1
+   #3 [combo] Vé máy bay khứ hồi Hà Nội - Đà Nẵng + Phòng Superior Ki — Đà Nẵng — because 1
+   #4 [attraction] Sun World Bà Nà Hills — Đà Nẵng — because 1

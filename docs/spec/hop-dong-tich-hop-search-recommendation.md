@@ -583,7 +583,7 @@ decay(Δt) = exp( −ln(2) · Δt / halfLifeDays )
 | `w(product_view)` | 1.0 | |
 | `halfLifeDays` | 30 | |
 | `finishedTripFactor` | 0.2 | |
-| `dormantDays` | 90 | Khớp `hop-dong-tich-hop-backend.md` §6.2 |
+| `dormantDays` | 365 | Ngưỡng `strategy = dormant` (chuyến gần nhất), chốt 2026-10-09; `diagnostics.dormant` vẫn 90 ngày theo contract |
 
 **`Δt` tính bằng NGÀY, kiểu số thực.** Đây là lỗi âm thầm nguy hiểm nhất của cả
 engine: tính bằng giây thì `decay ≈ 0` cho mọi event, `u_raw` gần vector 0, sau
@@ -602,12 +602,21 @@ tripFactor = 1.0  nếu trip chưa kết thúc (max(usingDate) >= hôm nay)
 
 Không có nó thì hệ thống gợi ý Nha Trang mãi cho người đã đi xong từ tháng trước.
 
+**Bổ sung 2026-10-09 (PR-A, `ENGINE_RULES_VERSION = "2026-10-09-p2-combo-explore"`) — vector dài hạn có độ tin cậy chuyến.**
+Engine hiện hành (`domain/recommendation/profile.py`) dựng vector mỗi chuyến `vec_t` (chuẩn hoá) rồi
+`u_long = Σ_t 2^(−tuổi_t / H_LONG) · confidence_t · vec_t`, với `confidence_t = min(1, Σ W_TYPE của event trong chuyến sau cap)`:
+một lượt xem lẻ nặng 0,2, một lần mua 1,0, ba lượt xem 0,6. Trước đó mọi chuyến nặng như nhau sau chuẩn hoá nên một lượt xem
+vu vơ kéo `u_long` mạnh bằng cả chuyến đã mua (P2 trong `docs/spec/bench/recsys-bam-so-thich-tong-hop.md` §3.A; số đo
+`src/evaluation/reports/eval-2026-10-09-recsys-g6-so-thich-do-lai.md`). Vector chuyến đang mở (`u_short`) không nhân hệ số này.
+Cap lặp `MAX_REPEAT_PER_TRIP = 3` chỉ đếm event yếu (view / search); `purchase` và `add_to_cart` luôn vào vector chuyến
+(`CAP_EXEMPT_EVENTS`). `because[]` ở nhánh không chuyến mở phân rã đúng theo trọng số này (§4.6).
+
 ### 4.4. Quy tắc chọn `strategy`
 
 ```
 có trip đang mở + đã purchase ít nhất 1 taxonomy  → cross_vertical
 >= 3 event dùng được, không có trip đang mở       → recent_activity
-event gần nhất > 90 ngày                          → dormant
+chuyến gần nhất > 365 ngày (từ 09/10)             → dormant
 < 3 event, không JWT, hoặc CDP lỗi                → popular
 có trip đang mở, chưa purchase trong trip,
   tổng < 3 event dùng được                        → cold_start_content
@@ -624,8 +633,9 @@ engine và chưa sửa**, đang chờ Team Recommendation/Search cùng Web quy�
   trị này khi **có** trip đang mở, trip đó chưa purchase và tổng ≥ 3 event dùng được. Engine
   coi trip đang mở là trip có event gần nhất trong 60 ngày (`ACTIVE_TRIP_MAX_AGE_DAYS`) — *luật tới 01/10/2026; từ đó theo
   bổ sung bên dưới (`usingDate`, N = 14).*
-- `dormant`: bảng này và `hop-dong-tich-hop-backend.md` §6.2 ghi 90 ngày; engine
-  dùng 180 ngày (`DORMANT_AFTER_DAYS`).
+- `dormant`: trước 09/10 bảng này và `hop-dong-tich-hop-backend.md` §6.2 ghi 90 ngày, engine dùng 180. Từ 2026-10-09
+  (đề xuất `update-archive/2026-10-09-persona-trang-thai-cold-start-va-phong-cach-du-lich.md`) cả hai là **365 ngày tính từ
+  chuyến gần nhất** (`DORMANT_AFTER_DAYS`); `diagnostics.dormant` (event gần nhất > 90 ngày) của contract không đổi nghĩa.
 - `< 3 event → popular`: engine trả `popular` khi không còn event nào dùng
   được (kể cả khách ẩn danh và CDP lỗi). Dưới 3 event mà có trip đang mở thì ra
   `cold_start_content`; chỉ có trip cũ thì ra `long_term` hoặc `dormant`.
@@ -647,6 +657,19 @@ riêng, chưa có). Tuổi trip, ngày kết thúc và món đã mua xét trên 
 trọng số vector. "Hôm nay" lấy theo giờ Việt Nam (UTC+7, `profile.local_today`) để khớp `usingDate` là ngày địa phương.
 Engine ghi `ENGINE_RULES_VERSION` vào cấu hình để bench phân biệt hai luật.
 
+**Bổ sung 2026-10-09 (FR-REC-02, đề xuất `update-archive/2026-10-09-recsys-uu-tien-chuyen-da-dat.md`, đã chốt).** Khi có nhiều
+trip đang mở, trip **có purchase** (chuyến đã đặt) trẻ nhất là trip mở; chỉ khi không có trip đã đặt nào đang mở thì mới lấy trip
+mở trẻ nhất như cũ. Trước đó một view / giỏ lẻ đến sau (`_solo_<productId>`, tuổi nhỏ hơn) chiếm chỗ chuyến đã đặt nên khách mất
+`cross_vertical` và luật loại loại sản phẩm đã mua (lỗi I-3, `docs/spec/bench/recsys-offline-eval.md`). `ENGINE_RULES_VERSION =
+"2026-10-09-booked-first"`; gương harness: `ceiling.engine_view`, `splits.excluded_taxonomies`, `arms.trip_destination`.
+
+**Bổ sung 2026-10-09 (FR-REC-02, đề xuất `update-archive/2026-10-09-recsys-diem-xuat-phat-va-phien-xem.md`, đã chốt).** Không có
+trip đã đặt nào đang mở nhưng có **≥ 2 trip chỉ-xem / giỏ đang mở** → engine gộp chúng thành **một chuyến ảo** (`_session_`):
+vector = chuẩn hoá Σ `2^(−tuổi/H_SESSION_DAYS)` · độ tin cậy · vector trip (`H_SESSION_DAYS = 7`); điểm đến = điểm đến có tổng trọng
+số lớn nhất (hoà → điểm đến của trip trẻ nhất); `purchasedTaxonomies` rỗng; event = hợp event các trip (dùng cho `because[]`).
+Chuyến ảo không nằm trong `diagnostics.trips` và không đổi `eventsUsed`. Một trip chỉ-xem → giữ nguyên trip đó.
+`ENGINE_RULES_VERSION = "2026-10-09-origin-session"`; gương harness như bổ sung trên.
+
 **Ràng buộc bắt buộc:**
 
 1. `cross_vertical` ⟹ `nextVertical` **và** `destination` khác `null`
@@ -661,11 +684,27 @@ trước** — client map từng giá trị sang một tiêu đề section riên
 
 ```
 bookedThisTrip = { taxonomy của mọi purchase trong eventGroupId đang mở }
-excluded       = bookedThisTrip, mở rộng: combo kéo theo hotel
+excluded       = bookedThisTrip
 ```
 
 Áp làm **hard filter trong câu truy vấn**, không phải phép trừ vector. Ngoài ra
-loại mọi `productId` khách đã từng mua.
+loại mọi `productId` khách đã từng mua (luật dưới).
+
+**Không gợi lại sản phẩm đã mua + combo ↔ thành phần (FR-REC-02, chốt 2026-10-09, đề xuất
+`docs/prd/update-archive/2026-10-08-recsys-loai-san-pham-da-mua-va-combo.md`).** Trong **mọi** nhánh (chuyến mở, chuyến kế
+tiếp, request khoá `destination`), engine loại khỏi ứng viên:
+
+- mọi search unit khách đã mua trên **toàn bộ lịch sử** (`purchase`, kể cả sản phẩm chưa có vector), theo search unit: mua một
+  hạng phòng là đã mua khách sạn đó, mua một chuyến bay là đã mua tuyến đó;
+- **đóng một bậc qua combo**: mua một sản phẩm → mọi combo chứa nó; mua một combo → mọi thành phần của combo đó. Không bắc
+  cầu: mua combo A không loại combo B chỉ vì B chung thành phần với A.
+
+Quan hệ combo → thành phần lấy từ `catalog.combo_items` và chỉ tin dòng **đã map** (`item_product_id NOT NULL`) với
+`confidence ≥ 0,8` **hoặc** `source = 'manual'` (`infrastructure/vectors/postgres_store.combo_members_of`,
+`COMBO_MEMBER_MIN_CONFIDENCE`); dòng chỉ khớp theo địa điểm (0,60) không dùng. Tập đã mua tính ở
+`application/recommendation/use_cases.bought_units` → `UnitIndex.purchase_closure`; harness bench dùng cùng hàm. Luật cũ "combo
+kéo theo hotel" (loại *taxonomy* hotel khi mua combo) **không** nằm trong luật này và chưa cài — ngoài phạm vi. Cold start
+(`popular`) không có lịch sử nên không đổi.
 
 **Chỉ áp cho trip đang mở** theo định nghĩa §4.4 (bổ sung 2026-10-01): chuyến đã kết thúc (`usingDate` đã qua) thì không
 loại taxonomy đã mua và không khoá điểm đến — đó là gợi ý cho chuyến kế tiếp (PRD FR-REC-02). Lý do: trên split temporal
@@ -708,7 +747,27 @@ final = W_SHORT · cos(u_short, v_c) + W_POP · pop_D(c) + W_LONG · cos(u_long,
 W_SHORT / W_POP / W_LONG = 0.7 / 0.15 / 0.15
 ```
 
-`u_short` = vector chuyến đang mở (không có chuyến mở thì dùng `u_long`); `pop_D` = mức phổ biến của ứng viên. Hằng nằm ở
+`u_short` = vector chuyến đang mở (không có chuyến mở thì dùng `u_long`); `pop_D` = mức phổ biến của ứng viên. **Điểm xuất phát
+chuyến bay (FR-REC-04, chốt 2026-10-09):** `origin` = `originCity` của route bay mà khách xem / thêm giỏ / mua gần nhất
+(`profile.infer_origin`); route bay có `originCity` khác rỗng và khác `origin` bị trừ `W_ORIGIN = 0.15` khi có chuyến mở, bị loại
+(điểm −∞, MMR không chọn) khi không có chuyến mở; chưa có event chuyến bay → không áp dụng. `use_cases` truyền
+`ScoreContext(taxonomy, originCity, origin)` cho `score_candidates`.
+
+**Không có chuyến mở (FR-REC-04 / FR-REC-02, chốt 2026-10-09, đề xuất
+`update-archive/2026-10-08-recsys-chuan-hoa-so-thich-giua-hai-chuyen.md`, PR-B):**
+
+```
+s     = clip((cos(u_long, v_c) − SEMANTIC_Q_LOW) / (SEMANTIC_Q_HIGH − SEMANTIC_Q_LOW), 0, 1)     # 0.8529 / 0.9387
+final = W_NEXT_SHORT · s + W_NEXT_POP · pop_D(c) + W_NEXT_LONG · s                               # 0.50 / 0.35 / 0.15
+```
+
+Ngưỡng calibrate trên 120 request khách giả lập `between` (seed 99) theo phân vị p10 / p99 của cos trên không gian ứng viên của
+engine; gắn với `SEMANTIC_CALIBRATION_MODEL_VERSION = "intfloat/multilingual-e5-small:catalog-text-v2"`. `index.model_version`
+khác tag → dùng công thức 0.7 / 0.15 / 0.15 và ghi WARNING `recsys.next_trip_scoring.model_mismatch` (một lần mỗi model). Đổi
+model / text builder thì calibrate lại bằng `python -m src.evaluation.recsys_bench.theme_study.calibrate`. MMR khi đó giới hạn
+`MAX_PER_DESTINATION = 2` món mỗi điểm đến (`mmr_select(..., destination, max_per_destination)`, điểm đến lấy tại thời điểm MMR);
+**không** áp khi request khoá `destination`. Luật điểm xuất phát chuyến bay ở trên vẫn áp sau F14c. Rollback không redeploy:
+`RECOMMEND_NEXT_TRIP_SCORING=false`, `RECOMMEND_MAX_PER_DESTINATION=0`. `ENGINE_RULES_VERSION = "2026-10-09-next-trip-f14c"`. Hằng nằm ở
 `src/backend/app/domain/recommendation/profile.py` (`W_SHORT, W_POP, W_LONG`). Trọng số chốt 2026-10-07, thay 0.6 / 0.25 / 0.15
 (`docs/prd/update-archive/2026-10-06-recsys-trong-so-ngan-han-pho-bien.md`; số đo: `src/evaluation/reports/eval-2026-10-06-recsys-search-tong-hop.md`
 phần A §4, `eval-2026-10-07-recsys-grid-llbo-coldstart.md`).
@@ -718,6 +777,24 @@ Sau đó MMR re-rank với `λ = 0.7`, cộng giới hạn cứng tối đa 2 k�
 
 Lấy trung bình vector kéo kết quả về cùng một cụm; không có bước này thì top-5
 hay là 5 biến thể của một resort.
+
+**Ô khám phá khi có chuyến mở (FR-REC-02, chốt 2026-10-09, đề xuất
+`docs/prd/update-archive/2026-10-08-recsys-o-kham-pha-khi-co-chuyen-mo.md`).** Khi khách có chuyến mở tại X và sau MMR danh
+sách tại X còn **ít hơn `k` món** (hết món hợp lệ tại X), engine lấp các ô còn trống bằng món ở điểm đến khác:
+
+```
+mask_B = recommendable ∧ destination ≠ X ∧ taxonomy ∈ {hotel, attraction, combo} ∧ ∉ đã mua (kể cả closure combo)
+xếp theo cos(u_long, v) qua một lượt near_vector(u_long, mask_B, EXPLORE_CANDIDATE_K = 50)
+tối đa EXPLORE_MAX_PER_DESTINATION = 1 món mỗi điểm đến; lấy đúng k − |món tại X| món
+```
+
+Món tại X **không bị thay** và đứng trước; món khám phá nối sau với `rank` liên tục, `score = cos(u_long, v)`, `because[]` phân
+rã theo `u_long` (mọi chuyến, không chỉ chuyến mở). `strategy`, `destination`, `nextVertical`, `excludedVerticals` vẫn tính trên
+món tại X. Request khoá `destination = X` cũng lấp (trang xác nhận: khách thấy cả hai nhóm). Không chuyến mở → không lấp
+(nhánh chuyến kế tiếp vốn không khoá điểm đến). `diagnostics.exploreFilled` = số ô đã lấp (0 khi không lấp; trường chỉ có ở
+nhánh có lịch sử). Công tắc `RECOMMEND_EXPLORE_FILL=false` (Settings) tắt luật mà không redeploy → list y hệt trước 09/10. Chi
+phí: thêm một lượt `near_vector` chỉ khi còn ô trống — đo đầu-cuối ở `src/evaluation/reports/` (latency TRƯỚC / SAU PR-A).
+Số nghiên cứu (`eval-2026-10-08-recsys-g2-va-wp4.md`, `--how ulong`): hit@4 không đổi, +1 điểm đến ở 29 % khách có chuyến mở.
 
 ### 4.8. Cold start, dormant, ẩn danh
 
@@ -729,8 +806,9 @@ hay là 5 biến thể của một resort.
 3. Còn lại                      → most-popular toàn hệ thống, tối đa 2 mỗi taxonomy
 ```
 
-**Dormant** (event gần nhất > 90 ngày): vẫn dựng user vector nhưng
-`halfLifeDays × 3`, ưu tiên `lastDestination`.
+**Dormant** (chuyến gần nhất > 365 ngày, từ 09/10): vẫn dựng user vector như khách có lịch sử. `halfLifeDays × 3` và
+`lastDestination` của bản thiết kế ban đầu **không** cài — bench 09/10 (`src/evaluation/reports/eval-2026-10-09-recsys-cong-thuc-oph.md`)
+không thấy tác dụng của `H_LONG × 3` và `lastDestination` lấy từ snapshot lộ đáp án.
 
 **Ẩn danh**: `strategy: "popular"`, `cdpUserId: null`, `200` — không `401`.
 
@@ -925,6 +1003,13 @@ Team Search cung cấp:
 24. Tắt CDP clone → `200` `strategy: "popular"`, không phải `500`.
 25. Ngay sau checkout → `strategy` hoặc `nextVertical` đã đổi (**K1**).
 26. p95 dưới 300 ms khi cache hit.
+27. Khách đã mua phòng của khách sạn H (bất kỳ lúc nào) → không có H lẫn combo chứa phòng/khách sạn H trong list; khách đã
+    mua combo C → không có C lẫn các thành phần đã map tin cậy của C; combo khác chung thành phần với C vẫn có thể xuất hiện
+    (§4.5, AC-REC-02/03; unit test `test_recommendation_combo_exclusion.py`).
+28. Khách có chuyến mở tại X mà X còn ít hơn `k` món hợp lệ → list = món tại X trước, rồi món ở điểm đến khác (mỗi điểm đến
+    ≤ 1, chỉ hotel / attraction / combo), `rank` liên tục, `strategy` / `nextVertical` không đổi so với khi không lấp,
+    `diagnostics.exploreFilled` = số ô lấp; `RECOMMEND_EXPLORE_FILL=false` → không lấp (§4.7; unit test
+    `test_recommendation_explore_fill.py`).
 
 Bốn tiêu chí **20, 21, 22, 23** là quan trọng nhất trong cả danh sách. Chúng bắt
 đúng bốn lỗi chạy được nhưng sai — sai đơn vị thời gian, quên normalize,

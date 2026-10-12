@@ -35,7 +35,7 @@ Sự kiện nghiệp vụ, nối với request qua `request_id`:
 | Thanh toán | `payment.webhook.received` (`stripe_event_type, event_id`), `payment.signature.invalid`, `payment.settled`, `payment.failed` |
 | Trợ lý | `assistant.run.start`, `assistant.node` (`node, duration_ms, outcome`), `assistant.tool.call`, `assistant.llm.call`, `assistant.grounding` (`checked, violations`), `assistant.run.end`, `assistant.stream.open/close` |
 | Sự kiện hành vi | `events.ingest` (`count, cdp_ok`) |
-| Hạ tầng | `app.startup`, `app.shutdown`, `db.pool.exhausted`, `db.unavailable`, `readiness.degraded` |
+| Hạ tầng | `app.startup`, `app.shutdown`, `db.unavailable`, `readiness.degraded` |
 
 ### frontend (chỉ Next.js, server-side)
 

@@ -159,6 +159,9 @@ export function useFloatingWidget() {
       } else if (item.response?.status === 'FALLBACK') {
         // Câu FALLBACK mời xem các ứng viên "bên dưới": thẻ dựng từ `searchResults`.
         products = narrationProducts(item.response);
+      } else if (item.response?.status === 'NEEDS_CLARIFICATION' && item.response.searchResults) {
+        // Lượt khám phá (FR-AGT-06): mỗi thẻ đứng ngay sau dòng đầu tiên nhắc sản phẩm, như lời diễn giải lịch trình.
+        products = narrationProducts(item.response);
       }
 
       return {

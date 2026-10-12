@@ -1,0 +1,57 @@
+{
+ "split": "llbo",
+ "k": 4,
+ "nUsers": 400,
+ "repeat": 3,
+ "popularityCache": 512,
+ "arms": {
+  "B0": {
+   "p50_ms": 1.45,
+   "p95_ms": 2.79,
+   "p99_ms": 3.22,
+   "mean_ms": 1.6,
+   "max_ms": 3.91,
+   "delta_p95_ms_vs_B0": 0.0
+  },
+  "B0+orig:pen:0.15+sess": {
+   "p50_ms": 1.46,
+   "p95_ms": 2.82,
+   "p99_ms": 3.16,
+   "mean_ms": 1.6,
+   "max_ms": 3.96,
+   "delta_p95_ms_vs_B0": 0.03
+  },
+  "B1p": {
+   "p50_ms": 1.72,
+   "p95_ms": 2.83,
+   "p99_ms": 3.29,
+   "mean_ms": 1.77,
+   "max_ms": 3.88,
+   "delta_p95_ms_vs_B0": 0.04
+  },
+  "B1p+orig:pen:0.15+sess": {
+   "p50_ms": 1.7,
+   "p95_ms": 2.77,
+   "p99_ms": 3.17,
+   "mean_ms": 1.78,
+   "max_ms": 3.89,
+   "delta_p95_ms_vs_B0": -0.02
+  },
+  "B2": {
+   "p50_ms": 1.71,
+   "p95_ms": 2.83,
+   "p99_ms": 3.26,
+   "mean_ms": 1.78,
+   "max_ms": 3.89,
+   "delta_p95_ms_vs_B0": 0.04
+  },
+  "B2+orig:pen:0.15+sess": {
+   "p50_ms": 1.76,
+   "p95_ms": 2.87,
+   "p99_ms": 3.3,
+   "mean_ms": 1.81,
+   "max_ms": 3.97,
+   "delta_p95_ms_vs_B0": 0.08
+  }
+ }
+}

@@ -242,31 +242,24 @@ class ScheduleFindingsTests(unittest.TestCase):
                     "itinerary": {"days": [{"day": 1, "slots": slots}]}, "warnings": []}
         self.assertTrue(any("tên" in f and "lặp lại" in f for f in schedule_findings(response, {})))
 
-    def test_cheapest_hotel_not_selected_flagged(self):
+    def test_the_hotel_is_not_required_to_be_the_cheapest(self):
+        # AC-AGT-04 (chốt 2026-10-07/08) chọn khách sạn gần các điểm, vừa ngân sách; luật "rẻ nhất" đã bỏ (10/10/2026).
         expensive = _product("hotel-expensive", taxonomy="hotel", price=2_000_000)
         cheap = _product("hotel-cheap", taxonomy="hotel", price=500_000)
         response = {"status": "COMPLETED", "intent": {"days": 1},
-                    "itinerary": {"stay": {"product": expensive}, "days": []}, "warnings": []}
-        findings = schedule_findings(response, {"hotel-expensive": expensive, "hotel-cheap": cheap})
-        self.assertTrue(any("hotel rẻ nhất" in f for f in findings))
+                    "itinerary": {"stay": {"product": expensive},
+                                  "days": [{"day": 1, "slots": [{"time": "MORNING", "product": _product("p1")}]}]},
+                    "warnings": []}
+        self.assertEqual(schedule_findings(response, {"hotel-expensive": expensive, "hotel-cheap": cheap}), [])
 
-    def test_cheapest_hotel_selected_passes(self):
-        cheap = _product("hotel-cheap", taxonomy="hotel", price=500_000)
-        expensive = _product("hotel-expensive", taxonomy="hotel", price=2_000_000)
-        response = {"status": "COMPLETED", "intent": {"days": 1},
-                    "itinerary": {"stay": {"product": cheap}, "days": []}, "warnings": []}
-        findings = schedule_findings(response, {"hotel-expensive": expensive, "hotel-cheap": cheap})
-        self.assertFalse(any("hotel rẻ nhất" in f for f in findings))
-
-    def test_a_searched_hotel_beats_a_cheaper_recommended_one(self):
-        # compose_plan xếp Search trước Recommendation rồi mới tới giá.
-        searched = _product("hotel-searched", taxonomy="hotel", price=2_000_000)
-        recommended = _product("hotel-recommended", taxonomy="hotel", price=500_000)
-        response = {"status": "COMPLETED", "intent": {"days": 1},
-                    "itinerary": {"stay": {"product": searched}, "days": []}, "warnings": []}
-        findings = schedule_findings(response, {"hotel-searched": searched, "hotel-recommended": recommended},
-                                     {"hotel-searched": "search", "hotel-recommended": "recommendation"})
-        self.assertFalse(any("hotel rẻ nhất" in f for f in findings))
+    def test_a_day_may_start_in_the_afternoon_but_must_keep_time_order(self):
+        # Ngày hạ cánh muộn bắt đầu buổi chiều (AC-AGT-02); buổi tối trước buổi chiều mới là lỗi.
+        afternoon = [{"time": "AFTERNOON", "product": _product("p1")}, {"time": "EVENING", "product": _product("p2")}]
+        backwards = [{"time": "EVENING", "product": _product("p1")}, {"time": "AFTERNOON", "product": _product("p2")}]
+        for slots, flagged in ((afternoon, False), (backwards, True)):
+            response = {"status": "COMPLETED", "intent": {"days": 1},
+                        "itinerary": {"days": [{"day": 1, "slots": slots}]}, "warnings": []}
+            self.assertEqual(any("thứ tự thời gian" in f for f in schedule_findings(response, {})), flagged)
 
 
 class DatasetFindingsTests(unittest.TestCase):
@@ -417,7 +410,7 @@ class FormMatchesAnswerTests(unittest.TestCase):
 class AgentTestCasesDatasetTests(unittest.TestCase):
     def test_the_user_reported_cases_load_and_every_placeholder_resolves(self):
         cases = load_dataset(AGENT_CASES_PATH)
-        self.assertEqual([case.id for case in cases], ["TC-01", "TC-02", "TC-03", "TC-04", "TC-10", "TC-11"])
+        self.assertEqual([case.id for case in cases], ["TC-01", "TC-02", "TC-03", "TC-04", "TC-10", "TC-11", "TC-12", "TC-13", "TC-14"])
         for case in cases:
             for turn in case.turns:
                 resolved = json.dumps([resolve_dates(turn.message, date(2026, 10, 2)),
@@ -551,3 +544,51 @@ class ProgressEventTests(unittest.IsolatedAsyncioTestCase):
             lines = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
         self.assertEqual([line["event"] for line in lines], ["start", "done"])
         self.assertIn("at", lines[0])
+
+
+SCENARIO_PATH = Path(__file__).resolve().parents[1] / "datasets" / "agent_scenarios_v5.yaml"
+
+
+class ScenarioDatasetTests(DatasetTests):
+    """Cùng các kiểm tra dataset cho bộ kịch bản bản 5 và lỗi chat thử 10/10 (`agent_scenarios_v5.yaml`)."""
+
+    def setUp(self):
+        self.cases = load_dataset(SCENARIO_PATH)
+
+    def test_every_bug_of_the_test_chat_has_a_case(self):
+        ids = {case.id for case in self.cases}
+        self.assertLessEqual({"SC-A", "SC-B", "SC-C", "SC-E", "SC-F", "SC-G", "SC-H", "SC-MAIN"}, ids)
+
+
+class ScenarioKeyTests(unittest.TestCase):
+    """Khoá `expect` của bộ kịch bản: chữ phải có, cụm không lặp, thẻ, nút, cảnh báo phải có."""
+
+    RESPONSE = {
+        "status": "NEEDS_CLARIFICATION",
+        "question": "**Văn Miếu**\nCó, Văn Miếu mở buổi tối 18:00–22:00. Nơi này được khen nhiều, được khen nhiều.",
+        "searchResults": {"attraction": [{"productId": "vm", "taxonomy": "attraction"}],
+                          "hotel": [{"productId": "ks", "taxonomy": "hotel"}]},
+        "suggestions": ["Gần Văn Miếu có gì nữa?"],
+        "warnings": [{"code": "PRODUCT_NOT_ON_SALE_FOR_DATE"}],
+    }
+
+    def findings(self, expect):
+        return dataset_findings(self.RESPONSE, 200, [], expect, {})
+
+    def test_text_includes_is_case_insensitive(self):
+        self.assertEqual(self.findings({"textIncludes": ["18:00", "văn miếu"]}), [])
+        self.assertTrue(self.findings({"textIncludes": ["hồ bơi"]}))
+
+    def test_phrase_max_count(self):
+        self.assertEqual(self.findings({"phraseMaxCount": {"được khen nhiều": 2}}), [])
+        self.assertTrue(self.findings({"phraseMaxCount": {"được khen nhiều": 1}}))
+
+    def test_cards_and_taxonomies(self):
+        self.assertEqual(self.findings({"cardsMin": 2, "cardsMax": 2}), [])
+        self.assertTrue(self.findings({"cardsMax": 1}))
+        self.assertTrue(self.findings({"cardTaxonomies": ["attraction"]}))
+
+    def test_suggestions_and_warnings(self):
+        self.assertTrue(self.findings({"suggestionsMin": 2}))
+        self.assertEqual(self.findings({"warningsInclude": ["PRODUCT_NOT_ON_SALE_FOR_DATE"]}), [])
+        self.assertTrue(self.findings({"warningsInclude": ["NO_STAY_AVAILABLE"]}))

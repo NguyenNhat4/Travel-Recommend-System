@@ -164,3 +164,35 @@ describe('TripDetailsForm departure city (AC-AGT-02, AC-AGT-03)', () => {
     expect((screen.getByLabelText('Nơi đi') as HTMLInputElement).disabled).toBe(false);
   });
 });
+
+describe('hotel preferences (contract 1.24.0, FR-AGT-06)', () => {
+  const originalFetch = global.fetch;
+  const form: ClarificationForm = {
+    ...baseForm,
+    fields: [...baseForm.fields, 'interests'],
+    defaults: { ...baseForm.defaults, interests: ['Phù hợp trẻ nhỏ'] },
+    interestOptions: ['Hồ bơi', 'Phù hợp trẻ nhỏ', 'Spa'],
+  };
+
+  afterEach(() => {
+    cleanup();
+    global.fetch = originalFetch;
+  });
+
+  it('shows the options with the prefilled ones ticked and adds the choice to the prompt', () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ destinations: [] }) });
+    const onConfirm = vi.fn();
+    render(<TripDetailsForm form={form} onConfirm={onConfirm} />);
+
+    expect(screen.getByRole('button', { name: 'Phù hợp trẻ nhỏ' }).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: 'Hồ bơi' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Xác nhận' }));
+
+    expect(onConfirm).toHaveBeenCalledWith(expect.stringContaining('ưu tiên khách sạn có Phù hợp trẻ nhỏ, Hồ bơi'));
+  });
+
+  it('leaves the prompt without preferences when none is ticked, and ignores other interests', () => {
+    const prompt = tripDetailsPrompt({ ...baseForm.defaults, interests: ['ẩm thực'] }, ['Hồ bơi']);
+    expect(prompt).not.toContain('ưu tiên');
+  });
+});

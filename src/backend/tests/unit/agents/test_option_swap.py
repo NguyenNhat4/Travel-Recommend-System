@@ -116,6 +116,23 @@ class ApplyOptionTests(unittest.TestCase):
         self.assertEqual(final['http_status'], 200)
         self.assertEqual([turn['role'] for turn in final['conversation_history']], ['user', 'assistant'])
 
+    def test_a_group_needing_several_rooms_can_swap_and_swap_back(self):
+        """Trace 09/10/2026 (`e7fb8709…`, 4 người lớn): lịch đã lưu chỉ giữ `summary` của khách sạn, mất
+        `attributes.priceAdults`, nên `finalize` tính lại 1 phòng thay vì 2 và chặn mọi lượt chọn phương án."""
+        previous = square_trip()
+        previous['intent']['party'] = {'type': 'FRIENDS', 'adults': 4, 'children': 0}
+        for hotel_id in ('h-close', 'h-far'):
+            previous['candidates'][hotel_id]['attributes']['priceAdults'] = 2
+        composed = composition.composed(previous)
+        self.assertEqual(composed['response']['itinerary']['stay']['rooms'], 2)
+        for _ in range(2):   # đổi sang h-far rồi quay lại h-close
+            state = next_turn(previous, composed, pick={'index': 1})
+            update = nodes.apply_option_node(state)
+            final = nodes.finalize_node({**state, **update, 'conversation_history': []})
+            self.assertEqual((final['http_status'], final['validation_issues']), (200, []))
+            self.assertEqual(update['response']['itinerary']['stay']['rooms'], 2)
+            composed = {'stay_options': update['stay_options'], 'current_plan': update['current_plan']}
+
     def test_unknown_or_unstored_option_goes_through_the_normal_flow(self):
         previous, composed = first_turn()
         self.assertEqual(routing.route_after_intake(next_turn(previous, composed, pick={'index': 3})), 'classify')

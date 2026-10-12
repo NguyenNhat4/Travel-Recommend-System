@@ -54,14 +54,21 @@ tar -czf - -C "$REPO_ROOT/scripts" install-vota-cron.sh check-db-tunnel.sh \
 gcloud compute ssh "$CRAWLER_INSTANCE" "${ssh_flags[@]}" \
   --command "sudo -n test -s '$CRAWLER_ENV_FILE' || { echo 'Thiếu env file $CRAWLER_ENV_FILE trên VM' >&2; exit 1; }; sudo -n chown \"\$(id -u):\$(id -g)\" '$CRAWLER_ENV_FILE' && chmod 600 '$CRAWLER_ENV_FILE'"
 
-# 2b. Thư mục dữ liệu và log thuộc user SSH (cron và monitor chạy dưới user đó, như VM cũ). Startup tạo bằng root.
+# 2b. Thư mục log thuộc user SSH (runner ghi log bằng user này). Thư mục dữ liệu thuộc UID/GID 10001 của container
+# crawler (image chạy user 10001, xem run_daily_docker.sh: "tạo với UID/GID 10001 cho app trong image").
 gcloud compute ssh "$CRAWLER_INSTANCE" "${ssh_flags[@]}" \
-  --command "sudo -n mkdir -p '$CRAWLER_DATA_DIR' '$CRAWLER_LOG_DIR' && sudo -n chown \"\$(id -u):\$(id -g)\" '$CRAWLER_DATA_DIR' '$CRAWLER_LOG_DIR'"
+  --command "sudo -n mkdir -p '$CRAWLER_DATA_DIR' '$CRAWLER_LOG_DIR' && sudo -n chown 10001:10001 '$CRAWLER_DATA_DIR' && sudo -n chown \"\$(id -u):\$(id -g)\" '$CRAWLER_LOG_DIR'"
+
+# 2c. chown thư mục không đổi owner của file đã có. Nếu monitor-cd.log do user khác tạo (ví dụ chạy tay), lần
+# `nohup ... > monitor-cd.log` sẽ lỗi Permission denied. Đưa file đó về user SSH trước khi khởi động monitor.
+gcloud compute ssh "$CRAWLER_INSTANCE" "${ssh_flags[@]}" \
+  --command "f='$CRAWLER_LOG_DIR/monitor-cd.log'; [ ! -e \"\$f\" ] || sudo -n chown \"\$(id -u):\$(id -g)\" \"\$f\""
 
 # 3. Cài cron (thay khối cron cũ, giữ dòng khác của crontab).
 gcloud compute ssh "$CRAWLER_INSTANCE" "${ssh_flags[@]}" \
   --command "/opt/vota/bin/install-vota-cron.sh --job fresh --image '$CRAWLER_REF' --runner '$CRAWLER_RUNNER' --data-dir '$CRAWLER_DATA_DIR' --env-file '$CRAWLER_ENV_FILE' --log-dir '$CRAWLER_LOG_DIR'"
 
 # 4. Khởi động monitor job cào (cùng lệnh với crawler-ci-cd.yml).
-remote_monitor="set -eu; docker rm -f vota-daily-monitor vota-fresh-catalog-monitor 2>/dev/null || true; docker pull '$CRAWLER_REF'; mkdir -p '$CRAWLER_DATA_DIR' '$CRAWLER_LOG_DIR'; nohup env FRESH_IMAGE='$CRAWLER_REF' FRESH_DATA_DIR='$CRAWLER_DATA_DIR' CATALOG_ENV_FILE='$CRAWLER_ENV_FILE' CATALOG_LOG_DIR='$CRAWLER_LOG_DIR' PULL=0 MONITOR_HOST=127.0.0.1 MONITOR_PUBLIC=0 '$CRAWLER_RUNNER' fresh-monitor > '$CRAWLER_LOG_DIR/monitor-cd.log' 2>&1 < /dev/null & for attempt in \$(seq 1 30); do status=\$(docker inspect --format '{{.State.Status}}' vota-fresh-catalog-monitor 2>/dev/null || true); if [ \"\$status\" = running ]; then '$CRAWLER_RUNNER' prune-images '$CRAWLER_REF' || true; exit 0; fi; sleep 1; done; tail -n 100 '$CRAWLER_LOG_DIR/monitor-cd.log' || true; exit 1"
+# staging-ha tắt realtime: BACKEND_URL trống (xem history/2026-10-09-realtime-tat-staging-ha.md).
+remote_monitor="set -eu; docker rm -f vota-daily-monitor vota-fresh-catalog-monitor 2>/dev/null || true; docker pull '$CRAWLER_REF'; mkdir -p '$CRAWLER_DATA_DIR' '$CRAWLER_LOG_DIR'; nohup env FRESH_IMAGE='$CRAWLER_REF' FRESH_DATA_DIR='$CRAWLER_DATA_DIR' CATALOG_ENV_FILE='$CRAWLER_ENV_FILE' CATALOG_LOG_DIR='$CRAWLER_LOG_DIR' PULL=0 MONITOR_HOST=0.0.0.0 MONITOR_PUBLIC=1 BACKEND_URL='' '$CRAWLER_RUNNER' fresh-monitor > '$CRAWLER_LOG_DIR/monitor-cd.log' 2>&1 < /dev/null & for attempt in \$(seq 1 30); do status=\$(docker inspect --format '{{.State.Status}}' vota-fresh-catalog-monitor 2>/dev/null || true); if [ \"\$status\" = running ]; then '$CRAWLER_RUNNER' prune-images '$CRAWLER_REF' || true; exit 0; fi; sleep 1; done; tail -n 100 '$CRAWLER_LOG_DIR/monitor-cd.log' || true; exit 1"
 gcloud compute ssh "$CRAWLER_INSTANCE" "${ssh_flags[@]}" --command "$remote_monitor"

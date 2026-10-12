@@ -128,7 +128,11 @@ export async function collectAssistantEvents(
     if (event.event === 'run.completed' || event.event === 'run.failed') terminal = true;
   }
   if (signal?.aborted) throw abortError();
-  if (!terminal) throw new AssistantStreamError('Assistant stream ended before a terminal event', 'MISSING_TERMINAL_EVENT', true);
+  if (!terminal) throw new AssistantStreamError(
+    'Kết nối với trợ lý bị gián đoạn giữa chừng. Bấm "Thử lại" để gửi lại yêu cầu; nếu vẫn lỗi, tải lại trang.',
+    'MISSING_TERMINAL_EVENT',
+    true,
+  );
   return events;
 }
 
@@ -184,5 +188,9 @@ export async function requestAssistantStream(
     if (event.event === 'run.completed' || event.event === 'run.failed') terminal = true;
   }
   if (options.signal.aborted) throw abortError();
-  if (!terminal) throw new AssistantStreamError('Assistant stream ended before a terminal event', 'MISSING_TERMINAL_EVENT', true);
+  if (!terminal) throw new AssistantStreamError(
+    'Kết nối với trợ lý bị gián đoạn giữa chừng. Bấm "Thử lại" để gửi lại yêu cầu; nếu vẫn lỗi, tải lại trang.',
+    'MISSING_TERMINAL_EVENT',
+    true,
+  );
 }

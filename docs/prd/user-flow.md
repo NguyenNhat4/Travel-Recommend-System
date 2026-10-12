@@ -4,7 +4,7 @@ Tài liệu này đặc tả toàn bộ hành trình trải nghiệm người d�
 
 ---
 
-## 1. Hành Trình Người Dùng Theo Persona (User Journeys)
+## 1. Hành Trình Người Dùng Theo Phong Cách Du Lịch (User Journeys)
 
 Hệ thống được tối ưu hóa cho 4 luồng trải nghiệm chính tương ứng với các nhóm người dùng:
 
@@ -12,13 +12,13 @@ Hệ thống được tối ưu hóa cho 4 luồng trải nghiệm chính tươn
 [Khách truy cập] ──> [Định danh / Đăng nhập] ──> [Khám phá / Tìm kiếm] ──> [Lập lịch trình AI] ──> [Đặt dịch vụ] ──> [Nhận gợi ý chặng kế tiếp]
 ```
 
-### 1.1. Hành trình Khách nghỉ dưỡng gia đình (Persona P1)
+### 1.1. Hành trình khách thích nghỉ dưỡng biển cùng gia đình
 1. **Khám phá:** Truy cập trang chủ, nhìn thấy các resort ven biển có hồ bơi trẻ em và không gian xanh kèm lý do gợi ý *"Phù hợp cho chuyến đi gia đình"*.
 2. **Tìm kiếm:** Gõ *"resort yên tĩnh gần biển có buffet sáng"*, nhận kết quả các khu nghỉ dưỡng đã được lọc sẵn tiện ích gia đình.
 3. **Đặt phòng:** Chọn phòng Family Suite, tiến hành xác nhận đặt phòng.
 4. **Hậu mãi tức thì:** Màn hình xác nhận ngay lập tức hiển thị gợi ý vé máy bay khứ hồi và vé tham quan công viên giải trí tại điểm đến vừa đặt.
 
-### 1.2. Hành trình Khách du lịch tự túc / Trải nghiệm (Persona P3)
+### 1.2. Hành trình khách thích khám phá văn hoá, ẩm thực
 1. **Tiếp cận:** Mở widget Trợ lý AI, yêu cầu *"Lập lịch trình 3 ngày khám phá ẩm thực và văn hóa Hội An - Đà Nẵng ngân sách tiết kiệm"*.
 2. **Tương tác AI:** Trợ lý AI phân tích ý định, gửi lại lịch trình chia theo buổi với các địa điểm nổi tiếng kèm thẻ sản phẩm homestay và tour trải nghiệm thực tế.
 3. **Điều chỉnh:** Bấm vào thẻ sản phẩm để xem chi tiết đánh giá và ảnh, yêu cầu AI đổi một điểm tham quan buổi chiều.

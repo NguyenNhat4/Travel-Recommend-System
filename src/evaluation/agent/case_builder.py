@@ -35,7 +35,7 @@ WARNING_CODES = (
     "DAY_WITHOUT_PRODUCTS", "OVER_BUDGET", "PRODUCT_DROPPED_UNAVAILABLE", "PRODUCT_DROPPED_EXCLUDED",
     "PRODUCT_DROPPED_DATE", "PRODUCT_DROPPED_DESTINATION", "PRODUCT_DROPPED_TAXONOMY", "PRODUCT_DROPPED_PRICE",
     "PRODUCT_DROPPED_ATTRIBUTES", "PRODUCT_DROPPED_NAMED_REQUIREMENT", "PRODUCT_DROPPED_PRICE_BASIS",
-    "PRODUCT_DETAIL_UNAVAILABLE", "PRODUCT_DROPPED_DUPLICATE",
+    "PRODUCT_DETAIL_UNAVAILABLE", "PRODUCT_DROPPED_DUPLICATE", "PRODUCT_NOT_ON_SALE_FOR_DATE",
 )
 HTTP_STATUSES = (200, 400, 404, 422, 503)
 
@@ -142,6 +142,34 @@ FIELD_HELP: dict[str, FieldHelp] = {
         "thì dùng khoá đó. Mỗi dòng một tiêu chí, viết như câu khẳng định; tiêu chí bắt đầu bằng \"Nếu\" chỉ áp "
         "dụng khi điều kiện đúng.",
         "judge: [\"Trợ lý hỏi người dùng muốn đổi sang ngày nào; không tự chọn ngày mới.\"]"),
+    "textIncludes": FieldHelp(
+        "Chữ phải có (textIncludes)",
+        "Mỗi chuỗi phải có trong câu trả lời (`question`/`message`/`error.message`); không phân biệt hoa thường.",
+        "Khi câu trả lời phải nói một điều cố định do code viết, ví dụ câu hỏi lại loại vé hay câu mở đầu lịch tham khảo. "
+        "Câu do LLM viết thì chỉ ghi chữ chắc chắn có (giờ mở cửa lấy từ dữ liệu).",
+        "textIncludes: [\"vé tham quan\"]"),
+    "phraseMaxCount": FieldHelp(
+        "Cụm không lặp (phraseMaxCount)", "Cụm (không phân biệt hoa thường) xuất hiện tối đa số lần đã cho.",
+        "Khi lỗi gốc là lời dẫn lặp một cụm ở mọi dòng (\"được khen nhiều\").",
+        "phraseMaxCount: {\"được khen nhiều\": 1}"),
+    "cardsMin": FieldHelp(
+        "Số thẻ tối thiểu (cardsMin)", "Tổng số sản phẩm trong `searchResults` ít nhất bằng số này.",
+        "Lượt khám phá phải có thẻ.", "cardsMin: 1"),
+    "cardsMax": FieldHelp(
+        "Số thẻ tối đa (cardsMax)", "Tổng số sản phẩm trong `searchResults` không quá số này.",
+        "Câu hỏi về đúng một nơi chỉ được trả thẻ nơi đó.", "cardsMax: 1"),
+    "cardTaxonomies": FieldHelp(
+        "Loại thẻ được phép (cardTaxonomies)", "Mọi thẻ trong `searchResults` phải thuộc các taxonomy đã chọn.",
+        "Hỏi khách sạn thì chỉ có thẻ khách sạn; hỏi một điểm tham quan thì không chen khách sạn.",
+        "cardTaxonomies: [hotel]"),
+    "suggestionsMin": FieldHelp(
+        "Số nút gợi ý tối thiểu (suggestionsMin)", "`suggestions` có ít nhất số nút này.",
+        "Khi câu hỏi lại phải kèm nút lựa chọn (loại vé, Hà Nội hay Hội An).", "suggestionsMin: 2"),
+    "warningsInclude": FieldHelp(
+        "Warning phải có (warningsInclude)", "Các `warnings[].code` đã chọn phải xuất hiện.",
+        "Khi hành vi gắn với một cảnh báo, ví dụ lịch tham khảo có `PRODUCT_NOT_ON_SALE_FOR_DATE`. Gõ được mã không có "
+        "trong danh sách.",
+        "warningsInclude: [PRODUCT_NOT_ON_SALE_FOR_DATE]"),
 }
 
 # Thứ tự và nhóm hiện trên form.
@@ -150,8 +178,9 @@ EXPECT_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Ý định", ("intent",)),
     ("Hỏi lại", ("missingFieldsInclude", "formMatchesAnswer")),
     ("Tool & node", ("toolCalled", "toolsInclude", "nodesInclude", "nodesExclude")),
-    ("Lịch trình", ("hasStay", "minActivities", "excludeProductsFromTurn", "warningsExclude")),
-    ("Câu trả lời", ("forbiddenText", "titleFirstLine", "judge")),
+    ("Lịch trình", ("hasStay", "minActivities", "excludeProductsFromTurn", "warningsExclude", "warningsInclude")),
+    ("Thẻ & nút", ("cardsMin", "cardsMax", "cardTaxonomies", "suggestionsMin")),
+    ("Câu trả lời", ("forbiddenText", "textIncludes", "phraseMaxCount", "titleFirstLine", "judge")),
 )
 
 

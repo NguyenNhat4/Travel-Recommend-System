@@ -1,0 +1,95 @@
+{
+  "status": "NEEDS_CLARIFICATION",
+  "conversationId": "conv-01JXYZ",
+  "question": "**Nha Trang có gì chơi**\nNha Trang hợp với người thích biển và công viên giải trí.\nĐi trọn một ngày thì có [VinWonders Nha Trang](product:nt-a-01), điểm được nhiều người chấm nhất ở đây.\nỞ gần biển thì có [Vinpearl Beachfront Nha Trang](product:nt-h-02).\nMuốn phòng nhìn ra biển thì [Vinpearl Resort Nha Trang - Deluxe Ocean View](product:nt-h-01).\nBạn có muốn mình lên lịch Nha Trang không?",
+  "knownIntent": {
+    "destination": "Nha Trang",
+    "startDate": null,
+    "days": null,
+    "party": null,
+    "budget": null,
+    "interests": [],
+    "pace": null
+  },
+  "searchResults": {
+    "attraction": [
+      {
+        "productId": "nt-a-01",
+        "name": "VinWonders Nha Trang",
+        "taxonomy": "attraction",
+        "destination": "Nha Trang",
+        "unitPrice": 880000,
+        "currency": "VND",
+        "available": true,
+        "availableFrom": "2026-09-01",
+        "availableTo": "2027-08-31",
+        "imageUrl": "https://cdn.example.vn/nt-a-01.jpg",
+        "rating": 4.5,
+        "reviewCount": 8421,
+        "attributes": {
+          "outdoor": true,
+          "waterPark": true,
+          "familyFriendly": true
+        },
+        "priceUnit": "PER_PERSON"
+      }
+    ],
+    "hotel": [
+      {
+        "productId": "nt-h-02",
+        "name": "Vinpearl Beachfront Nha Trang",
+        "taxonomy": "hotel",
+        "destination": "Nha Trang",
+        "unitPrice": 2150000,
+        "currency": "VND",
+        "available": true,
+        "availableFrom": "2026-10-01",
+        "availableTo": "2027-03-31",
+        "imageUrl": "https://cdn.example.vn/nt-h-02.jpg",
+        "rating": null,
+        "reviewCount": null,
+        "attributes": {
+          "starRating": 5,
+          "nearCenter": true,
+          "pool": true
+        },
+        "priceUnit": "PER_NIGHT"
+      },
+      {
+        "productId": "nt-h-01",
+        "name": "Vinpearl Resort Nha Trang - Deluxe Ocean View",
+        "taxonomy": "hotel",
+        "destination": "Nha Trang",
+        "unitPrice": 3400000,
+        "currency": "VND",
+        "available": true,
+        "availableFrom": "2026-10-01",
+        "availableTo": "2027-03-31",
+        "imageUrl": "https://cdn.example.vn/nt-h-01.jpg",
+        "rating": 4.6,
+        "reviewCount": 1293,
+        "attributes": {
+          "starRating": 5,
+          "oceanView": true,
+          "privateBeach": true,
+          "kidsPool": true,
+          "familyFriendly": true
+        },
+        "priceUnit": "PER_NIGHT"
+      }
+    ]
+  },
+  "suggestions": [
+    "Lên lịch Nha Trang 3 ngày",
+    "Nha Trang buổi tối đi đâu?",
+    "Thôi, chỗ nào mát mẻ hơn?"
+  ],
+  "metadata": {
+    "personalised": false,
+    "searchRequestIds": [
+      "search-01JNOP"
+    ],
+    "generatedAt": "2026-09-16T08:00:00Z",
+    "requestId": "agent-01JXYZ"
+  }
+}

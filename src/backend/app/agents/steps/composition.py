@@ -3,13 +3,18 @@ from __future__ import annotations
 
 from collections import Counter
 from copy import deepcopy
+from datetime import date, timedelta
 import logging
 
 from src.backend.app.domain.itinerary import flights as flight_rules
-from src.backend.app.domain.itinerary.planning import (SCHEDULABLE_TAXONOMIES, compose_plan, day_windows, free_to_visit, multi_day_offers,
-                                                        price_plan, render_proposal, summary, validate_plan)
+from src.backend.app.domain.itinerary.planning import (SCHEDULABLE_TAXONOMIES, STAY_TAXONOMY, compose_plan, day_windows,
+                                                        free_to_visit, multi_day_offers, price_plan, render_proposal,
+                                                        stay_rooms, summary, validate_plan)
+
+from src.backend.app.application.itinerary.retrieval import NOT_ON_SALE
 
 from . import messages
+from .classification import vietnam_today
 from .explanations import missing_stay_note
 from .messages import display_date, failure
 
@@ -25,6 +30,8 @@ WARNINGS = {
     "PRODUCT_COST_ONLY": "Tổng chỉ gồm các sản phẩm được chọn; chưa bao gồm chi phí phát sinh ngoài lịch trình.",
     "BUDGET_ON_PRODUCT_COST": "Đối chiếu ngân sách chỉ dựa trên chi phí các sản phẩm trong lịch trình; "
                               "chưa gồm ăn uống, đi lại và phát sinh ngoài lịch trình.",
+    "STAY_ROOMS_UNKNOWN": "Khách sạn chưa ghi giá gồm bao nhiêu người lớn, nên giá chưa tính đủ số phòng cho cả đoàn; "
+                          "tổng đang tính 1 phòng.",
     "RECOMMENDATION_FALLBACK": "Một số mục trong lịch trình là gợi ý (Recommendation), không phải kết quả "
                                "tìm kiếm, vì không có sản phẩm tìm kiếm phù hợp cho mục đó; xem `because` ở "
                                "từng mục để biết lý do gợi ý.",
@@ -196,7 +203,58 @@ def _flight_warning(state: dict, reason: str | None, legs: list) -> dict | None:
     key = reason
     if reason == flight_rules.ONE_WAY_ONLY:
         key = "MISSING_RETURN" if legs and legs[0]["direction"] == "OUTBOUND" else "MISSING_OUTBOUND"
-    return {"code": f"FLIGHT_{reason}", "message": messages.message(state, f"flight_warn_{key}", **values)}
+    text = messages.message(state, f"flight_warn_{key}", **values)
+    if reason in (flight_rules.NO_FLIGHT_ON_DATES, flight_rules.ONE_WAY_ONLY):
+        text = " ".join(filter(None, (text, _nearest_dates_sentence(state, options, intent))))
+    return {"code": f"FLIGHT_{reason}", "message": text}
+
+
+def _nearest_dates_sentence(state: dict, options: dict, intent: dict) -> str | None:
+    """Câu gợi ý ngày gần nhất có vé, giữ số ngày của chuyến; dữ liệu là chuyến đã tải lượt này (không tra thêm)."""
+    found = flight_rules.nearest_dates(options, intent, vietnam_today())
+    joint = state.get("joint_date")
+    if joint:
+        # Ngày đi chung (có cả khách sạn, vé tham quan) đứng đầu và là ví dụ "đổi sang".
+        found = [{"startDate": joint, "complete": True}, *(item for item in found if item["startDate"] != joint)]
+        found = found[:flight_rules.NEAREST_DATES]
+    if not found:
+        return None
+    days = intent.get("days") or 1
+    items = []
+    for item in found:
+        start = date.fromisoformat(item["startDate"])
+        label = messages.message(state, "flight_nearest_both" if item["complete"] else "flight_nearest_out_only",
+                                 out=display_date(item["startDate"]),
+                                 back=display_date((start + timedelta(days=days - 1)).isoformat()))
+        items.append(label)
+    return messages.message(state, "flight_nearest", dates=messages.message(state, "detail_joiner").join(items),
+                            example=display_date(found[0]["startDate"])[:5])
+
+
+def _sale_window(state: dict, product: dict) -> str:
+    start, end = product.get("availableFrom"), product.get("availableTo")
+    if start and end:
+        return messages.message(state, "sale_window", start=display_date(start), end=display_date(end))
+    return messages.message(state, "sale_window_unknown")
+
+
+def _not_on_sale(state: dict, plan: dict) -> list[dict]:
+    """Điểm tham quan giữ làm tham khảo vì vé chưa mở bán cho ngày đi (`retrieval.NOT_ON_SALE`): không tính là mục đặt
+    được, mỗi điểm một cảnh báo `PRODUCT_NOT_ON_SALE_FOR_DATE` nêu cửa sổ mở bán thật (code là chuỗi tự do, contract
+    không đổi)."""
+    flagged = [slot["product"]["productId"] for day in plan["days"] for slot in day["slots"]
+               if slot.get("product") and state["candidates"].get(slot["product"]["productId"], {}).get(NOT_ON_SALE)
+               and not free_to_visit(state["candidates"][slot["product"]["productId"]])]
+    if not flagged:
+        return []
+    plan["bookableCount"] = max(0, plan.get("bookableCount", 0) - len(flagged))
+    warnings = []
+    for product_id in flagged:
+        product = state["candidates"][product_id]
+        warnings.append({"code": "PRODUCT_NOT_ON_SALE_FOR_DATE", "productId": product_id,
+                         "message": messages.message(state, "not_on_sale_item",
+                                                     window=_sale_window(state, product))})
+    return warnings
 
 
 def with_flights(plan: dict, legs: list, intent: dict) -> dict:
@@ -221,6 +279,7 @@ def _planned(state: dict, proposal: dict, legs: list, flight_reason: str | None,
     warnings = deepcopy(state.get("warnings", []))
     if flight_warning:
         warnings.append(flight_warning)
+    warnings += _not_on_sale(state, plan)
     warnings.append({"code": "SNAPSHOT_ONLY", "message": WARNINGS["SNAPSHOT_ONLY"]})
     warnings.append({"code": "SCHEDULE_ESTIMATE", "message": WARNINGS["SCHEDULE_ESTIMATE"]})
     if proposal.get("criteria") == "DISTANCE":
@@ -234,6 +293,11 @@ def _planned(state: dict, proposal: dict, legs: list, flight_reason: str | None,
         warnings.append({"code": "PLAN_CRITERIA", "message": criteria})
     if _uses_recommendation(plan):
         warnings.append({"code": "RECOMMENDATION_FALLBACK", "message": WARNINGS["RECOMMENDATION_FALLBACK"]})
+    for stay in plan.get("stays") or []:
+        # Thiếu `priceAdults` thì tiền khách sạn tính 1 phòng (AC-AGT-04, chốt 2026-10-09): báo để không hiểu nhầm là đủ.
+        if stay_rooms(state["candidates"][stay["product"]["productId"]], state["intent"].get("party")) is None:
+            warnings.append({"code": "STAY_ROOMS_UNKNOWN", "message": WARNINGS["STAY_ROOMS_UNKNOWN"],
+                             "productId": stay["product"]["productId"]})
     _budget_warnings(plan, state["intent"], warnings)
     no_stay = missing_stay_note(state, plan)
     if no_stay:
@@ -266,6 +330,35 @@ def stay_options_payload(distance_km: float, options: list[dict]) -> dict:
                         for option in options]}
 
 
+def _joint_date(state: dict, flight_reason: str | None) -> str | None:
+    """Một ngày đi gợi ý chung cho mọi phần đang thiếu vì ngày (vé máy bay, khách sạn, vé tham quan chưa mở bán), để các
+    câu gợi ý cùng nói một ngày (`flight_rules.joint_start`). Dữ liệu là kết quả đã tải lượt này."""
+    intent = state["intent"]
+    dates = flight_rules.trip_dates(intent)
+    if dates is None:
+        return None
+    days, today = intent["days"], vietnam_today()
+    flight_starts = None
+    if flight_reason in (flight_rules.NO_FLIGHT_ON_DATES, flight_rules.ONE_WAY_ONLY):
+        found = flight_rules.nearest_dates(state.get("flight_options") or {}, intent, today,
+                                           limit=flight_rules.JOINT_SEARCH_DAYS)
+        flight_starts = [date.fromisoformat(item["startDate"]) for item in found if item["complete"]]
+    windows = []
+    stay = (state.get("drop_summary") or {}).get(STAY_TAXONOMY) or {}
+    if stay.get("openFrom") and stay.get("openTo") and days >= 2 and not _has_stay_candidate(state):
+        windows.append((date.fromisoformat(stay["openFrom"]), date.fromisoformat(stay["openTo"]), days - 2))
+    closing = [product.get("availableTo") for product in state["candidates"].values()
+               if product.get(NOT_ON_SALE) and product.get("availableTo")]
+    if closing:
+        windows.append((None, date.fromisoformat(max(closing)), days - 1))
+    joint = flight_rules.joint_start(dates[0], days, today, flight_starts, windows)
+    return joint.isoformat() if joint else None
+
+
+def _has_stay_candidate(state: dict) -> bool:
+    return any(product.get("taxonomy") == STAY_TAXONOMY for product in state["candidates"].values())
+
+
 def composed(state: dict) -> dict:
     """Build the itinerary from the retrieved candidates with fixed rules; no model is consulted.
 
@@ -273,7 +366,13 @@ def composed(state: dict) -> dict:
     Mỗi phương án khác cũng được dựng thành lịch đầy đủ (cùng luật, cùng kiểm tra) để client xem trước và lượt
     "chọn phương án" chỉ lấy lịch đó ra, không tìm lại (AC-AGT-04, chốt 2026-10-08).
     """
-    legs, flight_reason = flight_rules.choose_flights(state.get("flight_options") or {}, state["intent"])
+    options_by_route = state.get("flight_options") or {}
+    legs, flight_reason = flight_rules.choose_flights(options_by_route, state["intent"],
+                                                      (state.get("constraints") or {}).get("chosen_flights"))
+    # Mọi câu gợi ý đổi ngày (vé, khách sạn, vé tham quan) cùng nói một ngày đi có đủ các phần đó.
+    joint = _joint_date(state, flight_reason)
+    if joint:
+        state = {**state, "joint_date": joint, "nearest_open_date": joint}
     windows = day_windows(state["intent"], legs)
     # Vé trừ vào ngân sách khi chọn khách sạn (chốt 2026-10-08); vé chưa rõ giá thì không so được với ngân sách.
     fares = [flight_rules.flight_cost(leg) for leg in legs]
@@ -303,12 +402,25 @@ def composed(state: dict) -> dict:
     if options:
         response["stayOptions"] = stay_options_payload(proposal["distance_km"], options)
         current = {"itinerary": plan, "warnings": warnings, "distanceKm": proposal["distance_km"],
-                   "stays": [{"productId": stay["product"]["productId"], "name": stay["product"]["name"],
-                              "fromNight": stay.get("fromNight", 1), "nights": stay["nights"]}
+                   "stays": [_stored_stay(state["candidates"][stay["product"]["productId"]],
+                                          stay.get("fromNight", 1), stay["nights"])
                              for stay in plan.get("stays") or []]}
         if offers:
             current["searchResults"] = offers
-    return {"response": response, "stay_options": options, "current_plan": current}
+    # Chuyến khác cùng ngày của từng chặng, để lượt sau "đổi chuyến bay" hỏi bằng lựa chọn cụ thể (`steps/changes.py`).
+    return {"response": response, "stay_options": options, "current_plan": current,
+            "flight_choices": flight_rules.flight_choices(options_by_route, legs),
+            **({"nearest_open_date": joint} if joint else {})}
+
+
+def _stored_stay(product: dict, from_night: int, nights: int) -> dict:
+    """Một khách sạn của lịch lưu trong hội thoại. Kèm `priceAdults` của candidate: lịch trong response chỉ có `summary`
+    (không giữ khoá này), mà lượt chọn phương án phải tính lại đúng số phòng để `finalize` kiểm (AC-AGT-04, 2026-10-09)."""
+    stored = {"productId": product["productId"], "name": product["name"], "fromNight": from_night, "nights": nights}
+    price_adults = (product.get("attributes") or {}).get("priceAdults")
+    if price_adults is not None:
+        stored["priceAdults"] = price_adults
+    return stored
 
 
 def _stay_options(state: dict, proposal: dict) -> list[dict]:
@@ -321,8 +433,7 @@ def _stay_options(state: dict, proposal: dict) -> list[dict]:
             product = state["candidates"].get(stay["stay_id"])
             if product is None or product.get("taxonomy") != "hotel":
                 raise ValueError("option stay is not a candidate hotel")
-            stays.append({"productId": product["productId"], "name": product["name"],
-                          "fromNight": stay["from_night"], "nights": stay["nights"]})
+            stays.append(_stored_stay(product, stay["from_night"], stay["nights"]))
         options.append({"index": index, "stays": stays, "kmDelta": option["km_delta"],
                         "moneyDelta": option["money_delta"], "overBudget": option["over_budget"]})
     return options

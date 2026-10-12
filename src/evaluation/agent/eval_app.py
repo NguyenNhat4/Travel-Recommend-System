@@ -318,8 +318,12 @@ def history_tab() -> None:
 
 # ------------------------------------------------------------------------------------- new case
 
-LIST_KEYS = {"status", "missingFieldsInclude", "nodesInclude", "nodesExclude", "toolsInclude", "warningsExclude"}
-LINES_KEYS = {"forbiddenText", "judge"}
+LIST_KEYS = {"status", "missingFieldsInclude", "nodesInclude", "nodesExclude", "toolsInclude", "warningsExclude",
+             "warningsInclude", "cardTaxonomies"}
+LINES_KEYS = {"forbiddenText", "judge", "textIncludes"}
+INT_KEYS = {"minActivities", "cardsMin", "cardsMax", "suggestionsMin"}
+#: Taxonomy của thẻ (`cardTaxonomies`), theo enum taxonomy của contract Search.
+CARD_TAXONOMIES = ["attraction", "hotel", "flight", "golf", "combo", "hotel_room"]
 BOOL_KEYS = {"toolCalled", "hasStay", "titleFirstLine"}
 
 
@@ -410,13 +414,17 @@ def _expect_widget(uid: int, key: str, index: int, dest_options: list[str]) -> N
             st.multiselect(key, cb.node_names(), key=value_key, label_visibility="collapsed")
         elif key == "toolsInclude":
             st.multiselect(key, cb.tool_names(), key=value_key, label_visibility="collapsed")
-        elif key == "warningsExclude":
+        elif key in ("warningsExclude", "warningsInclude"):
             current = st.session_state.get(value_key) or []
             st.multiselect(key, sorted(set(cb.WARNING_CODES) | set(current)), key=value_key,
                            accept_new_options=True, label_visibility="collapsed")
-        elif key == "minActivities":
+        elif key in INT_KEYS:
             st.session_state.setdefault(value_key, 2)
-            st.number_input(key, min_value=1, max_value=14, key=value_key, label_visibility="collapsed")
+            st.number_input(key, min_value=0, max_value=14, key=value_key, label_visibility="collapsed")
+        elif key == "cardTaxonomies":
+            st.multiselect(key, CARD_TAXONOMIES, key=value_key, label_visibility="collapsed")
+        elif key == "phraseMaxCount":
+            st.text_area(key, key=value_key, label_visibility="collapsed", placeholder="mỗi dòng: cụm=số lần tối đa")
         elif key == "excludeProductsFromTurn":
             if index == 1:
                 st.caption("Chỉ dùng từ lượt 2 trở đi.")
@@ -480,6 +488,12 @@ def _collect_case(case_id: str) -> dict:
                     if _k(uid, "excl_turn") in st.session_state:
                         expect[key] = {"turn": int(st.session_state[_k(uid, "excl_turn")]),
                                        "role": st.session_state.get(_k(uid, "excl_role"), "stay")}
+                elif key == "phraseMaxCount":
+                    pairs = [line.rsplit("=", 1) for line in str(value or "").splitlines() if "=" in line]
+                    counts = {phrase.strip(): int(limit) for phrase, limit in pairs
+                              if phrase.strip() and limit.strip().isdigit()}
+                    if counts:
+                        expect[key] = counts
                 elif key in LINES_KEYS:
                     lines = [line.strip() for line in str(value or "").splitlines() if line.strip()]
                     if lines:
@@ -493,7 +507,7 @@ def _collect_case(case_id: str) -> dict:
                     except (TypeError, ValueError):
                         expect[key] = value
                 elif value is not None:
-                    expect[key] = int(value) if key == "minActivities" else value
+                    expect[key] = int(value) if key in INT_KEYS else value
         turn["expect"] = expect
         turns.append(turn)
     return {"id": case_id, "category": st.session_state.get("nc_category", "").strip(),

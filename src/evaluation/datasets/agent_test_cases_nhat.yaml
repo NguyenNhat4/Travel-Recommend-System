@@ -48,26 +48,29 @@
           - Trợ lý trình bày lịch trình, hoặc nói rõ trạng thái xử lý thực tế; không chỉ một câu ngắn kiểu "đã hoàn tất".
 
 # TC-02 — Form hiển thị giá trị mặc định nhất quán. Lỗi gốc: lời trả lời gợi ý Đà Nẵng nhưng form chưa chọn Đà Nẵng.
+# Từ FR-AGT-06 (chốt 2026-10-10, đề xuất 2026-10-09-goi-y-truoc-khi-lap-lich): chưa xin lập lịch thì không hỏi số ngày và
+# không hiện form; "không biết" lần đầu được hỏi một câu dễ trả lời về kiểu chuyến, kèm nút gợi ý.
 - id: TC-02
-  category: form_default
-  fr: [FR-AGT-01]
+  category: not_knowing_without_form
+  fr: [FR-AGT-01, FR-AGT-06]
   turns:
     - message: Mình muốn một chuyến nghỉ dưỡng, ưu tiên thư giãn và nghỉ ngơi.
       expect:
         httpStatus: 200
         status: [NEEDS_CLARIFICATION]
         toolCalled: false
-        missingFieldsInclude: [destination, days]
+        nodesExclude: [clarify]
+        missingFieldsInclude: [destination]
+        judge:
+          - Trợ lý không hỏi số ngày, ngày đi, số người hay ngân sách; nó mời người dùng nói nơi muốn đến và cho biết chưa biết cũng không sao.
     - message: ko biết đi đâu
       expect:
         httpStatus: 200
         status: [NEEDS_CLARIFICATION]
         toolCalled: false
-        missingFieldsInclude: [destination]
-        formMatchesAnswer: true
+        nodesExclude: [clarify]
         judge:
-          - Nếu câu trả lời gợi ý một điểm đến cụ thể thì form điền sẵn (prefilledForm.destination) đúng điểm đến đó.
-          - Câu trả lời nói rõ đây là gợi ý để người dùng chọn hoặc sửa; không nói như thể người dùng đã chọn điểm đến.
+          - Trợ lý không hỏi lại "muốn đi đâu" và không hiện form; nó hỏi đúng một câu dễ trả lời về kiểu chuyến (ví dụ biển, nơi mát, gần nhà).
 
 # TC-03 — Giải thích khi chưa tìm được lịch trình. Lỗi gốc: câu FALLBACK cố định, không nói nguyên nhân hay bước tiếp
 # theo. Giữ nguyên "1 ngày 2 đêm" của nguồn; không khoá số ngày vì câu này tự mâu thuẫn.
@@ -180,3 +183,73 @@
         intent: {destination: Phú Quốc, days: 3, startDate: "{today:iso}", party.adults: 2}
         judge:
           - Lịch không có hai điểm tham quan cùng một nơi hoặc cùng một trải nghiệm (ví dụ hai mục Hòn Thơm, hoặc cáp treo Hòn Thơm cùng vé Sun World Hòn Thơm, hoặc hai vé Water Taxi).
+
+# TC-12 — Khám phá trước khi lập lịch (FR-AGT-06, chốt 2026-10-10). Lỗi gốc (09/10): "Hà Nội có gì?" bị ép điền form.
+# Mong đợi: thẻ thật kèm lời dẫn và lời mời lập lịch; "ok" sau lời mời thì mới hỏi thông tin chuyến.
+- id: TC-12
+  category: explore_then_plan
+  fr: [FR-AGT-06, FR-AGT-04]
+  turns:
+    - message: Hà Nội có gì chơi?
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        nodesInclude: [explore]
+        nodesExclude: [clarify]
+        intent: {destination: Hà Nội}
+        judge:
+          - Câu trả lời giới thiệu vài điểm tham quan hoặc khách sạn ở Hà Nội, mỗi nơi một lý do khác nhau, không liệt kê khô.
+          - Trợ lý không hỏi số ngày, ngày đi, số người hay ngân sách, và kết thúc bằng câu hỏi có muốn lập lịch Hà Nội không.
+    - message: ok
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        nodesInclude: [extract]
+        nodesExclude: [explore]
+        intent: {destination: Hà Nội}
+        judge:
+          - Trợ lý bắt đầu lập lịch Hà Nội bằng cách hỏi thông tin chuyến còn thiếu (ví dụ số ngày); không giới thiệu lại các điểm tham quan.
+
+# TC-13 — Nhớ nơi bị chê và việc ngoài phạm vi (FR-AGT-06, chốt 2026-10-10).
+- id: TC-13
+  category: rejected_place_and_scope
+  fr: [FR-AGT-06]
+  turns:
+    - message: Đà Nẵng có gì vui?
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        nodesInclude: [explore]
+    - message: chán, Đà Nẵng đi rồi
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        nodesInclude: [explore]
+        judge:
+          - Trợ lý chấp nhận ngắn gọn, không gợi ý lại Đà Nẵng (kể cả trong nút gợi ý) và giới thiệu một nơi khác.
+    - message: đặt vé máy bay giúp mình
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        toolCalled: false
+        judge:
+          - Trợ lý nói rõ không đặt vé thay được, chỉ việc gần nhất làm được trên trang (nút "Đặt ngay" trên thẻ sản phẩm, hoặc lên kế hoạch); không bảo người dùng sang trang hay dịch vụ khác.
+
+# TC-14 — Đổi chuyến bay khi chưa nói đổi thế nào (góp ý người dùng 09/10, kịch bản bản 5; FR-AGT-06 chốt 2026-10-10).
+# Lỗi gốc: "đổi chuyến bay" lập lại đúng chuyến cũ. Mong đợi: hỏi lại bằng các chuyến khác cùng ngày, không gọi LLM để hỏi.
+# Chuyến bay thật thưa: ngày đó có thể không còn chuyến nào khác, khi đó câu trả lời phải nói rõ và gợi ý đổi ngày.
+- id: TC-14
+  category: change_flight_without_value
+  fr: [FR-AGT-05, FR-AGT-06]
+  turns:
+    - message: Lên lịch trình 3 ngày tại Đà Nẵng, bắt đầu từ ngày {today+7:iso}, cho 2 người lớn, ngân sách khoảng 10 triệu, đi từ Hà Nội.
+      expect:
+        httpStatus: 200
+        status: [COMPLETED, FALLBACK]
+        intent: {destination: Đà Nẵng, days: 3, startDate: "{today+7:iso}", party.adults: 2}
+    - message: đổi chuyến bay
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION, COMPLETED]
+        judge:
+          - Nếu lượt trước có vé máy bay thì trợ lý liệt kê các chuyến khác cùng ngày của từng chặng (số hiệu, giờ bay, giá, chênh giá) với nút chọn, hoặc nói rõ ngày đó không còn chuyến khác và gợi ý đổi ngày; không lập lại đúng lịch cũ.

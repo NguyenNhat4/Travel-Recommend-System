@@ -34,6 +34,7 @@ env:
 jobs:
   terraform-staging-ha:
     name: Terraform staging-ha
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, vota-staging-ha]
     steps:
       - uses: actions/checkout@v4
@@ -57,6 +58,7 @@ jobs:
 
   db-scripts-and-patroni:
     name: Patroni, promote script, probe (Docker)
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, vota-staging-ha]
     timeout-minutes: 25
     steps:
@@ -74,6 +76,7 @@ jobs:
 
   crawler-lock:
     name: Crawler DB run lock (real Postgres)
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, vota-staging-ha]
     services:
       postgres:
@@ -86,6 +89,7 @@ jobs:
           --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
+      # Runner tự host chạy Debian 12 (Python 3.11 hệ thống); setup-python không hỗ trợ Debian nên không dùng.
       - uses: actions/setup-python@v5
         if: ${{ runner.environment == 'github-hosted' }}
         with:

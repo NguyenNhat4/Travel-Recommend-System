@@ -5,6 +5,7 @@ from src.backend.app.application.itinerary.contracts import valid
 from src.backend.app.domain.itinerary.flights import flight_candidates
 from src.backend.app.domain.itinerary.planning import summary, validate_plan
 
+from .messages import PRODUCT_LINK
 from .narration import unknown_links
 
 
@@ -33,8 +34,23 @@ def response_issues(state: dict, response: dict, http_status: int) -> list:
             for products in response["searchResults"].values():
                 if any(p != summary(state.get("candidates", {}).get(p["productId"], {})) for p in products):
                     issues.append("fallback_grounding")
+        if response.get("status") == "NEEDS_CLARIFICATION":
+            issues += _explore_issues(state, response)
     except (KeyError, TypeError, ValueError):
         issues.append("invalid_plan")
+    return issues
+
+
+def _explore_issues(state: dict, response: dict) -> list[str]:
+    """Lượt khám phá (FR-AGT-06): mỗi thẻ là đúng sản phẩm Search trả về lượt này, và câu chỉ link tới các thẻ đó."""
+    shown = {p["productId"] for products in (response.get("searchResults") or {}).values() for p in products}
+    issues = []
+    for products in (response.get("searchResults") or {}).values():
+        if any(p != summary(state.get("candidates", {}).get(p["productId"], {})) for p in products):
+            issues.append("explore_grounding")
+            break
+    if any(match.group(2) not in shown for match in PRODUCT_LINK.finditer(response.get("question", ""))):
+        issues.append("message_grounding")
     return issues
 
 

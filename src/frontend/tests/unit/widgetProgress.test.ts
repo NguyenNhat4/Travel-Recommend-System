@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { progressView } from '../../src/features/itinerary/widget/widgetProgress';
+import { progressView } from '../../src/features/itinerary/widget/widgetProgressView';
 
 const done = (...nodes: string[]) => nodes.map((nodeId, index) => ({ sequence: index + 1, nodeId, message: `debug ${nodeId}` }));
 const statuses = (nodes: string[]) => progressView(done(...nodes)).steps.map((step) => step.status);

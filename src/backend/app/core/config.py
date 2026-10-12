@@ -91,6 +91,10 @@ class Settings(BaseSettings):
     # Kết nối TRỰC TIẾP tới Postgres (không qua pgbouncer) cho khoá advisory của job đối soát. Trống = dùng database_url.
     leader_lock_database_url: str = ""
     cdp_database_url: str = "postgresql://cdp_client_login:cdp@localhost:5432/vota"
+    # Thời hạn kết nối PostgreSQL (infrastructure/persistence/db_connection.py). DB không với tới được trong
+    # khoảng này thì request trả 503 DATABASE_UNAVAILABLE thay vì treo theo timeout TCP của hệ điều hành.
+    db_connect_timeout_seconds: int = Field(default=3, ge=1, le=30)
+    db_tcp_user_timeout_ms: int = Field(default=15000, ge=1000)
     cdp_adapter: Literal["local", "http"] = "local"
 
     # Future/production HTTP adapter. Ignored while CDP_ADAPTER=local.
@@ -124,6 +128,12 @@ class Settings(BaseSettings):
     search_max_limit: int = 50
     search_candidate_k: int = Field(default=200, ge=1)
     recommend_candidate_k: int = 200
+    # Ô khám phá khi có chuyến mở (FR-REC-02, chốt 09/10/2026). False = rollback về list trước PR-A, không cần redeploy.
+    recommend_explore_fill: bool = True
+    # Khi không có chuyến mở (FR-REC-04 / FR-REC-02, chốt 09/10/2026): cos chuẩn hoá F14c + tối đa N món / điểm đến. Rollback không
+    # cần redeploy: RECOMMEND_NEXT_TRIP_SCORING=false (công thức 0,7 / 0,15 / 0,15), RECOMMEND_MAX_PER_DESTINATION=0 (tắt cap).
+    recommend_next_trip_scoring: bool = True
+    recommend_max_per_destination: int = Field(default=2, ge=0)
     # Hybrid /search (HYBRID_CANDIDATE_SCORE, spec §2.4): BM25 trên nameAscii/searchTextAscii + RRF ở app.
     search_hybrid: bool = True  # False → dense-only ANN_CANDIDATE_SCORE như trước 25/09
     search_normalize: bool = True  # bước chuẩn hoá truy vấn (viết tắt, chính tả tên riêng, điểm đến, kiểu đi); False → nguyên câu

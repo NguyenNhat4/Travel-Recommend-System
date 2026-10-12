@@ -10,7 +10,8 @@ services:
   backend:
     logging: *default-logging
     container_name: vota-backend
-    image: asia-southeast1-docker.pkg.dev/vinpearl-508801/v-ota-data-pipeline-crawler/vota-backend:latest
+    # Deploy ghi đè image bằng digest (deploy-backend-vm.sh). Placeholder toàn số 0 không pull được: nếu dùng nhầm thì lỗi.
+    image: asia-southeast1-docker.pkg.dev/vinpearl-508801/v-ota-data-pipeline-crawler/vota-backend@sha256:0000000000000000000000000000000000000000000000000000000000000000
     restart: unless-stopped
     network_mode: host
     env_file:
@@ -29,7 +30,8 @@ services:
   frontend:
     logging: *default-logging
     container_name: vota-frontend
-    image: asia-southeast1-docker.pkg.dev/vinpearl-508801/v-ota-data-pipeline-crawler/vota-frontend:latest
+    # Deploy ghi đè image bằng digest (deploy-frontend-vm.sh). Placeholder toàn số 0 không pull được: nếu dùng nhầm thì lỗi.
+    image: asia-southeast1-docker.pkg.dev/vinpearl-508801/v-ota-data-pipeline-crawler/vota-frontend@sha256:0000000000000000000000000000000000000000000000000000000000000000
     restart: unless-stopped
     network_mode: host
     environment:

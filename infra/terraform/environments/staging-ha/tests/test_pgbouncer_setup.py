@@ -53,10 +53,22 @@ class Setup(unittest.TestCase):
         proc, _, _ = run(GOOD.replace("PGBOUNCER_UPSTREAM_HOST=db.vota.internal\n", ""))
         self.assertNotEqual(proc.returncode, 0)
 
-    def test_rejects_password_needing_url_encoding(self):
-        proc, _, _ = run(GOOD.replace("s3cret", "p%40ss", 1))
-        self.assertNotEqual(proc.returncode, 0)
-        self.assertIn("mã hoá URL", proc.stderr)
+    def test_percent_encoded_password_is_decoded_for_the_userlist(self):
+        """Mật khẩu có ký tự đặc biệt phải mã hoá trong URL; pgbouncer cần bản thô trong userlist.txt."""
+        proc, files, _ = run(GOOD.replace("s3cret", "p%40ss%3Aw%2Frd%25", 1))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn('"vota_app_login" "p@ss:w/rd%"', files["userlist.txt"])
+
+    def test_quote_in_password_is_escaped_for_the_userlist(self):
+        proc, files, _ = run(GOOD.replace("s3cret", "a%22b", 1))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn('"vota_app_login" "a""b"', files["userlist.txt"])
+
+    def test_rejects_raw_special_characters_empty_and_bad_percent(self):
+        for bad in ("p/ss", 'p"ss', "p%zzss", "p%4", ""):
+            proc, _, _ = run(GOOD.replace(":s3cret@127", f":{bad}@127", 1))
+            self.assertNotEqual(proc.returncode, 0, bad)
+            self.assertNotIn(bad or "\0", proc.stderr.replace("mật khẩu rỗng hoặc", ""))  # không in mật khẩu ra lỗi
 
     def test_rejects_missing_database_url(self):
         proc, _, _ = run(GOOD.replace("DATABASE_URL=postgresql://vota_app_login:s3cret@127.0.0.1:6432/vota\n", "", 1))

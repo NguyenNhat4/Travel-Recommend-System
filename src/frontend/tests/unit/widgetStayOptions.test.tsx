@@ -50,6 +50,16 @@ describe('WidgetStayOptions', () => {
       onPreview={vi.fn()} onSelect={vi.fn()} {...props} />
   );
 
+  it('shows the room count of each option when the group needs several rooms', () => {
+    const roomy = (plan: components['schemas']['ItineraryPlan']) => ({ ...plan,
+      stay: { ...plan.stay!, rooms: 5 }, stays: plan.stays!.map((stay) => ({ ...stay, rooms: 5 })) });
+    const withRooms = { ...response, itinerary: roomy(response.itinerary), stayOptions: { ...response.stayOptions!,
+      options: response.stayOptions!.options.map((option) => ({ ...option, itinerary: roomy(option.itinerary) })) } };
+    render(<WidgetStayOptions cards={stayOptionCards(withRooms)!} interactive selectingKey={null} previewKey={null}
+      onPreview={vi.fn()} onSelect={vi.fn()} />);
+    expect(screen.getAllByText(/\/đêm × 5 phòng/)).toHaveLength(2);
+  });
+
   it('shows the trade-off of each option', () => {
     render(row());
     expect(screen.getByText('Đang chọn')).toBeTruthy();

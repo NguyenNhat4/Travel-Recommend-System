@@ -14,6 +14,14 @@ from . import because
 from .base import TrainData, UserCtx
 
 
+def engine_score(index, E_full: np.ndarray, ctx: UserCtx, cand: np.ndarray) -> np.ndarray:
+    """Điểm của engine production cho `cand` — gọi thẳng `profile.score_candidates` (09/10: + điểm xuất phát [F], + F14c khi không
+    có chuyến mở [B]) để gương không lệch engine khi công thức đổi."""
+    context = P.ScoreContext(taxonomy=index.taxonomy[cand], origin_city=index.attrs.origin_city[cand], origin=ctx.origin)
+    score, _ = P.score_candidates(ctx.profile, E_full[cand], ctx.pop[cand], context, next_trip_scoring=ctx.next_trip_scoring)
+    return score
+
+
 class ContentProfile:
     name = "content"
     needs_vectors = True
@@ -26,6 +34,7 @@ class ContentProfile:
 
     def fit(self, data: TrainData) -> dict:
         self.E = data.E
+        self.index = data.index
         return {"params": {}, "note": "không fit; hằng W_SHORT/W_POP/W_LONG/H_*/MMR_LAMBDA của profile.py (configHash)"}
 
     def score(self, ctx: UserCtx, cand: np.ndarray) -> np.ndarray:
@@ -33,10 +42,7 @@ class ContentProfile:
         profile = ctx.profile
         if not profile.trips:
             return np.zeros(len(cand), dtype=np.float32)
-        u = profile.active_trip.vec if profile.active_trip is not None else profile.u_long
-        E = self.E[cand]
-        s_short, s_long = E @ u, E @ profile.u_long
-        return P.W_SHORT * s_short + P.W_POP * ctx.pop[cand] + P.W_LONG * s_long
+        return engine_score(self.index, self.E, ctx, cand)
 
     def collab_part(self, ctx: UserCtx, cand: np.ndarray) -> np.ndarray | None:
         return None

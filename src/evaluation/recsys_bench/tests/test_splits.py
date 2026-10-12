@@ -78,13 +78,16 @@ def test_excluded_taxonomies_counts_capped_events_for_trip_age_like_the_engine(w
     train = [ev("u", "purchase", "R1", "2026-05-31T00:00:00Z", "G"),
              *[ev("u", "product_view", "A1", ts) for ts in
                ("2026-05-21T00:00:00Z", "2026-05-26T00:00:00Z", "2026-05-27T00:00:00Z", "2026-06-25T00:00:00Z")]]
-    # Lần xem thứ 4 bị cap khỏi vector nhưng vẫn tính tuổi trip (review PR M6, 01/10): `_solo_A1` 5 ngày → trip mở trẻ nhất,
-    # chưa mua gì → không loại taxonomy. Bỏ lần xem đó đi thì `_solo_A1` 34 ngày (> 14) và trip hotel mới là trip mở.
-    assert excluded_taxonomies(train, world["index"], as_of) == set()
+    # Lần xem thứ 4 bị cap khỏi vector nhưng vẫn tính tuổi trip (review PR M6, 01/10): `_solo_A1` 5 ngày → vẫn là trip mở.
+    # Từ 09/10 (FR-REC-02, sửa I-3) chuyến đã đặt G còn mở đứng trước view lẻ đó, nên cả hai trường hợp đều loại hotel —
+    # như engine. Phần "tuổi tính cả event bị cap" của engine có test riêng ở backend (test_recommendation_trip_open).
+    assert excluded_taxonomies(train, world["index"], as_of) == {"hotel"}
     assert excluded_taxonomies(train[:-1], world["index"], as_of) == {"hotel"}
+    # không có chuyến đã đặt: view lẻ còn mở (nhờ lần xem thứ 4) không mua gì → không loại taxonomy
+    assert excluded_taxonomies(train[1:], world["index"], as_of) == set()
     from src.evaluation.recsys_bench.engine import OfflineEngine
     engine = OfflineEngine(world["index"], world["vectors"], [])
-    assert engine.recommend("u", as_of, 5, train)["diagnostics"]["excludedVerticals"] == []
+    assert engine.recommend("u", as_of, 5, train)["diagnostics"]["excludedVerticals"] == ["hotel"]
     assert engine.recommend("u", as_of, 5, train[:-1])["diagnostics"]["excludedVerticals"] == ["hotel"]
 
 

@@ -695,13 +695,13 @@ export interface components {
         };
         ReferenceCode: string;
         /** @enum {string} */
-        ErrorCode: "VALIDATION_ERROR" | "CART_EMPTY" | "INVALID_CREDENTIALS" | "INVALID_TOKEN" | "TOKEN_EXPIRED" | "PRODUCT_NOT_FOUND" | "CART_ITEM_NOT_FOUND" | "BOOKING_NOT_FOUND" | "NOT_FOUND" | "EMAIL_ALREADY_EXISTS" | "PRODUCT_UNAVAILABLE" | "PRICE_CHANGED" | "DATE_OUT_OF_RANGE" | "SEARCH_UNAVAILABLE" | "INTERNAL_ERROR" | "INVALID_TRIP_DURATION" | "CONVERSATION_NOT_FOUND" | "UNSUPPORTED_DESTINATION" | "LLM_UNAVAILABLE" | "ITINERARY_VALIDATION_FAILED" | "AVAILABILITY_NOT_FOUND" | "AVAILABILITY_EXPIRED" | "NO_RATE_PLAN" | "MIN_STAY_NOT_MET" | "CLOSED_ON_ARRIVAL" | "CLOSED_ON_DEPARTURE" | "PARTIALLY_AVAILABLE" | "PRODUCT_NOT_INDEXED" | "UNAUTHENTICATED" | "SESSION_EXPIRED" | "CSRF_FAILED" | "MFA_REQUIRED" | "MFA_INVALID" | "EMAIL_NOT_VERIFIED" | "TOO_MANY_ATTEMPTS" | "CAPTCHA_REQUIRED" | "CAPTCHA_FAILED" | "WEAK_PASSWORD" | "INVALID_VERIFICATION_TOKEN" | "OAUTH_EMAIL_UNVERIFIED" | "OAUTH_ALREADY_LINKED" | "CDP_UNAVAILABLE" | "BOOKING_PENDING_PAYMENT" | "BOOKING_ALREADY_PAID" | "BOOKING_NOT_CANCELLABLE" | "PAYMENT_PROVIDER_UNAVAILABLE" | "INVALID_WEBHOOK_SIGNATURE" | "DIRECT_BOOKING_ONLY" | "BOOKING_DRAFT_NOT_FOUND" | "BOOKING_DRAFT_EXPIRED";
+        ErrorCode: "VALIDATION_ERROR" | "CART_EMPTY" | "INVALID_CREDENTIALS" | "INVALID_TOKEN" | "TOKEN_EXPIRED" | "PRODUCT_NOT_FOUND" | "CART_ITEM_NOT_FOUND" | "BOOKING_NOT_FOUND" | "NOT_FOUND" | "EMAIL_ALREADY_EXISTS" | "PRODUCT_UNAVAILABLE" | "PRICE_CHANGED" | "DATE_OUT_OF_RANGE" | "SEARCH_UNAVAILABLE" | "INTERNAL_ERROR" | "INVALID_TRIP_DURATION" | "CONVERSATION_NOT_FOUND" | "UNSUPPORTED_DESTINATION" | "LLM_UNAVAILABLE" | "ITINERARY_VALIDATION_FAILED" | "AVAILABILITY_NOT_FOUND" | "AVAILABILITY_EXPIRED" | "NO_RATE_PLAN" | "MIN_STAY_NOT_MET" | "CLOSED_ON_ARRIVAL" | "CLOSED_ON_DEPARTURE" | "PARTIALLY_AVAILABLE" | "PRODUCT_NOT_INDEXED" | "UNAUTHENTICATED" | "SESSION_EXPIRED" | "CSRF_FAILED" | "MFA_REQUIRED" | "MFA_INVALID" | "EMAIL_NOT_VERIFIED" | "TOO_MANY_ATTEMPTS" | "CAPTCHA_REQUIRED" | "CAPTCHA_FAILED" | "WEAK_PASSWORD" | "INVALID_VERIFICATION_TOKEN" | "OAUTH_EMAIL_UNVERIFIED" | "OAUTH_ALREADY_LINKED" | "CDP_UNAVAILABLE" | "BOOKING_PENDING_PAYMENT" | "BOOKING_ALREADY_PAID" | "BOOKING_NOT_CANCELLABLE" | "PAYMENT_PROVIDER_UNAVAILABLE" | "INVALID_WEBHOOK_SIGNATURE" | "DIRECT_BOOKING_ONLY" | "BOOKING_DRAFT_NOT_FOUND" | "BOOKING_DRAFT_EXPIRED" | "DATABASE_UNAVAILABLE";
         ErrorResponse: {
             error: {
                 code: components["schemas"]["ErrorCode"];
                 /** @description Tiếng Việt, hiển thị được trực tiếp cho người dùng. */
                 message: string;
-                /** @description true chỉ với SEARCH_UNAVAILABLE, INTERNAL_ERROR, LLM_UNAVAILABLE, TOO_MANY_ATTEMPTS, CDP_UNAVAILABLE và PAYMENT_PROVIDER_UNAVAILABLE. Mọi mã còn lại là false — thử lại nguyên request cho cùng kết quả. */
+                /** @description true chỉ với SEARCH_UNAVAILABLE, INTERNAL_ERROR, LLM_UNAVAILABLE, TOO_MANY_ATTEMPTS, CDP_UNAVAILABLE, PAYMENT_PROVIDER_UNAVAILABLE và DATABASE_UNAVAILABLE (503, kèm Retry-After; áp dụng cho mọi endpoint cần DB). Mọi mã còn lại là false — thử lại nguyên request cho cùng kết quả. */
                 retryable: boolean;
                 requestId: string;
                 /** @description Tùy mã lỗi. VALIDATION_ERROR {fields: ValidationFieldError[]}; PRODUCT_NOT_FOUND và PRODUCT_UNAVAILABLE {productId}; CART_ITEM_NOT_FOUND {cartItemId}; PRICE_CHANGED {productId, oldPrice, newPrice, fareType?} — fareType là CHILD khi giá vé trẻ em đổi; DATE_OUT_OF_RANGE {productId, availableFrom, availableTo}; UNSUPPORTED_DESTINATION {destination, supportedDestinations, conversationId} — conversationId là hội thoại đã lưu phần chuyến đi còn lại, gửi lại cùng điểm đến hợp lệ để tiếp tục; MIN_STAY_NOT_MET {productId, minStay}; PRODUCT_NOT_INDEXED {productId, taxonomy}; TOO_MANY_ATTEMPTS {retryAfterSeconds}; MFA_INVALID {attemptsLeft}; EMAIL_NOT_VERIFIED {email}; WEAK_PASSWORD {reasons}; INVALID_VERIFICATION_TOKEN {purpose}; OAUTH_EMAIL_UNVERIFIED và OAUTH_ALREADY_LINKED {provider}; BOOKING_PENDING_PAYMENT {referenceCode, holdExpiresAt} — đơn đang giữ chỗ để tiếp tục hoặc huỷ; BOOKING_NOT_CANCELLABLE {referenceCode, reason, cancellableUntil}; BOOKING_ALREADY_PAID {referenceCode}; DIRECT_BOOKING_ONLY {productId, taxonomy}; BOOKING_DRAFT_EXPIRED {draftId, items: [{productId, taxonomy, inCart}]}; PRODUCT_UNAVAILABLE khi tạo đơn nháp mà không mục nào được nhận {rejectedItems}. */
@@ -1929,6 +1929,8 @@ export interface components {
             nights: number;
             /** @description (1.19.0, AC-AGT-04) Đêm đầu tiên ở khách sạn này, đếm từ 1 (đêm của ngày 1). Khách sạn ở các đêm fromNight .. fromNight + nights − 1. Backend luôn gửi từ 1.19.0; client coi vắng mặt là 1. */
             fromNight?: number;
+            /** @description (1.23.0, AC-AGT-04) Số phòng cho cả đoàn ở khách sạn này = ceil(số người lớn / attributes.priceAdults của khách sạn); trẻ em ở cùng phòng người lớn. Khách sạn thiếu priceAdults tính 1 phòng, kèm cảnh báo STAY_ROOMS_UNKNOWN. Tiền khách sạn = giá × nights × rooms. Backend luôn gửi từ 1.23.0; client coi vắng mặt là 1. */
+            rooms?: number;
             note?: string | null;
             source?: components["schemas"]["ItemSource"];
             because?: components["schemas"]["BecauseItem"][];
@@ -1955,7 +1957,7 @@ export interface components {
         ItineraryCostBreakdown: {
             /** @description Vé máy bay, unitPrice × passengers của từng vé. */
             flights: number;
-            /** @description Khách sạn, giá × số đêm của từng khách sạn. */
+            /** @description Khách sạn, giá × số đêm × số phòng (`rooms`, 1.23.0) của từng khách sạn. */
             stays: number;
             /** @description Tour, điểm tham quan, golf trong các ngày; điểm tham quan tự do tính 0. */
             activities: number;
@@ -1993,7 +1995,7 @@ export interface components {
         ItineraryPlan: {
             title?: string;
             stay?: components["schemas"]["ItineraryStay"] | null;
-            /** @description (1.19.0, AC-AGT-04) Khách sạn theo đêm, sắp theo fromNight; hai mục khi lịch trình đổi khách sạn giữa chuyến (chuyến từ 5 ngày, mỗi khách sạn ít nhất 2 đêm). Tổng nights = max(1, days − 1). `stay` luôn bằng stays[0] để client cũ vẫn chạy; vắng mặt khi không có khách sạn. estimatedTotal cộng giá × nights của từng khách sạn. */
+            /** @description (1.19.0, AC-AGT-04) Khách sạn theo đêm, sắp theo fromNight; hai mục khi lịch trình đổi khách sạn giữa chuyến (chuyến từ 5 ngày, mỗi khách sạn ít nhất 2 đêm). Tổng nights = max(1, days − 1). `stay` luôn bằng stays[0] để client cũ vẫn chạy; vắng mặt khi không có khách sạn. estimatedTotal cộng giá × nights × rooms của từng khách sạn (rooms từ 1.23.0). */
             stays?: components["schemas"]["ItineraryStay"][];
             /** @description (1.18.0, AC-AGT-02) Vé máy bay của chuyến: một vé ROUND_TRIP, hoặc OUTBOUND và/hoặc RETURN. Vắng mặt hoặc rỗng khi không đủ điều kiện có chặng bay; lý do nằm trong warnings (mã FLIGHT_*). */
             flights?: components["schemas"]["ItineraryFlight"][];
@@ -2064,16 +2066,21 @@ export interface components {
             };
             /** @description Form gợi ý hiển thị trong khung chat khi hỏi bằng câu chữ một lượt vẫn chưa đủ thông tin. */
             clarificationForm?: {
-                fields: ("destination" | "days" | "startDate" | "party" | "budget" | "origin")[];
+                /** @description Ô hiển thị theo thứ tự. `interests` (1.24.0, FR-AGT-06): ô sở thích khách sạn chọn nhiều, không bắt buộc; lựa chọn lấy từ `interestOptions`, lựa chọn đã tích sẵn nằm trong `defaults.interests`. */
+                fields: ("destination" | "days" | "startDate" | "party" | "budget" | "origin" | "interests")[];
                 defaults: components["schemas"]["TripIntent"];
                 /**
                  * Format: date
                  * @description Ngày khởi hành sớm nhất được phép chọn; hôm nay theo giờ Việt Nam.
                  */
                 startDateMin?: string;
+                /** @description Tuỳ chọn (1.24.0, FR-AGT-06). Nhãn sở thích khách sạn đã có dữ liệu (ví dụ "Hồ bơi", "Phù hợp trẻ nhỏ"). Sở thích là ưu tiên khi tìm khách sạn, không loại khách sạn thiếu dữ liệu tiện ích. Client ghép lựa chọn vào câu xác nhận ("ưu tiên khách sạn có Hồ bơi, Phù hợp trẻ nhỏ"). */
+                interestOptions?: string[];
             };
-            /** @description Tuỳ chọn (1.13.0). Câu yêu cầu gửi được nguyên văn làm lượt chat kế tiếp, cùng ngữ nghĩa với `ItineraryNoResults.suggestions`. Có khi điều kiện bắt buộc (khách sạn, khách sạn hoặc hoạt động cụ thể) không có sản phẩm nào đáp ứng, ví dụ ngày khởi hành gần nhất còn bán hoặc lập lịch không cần khách sạn. */
+            /** @description Tuỳ chọn (1.13.0). Câu yêu cầu gửi được nguyên văn làm lượt chat kế tiếp, cùng ngữ nghĩa với `ItineraryNoResults.suggestions`. Có khi điều kiện bắt buộc (khách sạn, khách sạn hoặc hoạt động cụ thể) không có sản phẩm nào đáp ứng, ví dụ ngày khởi hành gần nhất còn bán hoặc lập lịch không cần khách sạn. Từ 1.24.0 còn có ở lượt trò chuyện và khám phá (FR-AGT-06): tối đa 3 nút theo các hướng khác nhau (đi tiếp như lập lịch, xem sâu, đổi hướng), không lặp nút của lượt trước. */
             suggestions?: string[];
+            /** @description Tuỳ chọn (1.24.0, FR-AGT-06). Lượt khám phá trước khi lập lịch ("Hà Nội có gì?", "khách sạn nào có hồ bơi?"): sản phẩm thật lấy từ Search của chính lượt này, nhóm theo loại, tối đa 4 mỗi loại. `question` nhắc từng sản phẩm bằng link `[Tên](product:<productId>)` với `productId` có trong đây; client đặt thẻ ngay sau dòng đầu tiên nhắc sản phẩm, như lời diễn giải lịch trình. Không có trường này thì lượt hỏi lại như trước. */
+            searchResults?: components["schemas"]["SearchResultsByTaxonomy"];
             metadata?: components["schemas"]["ItineraryMetadata"];
         };
         ItineraryNoResults: {
