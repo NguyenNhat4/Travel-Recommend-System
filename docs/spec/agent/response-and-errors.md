@@ -9,7 +9,7 @@ Response cuối cùng của một lượt chỉ thuộc một trong hai nhóm, �
 | Kết quả hội thoại | HTTP 200, có `status` và `conversationId` | `COMPLETED`, `NEEDS_CLARIFICATION`, `NO_RESULTS`, `FALLBACK` |
 | Lỗi | HTTP khác 200, có `error.code` | `LLM_UNAVAILABLE`, `SEARCH_UNAVAILABLE`, `ITINERARY_VALIDATION_FAILED`, `INVALID_TOKEN`/`TOKEN_EXPIRED`, `CONVERSATION_NOT_FOUND`, `VALIDATION_ERROR` |
 
-**Dòng tiêu đề.** `question`, `message` của `NO_RESULTS`/`FALLBACK` và `error.message` của lỗi từ chối (`VALIDATION_ERROR` 400) mở đầu bằng `**Tiêu đề**` tóm tắt cả câu (spec Itinerary §4.3). Chào hỏi, cảm ơn không có tiêu đề.
+**Dòng tiêu đề.** `question`, `message` của `NO_RESULTS`/`FALLBACK` và `error.message` của lỗi từ chối (`VALIDATION_ERROR` 400) mở đầu bằng `**Tiêu đề**` tóm tắt cả câu (spec Itinerary §4.3). Chào hỏi, cảm ơn không có tiêu đề; lời cảm ơn, hẹn gặp lại khi người dùng không muốn đi nữa cũng vậy.
 
 **Giá trị không hợp lệ không còn là lỗi** (đề xuất `docs/prd/update-archive/2026-09-30-bao-loi-dau-vao-khong-hop-le.md`). Ngày đi
 đã qua, điểm đến ngoài catalog, số ngày ngoài 1–7, số người hoặc ngân sách ngoài giới hạn đều trả `NEEDS_CLARIFICATION`

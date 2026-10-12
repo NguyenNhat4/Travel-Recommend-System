@@ -156,7 +156,7 @@ const NotFound: React.FC<{ onHome: () => void }> = ({ onHome }) => {
   return (
     <div className="max-w-5xl mx-auto px-4 py-16 space-y-10">
       <div className="text-center space-y-4">
-        <h2 className="text-xl font-bold text-slate-800">Sản phẩm này không còn trên V-OTA</h2>
+        <h2 className="text-xl font-bold text-slate-800">Sản phẩm này không còn trên Sota</h2>
         <p className="text-xs text-slate-500">Mã sản phẩm không tồn tại hoặc đã hết thời hạn mở bán.</p>
         <button onClick={onHome}
           className="px-5 py-2 bg-brand-600 text-white text-xs font-bold rounded-lg hover:bg-brand-700 transition-colors">
@@ -165,7 +165,7 @@ const NotFound: React.FC<{ onHome: () => void }> = ({ onHome }) => {
       </div>
       {popular.length > 0 && (
         <div className="space-y-4">
-          <h3 className="text-base font-bold text-slate-900">Phổ biến trên V-OTA</h3>
+          <h3 className="text-base font-bold text-slate-900">Phổ biến trên Sota</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {popular.map((p) => <ProductCard key={p.id} product={p} variant="grid" />)}
           </div>
@@ -391,9 +391,9 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
     ? bookableVariants.reduce((best, v) => ((v.unitPrice as number) < (best.unitPrice as number) ? v : best)).id : null;
   const unavailableReason = !unit
     ? (needsVariant ? (variants && bookableVariants.length === 0
-      ? `Hiện chưa có ${variantNoun} nào đặt được trên V-OTA.` : `Chọn một ${variantNoun} để đặt.`) : null)
+      ? `Hiện chưa có ${variantNoun} nào đặt được trên Sota.` : `Chọn một ${variantNoun} để đặt.`) : null)
     : !unit.available ? 'Sản phẩm này hiện đã hết chỗ.'
-      : unit.unitPrice == null || unit.attributes?.ticketed === false ? 'Sản phẩm này chỉ để tham khảo, không bán vé trên V-OTA.'
+      : unit.unitPrice == null || unit.attributes?.ticketed === false ? 'Sản phẩm này chỉ để tham khảo, không bán vé trên Sota.'
         : null;
   const roomAmenityOptions = amenityOptions(hotelRooms ?? []);
   const shownRooms = (hotelRooms ?? []).filter((room) => matchesAmenities(room, amenityFilter));
@@ -466,12 +466,12 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
                 </div>
               ) : hotelRooms.length === 0 ? (
                 <p className="text-xs text-slate-600 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
-                  {needsVariant ? 'Khách sạn này chưa có hạng phòng nào trên V-OTA — chỉ để tham khảo.' : unavailableReason}
+                  {needsVariant ? 'Khách sạn này chưa có hạng phòng nào trên Sota — chỉ để tham khảo.' : unavailableReason}
                 </p>
               ) : (
                 <>
                   {bookableVariants.length === 0 && (
-                    <p className="text-xs text-slate-600 bg-amber-50 border border-amber-200 rounded-lg p-2.5">Hiện chưa có hạng phòng nào đặt được trên V-OTA.</p>
+                    <p className="text-xs text-slate-600 bg-amber-50 border border-amber-200 rounded-lg p-2.5">Hiện chưa có hạng phòng nào đặt được trên Sota.</p>
                   )}
                   {hotelRooms.length > 1 && (
                     <RoomAmenityFilter options={roomAmenityOptions} selected={amenityFilter} onChange={setAmenityFilter}
@@ -530,7 +530,7 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
                 </div>
               ) : variants.length === 0 ? (
                 <p className="text-xs text-slate-500">
-                  {product.taxonomy === 'flight' ? 'Tuyến bay' : 'Khách sạn'} này chưa có {variantNoun} nào trên V-OTA — chỉ để tham khảo.
+                  {product.taxonomy === 'flight' ? 'Tuyến bay' : 'Khách sạn'} này chưa có {variantNoun} nào trên Sota — chỉ để tham khảo.
                 </p>
               ) : (
                 <div className="space-y-2" role="radiogroup" aria-label={`Chọn ${variantNoun}`}>
@@ -567,7 +567,7 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
           <div className="sticky top-20 bg-white p-6 rounded-2xl border border-slate-200 shadow-xl space-y-5">
             <div>
               <div className="text-xs text-slate-500 mb-1">
-                {unit && needsVariant ? variantTitle(unit) : 'Giá công khai từ V-OTA'}
+                {unit && needsVariant ? variantTitle(unit) : 'Giá công khai từ Sota'}
               </div>
               {unit ? (
                 <>

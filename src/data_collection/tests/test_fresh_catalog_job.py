@@ -543,6 +543,26 @@ class RunJobTests(unittest.TestCase):
         self.assertIn(fresh[0]['state'], {'ok', 'late', 'none'})
         self.assertIn('max_age_hours', fresh[0])
 
+    def test_due_mode_emits_catalog_freshness_every_tick_even_while_a_run_is_busy(self):
+        """Tick cron chỉ chạy `due` (run_fresh_catalog_container.sh): dòng freshness phải có ở mỗi tick, kể cả khi đang
+        có lượt chạy (lock bận), và đi qua stderr vì stdout của `due` là tên chế độ."""
+        env = {k: v for k, v in self.env.items() if k.startswith('CATALOG_')}
+        (Path(env['CATALOG_STATE_DIR']) / 'settings.json').write_text(json.dumps({'values': {'schedule.enabled': False}}),
+                                                                       encoding='utf-8')
+        for busy in (False, True):
+            events = []
+            with patch.dict(os.environ, env, clear=True), \
+                    patch.object(fresh_catalog, 'lock_busy', lambda *a: busy), \
+                    patch.object(fresh_catalog.log, 'emit', lambda name, *a, **kw: events.append((name, kw))), \
+                    patch.object(fresh_catalog.alerts, 'sla_status', lambda *a: {'rules': [
+                        {'rule': 'catalogAge', 'state': 'ok', 'hours': 1.0}]}), \
+                    contextlib.redirect_stdout(io.StringIO()) as out:
+                self.assertEqual(fresh_catalog.run_job('due'), 0)
+            self.assertEqual(out.getvalue().strip(), '')            # stdout trống: chỉ có tên chế độ (rỗng khi không có lượt)
+            names = [name for name, _ in events]
+            self.assertEqual(names.count('catalog.freshness'), 1, busy)
+            self.assertIn('catalog.due', names)
+
     def test_late_catalog_is_emitted_as_error_severity(self):
         severities = []
         with patch.object(fresh_catalog.log, 'emit', lambda name, msg, sev='INFO', **kw: severities.append((name, sev, kw))), \

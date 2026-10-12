@@ -11,8 +11,10 @@ import { apiJson } from './http';
 export interface SearchFilters {
   destination?: Destination[];
   taxonomy?: Taxonomy;
+  /** `priceMin` / `priceMax` của POST /search: hard filter trên giá thấp nhất (kể cả phòng con); chưa có giá thì bị loại. */
   minPrice?: number;
   maxPrice?: number;
+  /** `starRatingMin`: soft filter ([C6]) — sản phẩm khai sao thấp hơn bị loại, chưa khai sao vẫn giữ và xếp sau. */
   minStarRating?: number;
   /** Số khách một phòng/đơn vị: hard filter sức chứa ở POST /search (travelContext.guests, contract 1.16.0). */
   guests?: Guests;
@@ -55,11 +57,10 @@ export interface SearchResultItem {
 export interface SearchResponse {
   query: string;
   total: number;
-  /** false khi backend chỉ đếm trên top-K ứng viên (ANN_CANDIDATE_SCORE): total là cận dưới. */
-  totalExact?: boolean;
   results: SearchResultItem[];
+  /** Cosine cao nhất trong toàn bộ kết quả; null khi rỗng. */
+  topScore: number | null;
   isWeakMatch: boolean;
-  categoryCounts: Record<string, number>;
 }
 
 const TAXONOMY_TAG: Record<Taxonomy, string> = {
@@ -93,6 +94,9 @@ export async function searchProductsApi(
       destination: destination || null,
       limit,
       offset,
+      ...(filters.minPrice !== undefined ? { priceMin: filters.minPrice } : {}),
+      ...(filters.maxPrice !== undefined ? { priceMax: filters.maxPrice } : {}),
+      ...(filters.minStarRating !== undefined ? { starRatingMin: filters.minStarRating } : {}),
       ...(filters.guests || filters.stay ? { travelContext: {
         ...(filters.guests ? { guests: filters.guests } : {}),
         ...(filters.stay ? { checkIn: filters.stay.checkIn, ...(filters.stay.checkOut ? { checkOut: filters.stay.checkOut } : {}) } : {}),
@@ -100,7 +104,7 @@ export async function searchProductsApi(
     }),
   });
 
-  let results: SearchResultItem[] = (Array.isArray(data.results) ? data.results : []).map((item: any) => {
+  const results: SearchResultItem[] = (Array.isArray(data.results) ? data.results : []).map((item: any) => {
     const product: Product = productFromApi(item);
     return {
       product,
@@ -108,17 +112,6 @@ export async function searchProductsApi(
       matchTags: [product.destination, TAXONOMY_TAG[product.taxonomy]].filter(Boolean),
     };
   });
-
-  // Bộ lọc giá/sao chưa có trong request nên lọc trên trang đã nhận; sản phẩm chưa có giá không qua lọc giá.
-  if (filters.minPrice !== undefined) {
-    results = results.filter(r => r.product.unitPrice != null && r.product.unitPrice >= filters.minPrice!);
-  }
-  if (filters.maxPrice !== undefined) {
-    results = results.filter(r => r.product.unitPrice != null && r.product.unitPrice <= filters.maxPrice!);
-  }
-  if (filters.minStarRating !== undefined) {
-    results = results.filter(r => !r.product.attributes.starRating || r.product.attributes.starRating >= filters.minStarRating!);
-  }
 
   // 'relevance' giữ nguyên thứ tự backend: hybrid sắp theo RRF (spec §2.2), còn score là cosine nên không
   // dùng nó để sắp lại — sắp lại sẽ đẩy kết quả khớp tên/thương hiệu xuống cuối.
@@ -128,30 +121,22 @@ export async function searchProductsApi(
     results.sort(byPrice(-1));
   }
 
-  const facetsTax = data.facets?.taxonomy || {};
-  const count = (taxonomy: Taxonomy) => facetsTax[taxonomy] ?? results.filter(r => r.product.taxonomy === taxonomy).length;
-  const categoryCounts: Record<string, number> = {
-    all: data.total || results.length,
-    hotel: count('hotel'), flight: count('flight'), attraction: count('attraction'), combo: count('combo'), golf: count('golf'),
-  };
-
+  const topScore = typeof data.topScore === 'number' ? data.topScore : null;
   return {
     query: cleanQ,
     total: data.total ?? results.length,
-    totalExact: data.diagnostics?.totalExact,
     results,
-    // frontend §6.4: băng "kết quả yếu" khi topScore < 0.35; null thì không hiện.
-    isWeakMatch: typeof data.topScore === 'number' && data.topScore < WEAK_RESULT_TOP_SCORE,
-    categoryCounts,
+    topScore,
+    isWeakMatch: isWeakTopScore(topScore),
   };
 }
 
 export const WEAK_RESULT_TOP_SCORE = 0.35;
 
-export const EMPTY_SEARCH_RESPONSE: SearchResponse = {
-  query: '', total: 0, results: [], isWeakMatch: false,
-  categoryCounts: { all: 0, hotel: 0, flight: 0, attraction: 0, combo: 0, golf: 0 },
-};
+/** frontend §6.4: băng "kết quả yếu" khi topScore < 0.35; null (không có kết quả) thì không hiện. */
+function isWeakTopScore(topScore: number | null): boolean {
+  return topScore !== null && topScore < WEAK_RESULT_TOP_SCORE;
+}
 
 /**
  * Nhóm hiển thị của `/search` (khớp nhóm ở header, navConfig): Lưu trú, Tour và trải nghiệm, Tiện ích khác.
@@ -186,6 +171,14 @@ export interface GroupPage {
   /** Tổng số kết quả của cả nhóm (không phải của trang). */
   total: number;
   hasMore: boolean;
+  /** `topScore` cao nhất của các request trong nhóm; null khi cả nhóm rỗng. */
+  topScore: number | null;
+}
+
+/** Bộ lọc thanh bên của tab Lưu trú: gửi lên API nên `total` và "Xem thêm" đếm theo đúng bộ lọc. */
+export interface PriceStarFilter {
+  maxPrice?: number;
+  minStarRating?: number;
 }
 
 /**
@@ -195,13 +188,15 @@ export interface GroupPage {
 export async function searchGroupApi(
   query: string,
   group: SearchGroup,
-  { destination, limit, offset = 0, taxonomy: only, guests, stay }: { destination?: string | null; limit: number; offset?: number; taxonomy?: Taxonomy; guests?: Guests; stay?: Stay },
+  { destination, limit, offset = 0, taxonomy: only, guests, stay, maxPrice, minStarRating }: {
+    destination?: string | null; limit: number; offset?: number; taxonomy?: Taxonomy; guests?: Guests; stay?: Stay;
+  } & PriceStarFilter,
 ): Promise<GroupPage> {
   // `taxonomy` thu hẹp nhóm về một loại (tab Vé tham quan / Sân golf ở /experiences); không có thì cả nhóm.
   const taxonomies = only && SEARCH_GROUPS[group].taxonomies.includes(only) ? [only] : SEARCH_GROUPS[group].taxonomies;
   const responses = await Promise.all(taxonomies.map((taxonomy) => searchProductsApi(
     query,
-    { taxonomy, destination: destination ? [destination as Destination] : undefined, guests, stay },
+    { taxonomy, destination: destination ? [destination as Destination] : undefined, guests, stay, maxPrice, minStarRating },
     'relevance',
     limit,
     offset,
@@ -212,53 +207,76 @@ export async function searchGroupApi(
     items: merged,
     total: responses.reduce((sum, r) => sum + r.total, 0),
     hasMore: responses.some((r) => r.total > offset + limit),
+    topScore: maxScore(responses.map((r) => r.topScore)),
   };
+}
+
+function maxScore(scores: Array<number | null>): number | null {
+  const known = scores.filter((s): s is number => s !== null);
+  return known.length > 0 ? Math.max(...known) : null;
+}
+
+/** Khóa bộ đệm của hàng một nhóm ở tab "Tất cả" (trang đầu, `PREVIEW_LIMIT` mục); số trên tab dùng chung khóa này. */
+export function shelfCacheKey(query: string, destination: string | null | undefined, group: TabGroup): string {
+  return searchCacheKey('group', query, destination, group, PREVIEW_LIMIT, 0);
+}
+
+export function searchShelfApi(query: string, group: TabGroup, destination?: string | null): Promise<GroupPage> {
+  return searchGroupApi(query, group, { destination, limit: PREVIEW_LIMIT, offset: 0 });
 }
 
 export interface SearchOverview {
   counts: Record<TabGroup, number>;
   /** Tổng ba nhóm, không tính vé máy bay. */
   total: number;
-  totalExact?: boolean;
   isWeakMatch: boolean;
 }
 
-/** Số kết quả mỗi nhóm cho các tab: một request không lọc taxonomy, `limit: 1` (chỉ lấy `facets`). */
-export async function searchOverviewApi(query: string, destination?: string | null): Promise<SearchOverview> {
-  const res = await searchProductsApi(query, { destination: destination ? [destination as Destination] : undefined }, 'relevance', 1, 0);
-  const c = res.categoryCounts;
-  const counts: Record<TabGroup, number> = {
-    stay: c.hotel || 0,
-    exp: (c.attraction || 0) + (c.golf || 0),
-    more: c.combo || 0,
-  };
-  return { counts, total: counts.stay + counts.exp + counts.more, totalExact: res.totalExact, isWeakMatch: res.isWeakMatch };
-}
+/** Tải qua bộ đệm theo khóa (`hooks/useLazySection` `loadSection`). */
+export type SectionLoader = <T>(key: string, fetcher: () => Promise<T>) => Promise<T>;
 
-export interface ListView {
-  sort: SortOption;
-  minStarRating?: number;
-  maxPrice?: number;
+/**
+ * Số kết quả mỗi nhóm cho các tab: `total` của chính các request hàng ở tab "Tất cả" (cùng `shelfCacheKey`, nên qua
+ * `load` có bộ đệm thì hàng đọc lại kết quả, không gọi thêm), "Tất cả" là tổng ba nhóm.
+ *
+ * Không đếm bằng `facets.taxonomy` của một request không lọc taxonomy: backend tính tập kết quả trên tập đã lọc của
+ * TỪNG request (top-K dense, 10 suất vớt BM25 dùng chung cho mọi loại, kể cả vé máy bay), nên facets đó thường nhỏ
+ * hơn `total` của request lọc theo loại và số trên tab lệch số trên hàng, trên "Xem thêm".
+ */
+export async function searchOverviewApi(
+  query: string,
+  destination?: string | null,
+  load: SectionLoader = (_key, fetcher) => fetcher(),
+): Promise<SearchOverview> {
+  const pages = await Promise.all(TAB_GROUPS.map((group) => load(
+    shelfCacheKey(query, destination, group),
+    () => searchShelfApi(query, group, destination),
+  )));
+  const counts = Object.fromEntries(TAB_GROUPS.map((group, i) => [group, pages[i].total])) as Record<TabGroup, number>;
+  return {
+    counts,
+    total: pages.reduce((sum, page) => sum + page.total, 0),
+    isWeakMatch: isWeakTopScore(maxScore(pages.map((page) => page.topScore))),
+  };
 }
 
 /**
- * Sắp xếp và lọc trên các mục đã tải (backend chưa nhận `sort`, giá và sao). Sản phẩm chưa có giá không qua lọc giá
- * và luôn xếp cuối; sản phẩm không khai hạng sao vẫn qua lọc sao (soft filter, contract C6).
+ * Sắp xếp trên các mục đã tải (backend chưa nhận `sort`); 'relevance' giữ thứ tự backend. Sản phẩm chưa có giá luôn
+ * xếp cuối.
  */
-export function viewItems(items: SearchResultItem[], { sort, minStarRating, maxPrice }: ListView): SearchResultItem[] {
-  let out = items;
-  if (maxPrice !== undefined) out = out.filter((r) => r.product.unitPrice != null && r.product.unitPrice <= maxPrice);
-  if (minStarRating !== undefined) out = out.filter((r) => !r.product.attributes.starRating || r.product.attributes.starRating >= minStarRating);
-  if (sort === 'price_asc') return [...out].sort(byPrice(1));
-  if (sort === 'price_desc') return [...out].sort(byPrice(-1));
-  return out;
+export function sortItems(items: SearchResultItem[], sort: SortOption): SearchResultItem[] {
+  if (sort === 'price_asc') return [...items].sort(byPrice(1));
+  if (sort === 'price_desc') return [...items].sort(byPrice(-1));
+  return items;
 }
 
-/** Khóa bộ đệm (`hooks/useLazySection`): cùng truy vấn, điểm đến, nhóm và giới hạn thì dùng lại kết quả. */
-export function searchCacheKey(kind: 'overview' | 'group', query: string, destination: string | null | undefined, group?: SearchGroup, limit?: number, offset?: number, taxonomy?: Taxonomy, guests?: Guests, stay?: Stay): string {
+/** Khóa bộ đệm (`hooks/useLazySection`): cùng truy vấn, điểm đến, nhóm, giới hạn và bộ lọc thì dùng lại kết quả. */
+export function searchCacheKey(kind: 'overview' | 'group', query: string, destination: string | null | undefined, group?: SearchGroup, limit?: number, offset?: number, taxonomy?: Taxonomy, guests?: Guests, stay?: Stay, filter?: PriceStarFilter): string {
   const parts = ['search', kind, query.trim().toLowerCase(), destination ?? '', group ?? '', limit ?? '', offset ?? ''];
   if (taxonomy) parts.push(taxonomy);
   if (guests) parts.push(`g${guests.adults}-${guests.children}`);
   if (stay) parts.push(`d${stay.checkIn}~${stay.checkOut ?? ''}`);
+  if (filter?.maxPrice !== undefined) parts.push(`p${filter.maxPrice}`);
+  if (filter?.minStarRating !== undefined) parts.push(`s${filter.minStarRating}`);
   return parts.join('|');
 }

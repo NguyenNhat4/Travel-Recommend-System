@@ -110,7 +110,7 @@ free -h && dmesg -T | grep -iE "killed process|out of memory" | tail -5
 ```
 
 Nên thêm swap 2–4 GB một lần (`sudo fallocate -l 4G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile`, thêm
-vào `/etc/fstab`) hoặc nâng VM lên 8 GB. Bật lại ngay: GitHub Actions → "Crawler CI/CD" → Run workflow trên nhánh CD.
+vào `/etc/fstab`) hoặc nâng VM lên 8 GB. Bật lại ngay: GitHub Actions → "Crawler CI" → Run workflow trên nhánh CD.
 
 **Chưa có đăng nhập.** Ai có link đều bấm chạy / đổi cấu hình job được, và các thao tác ghi thẳng vào DB thật. Tạm chấp nhận
 theo yêu cầu, bảo mật làm sau: giới hạn IP nguồn trong rule firewall (`--source-ranges`), hoặc đặt sau proxy có đăng nhập.

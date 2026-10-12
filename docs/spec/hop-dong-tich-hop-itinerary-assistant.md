@@ -531,6 +531,7 @@ câu**, các dòng sau là phần chi tiết. Không có field mới: tiêu đ�
 | `NO_RESULTS` do ngày đi ngoài thời gian mở bán (chỉ khi cũng không có điểm tham quan nào để dựng lịch tham khảo, §4.4) | Chưa có sản phẩm mở bán cho ngày này | Cố định |
 | `FALLBACK` | Chưa dựng được lịch trình hoàn chỉnh | Cố định |
 | Chào hỏi, cảm ơn | Không có tiêu đề | — |
+| Không muốn đi hay lên lịch nữa ("ko đi nữa"): cảm ơn, hẹn gặp lại | Không có tiêu đề | LLM (dự phòng cố định) |
 | `COMPLETED` | Do LLM đặt theo chuyến đi (dự phòng: "Lịch trình {days} ngày ở {destination}"); nằm ở dòng đầu `message` và ở `itinerary.title` | LLM (dự phòng cố định) |
 | Các lỗi hệ thống khác | Không áp dụng (khung lỗi riêng) | — |
 
@@ -561,6 +562,10 @@ không hỏi thông tin chuyến và không gửi `clarificationForm`:
   Web ghép lựa chọn vào câu xác nhận "ưu tiên khách sạn có …". Sở thích là ưu tiên khi tìm khách sạn, không loại khách sạn
   thiếu dữ liệu tiện ích.
 - Nơi người dùng chê ("chán, Đà Nẵng đi rồi") không được gợi ý lại trong hội thoại, kể cả trong `suggestions`.
+- Người dùng không muốn đi hay lên lịch nữa ("ko đi nữa", "thôi huỷ lịch trình"; AC-AGT-01, chốt 2026-10-12), ở cả trước và
+  sau khi đồng ý lập lịch: `NEEDS_CLARIFICATION` chỉ có `question` cảm ơn, hẹn gặp lại (không tiêu đề, không `missingFields`,
+  `suggestedValues`, `clarificationForm` hay `suggestions`), không gọi tool. Chuyến đang lên và việc đã đồng ý lập lịch được
+  giữ để "thôi đi tiếp" nối lại; lời mời lập lịch đang chờ bị bỏ.
 - Sau khi có lịch, "đổi khách sạn" chưa nói hướng thì trả `NEEDS_CLARIFICATION` liệt kê các phương án khách sạn đã tính, kèm
   `suggestions` "Lấy phương án N: …" (gửi lại câu này là đổi ngay như `selectStayOption`). "Đổi chuyến bay" thì liệt kê chuyến
   khác cùng ngày của từng chặng, mỗi chuyến một nút ("Về chuyến VJ167 lúc 21:45"); gửi nút đó, hoặc "chuyến về muộn hơn/sớm

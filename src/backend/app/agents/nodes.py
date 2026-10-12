@@ -37,7 +37,8 @@ from src.backend.app.domain.itinerary.planning import empty_intent
 
 from .steps import (changes, composition, conversation, evaluation, exploration, fares, filtering, guardrails, messages,
                     narration, option_swap, tool_planning, turn_notes, validation)
-from .steps.classification import extract_result, extraction_input, picked_option, route_input, route_result
+from .steps.classification import (extract_result, extraction_input, picked_option, route_input, route_result,
+                                   says_stop, stopped)
 from .steps.failures import terminal_failure
 from .steps.history import append_conversation_turn, sanitize_conversation_history
 from .steps.messages import chat_model, event, failure, message
@@ -165,6 +166,11 @@ def _option_pick(state: AgentState) -> dict | None:
             "events": [event("classify", "route travel (stay option picked)")]}
 
 
+def _stop_rule(state: AgentState) -> dict | None:
+    """Câu dừng chắc chắn ("ko đi nữa", "tạm biệt") nhận bằng luật, bỏ một lời gọi LLM; câu khác vẫn qua LLM `classify`."""
+    return stopped(rule=True) if says_stop(state.get("query")) else None
+
+
 def apply_option_node(state: AgentState) -> dict:
     """Đổi sang một phương án đã hiện ở lượt trước (hàng thẻ khách sạn, AC-AGT-04 chốt 2026-10-08). **Không gọi LLM.**
 
@@ -216,11 +222,12 @@ def classify_node(state: AgentState, *, llm=None) -> dict:
     """Phân luồng lượt chat, không trích gì khác. **Gọi LLM** (prompt ngắn, output một nhãn).
 
     Đọc: `query` và ngữ cảnh hội thoại chung (`history.llm_context`).
-    Ghi: `decision` (`travel`/`missing_info`/`simple`/`error`), `interaction_type` (`travel`/`conversation`/`out_of_scope`), `refusal`, `missing_fields`;
+    Ghi: `decision` (`travel`/`missing_info`/`simple`/`error`), `interaction_type` (`travel`/`conversation`/`stop`/`out_of_scope`), `refusal`, `missing_fields`;
     nhãn `vague` còn ghi `clarification_reason`, `start_date_asked`, `clarification_rounds`.
     Đi tiếp (`routing.route_after_classify`): `extract` khi là du lịch · `clarify` (kèm form) khi câu trả lời
-    không thêm được thông tin mà chuyến đi còn thiếu trường bắt buộc · `converse` khi trò chuyện hoặc
-    ngoài phạm vi (đặt chỗ, thanh toán, chèn lệnh đều là ngoài phạm vi) · `dead_letter` khi lỗi.
+    không thêm được thông tin mà chuyến đi còn thiếu trường bắt buộc · `converse` khi trò chuyện, khi người dùng không
+    muốn đi nữa (`stop`) hoặc ngoài phạm vi (đặt chỗ, thanh toán, chèn lệnh đều là ngoài phạm vi) · `dead_letter` khi lỗi.
+    Câu dừng chắc chắn ("ko đi nữa", khớp nguyên câu `classification.says_stop`) ra `stop` bằng luật, không gọi LLM.
     """
     if state.get("decision") == "error":
         return {"events": [event("classify", "request rejected")]}
@@ -230,7 +237,7 @@ def classify_node(state: AgentState, *, llm=None) -> dict:
     blocked = _guardrail_blocked_input(state) or _guardrail_junk_input(state)
     if blocked is not None:
         return blocked
-    picked = _option_pick(state) or changes.detected(state)
+    picked = _stop_rule(state) or _option_pick(state) or changes.detected(state)
     if picked is not None:
         return _fare_settled(state, picked)
     try:
@@ -264,7 +271,7 @@ async def classify_node_async(state: AgentState, *, llm=None, timeout_seconds: f
     blocked = _guardrail_blocked_input(state) or _guardrail_junk_input(state)
     if blocked is not None:
         return blocked
-    picked = _option_pick(state) or changes.detected(state)
+    picked = _stop_rule(state) or _option_pick(state) or changes.detected(state)
     if picked is not None:
         return _fare_settled(state, picked)
     try:
@@ -412,10 +419,11 @@ async def ask_clarification_node_async(state: AgentState, *, llm=None, timeout_s
 
 
 def converse_node(state: AgentState, *, llm=None) -> dict:
-    """Reply to chit-chat and refusals. No product has been retrieved at this point.
+    """Reply to chit-chat, goodbyes and refusals. No product has been retrieved at this point.
 
     Đọc: `query`, `conversation_history`, `interaction_type`, `refusal`, `intent`, `missing_fields`.
-    Ghi: `response` `NEEDS_CLARIFICATION`, hoặc `VALIDATION_ERROR` (400) khi yêu cầu ngoài phạm vi.
+    Ghi: `response` `NEEDS_CLARIFICATION`, hoặc `VALIDATION_ERROR` (400) khi yêu cầu ngoài phạm vi. Lượt `stop`
+    ("ko đi nữa") chỉ có lời cảm ơn, hẹn gặp lại: không tiêu đề, không trường thiếu, không form, không nút.
     Đi tiếp: `finalize`. `blocked_by_guardrail` (từ `classify`) thì dùng câu từ chối cố định, `unclear_input`
     (tin nhắn rác, tầng 1) thì dùng câu "chưa hiểu" cố định — cả hai không gọi LLM.
     """
