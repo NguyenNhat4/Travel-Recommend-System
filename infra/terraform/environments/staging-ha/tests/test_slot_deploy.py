@@ -135,5 +135,21 @@ class WiringWithTerraformAndCd(unittest.TestCase):
         self.assertIn('"maxUnavailable":{"fixed":3}', PIN)
 
 
+class NoWorkflowConcurrency(unittest.TestCase):
+    """Bỏ khoá concurrency staging-ha-app (2026-10-12): an toàn khi chạy chồng nằm ở khoá state Terraform và flock trên VM."""
+
+    def test_cd_workflows_have_no_concurrency_group(self):
+        for kind, text in WORKFLOWS.items():
+            self.assertNotRegex(text, r"(?m)^\s+concurrency:", kind)
+
+    def test_slot_script_serialises_runs_on_one_vm(self):
+        self.assertIn("flock -w 1800 9", SCRIPT)
+        for fn in ("mode_boot() {", "mode_deploy() {"):
+            self.assertIn("acquire_lock", SCRIPT[SCRIPT.index(fn):SCRIPT.index(fn) + 60], fn)
+
+    def test_background_drain_does_not_hold_the_lock(self):
+        self.assertIn('9>- >'.replace("-", "&-"), SCRIPT[SCRIPT.index("drain_and_remove_old() {"):])
+
+
 if __name__ == "__main__":
     unittest.main()
