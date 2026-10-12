@@ -285,6 +285,29 @@ class QualityTests(unittest.TestCase):
         self.assertEqual(n._route_city("Vân Đồn", ["VDO"], "vdo"), "Vân Đồn")  # tên khớp alias thì giữ, không đổi theo sân bay
         self.assertEqual(n._route_city("Nơi lạ", ["XXX"], None), "Nơi lạ")
 
+    def test_booking_tour_destination_ignores_departure_city(self):
+        cases = {
+            "From Hanoi: Sapa Trek, Cat Cat Village & Fansipan Summit Tour": "Sa Pa",
+            "Pu Luong 2 Days 1 Night tour from Hanoi": "Thanh Hóa",
+            "From Hanoi to Dien Bien Phu: 3 Day Adventure": "Điện Biên",
+            "Hue to DMZ Vinh Moc Tunnels and Khe Sanh Base Tour": "Quảng Trị",
+            "Hanoi: Ha Long Bay Day Cruise with Buffet, Kayak& Sunset Party": "Hạ Long",
+            "Hanoi to Cat Ba: 2-Day Cat Ba National Park & Lan Ha Bay Tour": "Cát Bà",
+            "From Saigon: Black Virgin Mountain, Cao Dai Temple & Cu Chi 1Day": "Tây Ninh",
+            "Cai Rang Floating market 1 Day Tour from Ho Chi Minh City": "Cần Thơ",
+            "Hanoi Imperial Citadel Tour": "Hà Nội",
+            "Mekong Delta Discovery Day Tours": None,
+        }
+        for name, expected in cases.items():
+            self.assertEqual(n.tour_destination(name), expected, name)
+        # Tên không nêu nơi đến: giữ cách cũ (thành phố khởi hành từ `city`).
+        p = n.booking_attraction_product({"name": "HCM: 2-Day Mekong Delta Floating Market", "city": "TP. Hồ Chí Minh",
+                                          "price": 50, "currency": "USD", "productId": "x"}, {"USD": 26000})
+        self.assertEqual(p["destination"], "TP. Hồ Chí Minh")
+        p = n.booking_attraction_product({"name": "Pu Luong Trek from Hanoi", "city": "Hà Nội",
+                                          "price": 50, "currency": "USD", "productId": "y"}, {"USD": 26000})
+        self.assertEqual(p["destination"], "Thanh Hóa")
+
     def test_tuyen_quang_hotel_name_is_not_a_destination(self):
         self.assertEqual(n.normalise_destination("Vinpearl Onsen Resort Tuyên Quang"), "Tuyên Quang")
 

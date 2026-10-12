@@ -754,6 +754,27 @@ def booking_hotel(r: dict, rates: dict[str, float]) -> tuple[dict | None, list[d
     return prop, rooms
 
 
+# Tên tour hay ghi nơi khởi hành trước nơi đến ("From Hanoi: Pu Luong…", "Hue to DMZ…", "Hanoi: Ha Long Bay…"); điểm đến
+# là địa danh đầu tiên nên tour bị gán về thành phố đón khách. Che phần nơi khởi hành rồi mới tìm điểm đến (12/10/2026).
+_TOUR_FROM = re.compile(r"(?i)\b(?:departing |departure |depart |pick-?up |pickup )?from\s+(?:(?!\bto\b| - | – )[^:;,()|])+")
+_TOUR_TO = re.compile(r"(?i)(?:^|:\s*)([^:]{1,40}?)\s+to\s+")
+_TOUR_PREFIX = re.compile(r"^([^:]{1,25}):")
+# Trong địa chỉ "Điện Biên Phủ" một mình là tên đường (geo._NOT_FOLLOWED_BY); trong tên tour là thành phố Điện Biên Phủ.
+_TOUR_DIEN_BIEN_PHU = re.compile(r"(?i)\b(?:dien bien phu|điện biên phủ)\b")
+
+
+def tour_destination(name: str | None) -> str | None:
+    """Điểm đến của tour theo tên, bỏ qua nơi khởi hành; None nếu phần còn lại không nêu điểm đến nào."""
+    if not name:
+        return None
+    text = _TOUR_FROM.sub(" ", _TOUR_DIEN_BIEN_PHU.sub("Điện Biên", name))
+    text = _TOUR_TO.sub(lambda m: m.group(0).replace(m.group(1), " ") if destination_in_text(m.group(1)) else m.group(0), text)
+    prefix = _TOUR_PREFIX.match(text)
+    if prefix and destination_in_text(prefix.group(1)) and destination_in_text(text[prefix.end():]):
+        text = text[prefix.end():]
+    return destination_in_text(text)
+
+
 def booking_attraction_product(r: dict, rates: dict[str, float]) -> dict | None:
     name = r.get("name")
     if not name:
@@ -764,7 +785,7 @@ def booking_attraction_product(r: dict, rates: dict[str, float]) -> dict | None:
         parts.append("Điểm nổi bật:\n" + "\n".join(f"- {h}" for h in r["highlights"]))
     description = "\n\n".join(x for x in parts if x)
     fname = fold(name)
-    destination = normalise_destination(name, r.get("subtitle"), r.get("city"))
+    destination = tour_destination(name) or normalise_destination(name, r.get("subtitle"), r.get("city"))
     # parse_attraction_html() (collectors/booking_attractions.py) không lấy toạ độ — trang chỉ có bản đồ
     # tương tác (JS), không thấy toạ độ tĩnh trong HTML lúc kiểm tra (23/09/2026). Lỗ hổng có sẵn từ trước, không
     # phải mới hôm nay — dùng cùng fallback tâm điểm đến đã duyệt cho trip_combo_product(), tránh bị
