@@ -8,6 +8,10 @@ sắp xếp được (NFR-SEC-01).
 Liên kết: khoá ngoại khai báo trong PostgreSQL (hai chiều, kể cả khoá nhiều cột) cộng quan hệ theo quy ước không có khoá
 ngoại: `attributes.parentProductId` (vé / phòng → tuyến / khách sạn), `demo:business:<sourceRef>` (vé mô phỏng → vé gốc)
 và cột `product_id` của view (vd. `catalog.product_meta`) → `cdp.products`.
+
+Tìm (chốt 2026-10-13, `docs/prd/update-archive/2026-10-13-tim-nhanh-tab-db-monitor.md`): không phân biệt hoa thường và dấu
+tiếng Việt. `search()` tìm chung mọi bảng: UUID / mã khớp đúng, chuỗi khác khớp "có chứa" trên các cột chữ ngắn; mỗi bảng
+một câu lệnh, chịu riêng `statement_timeout`.
 """
 from __future__ import annotations
 
@@ -17,6 +21,7 @@ import decimal
 import re
 import threading
 import time
+import unicodedata
 import uuid
 
 SCHEMAS = ("cdp", "catalog", "app")
@@ -25,6 +30,54 @@ MASK = "(ẩn)"
 MAX_LIMIT = 200
 META_TTL = 60.0
 SIM_PREFIX = "demo:business:"
+SEARCH_LIMIT = 10
+# Cột chữ dài / không dùng để tìm nhanh (quét chậm, khớp nhiễu): mô tả, nội dung chat, bằng chứng, URL ảnh.
+LONG_TEXT = re.compile(r"description|content|evidence|url|image|user_agent|checksum", re.I)
+TEXT_TYPES = ("text", "character varying", "character")
+HEAVY_TYPES = ("jsonb", "json")  # ô lọc của bảng bỏ qua trừ khi chọn "tìm cả mô tả và JSON"
+INT_TYPES = ("integer", "bigint", "smallint")
+UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
+# Cột hiện kèm mỗi kết quả tìm chung (ngoài khoá và cột khớp), theo thứ tự ưu tiên.
+LABEL_COLUMNS = ("name", "display_name", "product_name", "email", "contact_name", "reference_code", "destination",
+                 "taxonomy", "event_name", "query", "status", "label", "source_ref", "cdp_user_id")
+# Bảng hay cần tìm nhất đứng trước trong kết quả.
+SEARCH_ORDER = ("cdp.products", "app.bookings", "app.users", "app.booking_items", "app.payments", "cdp.profiles",
+                "cdp.events", "catalog.combo_items")
+
+MAX_QUERY = 100
+COUNT_CAP = 10_000  # ô lọc của bảng chỉ đếm tới đây: từ phổ biến không phải quét hết bảng để đếm
+
+# Không phân biệt hoa thường và dấu tiếng Việt mà không bỏ dấu dữ liệu trong DB: `translate()` / `lower()` trên từng dòng chậm
+# gấp 15–30 lần (đo 13/10/2026 trên 12.515 sản phẩm: 639 ms so với 23 ms) và PostgreSQL không có extension `unaccent` (kết
+# nối chỉ đọc không tạo được). Thay vào đó chuỗi tìm (đã bỏ dấu) thành biểu thức chính quy: mỗi chữ cái là một lớp ký tự gồm
+# mọi dạng hoa / thường / có dấu của nó ("da" → "[DdĐđ][AaÀÁ…]").
+_VN = "àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ"
+_BASE = "".join("d" if c == "đ" else unicodedata.normalize("NFD", c)[0] for c in _VN)
+_FOLD_TABLE = {**{ord(a): b for a, b in zip(_VN + _VN.upper(), _BASE + _BASE)},
+               **{ord(c): None for c in "̛̣̀́̂̃̆̉"}}
+_VARIANTS: dict[str, set[str]] = {}
+for _accented, _base in zip(_VN, _BASE):
+    _VARIANTS.setdefault(_base, set()).update({_accented, _accented.upper()})
+_REGEX_SPECIAL = set("\\^$.|?*+()[]{}")
+
+
+def fold(text: str) -> str:
+    """Chữ thường, bỏ dấu tiếng Việt (cả chuỗi dạng NFD)."""
+    return unicodedata.normalize("NFC", text).translate(_FOLD_TABLE).lower()
+
+
+def accent_regex(text: str) -> str:
+    """Biểu thức chính quy (PostgreSQL ARE) khớp `text` bất kể hoa thường và dấu tiếng Việt; khoảng trắng khớp một hay nhiều."""
+    out = []
+    for ch in fold(text.strip()):
+        if ch.isalpha():
+            out.append("[" + "".join(sorted({ch, ch.upper(), *_VARIANTS.get(ch, ())})) + "]")
+        elif ch.isspace():
+            if not out or out[-1] != r"\s+":
+                out.append(r"\s+")
+        else:
+            out.append("\\" + ch if ch in _REGEX_SPECIAL else ch)
+    return "".join(out)
 
 
 def is_secret(column: str) -> bool:
@@ -134,7 +187,10 @@ class DbBrowser:
         from psycopg import sql
         return sql.Identifier(entry["schema"], entry["table"])
 
-    def _where(self, entry: dict, filters: dict, q: str):
+    def _where(self, entry: dict, filters: dict, q: str, deep: bool = False):
+        """Điều kiện lọc. `q`: dòng có đủ mọi từ. Mặc định tìm mọi cột trừ JSON và cột chữ dài (mô tả, nội dung, URL…): đổi
+        JSON thành chuỗi rồi so khớp làm ô lọc `cdp.products` production chậm gấp ~10 lần (đo 13/10/2026 trên 30.935 sản
+        phẩm: 1,7–2,5 s so với ~0,2 s mỗi câu lệnh). `deep` = tìm cả các cột đó."""
         from psycopg import sql
         parts, params = [], []
         for column, value in (filters or {}).items():
@@ -147,12 +203,15 @@ class DbBrowser:
             else:
                 parts.append(sql.SQL("{}::text = %s").format(sql.Identifier(column)))
                 params.append(str(value))
-        if q:
-            visible = [c for c in entry["columns"] if not is_secret(c)]
+        if q and fold(q).strip():
+            readable = [c for c in entry["columns"] if not is_secret(c)]
+            visible = [c for c in readable if deep or (entry["types"][c] not in HEAVY_TYPES and not LONG_TEXT.search(c))]
+            visible = visible or readable  # bảng chỉ có cột nặng: tìm mọi cột
             text = sql.SQL("concat_ws(' ', {})").format(
                 sql.SQL(", ").join(sql.SQL("{}::text").format(sql.Identifier(c)) for c in visible))
-            parts.append(sql.SQL("{} ILIKE %s").format(text))
-            params.append(f"%{q}%")
+            for word in fold(q[:MAX_QUERY]).split():  # dòng có đủ mọi từ, ở cột nào cũng được; không phân biệt hoa thường, dấu
+                parts.append(sql.SQL("{} ~ %s").format(text))
+                params.append(accent_regex(word))
         clause = sql.SQL(" WHERE ") + sql.SQL(" AND ").join(parts) if parts else sql.SQL("")
         return clause, params
 
@@ -204,23 +263,140 @@ class DbBrowser:
         return {"tables": tables, "edges": edges}
 
     def rows(self, name: str, filters: dict | None = None, q: str = "", sort: str = "", desc: bool = False,
-             offset: int = 0, limit: int = 50) -> dict:
+             offset: int = 0, limit: int = 50, deep: bool = False) -> dict:
         from psycopg import sql
         entry = self._table(name)
         limit, offset = max(1, min(int(limit), MAX_LIMIT)), max(0, int(offset))
-        where, params = self._where(entry, filters or {}, q)
+        where, params = self._where(entry, filters or {}, q, deep)
         order = sort or (entry["pk"][0] if entry["pk"] else entry["columns"][0])
         if order not in entry["columns"] or is_secret(order):
             raise ValueError("Không sắp xếp được theo cột này")
         body = sql.SQL("FROM {}{}").format(self._ident(entry), where)
+        capped = bool(q and q.strip())  # có chuỗi tìm: chỉ đếm tới COUNT_CAP
         with self.connection() as conn:
             conn.execute("SET TRANSACTION READ ONLY")
-            total = conn.execute(sql.SQL("SELECT count(*) AS n ") + body, params).fetchone()["n"]
+            if capped:
+                total = conn.execute(sql.SQL("SELECT count(*) AS n FROM (SELECT 1 ") + body + sql.SQL(" LIMIT %s) hit"),
+                                     params + [COUNT_CAP + 1]).fetchone()["n"]
+            else:
+                total = conn.execute(sql.SQL("SELECT count(*) AS n ") + body, params).fetchone()["n"]
             data = conn.execute(sql.SQL("SELECT * ") + body + sql.SQL(" ORDER BY {} {} NULLS LAST LIMIT %s OFFSET %s").format(
                 sql.Identifier(order), sql.SQL("DESC" if desc else "ASC")), params + [limit, offset]).fetchall()
+        more = capped and total > COUNT_CAP
         return {"table": name, "columns": entry["columns"], "types": entry["types"], "pk": entry["pk"],
                 "secret": [c for c in entry["columns"] if is_secret(c)], "fks": entry["fks"],
-                "total": total, "offset": offset, "limit": limit, "rows": [masked(r) for r in data]}
+                "total": COUNT_CAP if more else total, "totalCapped": more, "offset": offset, "limit": limit,
+                "rows": [masked(r) for r in data]}
+
+    def search(self, q: str, limit: int = SEARCH_LIMIT) -> dict:
+        """Tìm nhanh trên mọi bảng (không gồm view, vốn lặp lại dữ liệu của bảng): UUID khớp đúng mọi cột UUID và cột chữ
+        chứa mã; số nguyên khớp đúng cột khoá số; chuỗi khác khớp "có chứa" (không phân biệt hoa thường, dấu) trên các cột
+        chữ ngắn. Mỗi bảng tối đa `limit` dòng, xếp: khớp trọn → khớp đầu chuỗi → khớp giữa. Bảng lỗi / quá giờ có `error`,
+        bảng khác vẫn trả."""
+        started = time.monotonic()
+        text = (q or "").strip()[:MAX_QUERY]
+        folded = fold(text).strip()
+        out = {"q": text, "groups": [], "tables": 0}
+        if len(folded) < 2:
+            return {**out, "ms": 0}
+        limit = max(1, min(int(limit), 50))
+        meta = self.metadata()
+        order = {name: i for i, name in enumerate(SEARCH_ORDER)}
+        names = sorted((n for n, e in meta.items() if not e["view"]), key=lambda n: (order.get(n, len(order)), n))
+        with self.connection() as conn:
+            conn.execute("SET TRANSACTION READ ONLY")
+            for name in names:
+                entry = meta[name]
+                plan = self._search_plan(entry, text, folded)
+                if plan is None:
+                    continue
+                query, params, matchable = plan
+                out["tables"] += 1
+                try:
+                    rows = conn.execute(query, params + [limit + 1]).fetchall()
+                except Exception as exc:  # quá giờ / lỗi ở một bảng: các bảng khác vẫn trả
+                    conn.rollback()
+                    conn.execute("SET TRANSACTION READ ONLY")
+                    out["groups"].append({"table": name, "pk": entry["pk"], "columns": [], "rows": [], "more": False,
+                                          "error": "quá giờ" if type(exc).__name__ == "QueryCanceled" else type(exc).__name__})
+                    continue
+                if rows:
+                    out["groups"].append(self._search_group(name, entry, rows[:limit], len(rows) > limit, text, folded,
+                                                            matchable))
+        return {**out, "ms": round((time.monotonic() - started) * 1000)}
+
+    def _search_plan(self, entry: dict, text: str, folded: str):
+        """(câu lệnh, tham số, cột có thể khớp) của một bảng, hoặc None khi bảng không có cột nào để tìm."""
+        from psycopg import sql
+        types = entry["types"]
+        cols = [c for c in entry["columns"] if not is_secret(c)]
+        short_text = [c for c in cols if types[c] in TEXT_TYPES and not LONG_TEXT.search(c)]
+        conds, params, exact, exact_params, prefix, prefix_params, matchable = [], [], [], [], [], [], []
+        phrase, phrase_params = [], []
+        if UUID_RE.match(text):
+            for c in cols:
+                if types[c] == "uuid":
+                    conds.append(sql.SQL("{} = %s::uuid").format(sql.Identifier(c)))
+                    params.append(text)
+                    matchable.append(c)
+            for c in short_text:  # mã dạng chữ chứa UUID: cdp_user_id, event_group_id, session_id…
+                conds.append(sql.SQL("lower({}) = %s").format(sql.Identifier(c)))
+                params.append(text.lower())
+                matchable.append(c)
+        else:
+            if text.isdigit() and len(text) <= 18:
+                for c in cols:
+                    if types[c] in INT_TYPES and (c in entry["pk"] or c.endswith("_id")):
+                        condition = sql.SQL("{} = %s").format(sql.Identifier(c))
+                        conds.append(condition)
+                        params.append(int(text))
+                        exact.append(condition)
+                        exact_params.append(int(text))
+                        matchable.append(c)
+            pattern = accent_regex(text)
+            words = folded.split()
+            if short_text:  # đủ mọi từ, mỗi từ ở cột chữ ngắn nào cũng được ("vinpearl phu quoc": tên + điểm đến)
+                every_word = sql.SQL(" AND ").join(
+                    sql.SQL("({})").format(sql.SQL(" OR ").join(sql.SQL("{} ~ %s").format(sql.Identifier(c))
+                                                                 for c in short_text)) for _ in words)
+                conds.append(sql.SQL("({})").format(every_word))
+                params += [accent_regex(w) for w in words for _ in short_text]
+            for c in short_text:
+                column = sql.Identifier(c)
+                exact.append(sql.SQL("{} ~ %s").format(column))
+                exact_params.append(f"^\\s*{pattern}\\s*$")
+                prefix.append(sql.SQL("{} ~ %s").format(column))
+                prefix_params.append(f"^\\s*{pattern}")
+                phrase.append(sql.SQL("{} ~ %s").format(column))
+                phrase_params.append(pattern)
+                matchable.append(c)
+        if not conds:
+            return None
+        key = sql.Identifier(entry["pk"][0] if entry["pk"] else entry["columns"][0])
+        order = key
+        if exact:  # khớp trọn → đầu chuỗi → cả cụm trong một cột → các từ rải ở nhiều cột
+            any_of = lambda parts: sql.SQL(" OR ").join(parts) if parts else sql.SQL("false")  # noqa: E731
+            order = sql.SQL("CASE WHEN {} THEN 0 WHEN {} THEN 1 WHEN {} THEN 2 ELSE 3 END, {}").format(
+                any_of(exact), any_of(prefix), any_of(phrase), key)
+        query = sql.SQL("SELECT * FROM {} WHERE {} ORDER BY {} LIMIT %s").format(
+            self._ident(entry), sql.SQL(" OR ").join(conds), order)
+        return query, params + exact_params + prefix_params + phrase_params, matchable
+
+    @staticmethod
+    def _search_group(name: str, entry: dict, rows: list, more: bool, text: str, folded: str, matchable: list) -> dict:
+        labels = [c for c in LABEL_COLUMNS if c in entry["columns"]]
+        words = folded.split()
+        found, wanted = [], []
+        for row in rows:
+            record = masked(row)
+            matched = [c for c in matchable if record.get(c) is not None and (
+                str(record[c]).lower() == text.lower() or any(w in fold(str(record[c])) for w in words))]
+            found.append((record, matched))
+            wanted += matched
+        columns = list(dict.fromkeys([*entry["pk"], *wanted, *labels]))[:7]
+        return {"table": name, "pk": entry["pk"], "columns": columns, "more": more,
+                "rows": [{"key": {c: record.get(c) for c in entry["pk"]} if entry["pk"] else None,
+                          "values": {c: record.get(c) for c in columns}, "matched": matched} for record, matched in found]}
 
     def _incoming(self, name: str) -> list[dict]:
         meta = self.metadata()

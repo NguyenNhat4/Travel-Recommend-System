@@ -2320,9 +2320,10 @@ class Handler(BaseHTTPRequestHandler):
                 "/api/dbx/graph": lambda: m.dbx().graph(),
                 "/api/dbx/rows": lambda: m.dbx().rows(q.get("table", ""), prefixed(q, "f."), q.get("q", ""),
                                                       q.get("sort", ""), q.get("desc") == "1", num("offset", 0),
-                                                      num("limit", 50)),
+                                                      num("limit", 50), q.get("deep") == "1"),
                 "/api/dbx/row": lambda: m.dbx().row(q.get("table", ""), prefixed(q, "k.")),
                 "/api/dbx/children": lambda: m.dbx().children(q.get("id", ""), num("offset", 0), num("limit", 50)),
+                "/api/dbx/search": lambda: m.dbx().search(q.get("q", ""), num("limit", 10)),
             }
             if url.path in routes:
                 return self._json(routes[url.path]())
