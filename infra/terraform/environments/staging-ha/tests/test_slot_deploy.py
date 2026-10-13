@@ -208,15 +208,15 @@ class WiringWithTerraformAndCd(unittest.TestCase):
         self.assertLess(rollback.index("set-staging-ha-desired-images.sh"), rollback.index("roll-staging-ha-app-slots.sh"))
 
     def test_app_cd_gates_on_ci_before_building(self):
-        for component in ("backend", "frontend"):
+        for component, workflow in (("backend", "backend-ci.yml"), ("frontend", "frontend-ci-cd.yml")):
             ci = body(APP_CD, f"  {component}-ci:\n", f"  {component}-image:\n")
-            self.assertIn(f"uses: ./.github/workflows/{component}-ci-cd.yml", ci)
+            self.assertIn(f"uses: ./.github/workflows/{workflow}", ci)
             image = body(APP_CD, f"  {component}-image:\n", "\n\n")
             self.assertIn(f"needs: [plan, {component}-ci]", image)
         self.assertIn("if: ${{ !cancelled() && !failure()", body(APP_CD, "  deploy:\n"))
 
     def test_ci_workflows_are_reusable_and_do_not_also_run_on_push(self):
-        for name in ("backend-ci-cd.yml", "frontend-ci-cd.yml", "crawler-ci-cd.yml"):
+        for name in ("backend-ci.yml", "frontend-ci-cd.yml", "crawler-ci-cd.yml"):
             text = (ROOT / ".github" / "workflows" / name).read_text()
             on = body(text, "\non:\n", "\npermissions:")
             self.assertIn("  workflow_call:", on, name)

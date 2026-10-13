@@ -15,7 +15,7 @@ on:
       - release-mvp-v2
       - release-mvp-v3
     paths:
-      - '.github/workflows/backend-ci-cd.yml'
+      - '.github/workflows/backend-ci.yml'
       - '.github/workflows/staging-ha-image-build.yml'
       - '.dockerignore'
       - 'Dockerfile.backend'

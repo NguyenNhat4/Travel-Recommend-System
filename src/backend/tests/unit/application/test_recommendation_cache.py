@@ -199,7 +199,10 @@ def test_concurrent_requests_for_one_key_compute_once():
     leader.join(5)
     follower.join(5)
     assert len(computed) == 1
-    assert out["leader"][1] == "miss" and out["follower"] == ({"recommendations": [1], "diagnostics": {}}, "wait_hit")
+    assert out["leader"][1] == "miss"
+    assert out["follower"][0] == {"recommendations": [1], "diagnostics": {}}
+    # Nếu người giữ khoá đã ghi xong trước khi follower bắt đầu, follower đọc được ngay: "hit". Cả hai đều đúng.
+    assert out["follower"][1] in ("hit", "wait_hit")
 
 
 def test_a_failing_leader_releases_the_lock_for_the_next_request():

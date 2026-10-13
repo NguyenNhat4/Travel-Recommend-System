@@ -2,14 +2,16 @@
 
 Thư mục này chỉ còn các file chạy **trên VM**. `infra/terraform/environments/staging-ha/main.tf` đọc chúng bằng `file()` và đưa vào metadata của template app. `startup.sh.tftpl` tải về rồi cài khi VM khởi động. `scripts/deploy-staging-ha-crawler.sh` chép riêng `ops-agent-crawler.yaml` lên VM crawler. Dashboard, alert và log-based metric của staging-ha nằm trong Terraform root `infra/terraform/environments/staging-ha`.
 
-Terraform giám sát của staging cũ (state `monitoring/staging`) đã gỡ khỏi repo ngày 2026-10-13 (`docs/prd/update-archive/2026-10-13-ngung-ci-cd-staging-cu.md`). Tài nguyên GCP của nó vẫn còn. **Không destroy state `monitoring/staging` hay `infra/staging`.** Hai state này còn giữ những tài nguyên staging-ha đang dùng nhưng không quản lý:
+Terraform giám sát của staging cũ (state `monitoring/staging`) đã gỡ khỏi repo ngày 2026-10-13. Cùng ngày, các alert, log-metric, dashboard và uptime check gắn VM cũ đã xoá khỏi GCP (`docs/prd/update-archive/2026-10-13-xoa-monitoring-staging-cu.md`). **Không chạy plan hay apply** trên state `monitoring/staging` hay `infra/staging`: state đã lệch so với GCP.
 
-- Alert và log-metric áp cho toàn project (không gắn VM cũ): `vota-staging_container_stop_by_name`, `_container_oom`, `_container_disk_bytes`, `_crawler_failure`, `_crawler_warning`, `_error_logs`, `_docker_watcher_heartbeat`, cùng các alert policy tương ứng và `log ingestion spike`. Cảnh báo crawler của staging-ha (`crawler_monitoring.tf`) chỉ bổ sung cho `crawler failure`, không thay thế nó.
-- Metric descriptor `custom.googleapis.com/vota/container/{cpu_percent,memory_bytes,memory_percent}`, mà dashboard staging-ha vẽ.
-- Retention của bucket log `_Default` và exclusion `vota-staging-debug-and-health-ok`.
-- IP tĩnh `34.142.132.251` (`google_compute_address.app_public` trong state `infra/staging`), mà bastion staging-ha đang dùng.
+Còn trên GCP, không có code quản lý, và staging-ha đang dựa vào một phần:
 
-Muốn đổi các tài nguyên trên thì import chúng vào root staging-ha trước (task riêng). Lấy Terraform cũ từ một commit trước 2026-10-13 nếu cần tra cứu.
+- Tám alert policy toàn project (container OOM, service container stopped, container disk, Docker watcher absent, error logs, crawler failed, crawler partial run, log ingestion spike) và log-metric `vota-staging_*` của chúng. Cảnh báo crawler của staging-ha (`crawler_monitoring.tf`) chỉ bổ sung cho `crawler failed`, không thay thế nó.
+- Kênh email `vota-staging email alerts`, mà tám policy trên dùng.
+- Metric descriptor `custom.googleapis.com/vota/container/{cpu_percent,memory_bytes,memory_percent}`, mà dashboard staging-ha vẽ. Không xoá: GCP chặn tạo lại cùng tên trong 24 giờ.
+- IP tĩnh `34.142.132.251`, mà bastion staging-ha đang dùng.
+
+Muốn đưa các tài nguyên trên về Terraform thì import vào root staging-ha (task riêng). Lấy Terraform cũ từ một commit trước 2026-10-13 nếu cần tra cứu.
 
 ## File
 

@@ -353,8 +353,12 @@ function delay(milliseconds: number): Promise<void> {
 async function enqueueOsrmRequest<T>(task: () => Promise<T>, minimumIntervalMs: number): Promise<T> {
   let run!: Promise<T>;
   run = osrmRequestQueue.then(async () => {
-    const wait = Math.max(0, minimumIntervalMs - (Date.now() - lastOsrmRequestStartedAt));
-    if (wait > 0) await delay(wait);
+    // setTimeout có thể đánh thức sớm vài mili giây so với Date.now(): chờ lại đến khi đủ khoảng tối thiểu.
+    let wait = Math.max(0, minimumIntervalMs - (Date.now() - lastOsrmRequestStartedAt));
+    while (wait > 0) {
+      await delay(wait);
+      wait = Math.max(0, minimumIntervalMs - (Date.now() - lastOsrmRequestStartedAt));
+    }
     lastOsrmRequestStartedAt = Date.now();
     return task();
   });

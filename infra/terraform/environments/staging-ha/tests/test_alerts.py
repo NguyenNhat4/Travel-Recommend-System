@@ -24,7 +24,7 @@ def policy(name: str) -> str:
     return match.group(1)
 
 
-POLICIES = ["group_below_min", "group_at_max", "lb_5xx_ratio", "lb_latency", "lb_uptime", "redis_memory"]
+POLICIES = ["group_below_min", "group_at_max", "group_memory_high", "group_disk_high", "lb_5xx_ratio", "lb_latency", "lb_uptime", "redis_memory"]
 
 
 class Alerts(unittest.TestCase):
@@ -52,6 +52,35 @@ class Alerts(unittest.TestCase):
         self.assertIn("local.group_size_filter", body)
         self.assertIn("var.cpu_target", body)            # tải vẫn cao: CPU trung bình nhóm trên cpu_target
         self.assertIn("local.group_vm_filter", body)
+
+    def test_memory_and_disk_filters_select_the_app_group_not_a_vm_name(self):
+        # Metric Ops Agent không có nhãn instance_name: lọc theo nhãn instance của template (group = <prefix>-app).
+        for loc in ("group_memory_filter", "group_disk_filter"):
+            self.assertIn(f'metadata.user_labels.\\"group\\"=\\"${{local.vm_name_prefix}}\\"', MON, loc)
+        self.assertNotIn("instance_name", re.search(r"group_memory_filter = (.*)", MON).group(1))
+        self.assertIn("metric.labels.state", re.search(r"group_memory_filter = (.*)", MON).group(1))
+        self.assertIn("metric.labels.state", re.search(r"group_disk_filter   = (.*)", MON).group(1))
+
+    def test_memory_and_disk_alert_on_any_vm_and_on_silent_agent(self):
+        for name, filt, threshold in (
+            ("group_memory_high", "local.group_memory_filter", "var.alert_memory_percent"),
+            ("group_disk_high", "local.group_disk_filter", "var.alert_disk_percent"),
+        ):
+            body = policy(name)
+            self.assertIn(filt, body, name)
+            self.assertIn(threshold, body, name)
+            self.assertIn('comparison      = "COMPARISON_GT"', body, name)
+            self.assertIn('cross_series_reducer = "REDUCE_MAX"', body, name)   # một VM vượt ngưỡng là đủ báo
+            self.assertIn("condition_absent", body, name)                     # Ops Agent dừng trên cả nhóm
+            self.assertIn("local.alert_channels", body, name)
+
+    def test_memory_threshold_stays_above_the_autoscaler_target(self):
+        # Autoscaler co giãn theo memory_target_percent; alert chỉ được báo khi vượt xa mức đó.
+        variables = (D / "variables.tf").read_text()
+        default = lambda name: float(re.search(rf'variable "{name}" \{{.*?default\s*=\s*([\d.]+)', variables, re.S).group(1))
+        self.assertGreater(default("alert_memory_percent"), default("memory_target_percent"))
+        self.assertLess(default("alert_memory_percent"), 100)
+        self.assertLess(default("alert_disk_percent"), 100)
 
     def test_mute_job_failure_has_its_own_always_on_channel(self):
         policy_body = block(MUTE, "google_monitoring_alert_policy", "mute_job_failed")

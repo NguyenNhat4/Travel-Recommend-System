@@ -51,12 +51,12 @@ resource "google_logging_metric" "crawler_run_failed" {
 
 resource "google_monitoring_alert_policy" "crawler_run_failed" {
   count                 = local.crawler_alerts ? 1 : 0
-  display_name          = "${var.name_prefix} Crawler: LƯỢT CÀO THẤT BẠI"
+  display_name          = "${var.name_prefix} Job cào: LƯỢT CÀO THẤT BẠI"
   combiner              = "OR"
   notification_channels = local.alert_channels
 
   conditions {
-    display_name = "run.end status=failed"
+    display_name = "Lượt cào kết thúc với status=failed"
     condition_threshold {
       filter          = "resource.type=\"gce_instance\" metric.type=\"logging.googleapis.com/user/${google_logging_metric.crawler_run_failed[0].name}\""
       comparison      = "COMPARISON_GT"
@@ -82,7 +82,7 @@ resource "google_monitoring_alert_policy" "crawler_run_failed" {
 
 resource "google_monitoring_alert_policy" "crawler_silent" {
   count                 = local.crawler_alerts ? 1 : 0
-  display_name          = "${var.name_prefix} Crawler: JOB CÀO KHÔNG CHẠY"
+  display_name          = "${var.name_prefix} Job cào: KHÔNG CHẠY"
   combiner              = "OR"
   notification_channels = local.alert_channels
 
@@ -111,12 +111,12 @@ resource "google_monitoring_alert_policy" "crawler_silent" {
 
 resource "google_monitoring_alert_policy" "crawler_catalog_late" {
   count                 = local.crawler_late_alerts ? 1 : 0
-  display_name          = "${var.name_prefix} Crawler: CATALOG KHÔNG ĐỔI QUÁ HẠN"
+  display_name          = "${var.name_prefix} Job cào: CATALOG QUÁ HẠN"
   combiner              = "OR"
   notification_channels = local.alert_channels
 
   conditions {
-    display_name = "Tick báo catalog late trong 15 phút"
+    display_name = "Tick báo catalog quá hạn trong 15 phút"
     condition_threshold {
       filter          = "resource.type=\"gce_instance\" metric.type=\"logging.googleapis.com/user/${google_logging_metric.crawler_catalog_late[0].name}\""
       comparison      = "COMPARISON_GT"
