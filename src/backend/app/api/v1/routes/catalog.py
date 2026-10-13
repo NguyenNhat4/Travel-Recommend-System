@@ -27,10 +27,12 @@ def destinations(index: Any = Depends(get_index)):
 async def list_products(response: Response, destination: str | None = None, taxonomy: str | None = None,
                         availableOnly: bool = False, sort: str = "popular", limit: int = 20, offset: int = 0,
                         parentProductId: str | None = None, diversify: str | None = None,
+                        freeOnly: bool = False,
                         use_case=Depends(get_use_case("list_products"))):
     taxonomies = taxonomy.split(",") if taxonomy is not None else None
     result = await use_case(destination=destination, taxonomy=taxonomies, available_only=availableOnly, sort=sort,
-                            limit=limit, offset=offset, parent_product_id=parentProductId, diversify=diversify)
+                            limit=limit, offset=offset, parent_product_id=parentProductId, diversify=diversify,
+                            free_only=freeOnly)
     response.headers["Cache-Control"] = PUBLIC_CATALOG_CACHE
     return {**result, "requestId": current_request_id() or "catalog"}
 

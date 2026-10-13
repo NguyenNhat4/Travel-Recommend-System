@@ -919,7 +919,7 @@ settings = get_settings()
 app = FastAPI(
     title=settings.app_name,
     description="Travel recommendation and itinerary API",
-    version="1.28.0",
+    version="1.29.0",
     lifespan=lifespan,
 )
 

@@ -1430,6 +1430,7 @@ AssistantNodeActivity:
       format: date
 AssistantRunPreview:
   type: object
+  description: Deprecated 2026-10-14 — server không còn phát run.preview; giữ schema cho client cũ.
   additionalProperties: false
   required:
   - runId

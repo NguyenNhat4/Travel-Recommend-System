@@ -761,7 +761,7 @@ Các chi tiết node/nhóm bên dưới mô tả client **v1** đang giữ để
 - Trò chuyện và hỏi lại: chỉ hiểu; lượt bị chặn không đánh ✓. Trước khi server xác định loại lượt chỉ có dòng đang hiểu, chưa có bước tương lai.
 - `node.activity` hiện việc đang làm. `node.completed.progress` nhắc dữ kiện đã hiểu, số tìm thấy/chọn và lý do loại tại nơi lọc. Không dùng `sourceTotal` làm số tìm thấy, không hiện chữ debug, tên node/tool, query hay dữ liệu thô.
 - Nhóm thay theo `groupId` với số cộng dồn từ server; thông báo thay theo `(code, groupId, date)`, không cộng. Nhóm `superseded` ẩn cả dòng và thông báo. Khi đổi loại lượt giữ các bước đã hoàn thành.
-- Sau `compose`, preview tối đa 6 sản phẩm đã kiểm nguồn hiện từ giây 5, chỉ xem chi tiết. Xong, lỗi hoặc dừng thì gỡ preview. Khi xong, lượt lập lịch/khám phá/vé thu gọn thành dòng tóm tắt ở đầu câu trả lời; mở để xem lại, không có spinner. Lịch sử tải lại không chứa tiến trình.
+- Trong lúc chờ không hiện thẻ sản phẩm; thẻ chỉ có trong câu trả lời (bỏ thẻ xem trước, chốt 2026-10-14, `../prd/update-archive/2026-10-14-bo-the-xem-truoc-trong-tien-trinh.md`). Khi xong, lượt lập lịch/khám phá/vé thu gọn thành dòng tóm tắt ở đầu câu trả lời; mở để xem lại, không có spinner. Lịch sử tải lại không chứa tiến trình.
 - Mục hiểu yêu cầu ở lượt khám phá/vé chỉ diễn giải công việc của lượt hiện tại (phạm vi, tìm thêm, so giá, tra lại thẻ); không lặp thông tin chuyến đã lưu. Các lý do loại giải thích mục đích tránh lặp gợi ý hoặc gộp các mục trùng nơi, từ quyết định có cấu trúc và số đếm thật. Lượt lập lịch/hỏi lại chuyến mới nhắc thông tin chuyến.
 - Chẩn đoán mức 1 trong Shift+D chỉ dùng stream công khai, gồm request, thời gian, activity và số đếm. Không có chi tiết gọi tool/LLM của Phần B chưa chốt.
 - Contract 1.28.0: quyết định đổi phạm vi (`scopeMode=replace`), nơi không xét trong việc (`excludedDestinations`)
@@ -769,7 +769,7 @@ Các chi tiết node/nhóm bên dưới mô tả client **v1** đang giữ để
   không xét nơi nào trong lượt này, mục tiêu bao nhiêu lựa chọn. Yêu cầu vượt 20 ghi rõ trần 20. Đây là tóm tắt
   quyết định tìm kiếm từ dữ liệu có cấu trúc; số tìm thấy/giới thiệu vẫn lấy từ bộ đếm, không từ số lượng yêu cầu.
 
-Nhãn do Web sở hữu; ✓ chỉ sau sự kiện hoàn thành thật, không theo đồng hồ. Triển khai: `widget/progressModel.ts`, `widgetProgressView.ts`, `WidgetProgress.tsx`, `WidgetProgressSummary.tsx`, `WidgetProgressPreview.tsx`.
+Nhãn do Web sở hữu; ✓ chỉ sau sự kiện hoàn thành thật, không theo đồng hồ. Triển khai: `widget/progressModel.ts`, `widgetProgressView.ts`, `WidgetProgress.tsx`, `WidgetProgressSummary.tsx`.
 
 ### 6.2 Chip ý định: cho phép sửa mà không phải gõ lại
 
@@ -894,7 +894,7 @@ Nếu cắt về single-turn (handbook §2, mục 6) thì thẻ này là cách *
 | Trạng thái | Hiển thị | Pattern |
 |---|---|---|
 | **Rỗng** | Lời chào có tên (nếu đã đăng nhập) + 3–4 câu mẫu dạng thẻ + dòng phạm vi. Khách vãng lai có thêm dòng "Đăng nhập để kế hoạch ưu tiên những gì hợp với bạn" | `[R87]` Booking.com iOS; `[R89]` Mindtrip web |
-| **Đang xử lý** | Khung tiến trình theo loại lượt (6.1), dữ kiện thật; preview sau compose từ giây 5. Nút "Dừng" hủy request và khôi phục ô nhập kèm nội dung vừa gửi | `[R109]` Wabi iOS; `[R110]` Structured iOS |
+| **Đang xử lý** | Khung tiến trình theo loại lượt (6.1), dữ kiện thật; không hiện thẻ trước câu trả lời. Nút "Dừng" hủy request và khôi phục ô nhập kèm nội dung vừa gửi | `[R109]` Wabi iOS; `[R110]` Structured iOS |
 | **Chậm** (> 12 giây không có `node.completed` hoặc `node.activity` — thời gian dồn vào các node gọi LLM nên đo theo từng node, không theo cả lượt) | Thêm dòng "Đang lâu hơn thường lệ. Bạn có thể đợi thêm hoặc dừng."; activity hoặc node xong đặt lại đồng hồ | — |
 | **Có kế hoạch** | 6.3 | — |
 | **Kế hoạch một phần** | Khung giờ không có sản phẩm hợp lệ thì hiện `ActivityNote` do LLM viết. Nếu cả một ngày không có sản phẩm nào thì hiện "Chưa tìm thấy dịch vụ phù hợp cho ngày này · [Tìm ở {destination}]" | — |

@@ -96,18 +96,6 @@ def products(response):
     return [p for p in result if not (p['productId'] in seen or seen.add(p['productId']))]
 
 
-def preview(state, update):
-    response = update.get('response') or {}
-    if response.get('status') != 'COMPLETED':
-        return None
-    sources = {**(state.get('sources') or {}), **(update.get('sources') or {})}
-    rows = [p for p in products({'itinerary': response.get('itinerary')}) if p['taxonomy'] != 'flight']
-    if not rows or any(p['productId'] not in sources for p in rows):
-        return None
-    rows.sort(key=lambda p: ('hotel', 'attraction', 'golf', 'combo').index(p['taxonomy']))
-    return {'products': deepcopy(rows[:6])}
-
-
 def _kind(name, state, old):
     decision = state.get('decision')
     if state.get('blocked_by_guardrail') or state.get('unclear_input') or name == 'dead_letter':
@@ -218,13 +206,6 @@ def completed(name, before, update):
         if any(g['counter'] and g['counter'].snapshot()['dropped'].get('PREFERENCE') for g in ctx['groups'].values()):
             criteria.append('STAY_PREFERENCE')
         payload['arranged'] = dict(criteria=criteria,stayOptions=len(response.get('stayOptions') or []),budgetStatus=itinerary.get('budgetStatus','UNKNOWN'))
-        peek = preview(before,update)
-        if peek:
-            from langgraph.config import get_stream_writer
-            try:
-                get_stream_writer()({'event':'run.preview','data':peek})
-            except RuntimeError:
-                pass
     events = update.get('events') or []
     if events:
         update = {**update,'events':[*events[:-1],{**events[-1],'progress':payload}]}

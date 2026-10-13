@@ -4,7 +4,14 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
-from src.backend.app.application.itinerary.orc_contracts import TAXONOMIES, TOOLS
+from langchain_core.messages import AIMessage
+
+from src.backend.app.application.itinerary.orc_contracts import (
+    BUILD,
+    CONTROL_TOOLS,
+    TAXONOMIES,
+    TOOLS,
+)
 from src.backend.app.application.ports.itinerary_tools import ToolError
 
 
@@ -63,7 +70,8 @@ class FakeTools:
     async def list_products(self, params: dict) -> dict:
         self.calls.append(("list", deepcopy(params)))
         self._fail()
-        rows = self.listing.get(params.get("parentProductId") or params.get("destination") or "", self.products)
+        rows = self.listing.get(params.get("parentProductId") or params.get("destination") or "",
+                                [] if params.get("parentProductId") else self.products)
         offset, limit = params.get("offset", 0), params.get("limit", 20)
         return {"results": rows[offset:offset + limit], "total": len(rows)}
 
@@ -76,13 +84,13 @@ def arguments(tool: str, **values) -> dict:
         if "null" in kinds:
             return None
         return {"array": [], "boolean": False}.get(kinds[0], "none" if "enum" in schema else None)
-    schema = TOOLS[tool]
-    return {key: values[key] if key in values else empty(prop) for key, prop in schema["properties"].items()}
+    schema = TOOLS.get(tool) or CONTROL_TOOLS.get(tool) or BUILD
+    return dict(values) if tool in TOOLS or tool in CONTROL_TOOLS else {key: values[key] if key in values else empty(prop) for key, prop in schema["properties"].items()}
 
 
 def call(tool: str, call_id: str = "c1", **values) -> dict:
     """Một lời gọi đã có mã server đánh (dùng thẳng cho dispatcher)."""
-    return {"call_id": call_id, "name": tool, "arguments": arguments(tool, **values)}
+    return {"call_id": call_id, "name": tool, "arguments": arguments(tool, **({"why": "Tra dữ liệu cần cho yêu cầu."} if tool in TOOLS else {}), **values)}
 
 
 def respond(text: str = "Mình đã tìm theo yêu cầu.", **fields) -> dict:
@@ -112,13 +120,27 @@ class ScriptedModel:
         self.payloads: list[list] = []
         self.schemas: list[dict] = []
 
-    def with_structured_output(self, schema: dict):
-        self.schemas.append(schema)
+    def bind_tools(self, tools, **kwargs):
+        self.schemas.append(deepcopy(tools))
         return self
 
     async def ainvoke(self, messages):
-        self.payloads.append(messages)
+        self.payloads.append(list(messages))
         decision = self.decisions.pop(0)
         if isinstance(decision, Exception):
             raise decision
-        return {"decision": decision}
+        if isinstance(decision, AIMessage):
+            return decision
+        calls = []
+        if decision.get("context_patch"):
+            patch = {k: v for k, v in decision["context_patch"].items() if v is not None}
+            if "trip_budget_vnd" in patch:
+                patch["budget_vnd"] = patch.pop("trip_budget_vnd")
+            calls.append({"name": "update_trip", "args": patch})
+        if decision["action"] == "respond":
+            calls.append({"name": "respond", "args": {k: v for k, v in decision.items()
+                                                       if k not in ("action", "context_patch")}})
+        else:
+            for c in decision["calls"]:
+                calls.append({"name": c["name"], "args": {"why": decision.get("explanation") or "Tra dữ liệu cần cho yêu cầu.", **c["arguments"]}})
+        return AIMessage(content="", tool_calls=[{**c, "id": f"native-{len(self.payloads)}-{i}"} for i, c in enumerate(calls)])

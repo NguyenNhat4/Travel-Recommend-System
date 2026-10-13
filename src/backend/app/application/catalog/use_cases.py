@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import Mapping, Sequence
 from zoneinfo import ZoneInfo
 
 from src.backend.app.application.catalog.errors import (
@@ -70,7 +70,8 @@ class ListProducts:
 
     async def __call__(self, *, destination: str | None = None, taxonomy: str | Sequence[str] | None = None,
                        available_only: bool = False, sort: str = "popular", limit: int = 20, offset: int = 0,
-                       parent_product_id: str | None = None, diversify: str | None = None) -> dict:
+                       parent_product_id: str | None = None, diversify: str | None = None,
+                       free_only: bool = False) -> dict:
         """`taxonomy`: một loại hoặc nhiều loại (route tách `taxonomy=a,b`), giá trị trùng bỏ qua.
 
         `diversify="taxonomy"` (contract 1.27.0): trộn theo nhóm loại sau khi sắp xếp, trước khi cắt trang; chỉ với
@@ -96,7 +97,7 @@ class ListProducts:
             items = self.units if self.units is not None else await self.products.search_units()
         ordered = sort_items(
             filter_items(items, destination=destination, taxonomy=None if taxonomies is None else set(taxonomies),
-                         available_only=available_only),
+                         available_only=available_only, free_only=free_only),
             sort, self.popularity, variants=bool(parent_product_id))
         if diversify == "taxonomy":  # trộn trước khi cắt trang: hoán vị, `total` và các trang nối tiếp không đổi
             ordered = interleave_by_taxonomy(ordered)

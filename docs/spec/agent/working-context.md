@@ -96,7 +96,7 @@ Phanh của lượt có mã nguyên nhân (`steps/limits.py`: hết giờ, trầ
 metadata event, `turn_limit_reason` và log `itinerary.turn_limit`. B11 (bộ đo so sánh) bỏ; B12 (chuyển mặc định) đã thay
 bằng việc gỡ luồng cũ; B13 (gỡ regex) chưa làm.
 
-Tiến trình 1.27.0 (AC-AGT-09): `LangGraphItineraryPlanner.astream` phát state/custom; `graph.timed` phát activity, gắn progress vào event và preview sau compose. Collector `steps/progress.py` chỉ sống trong stream của request, số đếm từ `application/itinerary/progress_counts.py` tại các bộ lọc. Không vào working memory hay payload LLM. Route chuyển thành `node.activity`, `node.completed.progress`, `run.preview`; Web gộp theo nhóm và viết nhãn, chẩn đoán mức 1 tại Shift+D. Snapshot vẫn dùng `ainvoke`, không ghi lại cho thay đổi tiến trình.
+Tiến trình 1.27.0 (AC-AGT-09): `LangGraphItineraryPlanner.astream` phát state/custom; `graph.timed` phát activity, gắn progress vào event. Collector `steps/progress.py` chỉ sống trong stream của request, số đếm từ `application/itinerary/progress_counts.py` tại các bộ lọc. Không vào working memory hay payload LLM. Route chuyển thành `node.activity`, `node.completed.progress` (không còn `run.preview`, chốt 2026-10-14); Web gộp theo nhóm và viết nhãn, chẩn đoán mức 1 tại Shift+D. Snapshot vẫn dùng `ainvoke`, không ghi lại cho thay đổi tiến trình.
 
 ### 3.1. Assistant v2 (orc tự chủ, chạy song song v1)
 
@@ -106,17 +106,23 @@ POST /api/v2/assistant/itineraries hoặc /stream
   -> application/itinerary/v2_use_cases.py
                                       khoá lượt (clientTurnId), nút server đã cấp, ghi đúng một lần
   -> agents/orc_v2.py                  OrcV2Runtime + graph: precheck → decide ⇄ dispatch → guard; PROMPT
-       decide   model trả OrcDecision (schema: application/itinerary/orc_contracts.py), code kiểm schema
+       decide   bind_tools + assistant/tool messages nối thêm trong lượt; schema từng function tại orc_contracts.py
        dispatch application/itinerary/orc_dispatch.py: chạy đúng tool orc gọi, ngân sách 10 request nguồn,
-                lookup_flights ở flight_lookup.py, build_itinerary kiểm bằng domain/itinerary/draft_validation.py
+                lookup_flights ở flight_lookup.py, plan_itinerary tính/kiểm buổi bằng domain/itinerary/draft_validation.py
        guard    domain/itinerary/orc_guardrails.py kiểm câu trả lời; v2_final.py dựng response theo contract v2
   -> infrastructure/persistence/assistant_v2_store.py  working memory 24h (memory/Redis), mở tiếp hội thoại v1
 ```
 
-Giới hạn mỗi lượt: 3 lượt gọi tool (1–3 tool mỗi lượt), 10 request nguồn, 5 lần gọi model, sửa câu trả lời 1 lần.
+Giới hạn mỗi lượt: 3 lượt gọi tool nghiệp vụ (1–3 tool mỗi lượt), 10 request nguồn, 5 lần gọi model, sửa câu trả lời 1 lần.
+Năm tool: find_products (có query Search, không query Catalog, khách sạn kèm refs phòng), get_products (tối đa 10 refs,
+lỗi từng ref trả riêng), recommend (like_ref gọi Similar), lookup_flights, plan_itinerary. update_trip cần evidence và
+respond là final có cấu trúc, không tính lượt nghiệp vụ. Hết lượt chỉ bind respond. Thừa call trả TOO_MANY_CALLS.
+OpenAI reasoning dùng Responses API cho function tools, giữ JSON-schema v1; Gemini/Anthropic ép any và kiểm local.
+ToolMessage chỉ gửi view sản phẩm mới/thay đổi; remaining báo quota, request vé tối đa năm. Ngày hiện tại ở payload,
+không đổi prefix system. Chuyến N ngày tối đa N−1 đêm; số phòng theo tổng khách/priceAdults hoặc sức chứa có cảnh báo.
 System prompt kèm tên điểm đến của catalog (`application/itinerary/destination_names.py`, lấy qua `list_destinations`,
 cache 10 phút trong process, không tính vào ngân sách lượt) để orc dùng đúng tên catalog thay cách khách viết ("Sài Gòn",
-"HCM" → "TP. Hồ Chí Minh"); không lấy được thì prompt không kèm danh sách và orc tự gọi `list_destinations`.
+"HCM" → "TP. Hồ Chí Minh"); không lấy được thì prompt không kèm danh sách và orc dùng tên khách nói; không còn tool Destinations ở v2.
 Mã sản phẩm `p1, p2…` và mã lời gọi `c1, c2…` do server cấp; số liệu trong lời đáp đi qua đoạn `fact`, tên sản phẩm qua
 đoạn `product` (code điền tên và đặt thẻ). Test: `tests/unit/agents/test_orc_*.py`, `tests/unit/application/test_assistant_v2_*.py`,
 `tests/unit/domain/test_orc_*.py`, `tests/contract/test_assistant_v2_contract.py`; model giả ở `tests/fakes/orc_tools.py`.

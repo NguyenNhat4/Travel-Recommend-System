@@ -158,6 +158,14 @@ ProductSummary:
       description: >-
         Nhãn du lịch đã chuẩn hóa ("Nha Trang", "Hạ Long"), KHÔNG phải tỉnh.
         Lấy danh sách hiện hành qua GET /api/v1/destinations.
+    entryPolicy:
+      type: string
+      enum: [free, assumed_free, paid, unknown]
+      description: >-
+        Căn cứ phí vào cửa từ nguồn, giữ ý nghĩa ticketed=false khi C2 lược bỏ thuộc tính false.
+        Attraction/golf giá 0 hoặc ticketed=false là free; không giá và không ghi ticketed=true là assumed_free
+        (tham quan tự do theo quy ước, cần xác nhận phí vào cửa). Vé thu phí thiếu giá là unknown.
+        Hotel/flight/combo không áp dụng giả định tham quan tự do. unitPrice nguồn không đổi.
 
     # --- [Q2] mới ---
     brand:
