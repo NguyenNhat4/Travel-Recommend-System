@@ -65,8 +65,24 @@
 
 ## Kiểm tra
 
-- (cập nhật sau khi chạy)
+- Test cấu trúc staging-ha (8 file) chạy trên runner (Debian 12, bash 5): pass; `test_slot_deploy.py` 44 test. Trên macOS (bash 3.2) hai test roll lỗi vì thiếu `mapfile`; CI chạy bash 5 nên không ảnh hưởng.
+- `python3 -m unittest discover -s infra/monitoring/tests`: 18 pass. `terraform validate`, `terraform fmt -check` (staging-ha): pass. Parse YAML 8 workflow: pass.
+- Chạy thử roll mới trên 2 VM thật bằng tay từ runner, lúc 02:47 UTC:
+  - `REMOTE_START` tới ngay khi mở SSH, không còn chờ 240 s.
+  - Prepare song song 2 VM mất 97 s; switch canary 15 s.
+  - Switch VM thứ hai lỗi "slot chờ blue không chạy", vì run `Staging-HA Backend CD` 38338162583 (dispatch 02:42, workflow cũ) roll cùng lúc và thay slot chờ.
+  - Hệ quả: `fn9m` chạy backend cũ `bf620ec6` từ khoảng 02:49 đến 02:55, khi run 38338162583 roll lại VM đó. `/health/ready` công khai vẫn 200.
+  - Đã sửa `mode_switch`: slot đang phục vụ đã đúng image đích thì coi là thành công và dọn slot chờ thừa. Thêm test.
+  - Bài học: không roll tay ngoài CD khi có thể có CD khác đang chạy. Khoá concurrency chỉ bảo vệ các run cùng group.
+- CI PR #192, lần 1 (builder và deps mới, cache trống): 10/10 pass. CI checks backend 236 s, build backend 168 s, frontend quality 243 s, frontend docker 197 s, e2e 213 s, build crawler 184 s, HA checks 22–180 s.
 
 ## Còn lại / rủi ro
 
-- (cập nhật sau khi chạy)
+- Lần CD đầu tiên bằng luồng mới chạy ngay khi merge. Last-good chưa có `*_key`, nên backend và frontend đều qua CI, build và roll. Kết quả CD ghi ở entry kiểm tra sau merge (`history/2026-10-13-danh-gia-cd-staging-ha-sau-merge.md`).
+- Khi infra CD apply lần sau, template sẽ đổi (startup đọc image mong muốn) và alert `ci_runner_down` được tạo. VM đang chạy giữ startup cũ cho tới khi bị thay; chúng vẫn được roll qua SSH như bình thường.
+- Tag `key-*`, tag theo SHA và `:buildcache`, `:buildcache-ha` cũ trong Artifact Registry tăng dần: cần cleanup policy giữ N tag gần nhất (ngoài repo).
+- Còn chưa làm:
+  - Đẩy image từ PR (cần nới điều kiện WIF; đây là quyết định bảo mật của người dùng).
+  - Tách runner CI/CD (cần quyền admin repo).
+  - ONNX (cần bench và reindex).
+- Trùng phạm vi với PR #191 (Khoa15): PR merge sau phải rebase.
