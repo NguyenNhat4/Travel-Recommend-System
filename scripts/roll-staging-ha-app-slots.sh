@@ -6,8 +6,10 @@
 # Sau đó liệt kê lại MIG: VM mới xuất hiện trong lúc roll (autoscaler, autohealing) cũng được đưa về image đích,
 # và mọi VM phải báo đúng image đích.
 #
-# Script slot gửi qua stdin, kèm checksum; VM chỉ ghi lại khi nội dung khác. (Trước 2026-10-13 script ~27 KB nằm
-# trong tham số --command; mỗi VM chờ 240 s giữa lúc mở phiên SSH và lệnh đầu tiên, đo bằng journal của VM.)
+# Script slot KHÔNG đi qua SSH: CD ghi nó vào metadata của từng instance (`vota-slot-deploy`), VM đọc từ metadata server,
+# kiểm checksum và chỉ ghi lại khi nội dung khác. Lệnh SSH chỉ còn vài trăm byte. Lý do (đo 2026-10-13): trong CI, mọi dữ
+# liệu ~27 KB tải lên qua IAP tunnel (tham số --command trước đây, stdin ở bản 13/10) mất đúng 240 s mỗi lần SSH, và có lần
+# đứt hẳn ("Failed to send all data from [stdin]", "Broken pipe"); journal VM: lệnh sudo đầu tiên chạy sau REMOTE_START 240 s.
 #
 # Biến môi trường (bắt buộc): BACKEND_REF, FRONTEND_REF (image@sha256:...), GCP_PROJECT_ID
 # Tuỳ chọn: MIG_NAME (vota-ha-app), MIG_REGION (asia-southeast1), SLOT_SCRIPT, ROLL_LOG_DIR
@@ -41,15 +43,29 @@ list_vms() { # "tên zone" của VM RUNNING
     | jq -r '.[] | select(.instanceStatus == "RUNNING") | "\(.instance | split("/") | last) \(.instance | split("/") | .[-3])"'
 }
 
+# Ghi script slot vào metadata của các VM (song song). Gọi trước lần SSH đầu tiên tới VM đó.
+push_script() { # "tên zone"...
+  local vm rc=0
+  local -a pids=()
+  for vm in "$@"; do
+    gcloud compute instances add-metadata "${vm% *}" --zone "${vm#* }" --project "$GCP_PROJECT_ID" \
+      --metadata-from-file vota-slot-deploy="$SLOT_SCRIPT" > "$log_dir/${vm% *}.metadata.log" 2>&1 &
+    pids+=("$!")
+  done
+  for i in "${!pids[@]}"; do wait "${pids[$i]}" || rc=1; done
+  [ "$rc" = 0 ] || { cat "$log_dir"/*.metadata.log >&2; die "không ghi được script slot vào metadata"; }
+}
+
 # Không ghim khoá host: VM bị MIG tạo lại sinh khoá SSH host mới (xem lịch sử 2026-10-12). Kênh vẫn qua IAP tới đúng instance.
 ssh_vm() { # tên zone mode
   local name="$1" zone="$2" mode="$3" remote
-  remote="set -e; echo \"REMOTE_START \$(date +%s)\"; f=/usr/local/sbin/vota-slot-deploy.sh; tmp=\$(mktemp); cat > \"\$tmp\"
-[ \"\$(sha256sum \"\$tmp\" | cut -c1-64)\" = '$script_sum' ] || { echo 'script slot truyền thiếu' >&2; exit 1; }
+  remote="set -e; echo \"REMOTE_START \$(date +%s)\"; f=/usr/local/sbin/vota-slot-deploy.sh; tmp=\$(mktemp)
+curl -fsS -m 10 -H 'Metadata-Flavor: Google' http://metadata.google.internal/computeMetadata/v1/instance/attributes/vota-slot-deploy -o \"\$tmp\"
+[ \"\$(sha256sum \"\$tmp\" | cut -c1-64)\" = '$script_sum' ] || { echo 'script slot trong metadata khác bản của CD' >&2; exit 1; }
 if ! sudo -n cmp -s \"\$tmp\" \"\$f\"; then sudo -n install -m 0755 \"\$tmp\" \"\$f\"; echo SCRIPT_UPDATED; fi; rm -f \"\$tmp\"
 sudo -n env BACKEND_IMAGE='$BACKEND_REF' FRONTEND_IMAGE='$FRONTEND_REF' \"\$f\" $mode"
   gcloud compute ssh "$name" --project "$GCP_PROJECT_ID" --zone "$zone" --tunnel-through-iap --quiet \
-    --strict-host-key-checking=no --command "$remote" < "$SLOT_SCRIPT"
+    --strict-host-key-checking=no --command "$remote" < /dev/null
 }
 
 # Chạy một mode trên các VM song song; in log từng VM theo thứ tự; trả khác 0 nếu một VM lỗi.
@@ -91,6 +107,8 @@ mapfile -t vms < <(list_vms)
 [ "${#vms[@]}" -gt 0 ] || die "MIG $MIG_NAME không có VM RUNNING"
 stamp "VM: $(names_of "${vms[@]}" | tr '\n' ' ')"
 
+stamp "ghi script slot vào metadata của ${#vms[@]} VM"
+push_script "${vms[@]}"
 stamp "pha 1: prepare trên ${#vms[@]} VM (song song)"
 if ! run_phase prepare "${vms[@]}"; then
   stamp "prepare lỗi: huỷ slot chờ trên mọi VM, giữ bản đang phục vụ"
@@ -121,6 +139,7 @@ for vm in "${now[@]}"; do
 done
 if [ "${#new_vms[@]}" -gt 0 ]; then
   stamp "VM mới trong lúc roll: $(names_of "${new_vms[@]}" | tr '\n' ' '); đưa về image đích"
+  push_script "${new_vms[@]}"
   run_phase deploy "${new_vms[@]}" || die "deploy VM mới lỗi"
 fi
 stamp "kiểm image trên mọi VM"
