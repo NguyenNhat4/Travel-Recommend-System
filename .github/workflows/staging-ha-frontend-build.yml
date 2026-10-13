@@ -90,8 +90,8 @@ jobs:
           file: ./src/frontend/Dockerfile.web
           push: true
           tags: ${{ steps.frontend_path.outputs.image }}:${{ github.sha }}
-          cache-from: type=gha,scope=staging-ha-frontend
-          cache-to: type=gha,mode=max,scope=staging-ha-frontend
+          cache-from: type=registry,ref=${{ steps.frontend_path.outputs.image }}:buildcache
+          cache-to: type=registry,mode=max,ref=${{ steps.frontend_path.outputs.image }}:buildcache
 
       - name: Resolve immutable image reference
         id: refs

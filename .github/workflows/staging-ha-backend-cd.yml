@@ -28,7 +28,6 @@ on:
       - 'scripts/deploy-staging-ha-app.sh'
       - 'scripts/roll-staging-ha-app-slots.sh'
       - 'scripts/pin-staging-ha-mig-opportunistic.sh'
-      - 'infra/terraform/environments/staging-ha/**'
   workflow_dispatch:
 
 permissions:
