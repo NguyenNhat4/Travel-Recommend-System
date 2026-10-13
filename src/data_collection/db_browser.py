@@ -34,6 +34,7 @@ SEARCH_LIMIT = 10
 # Cột chữ dài / không dùng để tìm nhanh (quét chậm, khớp nhiễu): mô tả, nội dung chat, bằng chứng, URL ảnh.
 LONG_TEXT = re.compile(r"description|content|evidence|url|image|user_agent|checksum", re.I)
 TEXT_TYPES = ("text", "character varying", "character")
+HEAVY_TYPES = ("jsonb", "json")  # ô lọc của bảng bỏ qua trừ khi chọn "tìm cả mô tả và JSON"
 INT_TYPES = ("integer", "bigint", "smallint")
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
 # Cột hiện kèm mỗi kết quả tìm chung (ngoài khoá và cột khớp), theo thứ tự ưu tiên.
@@ -186,7 +187,10 @@ class DbBrowser:
         from psycopg import sql
         return sql.Identifier(entry["schema"], entry["table"])
 
-    def _where(self, entry: dict, filters: dict, q: str):
+    def _where(self, entry: dict, filters: dict, q: str, deep: bool = False):
+        """Điều kiện lọc. `q`: dòng có đủ mọi từ. Mặc định tìm mọi cột trừ JSON và cột chữ dài (mô tả, nội dung, URL…): đổi
+        JSON thành chuỗi rồi so khớp làm ô lọc `cdp.products` production chậm gấp ~10 lần (đo 13/10/2026 trên 30.935 sản
+        phẩm: 1,7–2,5 s so với ~0,2 s mỗi câu lệnh). `deep` = tìm cả các cột đó."""
         from psycopg import sql
         parts, params = [], []
         for column, value in (filters or {}).items():
@@ -200,7 +204,9 @@ class DbBrowser:
                 parts.append(sql.SQL("{}::text = %s").format(sql.Identifier(column)))
                 params.append(str(value))
         if q and fold(q).strip():
-            visible = [c for c in entry["columns"] if not is_secret(c)]
+            readable = [c for c in entry["columns"] if not is_secret(c)]
+            visible = [c for c in readable if deep or (entry["types"][c] not in HEAVY_TYPES and not LONG_TEXT.search(c))]
+            visible = visible or readable  # bảng chỉ có cột nặng: tìm mọi cột
             text = sql.SQL("concat_ws(' ', {})").format(
                 sql.SQL(", ").join(sql.SQL("{}::text").format(sql.Identifier(c)) for c in visible))
             for word in fold(q[:MAX_QUERY]).split():  # dòng có đủ mọi từ, ở cột nào cũng được; không phân biệt hoa thường, dấu
@@ -257,11 +263,11 @@ class DbBrowser:
         return {"tables": tables, "edges": edges}
 
     def rows(self, name: str, filters: dict | None = None, q: str = "", sort: str = "", desc: bool = False,
-             offset: int = 0, limit: int = 50) -> dict:
+             offset: int = 0, limit: int = 50, deep: bool = False) -> dict:
         from psycopg import sql
         entry = self._table(name)
         limit, offset = max(1, min(int(limit), MAX_LIMIT)), max(0, int(offset))
-        where, params = self._where(entry, filters or {}, q)
+        where, params = self._where(entry, filters or {}, q, deep)
         order = sort or (entry["pk"][0] if entry["pk"] else entry["columns"][0])
         if order not in entry["columns"] or is_secret(order):
             raise ValueError("Không sắp xếp được theo cột này")

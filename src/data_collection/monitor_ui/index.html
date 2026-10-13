@@ -525,7 +525,8 @@ async function dbRefresh(){if(S.view!=='db'){clearInterval(S.dbTimer);S.dbTimer=
  if(document.hidden||$('#detail').open||(a&&main.contains(a)&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)))return;
  const keep=[...main.querySelectorAll('.scroll')].map(x=>[x.scrollLeft,x.scrollTop]);await dbPage();
  main.querySelectorAll('.scroll').forEach((x,i)=>{if(keep[i])[x.scrollLeft,x.scrollTop]=keep[i]})}
-document.addEventListener('change',e=>{if(e.target.id==='dbAuto'){S.dbAuto=e.target.checked;dbSchedule()}});
+document.addEventListener('change',e=>{if(e.target.id==='dbAuto'){S.dbAuto=e.target.checked;dbSchedule()}
+ if(e.target.id==='dbDeep'){S.db.deep=e.target.checked;S.db.offset=0;dbPage().catch(fail)}});
 // Tìm nhanh cả database (chốt 2026-10-13): gõ là tìm (chờ 250 ms sau phím cuối), không phân biệt hoa thường / dấu.
 const dbFold=s=>[...String(s)].map(ch=>ch==='đ'||ch==='Đ'?'d':ch.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase()||ch).join('');
 function dbMark(v,q){if(v===null||v===undefined)return '<span class="muted">NULL</span>';const t=typeof v==='object'?JSON.stringify(v):String(v);const s=t.length>90?t.slice(0,90)+'…':t;
@@ -556,9 +557,9 @@ async function dbPage(){const D=S.db=S.db||{table:null,filters:{},offset:0};writ
  const groups={};for(const t of list.tables)(groups[t.schema]=groups[t.schema]||[]).push(t);
  const side=Object.entries(groups).map(([sc,ts])=>`<h3>${esc(sc)}</h3>`+ts.map(t=>button(`${t.table}${t.view?' (view)':''} · ${num(t.rows)}`,'dbTable',{table:t.name},t.name===D.table?'primary':'')).join(' ')).join('');
  let body='<p class="muted">Chọn một bảng. Chỉ đọc; cột bí mật (password / token / secret / hash) hiện "(ẩn)". Bấm ô khoá (id) để xem dòng và các bảng liên kết.</p>';
- if(D.table){const d=D.children?await api('/api/dbx/children',{id:D.children,offset:D.offset}):await api('/api/dbx/rows',{table:D.table,q:D.q,sort:D.sort,desc:D.desc?'1':'',offset:D.offset,limit:50,...Object.fromEntries(Object.entries(D.filters||{}).map(([k,v])=>['f.'+k,v===null?'\\N':v]))});
+ if(D.table){const d=D.children?await api('/api/dbx/children',{id:D.children,offset:D.offset}):await api('/api/dbx/rows',{table:D.table,q:D.q,deep:D.deep?'1':'',sort:D.sort,desc:D.desc?'1':'',offset:D.offset,limit:50,...Object.fromEntries(Object.entries(D.filters||{}).map(([k,v])=>['f.'+k,v===null?'\\N':v]))});
   const chips=[...Object.entries(D.filters||{}).map(([k,v])=>`${k} = ${v===null?'NULL':v}`),...(D.children?[`attributes.parentProductId = ${D.children}`]:[])];
-  body=`<form id="dbForm" class="actions"><input name="q" value="${esc(D.q||'')}" placeholder="Lọc trong mọi cột của bảng (không cần dấu, gõ là lọc)" style="min-width:320px" autocomplete="off"><button class="primary">Lọc</button>${chips.length?`<span class="muted">Lọc: ${esc(chips.join(' · '))}</span> `+button('Bỏ lọc','dbClear',{}):''}</form>
+  body=`<form id="dbForm" class="actions"><input name="q" value="${esc(D.q||'')}" placeholder="Lọc trong bảng (không cần dấu, gõ là lọc)" style="min-width:320px" autocomplete="off"><button class="primary">Lọc</button><label title="Mặc định bỏ qua cột JSON và cột chữ dài (mô tả, URL…) để lọc nhanh"><input type="checkbox" id="dbDeep" ${D.deep?'checked':''}> Tìm cả mô tả và JSON (chậm hơn)</label>${chips.length?`<span class="muted">Lọc: ${esc(chips.join(' · '))}</span> `+button('Bỏ lọc','dbClear',{}):''}</form>
    <p class="muted">${esc(d.table)} · ${d.totalCapped?'hơn ':''}${num(d.total)} dòng · hiển thị ${num(d.total?d.offset+1:0)}–${num(Math.min(d.offset+d.rows.length,d.total))}${d.fks?.length?` · khoá ngoại: ${esc(d.fks.map(f=>f.columns.join('+')+' → '+f.target).join(', '))}`:''}</p>`+
    `<div class="scroll"><table><thead><tr>${d.columns.map(c=>`<th>${button(c+(D.sort===c?(D.desc?' ↓':' ↑'):''),'dbSort',{col:c},'link')}</th>`).join('')}</tr></thead><tbody>${d.rows.map(r=>`<tr>${d.columns.map(c=>`<td>${dbCell(d,r,c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`+
    `<div class="actions">${d.offset>0?button('← Trước','dbOffset',{offset:Math.max(0,d.offset-d.limit)}):''}${d.offset+d.rows.length<d.total?button('Sau →','dbOffset',{offset:d.offset+d.limit}):''}</div>`}

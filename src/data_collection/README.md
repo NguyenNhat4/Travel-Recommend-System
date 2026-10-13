@@ -271,8 +271,10 @@ chính quy mà mỗi chữ cái là lớp gồm mọi dạng có dấu (`accent_
 khớp đúng cột khoá số; chuỗi khác: dòng có đủ mọi từ trong các cột chữ ngắn (bỏ mô tả, nội dung chat, URL, bằng chứng), xếp
 khớp trọn → đầu chuỗi → cả cụm → từ rải rác. Mỗi bảng (không gồm view) một câu lệnh, tối đa 10 dòng, quá giờ thì chỉ bảng đó
 báo "quá giờ"; cột bí mật không tìm. Ô lọc của từng bảng cũng không phân biệt dấu, cần đủ mọi từ, lọc khi đang gõ và chỉ đếm
-tới 10.000 dòng ("hơn 10.000 dòng"). Chuỗi tìm nằm trên địa chỉ trang (`#page=db&q=…`). Đo trên snapshot 2026-09-30
-(12.515 sản phẩm): tìm chung 60–120 ms cho 17 bảng.
+tới 10.000 dòng ("hơn 10.000 dòng"); mặc định bỏ qua cột JSON và cột chữ dài (mô tả, URL…), ô chọn "Tìm cả mô tả và JSON
+(chậm hơn)" (`deep=1`) tìm mọi cột. Chuỗi tìm nằm trên địa chỉ trang (`#page=db&q=…`). Đo: snapshot 2026-09-30 (12.515 sản
+phẩm) tìm chung 60–120 ms cho 17 bảng; production 13/10 (30.935 sản phẩm, `EXPLAIN ANALYZE`, không tính mạng) tìm chung
+~280 ms cho 19 bảng, ô lọc `cdp.products` ~0,2 s mỗi câu lệnh (gồm cả JSON: 1,7–2,5 s).
 
 **Dung lượng (tab "Dung lượng" của monitor, 06/10/2026):** hiện đĩa VM (đã dùng / còn trống của filesystem chứa thư mục dữ
 liệu), dung lượng từng thư mục con và từng lượt cào còn giữ; nút "Xoá các lượt cũ hơn" giữ N lượt mới nhất (lượt đang chạy

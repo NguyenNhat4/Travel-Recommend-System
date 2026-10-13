@@ -220,7 +220,12 @@ class DatabaseTests(unittest.TestCase):
         self.assertEqual(plain['total'], accented['total'])
         both = self.db.rows('cdp.products', q='vinpearl phu quoc', limit=1)['total']
         self.assertLessEqual(both, self.db.rows('cdp.products', q='vinpearl', limit=1)['total'])
-        self.assertGreater(both, 11)  # các từ không cần đứng liền nhau
+        deep = self.db.rows('cdp.products', q='vinpearl phu quoc', limit=1, deep=True)['total']
+        self.assertGreater(deep, 11)  # các từ không cần đứng liền nhau (cụm liền chỉ có 11 dòng)
+        self.assertGreaterEqual(deep, both)  # tìm sâu = thêm mô tả, JSON
+        rows = self.db.rows('cdp.products', q='Đà Nẵng', limit=200)['rows']
+        light = [fold(' '.join(str(r[c]) for c in ('name', 'destination', 'source_ref', 'taxonomy'))) for r in rows]
+        self.assertTrue(all('da' in t and 'nang' in t for t in light))  # mặc định không khớp nhờ mô tả / attributes
         common = self.db.rows('cdp.products', q='a', limit=1)
         self.assertEqual((common['total'], common['totalCapped']), (COUNT_CAP, True))
         self.assertFalse(self.db.rows('cdp.products', limit=1)['totalCapped'])  # không tìm: đếm đủ
