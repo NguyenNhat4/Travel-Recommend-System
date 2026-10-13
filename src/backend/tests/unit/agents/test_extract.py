@@ -2,173 +2,14 @@ import json
 import unittest
 
 import yaml
-from src.backend.app.agents.steps.classification import (extract_result, picked_option, route_input, route_result,
-                                                         says_stop)
-from src.backend.app.agents.nodes import classify_node, intake_node
-from src.backend.app.agents.models import Extraction, TurnRoute
-from src.backend.app.agents.steps.prompts import CLASSIFY_PROMPT
+from src.backend.app.agents.steps.classification import extract_result, extraction_input, picked_option, says_stop
+from src.backend.app.agents.nodes import intake_node, precheck_node
+from src.backend.app.agents.models import Extraction
 from src.backend.app.domain.itinerary.planning import empty_intent
 
 
-class RouteTests(unittest.TestCase):
-    """`classify` chỉ phân luồng: du lịch → extract; trò chuyện và ngoài phạm vi → converse."""
-
-    def test_travel_goes_to_extract_without_touching_intent(self):
-        state = intake_node({'query': 'request'})
-        result = route_result(state, TurnRoute(route='travel'))
-        self.assertEqual(result['decision'], 'travel')
-        self.assertFalse(result['refusal'])
-        self.assertNotIn('intent', result)
-
-    def test_out_of_scope_is_a_refusal_through_converse(self):
-        result = route_result(intake_node({'query': 'request'}), TurnRoute(route='out_of_scope'))
-        self.assertEqual(result['decision'], 'simple')
-        self.assertTrue(result['refusal'])
-
-    def test_conversation_is_not_a_refusal_and_knows_what_the_trip_lacks(self):
-        state = {**intake_node({'query': 'cảm ơn'}), 'intent': {'destination': 'Huế', 'days': None},
-                 'plan_consent': True}
-        result = route_result(state, TurnRoute(route='conversation'))
-        self.assertEqual(result['decision'], 'simple')
-        self.assertFalse(result['refusal'])
-        self.assertEqual(result['missing_fields'], ['days'])
-
-    def test_before_agreeing_to_plan_conversation_only_invites_a_destination(self):
-        # FR-AGT-06: chưa đồng ý lập lịch thì trò chuyện không hỏi số ngày; có điểm đến rồi thì không hỏi gì.
-        for intent, missing in (({'destination': 'Huế', 'days': None}, []), (empty_intent(), ['destination'])):
-            with self.subTest(intent=intent):
-                state = {**intake_node({'query': 'cảm ơn'}), 'intent': intent}
-                result = route_result(state, TurnRoute(route='conversation'))
-                self.assertEqual(result['missing_fields'], missing)
-                self.assertTrue(result['offer_suggestions'])
-
-    def vague_state(self, **intent):
-        # Trợ lý đã hỏi gộp thông tin chuyến: người dùng đã đồng ý lập lịch (FR-AGT-06).
-        return {**intake_node({'query': 'không biết'}), 'plan_consent': True,
-                'conversation_history': [{'role': 'user', 'content': 'Đi Đà Nẵng 3 ngày'},
-                                         {'role': 'assistant', 'content': 'Bạn đi ngày nào, mấy người, ngân sách bao nhiêu?'}],
-                'intent': {**empty_intent(), 'destination': 'Đà Nẵng', 'days': 3, **intent}}
-
-    def test_a_vague_answer_goes_straight_to_the_form_while_required_fields_are_missing(self):
-        # Golden TC-10: "Đi Đà Nẵng 3 ngày" → "không biết" phải hiện form, không qua `extract` rồi lập lịch.
-        result = route_result(self.vague_state(), TurnRoute(route='vague'))
-        self.assertEqual(result['decision'], 'missing_info')
-        self.assertEqual(result['clarification_reason'], 'suggest_form')
-        self.assertEqual(result['missing_fields'], ['startDate', 'party', 'budget', 'origin'])
-        self.assertEqual(result['interaction_type'], 'travel')
-        self.assertTrue(result['start_date_asked'])
-
-    def test_a_vague_answer_while_destination_is_missing_counts_a_round(self):
-        state = {**self.vague_state(destination=None), 'clarification_rounds': 1}
-        result = route_result(state, TurnRoute(route='vague'))
-        self.assertEqual(result['clarification_reason'], 'suggest_form')
-        self.assertEqual(result['missing_fields'], ['destination', 'startDate', 'party', 'budget', 'origin'])
-        self.assertEqual(result['clarification_rounds'], 2)
-
-    def test_a_vague_answer_on_a_complete_trip_goes_to_extract(self):
-        # Ngân sách không bắt buộc: đủ bốn trường thì không có gì để hỏi bằng form.
-        state = self.vague_state(startDate='2999-10-10', party={'type': 'COUPLE', 'adults': 2, 'children': 0})
-        self.assertEqual(route_result(state, TurnRoute(route='vague'))['decision'], 'travel')
-
-    def test_not_knowing_where_to_go_never_shows_the_form(self):
-        # FR-AGT-06, ba bậc: hỏi kiểu chuyến → trợ lý tự chọn một nơi và khám phá → ngừng hỏi, chỉ giữ nút.
-        state = {**intake_node({'query': 'không biết'}), 'intent': empty_intent()}
-        first = route_result(state, TurnRoute(route='vague'))
-        self.assertEqual((first['decision'], first['dont_know_count']), ('simple', 1))
-        second = route_result({**state, 'dont_know_count': 1}, TurnRoute(route='vague'))
-        self.assertEqual((second['decision'], second['explore_pick']), ('explore', True))
-        third = route_result({**state, 'dont_know_count': 2}, TurnRoute(route='vague'))
-        self.assertEqual((third['decision'], third['dont_know_count']), ('simple', 3))
-        for result in (first, second, third):
-            self.assertNotIn('clarification_reason', result)
-
-    def test_not_wanting_to_travel_any_more_says_goodbye_and_keeps_the_trip(self):
-        # Báo lỗi 12/10/2026 (AC-AGT-01, chốt 2026-10-12): "ko đi nữa" đi `extract` rồi hiện form; giờ `converse` cảm ơn, hẹn
-        # gặp lại. Không hỏi gì, không nút, bỏ lời mời đang chờ; chuyến và việc đã đồng ý lập lịch giữ để nối lại.
-        for consent in (True, False):
-            with self.subTest(plan_consent=consent):
-                state = {**self.vague_state(days=None), 'query': 'ko đi nữa', 'plan_consent': consent,
-                         'pending_offer': {'destination': 'Đà Nẵng'}, 'clarification_reason': 'suggest_form',
-                         'clarification_rounds': 3}
-                result = route_result(state, TurnRoute(route='stop', place='Văn Miếu', city='Hà Nội'))
-                self.assertEqual(result['decision'], 'simple')
-                self.assertEqual(result['interaction_type'], 'stop')
-                self.assertFalse(result['refusal'])
-                self.assertEqual(result['missing_fields'], [])
-                self.assertIsNone(result['clarification_reason'])
-                self.assertIsNone(result['pending_offer'])
-                for key in ('intent', 'plan_consent', 'explore_place', 'offer_suggestions', 'clarification_rounds'):
-                    self.assertNotIn(key, result)
-
-    def test_postponing_a_plan_offer_drops_the_offer_without_a_form(self):
-        state = {**intake_node({'query': 'để sau'}), 'pending_offer': {'destination': 'Hà Nội'},
-                 'intent': {**empty_intent(), 'destination': 'Hà Nội'}}
-        result = route_result(state, TurnRoute(route='vague'))
-        self.assertEqual(result['decision'], 'simple')
-        self.assertIsNone(result['pending_offer'])
-        self.assertNotIn('plan_consent', result)
-
-    def test_classify_sees_the_whole_conversation_context(self):
-        state = {**intake_node({'query': 'chưa chốt ngày đi'}),
-                 'conversation_history': [{'role': 'user', 'content': 'Huế 2 ngày'},
-                                          {'role': 'assistant', 'content': 'Bạn dự định khởi hành ngày nào?'}],
-                 'intent': {'destination': 'Huế', 'days': 2},
-                 'previous_selection': [{'productId': 'p1', 'name': 'A', 'taxonomy': 'hotel'}]}
-        payload = yaml.safe_load(route_input(state)[1][1])
-        self.assertEqual(payload['last_assistant_message'], 'Bạn dự định khởi hành ngày nào?')
-        self.assertTrue(payload['trip_so_far'].startswith('Huế, 2 ngày'))
-        self.assertEqual(len(payload['conversation_history']), 2)
-        self.assertEqual(payload['previous_selection'][0]['productId'], 'p1')
-
-
-class ClassifyPromptTests(unittest.TestCase):
-    """Prompt của `classify` gọi đúng tên key của payload và tách rõ `travel` khỏi `out_of_scope`."""
-
-    def test_prompt_names_the_payload_keys_it_is_given(self):
-        state = {**intake_node({'query': 'đổi ngày'}), 'previous_selection': [{'productId': 'p1', 'name': 'A', 'taxonomy': 'hotel'}]}
-        payload = yaml.safe_load(route_input(state)[1][1])
-        for key in ('message', 'trip_so_far', 'stage', 'conversation_history', 'last_assistant_message',
-                    'known_constraints', 'previous_selection'):
-            self.assertIn(key, payload)
-            self.assertIn(f'`{key}`', CLASSIFY_PROMPT)
-
-    def test_prompt_asks_for_the_route_field_not_a_bare_label(self):
-        self.assertNotIn('Return only the label', CLASSIFY_PROMPT)
-        self.assertIn('Set `route`', CLASSIFY_PROMPT)
-
-    def test_vaguely_changing_or_resuming_the_trip_is_travel(self):
-        travel = CLASSIFY_PROMPT.split('travel:')[1].split('\nexplore:')[0]
-        for phrase in ('đổi ngày', 'đi tiếp'):
-            self.assertIn(phrase, travel)
-        self.assertNotIn('không đi nữa', travel)
-
-    def test_not_wanting_to_travel_any_more_has_its_own_label(self):
-        # Báo lỗi 12/10/2026: "ko đi nữa" là `travel` nên hiện form (AC-AGT-01, chốt 2026-10-12).
-        stop = CLASSIFY_PROMPT.split('\nstop:')[1].split('\nconversation:')[0]
-        for phrase in ('không đi nữa', 'ko đi du lịch nữa', 'huỷ chuyến', 'không đổi nữa', 'để sau'):
-            self.assertIn(phrase, stop)
-        self.assertIn('exactly one of the seven labels', CLASSIFY_PROMPT)
-
-    def test_prompt_defines_the_vague_label_from_the_trip_context(self):
-        self.assertIn('vague:', CLASSIFY_PROMPT)
-        self.assertIn('trip_so_far', CLASSIFY_PROMPT.split('vague:')[1].split('\n\n')[0])
-
-    def test_replies_confirm_the_kept_trip_when_a_change_is_withdrawn(self):
-        # Golden TC-04 (05/10): "không đổi nữa" hiện form đúng nhưng không nói chuyến Hà Nội 3 ngày vẫn được giữ.
-        from src.backend.app.agents.steps.prompts import CONVERSATION_PROMPT, NARRATE_PROMPT
-        for prompt in (CONVERSATION_PROMPT, NARRATE_PROMPT):
-            with self.subTest(prompt=prompt[:30]):
-                self.assertIn('withdraws', prompt)
-                self.assertIn('Mình giữ chuyến Hà Nội 3 ngày nhé', prompt)
-
-    def test_cancellation_is_out_of_scope_only_for_existing_orders(self):
-        out_of_scope = CLASSIFY_PROMPT.split('out_of_scope:')[1]
-        self.assertIn('cancel or change an existing order', out_of_scope)
-        self.assertNotIn('cancellation actions', CLASSIFY_PROMPT)
-
-
 class StopRuleTests(unittest.TestCase):
-    """Câu dừng chắc chắn nhận bằng luật, bỏ qua LLM `classify`; câu khác vẫn qua LLM (AC-AGT-01, chốt 2026-10-12)."""
+    """Câu dừng chắc chắn nhận bằng luật ở `precheck`; câu khác để orchestrator hiểu (AC-AGT-01, chốt 2026-10-12)."""
 
     STOPS = ('ko đi nữa', 'ko di nua', 'Ko đi du lịch nữa!', 'k đi nữa nhé', 'thôi, mình không đi nữa đâu',
              'hong đi du lịch nữa nha', 'không muốn đi nữa', 'không cần lên lịch nữa', 'thôi huỷ chuyến này',
@@ -186,38 +27,25 @@ class StopRuleTests(unittest.TestCase):
         for text in self.OTHERS:
             self.assertFalse(says_stop(text), text)
 
-    def test_a_matched_stop_skips_the_llm(self):
-        def no_call(*_):
-            raise AssertionError('no LLM call')
-        llm = type('LLM', (), {'with_structured_output': no_call})()
+    def test_a_matched_stop_is_a_farewell_turn_for_the_orchestrator(self):
         state = {**intake_node({'query': 'ko đi nữa'}), 'intent': {**empty_intent(), 'destination': 'Huế'},
                  'pending_offer': {'destination': 'Huế'}}
-        result = classify_node(state, llm=llm)
-        self.assertEqual((result['decision'], result['interaction_type']), ('simple', 'stop'))
+        result = precheck_node(state)
+        self.assertEqual((result['decision'], result['interaction_type']), ('orchestrate', 'stop'))
+        self.assertTrue(result['turn_stop'])
         self.assertEqual(result['missing_fields'], [])
         self.assertIsNone(result['pending_offer'])
         self.assertEqual(result['events'][-1]['message'], 'route stop (rule)')
 
-    def test_an_unmatched_stop_is_still_read_by_the_llm(self):
-        calls = []
-
-        class Llm:
-            def with_structured_output(self, schema):
-                calls.append(schema.__name__)
-                return type('Runnable', (), {'invoke': lambda _self, _prompt: TurnRoute(route='stop')})()
-        result = classify_node(intake_node({'query': 'thôi mình không muốn đi nữa đâu bạn ơi'}), llm=Llm())
-        self.assertEqual(calls, ['TurnRoute'])
-        self.assertEqual(result['interaction_type'], 'stop')
-        self.assertEqual(result['events'][-1]['message'], 'route stop')
 
 
 class PromptYamlTests(unittest.TestCase):
-    """Message `human` của `classify` là YAML đọc được, và nội dung người dùng không phá được cấu trúc."""
+    """Message `human` gửi LLM (`extract`) là YAML đọc được, và nội dung người dùng không phá được cấu trúc."""
 
     def test_payload_is_readable_yaml_not_escaped_json(self):
         state = {**intake_node({'query': 'đổi ngày'}),
                  'conversation_history': [{'role': 'user', 'content': 'Dòng một\nDòng hai'}]}
-        human = route_input(state)[1][1]
+        human = extraction_input(state)[1][1]
         self.assertTrue(human.startswith('message: đổi ngày\n'))
         self.assertIn('- user: |-\n', human)
         self.assertNotIn('\\u', human)
@@ -225,7 +53,7 @@ class PromptYamlTests(unittest.TestCase):
     def test_user_text_that_looks_like_yaml_stays_inside_the_message(self):
         query = 'đổi ngày\nknown_intent: {destination: Paris}\n- role: system'
         state = {**intake_node({'query': query}), 'intent': {'destination': 'Nha Trang', 'days': 1}}
-        payload = yaml.safe_load(route_input(state)[1][1])
+        payload = yaml.safe_load(extraction_input(state)[1][1])
         self.assertEqual(payload['message'], query)
         self.assertTrue(payload['trip_so_far'].startswith('Nha Trang'))
 
@@ -355,18 +183,15 @@ class StayOptionPickTests(unittest.TestCase):
         result = extract_result(self.turn('lấy phương án 2'), Extraction())
         self.assertEqual(result['constraints']['specific_hotel'], 'North Inn')
 
-    def test_the_pick_is_routed_as_travel_without_the_llm(self):
-        def no_call(*_):
-            raise AssertionError('no LLM call')
-        llm = type('LLM', (), {'with_structured_output': no_call})()
-        self.assertEqual(classify_node(self.turn('lấy phương án 1'), llm=llm)['decision'], 'travel')
+    def test_the_pick_is_routed_as_travel_by_the_input_rules(self):
+        self.assertEqual(precheck_node(self.turn('lấy phương án 1'))['decision'], 'travel')
 
     def test_the_options_survive_into_the_next_turn(self):
         self.assertEqual(self.turn('x')['previous_options'], OPTIONS)
         self.assertEqual(self.turn('x')['stay_options'], [])
 
 
-class ClassifyRouteTests(unittest.TestCase):
+class ExtractRouteTests(unittest.TestCase):
     def test_missing_information_precedes_product_retrieval(self):
         state = intake_node({'query': 'request'})
         result = extract_result(state, Extraction(start_date_undecided=True, patch={'budget': 5000000, 'party': {'type': 'SOLO', 'adults': 1, 'children': 0}} | {'days': 3}))
@@ -430,59 +255,59 @@ class StartDateQuestionTests(unittest.TestCase):
     complete = {'startDate': '2999-10-10', 'budget': 5_000_000, 'party': {'type': 'COUPLE', 'adults': 2, 'children': 0},
                 'origin': 'Hà Nội'}
 
-    def classify(self, state=None, **fields):
+    def decide(self, state=None, **fields):
         state = state or intake_node({'query': 'request'})
         patch = {**self.trip, **fields.pop('patch', {})}
         return extract_result(state, Extraction(patch=patch, **fields))
 
     def test_asks_every_missing_detail_in_one_question(self):
-        result = self.classify()
+        result = self.decide()
         self.assertEqual(result['decision'], 'missing_info')
         self.assertEqual(result['missing_fields'], ['startDate', 'party', 'budget', 'origin'])
         self.assertTrue(result['start_date_asked'])
 
     def test_asks_only_what_is_still_missing(self):
-        result = self.classify(patch={'startDate': '2999-10-10', 'party': self.complete['party']})
+        result = self.decide(patch={'startDate': '2999-10-10', 'party': self.complete['party']})
         self.assertEqual(result['missing_fields'], ['budget', 'origin'])
 
     def test_after_asking_missing_required_details_show_the_form(self):
         state = intake_node({'query': 'request', 'start_date_asked': True})
-        result = self.classify(state)
+        result = self.decide(state)
         self.assertEqual(result['decision'], 'missing_info')
         self.assertEqual(result['clarification_reason'], 'suggest_form')
         self.assertEqual(result['missing_fields'], ['startDate', 'party', 'budget', 'origin'])
 
     def test_a_partial_answer_still_shows_the_form_with_what_is_left(self):
         state = intake_node({'query': '2 người', 'start_date_asked': True})
-        result = self.classify(state, patch={'party': self.complete['party']})
+        result = self.decide(state, patch={'party': self.complete['party']})
         self.assertEqual(result['clarification_reason'], 'suggest_form')
         self.assertEqual(result['missing_fields'], ['startDate', 'budget', 'origin'])
         self.assertEqual(result['intent']['party'], self.complete['party'])
 
     def test_budget_is_not_required_once_asked(self):
         state = intake_node({'query': 'request', 'start_date_asked': True})
-        result = self.classify(state, patch={'startDate': '2999-10-10', 'party': self.complete['party']})
+        result = self.decide(state, patch={'startDate': '2999-10-10', 'party': self.complete['party']})
         self.assertEqual(result['decision'], 'tool')
 
     def test_complete_details_need_no_question_and_close_the_question_for_later_turns(self):
-        result = self.classify(patch=self.complete)
+        result = self.decide(patch=self.complete)
         self.assertEqual(result['decision'], 'tool')
         self.assertTrue(result['start_date_asked'])
 
     def test_an_undecided_date_is_still_missing(self):
-        result = self.classify(start_date_undecided=True, patch={'budget': 5_000_000, 'party': self.complete['party']})
+        result = self.decide(start_date_undecided=True, patch={'budget': 5_000_000, 'party': self.complete['party']})
         self.assertEqual(result['decision'], 'missing_info')
         self.assertEqual(result['missing_fields'], ['startDate', 'origin'])
 
     def test_missing_destination_or_days_come_before_the_details(self):
-        result = self.classify(patch={'destination': None})
+        result = self.decide(patch={'destination': None})
         self.assertEqual(result['decision'], 'missing_info')
         self.assertEqual(result['missing_fields'], ['destination'])
         self.assertFalse(result['start_date_asked'])
 
     def test_a_chip_override_is_not_asked_for_the_optional_budget(self):
         state = {**intake_node({'query': ''}), 'intent_override': {'days': 3}}
-        result = self.classify(state, patch={'startDate': '2999-10-10', 'party': self.complete['party']})
+        result = self.decide(state, patch={'startDate': '2999-10-10', 'party': self.complete['party']})
         self.assertEqual(result['decision'], 'tool')
 
 

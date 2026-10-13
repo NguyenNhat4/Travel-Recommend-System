@@ -37,15 +37,17 @@ Itinerary agent task:
 
 | Triệu chứng | Sửa ở (dưới `src/backend/app/`, trừ khi ghi khác) |
 |---|---|
-| Hiểu sai ý, hỏi lại sai, giọng văn | `agents/steps/prompts.py` và step của node (`classification.py`, `conversation.py`, `narration.py`) |
+| Hiểu sai ý, hỏi lại sai, giọng văn | `agents/steps/prompts.py` và step của node: `orchestration.py` (`ORCHESTRATOR_PROMPT`); ở nhánh lập lịch `classification.py` (`extract`), `conversation.py` (`clarify`), `narration.py` |
+| Chọn việc, phạm vi tìm, thẻ, câu vé, gác cổng | `agents/steps/jobs.py`, `agents/steps/fares.py`, `domain/itinerary/gatekeeper.py`; luật trước LLM ở `nodes.precheck_node` |
 | Ngày, tổng tiền, xếp lịch, lọc ứng viên | `domain/itinerary/` (hàm thuần, unit test) |
 | Tool sai tham số hoặc thiếu dữ liệu | `agents/steps/tool_planning.py`, `agents/tools/itinerary_gateway.py`, `application/itinerary/` |
 | Hình dạng request/response | Fragment OpenAPI trong `src/shared/contracts/` **trước**, rồi mới code |
 | Hiển thị trong widget | `src/frontend/src/features/itinerary/widget/` |
 
 Luật code dành cho tiền, ngày, grounding, an toàn và phạm vi thực thi. Hiểu câu sửa bằng prompt/ngữ cảnh và case
-trong bộ đo; không vá bằng regex hay bảng từ khoá. Sau cờ orchestrator, LLM quyết hành động/việc/phạm vi/chọn thẻ và
-viết lời, code thực thi qua port và gác cổng; nhánh lập lịch/narrate giữ nguyên (PRD architecture §3).
+trong bộ đo; không vá bằng regex hay bảng từ khoá. Orchestrator là luồng duy nhất: LLM quyết hành động/việc/phạm
+vi/chọn thẻ và viết lời, code thực thi qua port và gác cổng; nhánh lập lịch/narrate giữ nguyên (PRD architecture §3,
+AGENTS.md §3).
 
 **4. Test trước.**
 - Luật mới hoặc sửa luật: viết unit test cạnh test sẵn có.

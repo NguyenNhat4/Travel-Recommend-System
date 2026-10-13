@@ -48,6 +48,17 @@ for name in ['completed', 'needs-clarification', 'no-results', 'fallback']:
     validator('ItineraryResponse').validate(json.loads((FIXTURES / (name + '.json')).read_text()))
 validator('RecommendationResponse').validate(json.loads((FIXTURES / 'recommendations-minimal.json').read_text()))
 validator('ItineraryResponse').validate(json.loads((FIXTURES / 'completed-minimal.json').read_text()))
+ten = json.loads((FIXTURES / 'explore-ten.json').read_text())
+validator('ItineraryResponse').validate(ten)
+twenty = copy.deepcopy(ten)
+twenty['searchResults']['hotel'] = [p for p in products if p['taxonomy'] == 'hotel'][:20]
+validator('ItineraryResponse').validate(twenty)
+too_many = copy.deepcopy(twenty)
+too_many['searchResults']['hotel'].append(too_many['searchResults']['hotel'][0])
+assert not validator('ItineraryResponse').is_valid(too_many)
+too_many = copy.deepcopy(ten)
+too_many['searchResults'] = {'flight': [p for p in products if p['taxonomy'] == 'flight'][:5]}
+assert not validator('ItineraryResponse').is_valid(too_many)
 negative = [
     ('SearchRequest', {'query': '   '}),
     ('SearchRequest', {'query': 'hotel', 'category': 'HOTEL'}),
@@ -124,6 +135,14 @@ for f in index['fixtures']:
     response = operation['responses'][str(f['status'])]
     if '$ref' in response:
         response = DOC['components']['responses'][response['$ref'].split('/')[-1]]
+    if f.get('contentType') == 'text/event-stream':
+        events = json.loads((SHARED / 'mocks' / f['file']).read_text())
+        names = {'node.completed':'AssistantNodeCompletedData','node.activity':'AssistantNodeActivity','run.preview':'AssistantRunPreview'}
+        for event in events:
+            validator('AssistantStreamEvent').validate(event)
+            if event['event'] in names:
+                validator(names[event['event']]).validate(event['data'])
+        continue
     schema = response['content']['application/json']['schema']
     v = Draft202012Validator(dict(schema, components=DOC['components']), format_checker=FormatChecker())
     errors = list(v.iter_errors(json.loads((SHARED / 'mocks' / f['file']).read_text())))
@@ -140,6 +159,16 @@ validator('TrackEventRequest').validate({'eventName': 'product_view', 'productId
 for payload in [{'eventName': 'purchase', 'productId': 'x'}, {'eventName': 'product_view'},
                 {'eventName': 'product_view', 'productId': 'x', 'taxonomy': 'hotel'}]:
     assert not validator('TrackEventRequest').is_valid(payload), payload
+
+
+for schema, payload in [
+    ('AssistantProgressUpdate', {'query':'secret'}),
+    ('AssistantProgressUpdate', {'turnKind':'wrong'}),
+    ('AssistantSearchGroup', {'groupId':'invalid','kind':'hotel','status':'ok'}),
+    ('AssistantNodeActivity', {'nodeId':'tool','code':'BAD'}),
+    ('AssistantRunPreview', {'runId':'r','products':products[:7]}),
+]:
+    assert not validator(schema).is_valid(payload), (schema, payload)
 
 # CDP clone is a separate service with its own entry document.
 CDP_DOC = bundle(SHARED / 'contracts/cdp-clone.openapi.yaml')

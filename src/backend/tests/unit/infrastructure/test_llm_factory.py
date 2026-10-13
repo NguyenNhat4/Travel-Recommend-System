@@ -107,12 +107,12 @@ if __name__ == "__main__":
 class OrchestratorModelTests(unittest.TestCase):
     def build(self, **overrides):
         from src.backend.app.infrastructure.llm import build_orchestrator_model
-        return build_orchestrator_model(settings(itinerary_orchestrator="on", **overrides), "shared")
+        return build_orchestrator_model(settings(**overrides), "shared")
 
-    def test_off_or_blank_model_reuses_shared_model(self):
+    def test_disabled_llm_or_blank_model_reuses_shared_model(self):
         from src.backend.app.infrastructure.llm import build_orchestrator_model
-        self.assertEqual(build_orchestrator_model(settings(itinerary_orchestrator="off", itinerary_orchestrator_model="gpt-6.1-sol"), "shared"), "shared")
         self.assertEqual(self.build(itinerary_orchestrator_model=None), "shared")
+        self.assertEqual(build_orchestrator_model(settings(itinerary_use_llm=False, itinerary_orchestrator_model="gpt-6.1-sol"), "shared"), "shared")
 
     def test_explicit_openai_provider_wins_even_when_common_provider_is_gemini(self):
         mock, calls = fake_sdk("langchain_openai", "ChatOpenAI")
@@ -143,9 +143,8 @@ class OrchestratorModelTests(unittest.TestCase):
         adapter.with_structured_output("schema")
         inner.with_structured_output.assert_called_once_with("schema", method="json_schema", strict=True)
 
-    def test_empty_optional_env_fields_are_none_and_rollout_defaults_off(self):
+    def test_empty_optional_env_fields_are_none(self):
         value = settings(itinerary_orchestrator_model="", itinerary_orchestrator_provider="", itinerary_orchestrator_reasoning_effort="")
-        self.assertEqual(value.itinerary_orchestrator, "off")
         self.assertIsNone(value.itinerary_orchestrator_model)
         self.assertIsNone(value.itinerary_orchestrator_provider)
         self.assertIsNone(value.itinerary_orchestrator_reasoning_effort)

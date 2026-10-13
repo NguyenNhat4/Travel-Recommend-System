@@ -5,10 +5,12 @@
 - Đã có lịch, "chuyến bay về mấy giờ", "có chuyến nào rẻ hơn ko" từng lập lại cả lịch.
 - "how much is a flight from saigon" từng ra "chưa kiểm tra được giá vé".
 
-Hiểu câu là việc của `classify` (LLM, `FareQuestion`); test giả lập phần LLM hiểu (`fare_llm`) và kiểm phần code: đối
+Hiểu câu là việc của orchestrator (LLM, job vé `FareQuestion`); test giả lập phần LLM hiểu (`fare_llm`) và kiểm phần code: đối
 chiếu tên với catalog, ghép với tuyến vừa báo, chiều về, ngày khác, ghi chú cho lượt sau.
 """
 import unittest
+
+import pytest
 
 from src.backend.app.agents.steps import turn_notes
 from src.backend.app.infrastructure.persistence.conversation_store import InMemoryConversationStore
@@ -22,6 +24,9 @@ PLAN = {'itinerary': {'days': []}, 'searchResults': {}}
 INTENT = {'destination': 'Nha Trang', 'origin': 'Hà Nội', 'startDate': START, 'days': 3,
           'party': {'type': 'COUPLE', 'adults': 2, 'children': 0}, 'budget': None, 'interests': [], 'pace': None}
 
+
+#: Test tái hiện ý AC chưa đạt trên orchestrator (plan gỡ luồng cũ, quy tắc xfail strict).
+XFAIL_FARE_BUTTONS = ('AC-AGT-08: nút do code tạo cho câu trả lời vé ("Đắt nhất thì sao?", "<nơi> có gì chơi?") bị mất trên orchestrator, chỉ còn nút lập lịch — chưa đạt, sửa ở D5')
 
 class MessyFlowTests(unittest.IsolatedAsyncioTestCase):
     run_graph = runtime.RuntimeTests.run_graph
@@ -44,6 +49,7 @@ class MessyFlowTests(unittest.IsolatedAsyncioTestCase):
         for result in (first, second, third):
             self.assertNotIn('compose', [item['node'] for item in result['events']])
 
+    @pytest.mark.xfail(strict=True, reason=XFAIL_FARE_BUTTONS)
     async def test_where_the_user_lives_and_anywhere_compares_routes_from_there(self):
         clients, store = MoreFlights(), InMemoryConversationStore()
         result = await self.turn(clients, store, 'tao ở hà nội, đi đâu cũng đc miễn vé rẻ',

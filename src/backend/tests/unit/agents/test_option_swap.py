@@ -135,12 +135,12 @@ class ApplyOptionTests(unittest.TestCase):
 
     def test_unknown_or_unstored_option_goes_through_the_normal_flow(self):
         previous, composed = first_turn()
-        self.assertEqual(routing.route_after_intake(next_turn(previous, composed, pick={'index': 3})), 'classify')
+        self.assertEqual(routing.route_after_intake(next_turn(previous, composed, pick={'index': 3})), 'precheck')
         self.assertEqual(routing.route_after_intake(next_turn(previous, composed, query='lấy phương án 2')),
-                         'classify')
+                         'precheck')
         # Hội thoại lưu trước khi có lịch từng phương án (không có `previous_plan`).
         old = {**composed, 'current_plan': None}
-        self.assertEqual(routing.route_after_intake(next_turn(previous, old, pick={'index': 1})), 'classify')
+        self.assertEqual(routing.route_after_intake(next_turn(previous, old, pick={'index': 1})), 'precheck')
 
 
 class RebasedTests(unittest.TestCase):

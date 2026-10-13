@@ -38,6 +38,7 @@ function Probe() {
     <output data-testid="conversation">{assistant.state.conversationId ?? 'none'}</output>
     <output data-testid="transcript">{assistant.state.transcript.map((message) => message.text).join('|')}</output>
     <output data-testid="error">{assistant.state.error?.code ?? 'none'}</output>
+    <output data-testid="preview">{String(assistant.state.previewVisible && !!assistant.state.preview)}</output>
     <output data-testid="slow">{String(assistant.state.isSlow)}</output>
     <button onClick={() => assistant.sendMessage('Plan trip', { language: 'en' })}>send</button>
     <button onClick={() => assistant.submitIntentOverride({ days: 3 }, { language: 'en' })}>override</button>
@@ -386,4 +387,56 @@ describe('AssistantProvider', () => {
     expect(screen.getByTestId('transcript').textContent).not.toContain('Stale');
     expect(screen.getByTestId('transcript').textContent).toContain('Fresh');
   });
+});
+
+
+describe('stream activity and preview timing', () => {
+  afterEach(() => { cleanup(); vi.useRealTimers(); });
+  it('waits until five seconds and clears preview on completion', async () => {
+    vi.useFakeTimers(); sessionStorage.clear();
+    mocks.travel.authReady=true; mocks.travel.currentPersona=null;
+    let emit: ((event:AssistantStreamEvent)=>void) | undefined;
+    mocks.requestAssistantStream.mockImplementation((_request,options)=>{emit=options.onEvent;return new Promise(()=>{});});
+    mount(); fireEvent.click(screen.getByText('send'));
+    act(()=>{emit!({event:'run.started',data:{runId:'r',requestId:'q'}});});
+    await act(async()=>{await vi.advanceTimersByTimeAsync(3000);});
+    act(()=>{emit!({event:'run.preview',data:{runId:'r',products:[]}});});
+    expect(screen.getByTestId('preview').textContent).toBe('false');
+    await act(async()=>{await vi.advanceTimersByTimeAsync(1999);});
+    expect(screen.getByTestId('preview').textContent).toBe('false');
+    await act(async()=>{await vi.advanceTimersByTimeAsync(1);});
+    expect(screen.getByTestId('preview').textContent).toBe('true');
+    act(()=>{emit!(completed({status:'NEEDS_CLARIFICATION',conversationId:'c',question:'Xong'}));});
+    expect(screen.getByTestId('preview').textContent).toBe('false');
+  });
+  it('resets the slow timer on activity and removes preview on abort', async () => {
+    vi.useFakeTimers(); sessionStorage.clear();
+    mocks.travel.authReady=true; mocks.travel.currentPersona=null;
+    let emit: ((event:AssistantStreamEvent)=>void) | undefined;
+    mocks.requestAssistantStream.mockImplementation((_request,options)=>{emit=options.onEvent;return new Promise(()=>{});});
+    mount();fireEvent.click(screen.getByText('send'));
+    await act(async()=>{await vi.advanceTimersByTimeAsync(11000);});
+    act(()=>{emit!({event:'node.activity',data:{nodeId:'tool',code:'SEARCHING'}});});
+    await act(async()=>{await vi.advanceTimersByTimeAsync(11000);});
+    expect(screen.getByTestId('slow').textContent).toBe('false');
+    act(()=>{emit!({event:'run.preview',data:{runId:'r',products:[]}});});
+    await act(async()=>{await vi.advanceTimersByTimeAsync(1);});
+    expect(screen.getByTestId('preview').textContent).toBe('true');
+    fireEvent.click(screen.getByText('abort'));
+    expect(screen.getByTestId('preview').textContent).toBe('false');
+  });
+});
+
+it('never flashes an early preview when the response completes before five seconds',async()=>{
+  vi.useFakeTimers();sessionStorage.clear();mocks.travel.authReady=true;mocks.travel.currentPersona=null;
+  let emit: ((event:AssistantStreamEvent)=>void)|undefined;
+  mocks.requestAssistantStream.mockImplementation((_request,options)=>{emit=options.onEvent;return new Promise(()=>{});});
+  mount();fireEvent.click(screen.getByText('send'));
+  await act(async()=>{await vi.advanceTimersByTimeAsync(3000);});
+  act(()=>emit!({event:'run.preview',data:{runId:'r',products:[]}}));
+  await act(async()=>{await vi.advanceTimersByTimeAsync(1000);});
+  act(()=>emit!(completed({status:'NEEDS_CLARIFICATION',conversationId:'c',question:'Xong'})));
+  await act(async()=>{await vi.advanceTimersByTimeAsync(3000);});
+  expect(screen.getByTestId('preview').textContent).toBe('false');
+  cleanup();vi.useRealTimers();
 });

@@ -2,6 +2,7 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef } from 'react';
 import type { ReactNode } from 'react';
+import type { ProgressUpdate, ProgressActivity } from '../features/itinerary/widget/progressModel';
 import type { components } from '../types/api.gen';
 import { useTravel } from './TravelContext';
 import {
@@ -99,6 +100,7 @@ function nodeProgress(data: Record<string, unknown>) {
     outcome: typeof data.outcome === 'string' ? data.outcome : undefined,
     message: typeof data.message === 'string' ? data.message : undefined,
     durationMs: typeof data.durationMs === 'number' ? data.durationMs : undefined,
+    progress: data.progress && typeof data.progress==='object' ? data.progress as ProgressUpdate : undefined,
   };
 }
 
@@ -186,6 +188,8 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     const isCurrent = () => activeRunIdRef.current === runId && !controller.signal.aborted;
     // Chậm = 12 giây không có node nào xong. Thời gian dồn vào các node gọi LLM, nên đo theo từng node chứ không
     // theo cả lượt: lượt dài nhưng vẫn tiến đều thì không báo chậm.
+    const requestStartedAt = Date.now();
+    let previewTimer = 0;
     let slowTimer = 0;
     const armSlowTimer = () => {
       window.clearTimeout(slowTimer);
@@ -200,9 +204,25 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       onEvent: (event: AssistantStreamEvent) => {
         if (!isCurrent()) return;
         if (event.event === 'run.started') {
-          dispatch({ type: 'stream-started' });
+          dispatch(typeof event.data.runId==='string' && typeof event.data.requestId==='string'
+            ? {type:'run-started',runId:event.data.runId,requestId:event.data.requestId}
+            : { type: 'stream-started' });
         } else if (event.event === 'graph.topology') {
           dispatch({ type: 'topology-received', topology: event.data });
+        } else if (event.event === 'node.activity') {
+          if (typeof event.data.nodeId==='string' && typeof event.data.code==='string') {
+            dispatch({type:'node-activity',activity:event.data as ProgressActivity});
+            armSlowTimer();
+          }
+        } else if (event.event === 'run.preview') {
+          if (Array.isArray(event.data.products) && typeof event.data.runId==='string') {
+            const preview = event.data as components['schemas']['AssistantRunPreview'];
+            dispatch({type:'run-preview',preview});
+            window.clearTimeout(previewTimer);
+            previewTimer=window.setTimeout(() => {
+              if (isCurrent()) dispatch({type:'preview-visible'});
+            },Math.max(0,5000-(Date.now()-requestStartedAt)));
+          }
         } else if (event.event === 'node.completed') {
           dispatch({ type: 'node-completed', progress: nodeProgress(event.data) });
           armSlowTimer();
@@ -238,6 +258,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       abortControllerRef.current = null;
     }).finally(() => {
       window.clearTimeout(slowTimer);
+      window.clearTimeout(previewTimer);
       if (abortControllerRef.current === controller) abortControllerRef.current = null;
     });
   }, [abortCurrentRun]);

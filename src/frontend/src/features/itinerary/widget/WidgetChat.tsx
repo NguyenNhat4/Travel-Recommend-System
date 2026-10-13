@@ -8,6 +8,10 @@ import { TripDetailsForm } from '../../../components/assistant/TripDetailsForm';
 import { WidgetOpening } from './WidgetOpening';
 import { WidgetNarration } from './WidgetNarration';
 import { WidgetComposer } from './WidgetComposer';
+import { WidgetProgressSummary } from './WidgetProgressSummary';
+import { WidgetProgressPreview } from './WidgetProgressPreview';
+import { productFromApi } from '../../../services/catalog';
+import { useTravel } from '../../../context/TravelContext';
 import { WidgetProgress } from './WidgetProgress';
 import { WidgetStayOptions } from './WidgetStayOptions';
 import { WidgetBudget } from './WidgetBudget';
@@ -29,6 +33,7 @@ export function WidgetChat({ widget }: { widget: FloatingWidgetController }) {
   const { messages, assistantState, isRunning, isExpanded, setIsExpanded, chatScrollRef,
     inputVal, setInputVal, handleSendMessage, handleConfirmTripDetails, retry, abort, openProductDetail, addPlanItemToCart,
     selectingStay, chooseStayOption, previewedStay, previewStayOption, bookPlanItem } = widget;
+  const { debugMode } = useTravel();
   const isInitial = messages.length === 0 && !isRunning;
   const lastMessageId = messages.length > 0 ? messages[messages.length - 1].id : null;
 
@@ -41,6 +46,7 @@ export function WidgetChat({ widget }: { widget: FloatingWidgetController }) {
             <div key={message.id} data-message-id={message.id} className={`flex min-w-0 ${message.sender === 'user' ? 'justify-end' : 'flex-col gap-3'}`}>
               {message.sender === 'assistant' && <AssistantHeader />}
               <div className={`min-w-0 whitespace-pre-wrap break-words text-sm leading-7 sm:text-base ${message.sender === 'user' ? 'message-send-in max-w-[88%] rounded-2xl rounded-tr-md bg-ai-600 px-4 py-3 text-white' : 'w-full text-slate-700'}`}>
+                {message.progress && <WidgetProgressSummary view={message.progress} />}
                 {message.sender === 'assistant'
                   ? (message.products
                     ? <WidgetNarration text={message.text} products={message.products}
@@ -92,7 +98,8 @@ export function WidgetChat({ widget }: { widget: FloatingWidgetController }) {
         {isRunning && (
           <div className="flex flex-col gap-3">
             <AssistantHeader />
-            <WidgetProgress progress={assistantState.progress} isSlow={assistantState.isSlow} />
+            <WidgetProgress progress={assistantState.progress} model={assistantState.progressModel} activity={assistantState.activities.at(-1)} isSlow={assistantState.isSlow} debugMode={debugMode} />
+            {assistantState.previewVisible && assistantState.preview && <WidgetProgressPreview products={assistantState.preview.products} onOpen={(productId) => openProductDetail(productId, {products:Object.fromEntries(assistantState.preview!.products.map((p) => [p.productId,productFromApi(p)]))})} />}
           </div>
         )}
         {assistantState.error && (

@@ -12,7 +12,7 @@ export type AssistantRequest = {
 export type AssistantResponse = components['schemas']['ItineraryResponse'];
 
 export interface AssistantStreamEvent {
-  event: 'run.started' | 'graph.topology' | 'node.completed' | 'run.completed' | 'run.failed' | string;
+  event: 'run.started' | 'graph.topology' | 'node.completed' | 'node.activity' | 'run.preview' | 'run.completed' | 'run.failed' | string;
   data: Record<string, unknown>;
 }
 

@@ -1,0 +1,167 @@
+[
+  {
+    "event": "run.started",
+    "data": {
+      "runId": "fixture-run",
+      "requestId": "fixture-request"
+    }
+  },
+  {
+    "event": "node.completed",
+    "data": {
+      "sequence": 1,
+      "nodeId": "orchestrate",
+      "outcome": "completed",
+      "message": "internal debug",
+      "durationMs": 100,
+      "progress": {
+        "turnKind": "explore",
+        "steps": [
+          "understand",
+          "search",
+          "write"
+        ],
+        "completedStep": "understand"
+      }
+    }
+  },
+  {
+    "event": "node.completed",
+    "data": {
+      "sequence": 1,
+      "nodeId": "run_jobs",
+      "outcome": "completed",
+      "message": "internal debug",
+      "durationMs": 100,
+      "progress": {
+        "completedStep": "search",
+        "searches": [
+          {
+            "groupId": "job:1",
+            "kind": "hotel",
+            "status": "ok",
+            "scope": {
+              "destination": "Hà Nội",
+              "near": "Hồ Gươm"
+            },
+            "counts": {
+              "received": 10,
+              "inScope": 10,
+              "eligible": 8,
+              "dropped": {
+                "SEEN": 2
+              },
+              "outOfScope": {},
+              "sourceMore": false,
+              "sourceTotal": 400,
+              "chosen": 2
+            }
+          },
+          {
+            "groupId": "job:2",
+            "kind": "hotel",
+            "status": "ok",
+            "scope": {
+              "destination": "Hà Nội",
+              "intent": "cheaper"
+            },
+            "counts": {
+              "received": 5,
+              "inScope": 5,
+              "eligible": 5,
+              "dropped": {},
+              "outOfScope": {},
+              "sourceMore": false,
+              "sourceTotal": 400,
+              "chosen": 1
+            }
+          }
+        ],
+        "notices": [
+          {
+            "code": "SEEN",
+            "groupId": "job:1",
+            "kind": "hotel",
+            "count": 2
+          }
+        ]
+      }
+    }
+  },
+  {
+    "event": "node.activity",
+    "data": {
+      "nodeId": "orchestrate",
+      "code": "STARTED",
+      "round": 2
+    }
+  },
+  {
+    "event": "node.completed",
+    "data": {
+      "sequence": 1,
+      "nodeId": "run_jobs",
+      "outcome": "completed",
+      "message": "internal debug",
+      "durationMs": 100,
+      "progress": {
+        "searches": [
+          {
+            "groupId": "job:1",
+            "kind": "hotel",
+            "status": "ok",
+            "scope": {
+              "destination": "Hà Nội",
+              "near": "Hồ Gươm"
+            },
+            "counts": {
+              "received": 13,
+              "inScope": 13,
+              "eligible": 8,
+              "dropped": {
+                "SEEN": 5
+              },
+              "outOfScope": {},
+              "sourceMore": false,
+              "sourceTotal": 400,
+              "chosen": 2
+            }
+          }
+        ],
+        "notices": [
+          {
+            "code": "SEEN",
+            "groupId": "job:1",
+            "kind": "hotel",
+            "count": 5
+          }
+        ]
+      }
+    }
+  },
+  {
+    "event": "node.completed",
+    "data": {
+      "sequence": 1,
+      "nodeId": "gatekeep",
+      "outcome": "completed",
+      "message": "internal debug",
+      "durationMs": 100,
+      "progress": {
+        "completedStep": "write"
+      }
+    }
+  },
+  {
+    "event": "run.completed",
+    "data": {
+      "runId": "fixture-run",
+      "httpStatus": 200,
+      "response": {
+        "status": "NEEDS_CLARIFICATION",
+        "conversationId": "sample-conv",
+        "question": "Bạn muốn khám phá thêm không?"
+      }
+    }
+  }
+]

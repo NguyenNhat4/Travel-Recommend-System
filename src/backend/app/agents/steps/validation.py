@@ -15,6 +15,9 @@ def response_issues(state: dict, response: dict, http_status: int) -> list:
     if not valid("ItineraryResponse" if http_status == 200 else "ErrorResponse", response):
         return ["schema"]
     issues = []
+    if response.get("status") == "NEEDS_CLARIFICATION" \
+            and sum(len(items) for items in (response.get("searchResults") or {}).values()) > 20:
+        issues.append("card_limit")
     try:
         if response.get("status") == "COMPLETED":
             issues = validate_plan(response["itinerary"], state["candidates"], state["sources"],

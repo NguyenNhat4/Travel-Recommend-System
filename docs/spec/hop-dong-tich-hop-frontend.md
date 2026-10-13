@@ -736,7 +736,7 @@ Không đạt → không render thẻ; hiển thị dòng mờ "Mục này hiệ
 - Khi tải lại trang, Web chờ phiên đăng nhập được khôi phục rồi nạp transcript và response gần nhất qua `GET /assistant/conversations/{conversationId}` cho người dùng đã đăng nhập. Chỉ ID được giữ trong browser storage; khách không nạp archive lâu dài. Response lịch sử đến muộn sau khi tạo cuộc mới, gửi tin, đổi tài khoản hoặc rời trang bị bỏ qua. Lỗi tạm thời giữ ID và cho thử tải lại; hội thoại không còn tồn tại thì xóa ID.
 - Khi đã đăng nhập, Web hiển thị nút **Lịch sử**, tải danh sách từ backend và cho chọn một hội thoại để nạp transcript. Khách không thấy lịch sử lâu dài.
 - Kế hoạch không tự cập nhật giá. Giỏ và Checkout luôn dùng giá mới nhất.
-- Tiến độ: Web đọc stream SSE và đánh ✓ 3 bước (hiểu yêu cầu → tìm sản phẩm → sắp xếp lịch trình) chỉ theo sự kiện `node.completed` thật; nhánh trò chuyện hay hỏi lại không có ✓ giả. `message` của sự kiện là chuỗi debug, không hiển thị (`docs/spec/product.md` §6.1). Đang chạy thì nút gửi thành nút Dừng (Esc cũng dừng); đã dừng thì có nút Gửi lại.
+- Tiến độ (AC-AGT-09, contract 1.27.0): theo loại lượt do server gửi — lập lịch 4 bước, khám phá 3, vé 2, trò chuyện/hỏi lại 1, bị chặn không ✓. `node.activity` hiện việc đang làm; `node.completed.progress` có dữ kiện và số đếm thật. Nhóm thay theo `groupId`, thông báo thay theo `(code, groupId, date)`, không cộng số; ẩn nhóm `superseded`. Không hiện `message`, tên node/tool hay tổng nguồn. Khi xong thu gọn ở đầu lời đáp, mở lại xem bằng nút có `aria-expanded`. Preview sau compose tối đa 6 thẻ, chỉ xem, hiện từ giây 5 nếu lượt chưa kết thúc; bấm mở panel chi tiết. Tiến trình không lưu ở server nên lịch sử không có tóm tắt. Nút gửi đổi thành Dừng, dừng thì có Gửi lại. Shift+D có thông tin request, node, activity, số đếm và mốc preview/kết quả.
 
 ---
 
@@ -804,7 +804,7 @@ Ca biên bắt buộc để dựng đủ 8 màn hình:
 | # | Nội dung | Mặc định Web trong lúc chờ |
 |---|---|---|
 | D3 | Endpoint ghi `product_view` | **Đã chốt** — `POST /api/v1/events`, xem §4.3 |
-| D9 | SSE cho trợ lý | Không stream; spinner chung, không ✓ giả |
+| D9 | SSE cho trợ lý | Đã có contract 1.27.0: node.activity, node.completed.progress, run.preview; ✓ chỉ từ bước đã hoàn thành |
 | D10 | Shape `ItineraryResponse` | Code theo §9; mock theo §9. Nếu Agent từ chối, chỉ `features/itinerary` và fixture phải đổi |
 | D13 | "Đã xem gần đây" | Bỏ section ② Home |
 | A1 | Agent duyệt §10 | Như D10 |

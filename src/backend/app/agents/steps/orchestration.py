@@ -3,19 +3,38 @@ from __future__ import annotations
 
 import asyncio
 from copy import deepcopy
-from time import time
+import logging
 
+from src.backend.app.core.logging_config import log_event
 from src.backend.app.domain.itinerary import gatekeeper
 from src.backend.app.domain.itinerary.normalization import fold
 
+from .. import clock
 from ..models import FareQuestion, Job, OrchestratorTurn
-from . import consent, exploration, fares, jobs, shown, tool_planning
+from . import consent, fares, jobs, limits, replies, shown, tool_planning
 from .classification import vietnam_today
 from .history import llm_context, prompt_yaml
-from .messages import chat_model, event, message, titled
+from .messages import chat_model, event, failure, message, titled
 from .prompts import ORCHESTRATOR_PROMPT
 
 MAX_ROUNDS = 3
+logger = logging.getLogger("uvicorn.error")
+
+
+def limit_reason(state: dict, budget_seconds: float) -> str | None:
+    """Phanh đầu tiên đã chạm, theo đúng thứ tự điều kiện của các node: vòng, tool, thời gian. `None` khi chưa chạm."""
+    if state.get("turn_rounds", 0) >= MAX_ROUNDS:
+        return limits.ROUND_LIMIT
+    if state.get("turn_tool_calls", 0) >= jobs.MAX_TOOL_CALLS:
+        return limits.TOOL_LIMIT
+    if clock.now() - state.get("started_at", clock.now()) >= budget_seconds:
+        return limits.TIME_LIMIT
+    return None
+
+
+def _log_limit(state: dict, node: str, reason: str) -> None:
+    # Một dòng mỗi lần dừng sớm: đọc được nguyên nhân từ log backend mà không cần mở state.
+    log_event(logger, "itinerary.turn_limit", "WARNING", request_id=state.get("request_id"), node=node, reason=reason)
 
 
 def payload(state: dict) -> list:
@@ -34,7 +53,7 @@ def payload(state: dict) -> list:
             "catalog_destinations": state.get("supported_destinations") or [],
             "plan_consent": bool(state.get("plan_consent")), "pending_offer": state.get("pending_offer"),
             "rejected_destinations": state.get("rejected_destinations") or [],
-            "rejected_refs": state.get("rejected_refs") or [], "open_question": state.get("open_question"),
+            "rejected_refs": state.get("rejected_refs") or [],
             "dont_know_level": state.get("dont_know_count", 0),
             "previous_suggestions": state.get("last_suggestions") or [], "today": vietnam_today().isoformat(),
             "results": state.get("turn_results") or [], "pending": state.get("turn_pending") or [],
@@ -52,6 +71,27 @@ def payload(state: dict) -> list:
 def _fallback(state: dict) -> dict:
     registry = gatekeeper.visible(state.get("turn_jobs") or [], state.get("turn_codes") or {})
     return {"action": "answer", "message": "", "cards": list(registry), "suggestions": [], "fallback": True}
+
+
+def _count_continuations(state: dict) -> list[dict]:
+    """Fetch another bounded brief when a count is unfilled and its source still has candidates."""
+    rows = state.get("turn_jobs") or []
+    if state.get("force_answer") or any(row.get("kind") == "fare" and row.get("status") == "asked" for row in rows):
+        return []
+    registry = gatekeeper.visible(rows, state.get("turn_codes") or {})
+    requests = gatekeeper.requested_groups(rows)
+    specs = []
+    for root, target in requests.items():
+        eligible = {ref for ref, entries in registry.items() for row, product in entries
+                    if row.get("source_job", row["job"]) == root
+                    and gatekeeper.in_scope(ref, row, product, shown.current(state), state.get("rejected_refs") or [])
+                    and product.get("destination") not in (state.get("rejected_destinations") or [])}
+        aliases = [row for row in rows if row.get("source_job", row["job"]) == root]
+        latest = aliases[-1]
+        if len(eligible) < target["count"] and latest.get("status") in ("ok", "empty") \
+                and (latest.get("source_more") or latest.get("cursor", 0) < len(latest.get("products") or [])):
+            specs.append(Job(kind="explore", continue_from=root).model_dump(mode="json"))
+    return specs[:3]
 
 
 def _stage(state: dict, result: OrchestratorTurn) -> dict:
@@ -83,6 +123,9 @@ def _stage(state: dict, result: OrchestratorTurn) -> dict:
         turn.update(action="answer", cards=[], jobs=[], suggestions=[], question=None, offer=None, title=None)
         turn["message"] = turn.get("message") or message(state, "farewell")
         return {**update, "decision": "gatekeep", "waiting_jobs": []}
+    if turn["action"] == "answer" and (continuations := _count_continuations({**state, **update})):
+        turn.update(action="execute", jobs=continuations, fare_only=False)
+        return {**update, "decision": "run_jobs"}
     if turn["action"] == "execute":
         if not turn["jobs"] or state.get("force_answer"):
             return {**update, "orchestrator_turn": _fallback(state), "decision": "gatekeep"}
@@ -114,30 +157,40 @@ def plan_denied(state: dict) -> dict:
 
 async def orchestrate_node(state: dict, *, llm=None, tools=None, timeout_seconds: float = 10,
                            tool_timeout_seconds: float = 1, budget_seconds: float = 10) -> dict:
+    if llm is None:
+        # Không cấu hình LLM (`ITINERARY_USE_LLM=false`, thiếu khoá): lỗi 503 có kiểm soát như contract, không trả câu dự
+        # phòng như khi provider lỗi tạm thời, và không gọi tool nào.
+        return {**failure(state, "LLM_UNAVAILABLE", message(state, "llm_understand"), retryable=True),
+                "events": [event("orchestrate", "LLM_UNAVAILABLE", reason=limits.MODEL_ERROR)]}
     update = {}
     if state.get("supported_destinations") is None and not state.get("turn_stop"):
         budget = jobs.BudgetTools(tools, state.get("turn_tool_calls", 0),
-                                  state.get("started_at", time()) + budget_seconds, tool_timeout_seconds)
+                                  state.get("started_at", clock.now()) + budget_seconds, tool_timeout_seconds)
         names = await tool_planning.catalog_destinations(budget, tool_timeout_seconds)
         update = {"supported_destinations": names, "turn_tool_calls": budget.count}
         state = {**state, **update}
-    if state.get("turn_rounds", 0) >= MAX_ROUNDS or state.get("turn_tool_calls", 0) >= jobs.MAX_TOOL_CALLS \
-            or time() - state.get("started_at", time()) >= budget_seconds:
+    reason = limit_reason(state, budget_seconds)
+    if reason:
         state = {**state, "force_answer": True,
-                 "turn_unfinished": state.get("turn_unfinished") or state.get("turn_pending") or []}
-        update.update(force_answer=True, turn_unfinished=state["turn_unfinished"])
-    remaining = budget_seconds - (time() - state.get("started_at", time()))
+                 "turn_unfinished": state.get("turn_unfinished") or state.get("turn_pending") or [],
+                 "turn_limit_reason": state.get("turn_limit_reason") or reason}
+        update.update(force_answer=True, turn_unfinished=state["turn_unfinished"],
+                      turn_limit_reason=state["turn_limit_reason"])
+    remaining = budget_seconds - (clock.now() - state.get("started_at", clock.now()))
     # Do not exceed the request deadline just to ask the model for a forced answer.
     if remaining <= 0:
+        _log_limit(state, "orchestrate", limits.TIME_LIMIT)
         return {**update, "orchestrator_turn": _fallback(state), "decision": "gatekeep",
-                "events": [event("orchestrate", "time budget exhausted, fallback")]}
+                "events": [event("orchestrate", "time budget exhausted, fallback", reason=limits.TIME_LIMIT)]}
     try:
         result = await asyncio.wait_for(chat_model(llm).with_structured_output(OrchestratorTurn).ainvoke(payload(state)),
                                         min(timeout_seconds, remaining))
         return {**update, **_stage(state, OrchestratorTurn.model_validate(result))}
-    except Exception:
+    except Exception as exc:
+        reason = limits.model_failure(exc)
+        _log_limit(state, "orchestrate", reason)
         return {**update, "orchestrator_turn": _fallback(state), "decision": "gatekeep",
-                "events": [event("orchestrate", "model unavailable, fallback")]}
+                "events": [event("orchestrate", "model unavailable, fallback", reason=reason)]}
 
 
 async def run_jobs_node(state: dict, *, tools=None, tool_timeout_seconds: float = 1,
@@ -145,12 +198,14 @@ async def run_jobs_node(state: dict, *, tools=None, tool_timeout_seconds: float 
     turn = state.get("orchestrator_turn") or {}
     specs = turn.get("jobs") or []
     rounds = state.get("turn_rounds", 0)
-    if rounds >= MAX_ROUNDS or state.get("turn_tool_calls", 0) >= jobs.MAX_TOOL_CALLS \
-            or time() - state.get("started_at", time()) >= budget_seconds:
+    reason = limit_reason(state, budget_seconds)
+    if reason:
+        _log_limit(state, "run_jobs", reason)
         return {"force_answer": True, "decision": "gatekeep" if state.get("button_jobs") else "orchestrate",
                 "orchestrator_turn": _fallback(state) if state.get("button_jobs") else turn,
                 "turn_unfinished": [*specs, *(state.get("turn_pending") or []), *(state.get("button_pending_jobs") or [])],
-                "events": [event("run_jobs", "execution budget exhausted")]}
+                "turn_limit_reason": state.get("turn_limit_reason") or reason,
+                "events": [event("run_jobs", "execution budget exhausted", reason=reason)]}
     update = await jobs.execute(state, specs, tools=tools, timeout_seconds=tool_timeout_seconds,
                                 budget_seconds=budget_seconds)
     rounds += 1
@@ -160,6 +215,9 @@ async def run_jobs_node(state: dict, *, tools=None, tool_timeout_seconds: float 
             row["answer_only"] = True
     unavailable = [row for row in new if row.get("status") == "failed"]
     force = bool(state.get("force_answer")) or not update["jobs_progress"] or rounds >= MAX_ROUNDS or update["turn_tool_calls"] >= jobs.MAX_TOOL_CALLS
+    reached = limit_reason({**state, "turn_rounds": rounds, "turn_tool_calls": update["turn_tool_calls"]}, budget_seconds)
+    if force and not state.get("turn_limit_reason") and reached in (limits.ROUND_LIMIT, limits.TOOL_LIMIT):
+        update["turn_limit_reason"] = reached
     shortcut = rounds == 1 and len(specs) == 1 and specs[0]["kind"] == "fare" and turn.get("fare_only") \
         and not turn.get("pending") and len(new) == 1 and new[0]["status"] in ("answered", "asked", "unavailable")
     action = {"action": "answer", "message": f"[[fare_block:{new[0]['job']}]]", "cards": [], "suggestions": []} \
@@ -169,7 +227,8 @@ async def run_jobs_node(state: dict, *, tools=None, tool_timeout_seconds: float 
                   decision="gatekeep" if shortcut or state.get("button_jobs") else "orchestrate",
                   turn_unfinished=[*turn.get("pending", []), *(row["spec"] for row in unavailable)] if force or unavailable else [],
                   events=[event("run_jobs", "fare shortcut" if shortcut else "jobs executed", rounds=rounds,
-                                tool_calls=update["turn_tool_calls"], failed=len(unavailable))])
+                                tool_calls=update["turn_tool_calls"], failed=len(unavailable),
+                                failed_reasons=[row.get("reason") or row.get("error") for row in unavailable])])
     remaining = state.get("button_pending_jobs") or []
     if state.get("button_jobs") and remaining:
         if force:
@@ -206,9 +265,8 @@ def gatekeep_node(state: dict, *, budget_seconds: float = 10) -> dict:
     turn = deepcopy(state.get("orchestrator_turn") or _fallback(state))
     rows, codes = state.get("turn_jobs") or [], state.get("turn_codes") or {}
     problems = gatekeeper.inspect(turn, rows, codes, state.get("language", "vi"))
-    can_repair = state.get("gate_repairs", 0) < 1 and state.get("turn_rounds", 0) < MAX_ROUNDS \
-        and state.get("turn_tool_calls", 0) < jobs.MAX_TOOL_CALLS \
-        and time() - state.get("started_at", time()) < budget_seconds
+    blocked_by = limit_reason(state, budget_seconds)
+    can_repair = state.get("gate_repairs", 0) < 1 and blocked_by is None
     if problems["violations"] and can_repair and not turn.get("fallback"):
         references = [ref for ref in problems["unknown_refs"] if ref in shown.by_ref(shown.current(state))]
         repair = {"gate_repairs": 1, "turn_violations": problems["violations"], "force_answer": True,
@@ -231,7 +289,28 @@ def gatekeep_node(state: dict, *, budget_seconds: float = 10) -> dict:
     rendered = gatekeeper.render(turn, rows, codes, seen=shown.current(state), language=state.get("language", "vi"),
                                  rejected_refs=state.get("rejected_refs") or [],
                                  rejected_destinations=state.get("rejected_destinations") or [], hotel_only=hotel_only, fallback=fallback)
-    body = exploration.once_praise(rendered["body"])
+    body = replies.once_praise(rendered["body"])
+    if any(target["requested"] > 20 for target in gatekeeper.requested_groups(rows).values()):
+        body += ("\n\nMỗi lượt mình giới thiệu tối đa 20 sản phẩm; bạn có thể yêu cầu thêm ở lượt sau."
+                 if state.get("language", "vi") == "vi" else
+                 "\n\nI can show up to 20 products per turn; you can ask for more in the next turn.")
+    for shortfall in rendered["shortfalls"]:
+        aliases = [row for row in rows if row.get("source_job", row["job"]) == shortfall["job"]]
+        spec = shortfall["spec"]
+        label = {"attraction": "Điểm tham quan", "hotel": "Khách sạn", "combo": "Combo", "golf": "Golf"}.get(spec.get("taxonomy"), "Gợi ý")
+        if spec.get("destination"):
+            label += " · " + spec["destination"]
+        total = sum(len(items) for items in rendered["searchResults"].values())
+        failed = any(row.get("status") == "failed" for row in aliases)
+        unfinished_source = any(row.get("source_more") or row.get("cursor", 0) < len(row.get("products") or []) for row in aliases)
+        reason = ("một phần tra cứu không thành công" if failed else "đã chạm giới hạn 20 thẻ trong lượt này" if total >= 20
+                  else "đã hết ngân sách thực thi của lượt này" if state.get("turn_limit_reason")
+                  else "chưa lấy đủ ứng viên trong giới hạn thực thi" if unfinished_source
+                  else "không đủ sản phẩm phù hợp chưa bị loại")
+        actual, requested = shortfall["selected"], shortfall["requested"]
+        body += (f"\n\n{label}: mình giới thiệu được {actual}/{requested}, còn thiếu {requested - actual} vì {reason}."
+                 if state.get("language", "vi") == "vi" else
+                 f"\n\n{label}: {actual}/{requested} recommendations; {requested - actual} missing ({'lookup failed' if failed else 'the turn limit was reached' if total >= 20 or state.get('turn_limit_reason') or unfinished_source else 'not enough eligible products'}).")
     destination, offer_text = _offer(state, turn, rendered)
     if offer_text:
         body += "\n\n" + offer_text
@@ -243,7 +322,7 @@ def gatekeep_node(state: dict, *, budget_seconds: float = 10) -> dict:
         suggestions.insert(0, "Tiếp tục phần chưa trả lời" if state.get("language") != "en" else "Continue unfinished work")
     chip = message(state, "chip_plan", destination=destination) if destination else None
     # Fare reply buttons retain their exact text and precedence (they bypass the LLM next turn).
-    checked = exploration.checked_suggestions(suggestions, state.get("last_suggestions") or [], [],
+    checked = replies.checked_suggestions(suggestions, state.get("last_suggestions") or [], [],
                                              destinations=state.get("supported_destinations") or [], plan_chip=chip,
                                              avoid=state.get("rejected_destinations") or [])
     if rendered["fare_question"]:
@@ -269,7 +348,8 @@ def gatekeep_node(state: dict, *, budget_seconds: float = 10) -> dict:
             "pending_fare": rendered["pending_fare"] if any(row["kind"] == "fare" for row in rows) else state.get("pending_fare"),
             **consent.structured_offer_update(state, destination=destination, inserted=bool(offer_text)),
             "events": [event("gatekeep", "fallback grounded" if fallback else "answer grounded",
-                             issues=problems["violations"], dropped=rendered["dropped"])]}
+                             issues=problems["violations"], dropped=rendered["dropped"],
+                             reason=(blocked_by if problems["violations"] else None) or state.get("turn_limit_reason"))]}
 
 
 def fare_button_turn(state: dict, picked: dict) -> dict:

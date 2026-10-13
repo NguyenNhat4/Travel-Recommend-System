@@ -1,0 +1,366 @@
+# Đồng bộ release-mvp-v2 vào feat/agent trước PR mới
+
+- Ngày: 2026-10-13
+- Tác giả: Nguyễn Minh Nhật / Codex
+- Nhánh: feat/agent
+- Trạng thái: hoàn thành (đồng bộ local và chuẩn bị PR; CI/khắc phục snapshot tiếp tục qua PR)
+- Phạm vi: backend, frontend, contract, docs, tích hợp release
+
+## Mục tiêu
+
+Người dùng yêu cầu "kéo code từ release mvp v2 về và tạo PR". Ghép origin/release-mvp-v2 vào feat/agent,
+đưa thay đổi agent còn lại lên PR mới vào release-mvp-v2. Phục vụ FR-AGT-01/06/07, AC-AGT-06/09, NFR-REL-01;
+không tự thêm hành vi hoặc thay PRD trong việc giải xung đột.
+
+## Quyết định
+
+- Cây làm việc sạch lúc bắt đầu; đầu nhánh agent cab5e728, release mới nhất ace25eea sau git fetch origin.
+- 87 commit release chưa có trên nhánh agent. Ghép bằng merge để giữ lịch sử hai bên, không rebase/reset.
+- PR #169 cùng head/base đã MERGED; không sửa PR đã đóng, tạo PR mới.
+- Bốn xung đột đều là version 1.28.0 của agent và 1.27.0 của release:
+  src/shared/contracts/openapi.yaml, src/backend/app/main.py,
+  src/backend/tests/contract/test_search_contract.py, src/backend/tests/contract/test_search_llm_contract.py.
+  Giữ 1.28.0; nhận các bổ sung Catalog/Recommendation/Redis của release và schema tiến trình/số lượng của agent.
+- Sinh lại api.gen.ts từ contract sau ghép; nội dung trùng bản Git tự ghép.
+- Kiểm thủ công main.py: cache/làm ấm gợi ý và orchestrator duy nhất cùng tồn tại; không khôi phục cờ cũ.
+- PR để dạng draft vì hai kiểm thử snapshot của agent đang không khớp prompt mới. Giữ nguyên hai lỗi,
+  không xóa/xskip hoặc tự dựng cassette để CI xanh. Không merge PR hay triển khai staging trong task này.
+- next-env.d.ts bị build chuyển import sang production được trả lại đường dẫn dev đầu task; không có diff cuối.
+
+## Kiểm tra
+
+- git fetch origin: thành công; PR #169 MERGED được kiểm trực tiếp bằng GitHub CLI.
+- Không còn file unmerged, git diff --check và git diff --cached --check PASS.
+- Contract: PYTHONDONTWRITEBYTECODE=1 python3 src/shared/contracts/tests/validate_contract.py → PASS:
+  130 schemas, 106 fixtures; CDP 12 schemas, 7 fixtures, 11 negative checks.
+- Backend: HF_HUB_OFFLINE=1 LANGSMITH_TRACING=false WEAVIATE_URL=http://127.0.0.1:1 SEARCH_PREWARM=false
+  .venv/bin/python -m pytest -q src/backend/tests → **2971 passed, 40 skipped, 3 xfailed, 2 failed**, 41.19 s.
+  Hai lỗi: test_behavior_snapshot.py::test_each_turn_matches_the_recorded_behavior và
+  test_every_llm_payload_is_in_the_cassette. Đều là cassetteMiss do prompt đã đổi, đã tồn tại trước merge
+  (history/2026-10-13-sua-ke-thua-pham-vi-kham-pha.md). Log /tmp/travel-release-sync-backend.log.
+- Frontend: npm test -- --maxWorkers=1 → **862 passed, 83 files**, 63.50 s.
+- npm run typecheck → PASS; npm run lint → 0 errors, 3 cảnh báo có sẵn tại ItineraryMap/useFloatingWidget.
+- npm run build:web → PASS: webpack, TypeScript, tạo static pages.
+- Chưa chạy model thật, DB integration hoặc E2E mới trong task đồng bộ; không suy ra CI đã đạt.
+
+## File thay đổi
+
+Danh sách đầy đủ so với đầu nhánh cab5e728; phần lớn là nhận nguyên commit đã có ở release, không phải sửa mới
+trong việc giải xung đột. Bốn file xử lý thủ công liệt kê ở mục Quyết định.
+
+- `.env.example` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `.github/actions/sync-env-from-secret-manager/action.yml` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `.github/workflows/backend-ci-cd.yml` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `.github/workflows/backend-ci.yml` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `.github/workflows/crawler-ci-cd.yml` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `.github/workflows/frontend-ci-cd.yml` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `.github/workflows/ha-checks.yml` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `.github/workflows/infra-terraform-staging.yml` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `.github/workflows/monitoring-agent-cd-staging.yml` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `.github/workflows/monitoring-terraform-staging.yml` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `.github/workflows/staging-ha-app-cd.yml` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `.github/workflows/staging-ha-backend-build.yml` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `.github/workflows/staging-ha-backend-cd.yml` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `.github/workflows/staging-ha-crawler-cd.yml` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `.github/workflows/staging-ha-frontend-build.yml` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `.github/workflows/staging-ha-frontend-cd.yml` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `.github/workflows/staging-ha-image-build.yml` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `.github/workflows/staging-ha-infra-cd.yml` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `AGENTS.md` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `Dockerfile.backend` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `Dockerfile.fresh-catalog` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `docker-compose.yml` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `docs/guide/env-secret-manager.md` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `docs/guide/recommendation-system-ste100.md` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `docs/guide/trien-khai-job-cao-du-lieu.md` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `docs/guide/van-hanh-cd-staging-ha.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `docs/guide/van-hanh-db-replica.md` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `docs/plan/2026-10-12-ban-giao-lam-giau-diem-tham-quan.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `docs/plan/2026-10-12-goi-y-trang-chu-cache-redis-va-ke-pho-bien.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `docs/prd/architecture.md` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `docs/prd/deployment-plan.md` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `docs/prd/update/2026-10-09-cd-staging-ha.md → docs/prd/update-archive/2026-10-09-cd-staging-ha.md` — đổi tên: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `docs/prd/update-archive/2026-10-12-cache-goi-y-tren-redis.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `docs/prd/update-archive/2026-10-13-cd-staging-ha-mot-luong-hai-pha.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `docs/prd/update-archive/2026-10-13-ngung-ci-cd-staging-cu.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `docs/prd/update-archive/2026-10-13-xoa-monitoring-staging-cu.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `docs/prd/update/2026-10-09-doi-ten-hien-thi-x-ota.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `docs/prd/update/2026-10-12-doi-logo-du-sota.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `docs/spec/bench/recsys-offline-eval.md` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `docs/spec/data-collection/schema.md` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `docs/spec/hop-dong-tich-hop-auth.md` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `docs/spec/hop-dong-tich-hop-backend.md` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `docs/spec/hop-dong-tich-hop-cdp.md` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `docs/spec/hop-dong-tich-hop-frontend.md` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `docs/spec/hop-dong-tich-hop-search-recommendation.md` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `docs/spec/logging-schema.md` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `docs/spec/product.md` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-09-banner-moi-dang-nhap-goi-y-trang-chu.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-09-de-xuat-doi-ten-hien-thi-x-ota.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-09-doi-ten-hien-thi-x-ota-frontend.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-09-tang-timeout-goi-y-trang-chu-10s.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-10-lich-tat-mo-vm-2359-0830.md` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-allowlist-resource-policies.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-ap-dung-cache-goi-y-redis-vao-prd.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-bo-concurrency-staging-ha-app.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-bo-sung-ve-booking-noi-thieu-diem-tham-quan.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-cache-control-detail-similar-version.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-cache-control-products.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-cao-tiep-diem-tham-quan-trip-noi-trong.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-cd-zero-downtime-slot.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-cold-start-toi-da-2-moi-taxonomy.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-contract-1-25-0-products-diversify.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-de-xuat-cache-goi-y-redis-va-plan-ke-pho-bien.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-de-xuat-doi-logo-du-sota.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-dem-so-ket-qua-search-mot-nguon.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-diem-tham-quan-trip-cho-noi-thieu.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-doi-ten-workflows-ci-cd.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-dot-cuoi-diem-tham-quan-golf-va-sua-tuyen-quang.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-frontend-test-timeout-ci.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-gia-san-golf-tu-golfscape.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-gop-release-mvp-v2-vao-cache-control-catalog.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-gop-release-mvp-v2-vao-tat-lich-bo-cong.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-job-cao-giu-du-lieu-sua-tren-production.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-ke-pho-bien-trang-chu-tron-loai.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-khoi-phuc-concurrency-staging-ha.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-lam-am-cache-goi-y-sau-dang-nhap.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-nap-diem-tham-quan-moi-thanh-pho-va-sua-du-lieu-production.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-on-dinh-cd-staging-ha.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-products-tron-theo-nhom-loai.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-recsys-cache-goi-y-loi.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-recsys-cache-goi-y-redis.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-recsys-doc-toi-da-500-event.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-recsys-ghi-thoi-gian-tung-buoc.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-recsys-goi-song-song-weaviate.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-recsys-nap-san-vector-vao-ram.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-request-id-ghi-chu-cache.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-spec-cache-goi-y-redis.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-spec-ke-pho-bien-va-timeout-goi-y.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-staging-ha-cd-allowlist-patroni.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-staging-ha-cd-khong-chay.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-sua-e2e-navigation-flaky.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-sua-e2e-widget-opening-flaky.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-sua-reload-proxy-slot.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-sua-roll-chi-cap-nhat-vm-dau.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-sua-ssh-hostkey-roll.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-sua-test-uuid-trung-nam-sinh.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-12-tat-lich-vm-va-bo-chan-cd.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-13-cache-goi-y-khong-tinh-trung.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-13-canh-bao-bo-nho-va-dia-app-ha.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-13-cd-staging-ha-mot-luong-hai-pha.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-13-doi-ten-backend-ci.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-13-go-ci-cd-staging-cu.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-13-gop-release-mvp-v2-vao-fix-recommendation.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-13-monitor-canh-bao-tieng-viet.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-13-on-dinh-khoang-cach-osrm.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-13-slot-ghi-de-url-backend-theo-port.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-13-sua-e2e-cong-va-allowlist-group-at-max.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-13-toi-uu-ci-cd-staging-ha.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-13-xoa-monitoring-staging-cu.md` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/monitoring/.terraform.lock.hcl` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/monitoring/README.md` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/monitoring/backend.staging.hcl.example` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/monitoring/backend.tf` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/monitoring/container_metrics.tf` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/monitoring/dashboard.tf` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/monitoring/data.tf` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/monitoring/install-backend-monitoring.sh` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/monitoring/install-db-replica-monitoring.sh` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/monitoring/locals.tf` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/monitoring/logging_retention.tf` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/monitoring/main.tf` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/monitoring/modules/README.md` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/monitoring/ops-agent-db-replica.yaml` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/monitoring/outputs.tf` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/monitoring/provider.tf` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/monitoring/replica.tf` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/monitoring/staging.tfvars.example` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/monitoring/tests/test_staging_layout.sh` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/monitoring/tests/test_watcher_datetime.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/monitoring/variables.tf` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/monitoring/versions.tf` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/monitoring/vota-docker-event-watcher.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/terraform/environments/staging-ha/alert_mute.tf` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/terraform/environments/staging-ha/bastion.tf` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/terraform/environments/staging-ha/compose.ha.yml` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/terraform/environments/staging-ha/crawler.tf` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/terraform/environments/staging-ha/crawler_monitoring.tf` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/terraform/environments/staging-ha/dashboard.tf` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/terraform/environments/staging-ha/main.tf` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/terraform/environments/staging-ha/monitoring.tf` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/terraform/environments/staging-ha/patroni.tf` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/terraform/environments/staging-ha/patroni_monitoring.tf` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/terraform/environments/staging-ha/scheduler.tf` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/terraform/environments/staging-ha/slot-deploy.sh` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/terraform/environments/staging-ha/startup.sh.tftpl` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/terraform/environments/staging-ha/tests/test_alerts.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/terraform/environments/staging-ha/tests/test_ha_telemetry.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/terraform/environments/staging-ha/tests/test_resilience.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/terraform/environments/staging-ha/tests/test_slot_deploy.py` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/terraform/environments/staging-ha/variables.tf` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/terraform/environments/staging-ha/weaviate.tf` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/terraform/environments/staging/.terraform.lock.hcl` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/terraform/environments/staging/README.md` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/terraform/environments/staging/addresses.tf` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/terraform/environments/staging/app.tf` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/terraform/environments/staging/backend.staging.hcl.example` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/terraform/environments/staging/backend.tf` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/terraform/environments/staging/firewall.tf` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/terraform/environments/staging/imports.tf` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/terraform/environments/staging/main.tf` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/terraform/environments/staging/outputs.tf` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/terraform/environments/staging/primary.tf` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/terraform/environments/staging/provider.tf` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/terraform/environments/staging/staging.tfvars.example` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/terraform/environments/staging/variables.tf` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `infra/terraform/environments/staging/versions.tf` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `ops/bootstrap-db-primary-replication.sh` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `ops/bootstrap-db-replica.sh` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `ops/ci-db-replication.sh` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `ops/db-replica-lag-probe.sh` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `ops/docker-compose.backend-vm.yml` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `ops/promote-db-replica.sh` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `ops/tests/test_infra_layout.sh` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `scripts/ci/buildx-builder.sh` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `scripts/ci/image-key.sh` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `scripts/ci/py-deps.sh` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `scripts/deploy-backend-vm.sh` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `scripts/deploy-frontend-vm.sh` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `scripts/deploy-staging-ha-app.sh` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `scripts/deploy-staging-ha-crawler.sh` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `scripts/pin-staging-ha-mig-opportunistic.sh` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `scripts/probe-staging-ha.sh` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `scripts/roll-staging-ha-app-slots.sh` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `scripts/set-staging-ha-desired-images.sh` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `scripts/tests/test-backend-vm-cd-sync.sh` — xóa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `scripts/verify-staging-ha-app.sh` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/README.md` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/app/api/deps.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/app/api/v1/routes/auth.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/app/api/v1/routes/catalog.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/app/application/catalog/use_cases.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/app/application/ports/__init__.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/app/application/ports/cdp_client.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/app/application/ports/recommendation_cache.py` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/app/application/ports/vector_search.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/app/application/recommendation/__init__.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/app/application/recommendation/cache.py` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/app/application/recommendation/responses.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/app/application/recommendation/use_cases.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/app/application/recommendation/warm.py` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/app/application/search/use_cases.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/app/core/config.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/app/core/logging_config.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/app/domain/catalog/__init__.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/app/domain/catalog/listing.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/app/infrastructure/cdp/postgres_cdp_reader.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/app/infrastructure/persistence/redis_recommendation_cache.py` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/app/infrastructure/vectors/postgres_store.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/app/infrastructure/vectors/preloaded_vector_search.py` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/app/infrastructure/vectors/weaviate_store.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/app/main.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/jobs/requirements.txt` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/tests/contract/test_auth_contract.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/tests/contract/test_catalog_contract.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/tests/fakes/auth_app.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/tests/fakes/recommendation_cache.py` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/tests/guard.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/tests/integration/test_recommendation_cache_redis.py` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/tests/unit/api/test_recommend_settings_wiring.py` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/tests/unit/api/test_recsys_refresher.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/tests/unit/application/booking/test_checkout_travelers.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/tests/unit/application/test_catalog_use_cases.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/tests/unit/application/test_recommendation_cache.py` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/tests/unit/application/test_recommendation_cdp_fallback.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/tests/unit/application/test_recommendation_cold_start_cap.py` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/tests/unit/application/test_recommendation_history_cap.py` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/tests/unit/application/test_recommendation_parallel.py` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/tests/unit/application/test_response_helpers.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/tests/unit/application/test_warm_recommendations.py` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/tests/unit/domain/test_catalog_listing.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/tests/unit/infrastructure/test_postgres_cdp_reader.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/tests/unit/infrastructure/test_preloaded_vector_search.py` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/tests/unit/infrastructure/test_redis_recommendation_cache.py` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/backend/tests/unit/infrastructure/test_weaviate_store.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/data_collection/README.md` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/data_collection/collectors/airlines.py` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/data_collection/collectors/destination_overrides.csv` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/data_collection/collectors/excluded_products.csv` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/data_collection/collectors/geo.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/data_collection/collectors/golf_prices.csv` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/data_collection/collectors/plan.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/data_collection/fresh_catalog_db.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/data_collection/monitor_ui/index.html` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/data_collection/normalise.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/data_collection/seed/combo_components.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/data_collection/seed/simulated_fill.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/data_collection/tests/fixtures/normalise_sample/expected_products.jsonl` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/data_collection/tests/test_fresh_catalog_job.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/data_collection/tests/test_plan.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/data_collection/tests/test_quality.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/data_collection/tests/test_simulated_fill.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/evaluation/recsys_bench/parity.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/evaluation/recsys_bench/tests/test_parity.py` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/Dockerfile.web` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/README.md` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/metadata.json` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/server/app.ts` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/server/routes/trips.ts` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/src/app/(storefront)/combos/page.tsx` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/src/app/(storefront)/experiences/page.tsx` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/src/app/(storefront)/flights/page.tsx` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/src/app/(storefront)/hotels/page.tsx` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/src/app/layout.tsx` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/src/components/assistant/ItineraryMap.tsx` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/src/components/auth/LoginView.tsx` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/src/components/cart/CartView.tsx` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/src/components/checkout/ReviewStep.tsx` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/src/components/common/Footer.tsx` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/src/components/common/Header.tsx` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/src/components/common/LoginModal.tsx` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/src/components/common/ProductCard.tsx` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/src/components/common/WhyPopover.tsx` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/src/components/confirmation/ConfirmationView.tsx` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/src/components/detail/ProductDetailView.tsx` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/src/components/home/GuestRecommendationBanner.tsx` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/src/components/home/HomeView.tsx` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/src/components/search/GroupResults.tsx` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/src/components/search/GroupShelf.tsx` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/src/components/search/SearchView.tsx` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/src/context/TravelContext.tsx` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/src/features/bookings/historyModel.ts` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/src/features/catalog/landing/ProductShelf.tsx` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/src/features/flights/results/FlightResultsView.tsx` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/src/features/flights/results/TicketPanel.tsx` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/src/features/itinerary/widget/FloatingWidget.tsx` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/src/features/itinerary/widget/WidgetChat.tsx` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/src/features/search/instant/recentSearches.ts` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/src/services/catalog.ts` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/src/services/routeGeometry.ts` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/src/services/search.ts` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/src/types/api.gen.ts` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/tests/api/bff-catalog-cache.test.ts` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/tests/e2e/checkout-leave.spec.ts` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/tests/e2e/navigation.spec.ts` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/tests/e2e/widget-opening.spec.ts` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/tests/unit/catalogService.test.ts` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/tests/unit/checkoutView.test.tsx` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/tests/unit/homeView.test.tsx` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/tests/unit/landingResults.test.tsx` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/tests/unit/productCard.test.tsx` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/tests/unit/productDetailView.test.tsx` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/tests/unit/searchService.test.ts` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/tests/unit/searchView.test.tsx` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/frontend/vitest.config.ts` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/shared/contracts/paths/catalog.yaml` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/shared/contracts/schemas/catalog.yaml` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/shared/contracts/schemas/recommendations.yaml` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/shared/mocks/catalog/listProducts.200-diversified.json` — thêm: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `src/shared/mocks/index.json` — sửa: nhận từ release hoặc giữ nội dung nhánh agent khi ghép.
+- `history/2026-10-13-dong-bo-release-mvp-v2-vao-feat-agent.md` — thêm: entry này.
+
+## Còn lại / rủi ro
+
+- PR mới cần review/CI; backend chưa xanh vì cassette cũ cần ghi lại và đọc diff theo plan D6/G4.
+- Các lỗi D4/D5 đã ghi trong plan orchestrator vẫn còn, task đồng bộ không xác nhận đã sửa chúng.
+- Phần B debug chưa chốt; giữ phạm vi A/C đã được chốt. Không gửi dữ liệu tới model ngoài trong task này.

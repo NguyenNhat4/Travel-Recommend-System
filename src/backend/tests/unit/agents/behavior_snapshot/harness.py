@@ -4,7 +4,10 @@ Chạy các hội thoại trong `scenarios.json` qua đúng graph mà runtime d�
 - tool (Search, Recommendation, Similar, Catalog) phát lại từ `tools.json.gz`, ghi từ chế độ `inprocess` trên dữ liệu thật
   (Postgres + Weaviate local), khoá theo tên tool và tham số;
 - LLM phát lại từ `cassette.json`, khoá theo hash của schema và toàn bộ payload gửi LLM;
-- "hôm nay" cố định `FROZEN_TODAY` và `conversationId` tất định.
+- "hôm nay" cố định `FROZEN_TODAY`, đồng hồ đo ngân sách của lượt (`agents/clock.py`) đứng yên, `conversationId` tất định.
+
+Graph là graph orchestrator của runtime. Model riêng của orchestrator cũng phát lại từ cassette, khoá có thêm tên model
+để không lẫn với model chung.
 
 Phát lại không cần mạng hay DB, nên chạy được trong CI và không lệch khi catalog được nạp lại. Payload gửi LLM hoặc tham số
 gọi tool đổi thì không có bản ghi: lượt đó ghi vào `cassetteMiss`/`toolMiss` và test fail. Vì vậy lưới bắt cả thay đổi ở
@@ -30,9 +33,9 @@ from types import SimpleNamespace
 from typing import Any
 from unittest import mock
 
-from src.backend.app.agents import nodes
+from src.backend.app.agents import clock, nodes
 from src.backend.app.agents.runtime_dependencies import RuntimeAgentDependencies
-from src.backend.app.agents.steps import classification, fares
+from src.backend.app.agents.steps import classification, fares, limits
 from src.backend.app.agents.tools.itinerary_gateway import ItineraryToolGateway
 from src.backend.app.application.itinerary.use_cases import PlanItinerary
 from src.backend.app.application.ports.itinerary_tools import ToolError
@@ -46,11 +49,16 @@ SNAPSHOT = HERE / "snapshot.json"
 
 #: Ngày ghi snapshot. Ngày đi trong kịch bản tính theo ngày này. Engine `inprocess` lọc theo ngày thật, nên ghi lại vào
 #: ngày khác thì đổi ngày này và ngày trong `scenarios.json` cho khớp.
-FROZEN_TODAY = date(2026, 10, 11)
+FROZEN_TODAY = date(2026, 10, 13)
 #: 09:00 giờ Việt Nam: tránh khoảng 0h–7h mà ngày UTC lệch ngày Việt Nam.
 FROZEN_NOW = datetime.combine(FROZEN_TODAY, time(2, 0), tzinfo=timezone.utc)
 LLM_TIMEOUT_SECONDS = 120.0
 TOOL_TIMEOUT_SECONDS = 10.0
+#: Ngân sách thời gian của lượt orchestrator khi ghi và phát lại. Đồng hồ đứng yên nên phanh thời gian không bao giờ
+#: chạm; số lớn để lời gọi thật lúc ghi không bị cắt bởi `min(timeout, remaining)`.
+ORCHESTRATOR_BUDGET_SECONDS = 600.0
+#: Tên model của orchestrator trong khoá cassette.
+ORCHESTRATOR_MODEL_TAG = "orchestrator"
 #: Số kịch bản chạy song song khi ghi bằng LLM thật; mỗi kịch bản có store và uuid riêng nên thứ tự không ảnh hưởng.
 CONCURRENCY = 6
 #: Bộ đếm uuid của kịch bản đang chạy (mỗi task asyncio một bản).
@@ -59,6 +67,8 @@ _UUIDS: contextvars.ContextVar[list[int]] = contextvars.ContextVar("snapshot_uui
 _CALLS: contextvars.ContextVar[list[str]] = contextvars.ContextVar("snapshot_llm_calls")
 #: Lời gọi tool của kịch bản đang chạy.
 _TOOL_CALLS: contextvars.ContextVar[list[str]] = contextvars.ContextVar("snapshot_tool_calls")
+#: Lời gọi LLM/tool thật bị quá hạn hoặc lỗi khi ghi: lượt đó không phát lại được.
+_FAILURES: contextvars.ContextVar[list[str]] = contextvars.ContextVar("snapshot_failures")
 #: Khoá chỉ đo thời gian: bỏ khỏi snapshot vì đổi theo máy.
 _TIMING_KEY = re.compile(r"(latency|duration|elapsed)(_?ms|_?seconds)?$|^ms$", re.IGNORECASE)
 
@@ -84,12 +94,35 @@ class CassetteLlm:
     """Chat model giả: phát lại câu trả lời đã ghi; `inner` khác None thì gọi model thật và ghi lại.
 
     Hiện thực đúng hai cách agent gọi LLM: `with_structured_output(schema).ainvoke/invoke` và
-    `bind_tools(definitions, tool_choice).ainvoke`.
+    `bind_tools(definitions, tool_choice).ainvoke`. `model` khác None (model riêng của orchestrator) thì thêm vào khoá;
+    None giữ nguyên khoá cũ của model chung.
     """
 
-    def __init__(self, records: dict[str, Any], inner: Any | None = None):
+    def __init__(self, records: dict[str, Any], inner: Any | None = None, model: str | None = None):
         self.records = records
         self.inner = inner
+        self.model = model
+
+    def _kind(self, kind: str) -> str:
+        return kind if self.model is None else f"{kind}@{self.model}"
+
+    @staticmethod
+    async def _live(call):
+        # Lời gọi thật quá hạn hoặc lỗi: ghi lại để `record` từ chối kịch bản, rồi để agent xử lý như thường.
+        try:
+            return await call
+        except BaseException as exc:
+            _FAILURES.get().append(limits.model_failure(exc if not isinstance(exc, asyncio.CancelledError)
+                                                        else TimeoutError()))
+            raise
+
+    @staticmethod
+    def _live_sync(call):
+        try:
+            return call()
+        except BaseException as exc:
+            _FAILURES.get().append(limits.model_failure(exc))
+            raise
 
     def _lookup(self, key: str) -> Any:
         _CALLS.get().append(key)
@@ -102,16 +135,16 @@ class CassetteLlm:
         live = self.inner.with_structured_output(schema, *args, **kwargs) if self.inner is not None else None
 
         async def ainvoke(prompt, *a, **k):
-            key = _prompt_key(f"structured:{name}", None, prompt)
+            key = _prompt_key(self._kind(f"structured:{name}"), None, prompt)
             if live is not None and key not in self.records:
-                result = await live.ainvoke(prompt, *a, **k)
+                result = await self._live(live.ainvoke(prompt, *a, **k))
                 self.records[key] = result.model_dump(mode="json") if hasattr(result, "model_dump") else result
             return schema.model_validate(self._lookup(key))
 
         def invoke(prompt, *a, **k):
-            key = _prompt_key(f"structured:{name}", None, prompt)
+            key = _prompt_key(self._kind(f"structured:{name}"), None, prompt)
             if live is not None and key not in self.records:
-                result = live.invoke(prompt, *a, **k)
+                result = self._live_sync(lambda: live.invoke(prompt, *a, **k))
                 self.records[key] = result.model_dump(mode="json") if hasattr(result, "model_dump") else result
             return schema.model_validate(self._lookup(key))
 
@@ -122,9 +155,9 @@ class CassetteLlm:
         live = self.inner.bind_tools(definitions, tool_choice=tool_choice, **kwargs) if self.inner is not None else None
 
         async def ainvoke(prompt, *a, **k):
-            key = _prompt_key("tools", extra, prompt)
+            key = _prompt_key(self._kind("tools"), extra, prompt)
             if live is not None and key not in self.records:
-                response = await live.ainvoke(prompt, *a, **k)
+                response = await self._live(live.ainvoke(prompt, *a, **k))
                 self.records[key] = {"tool_calls": [dict(call) for call in response.tool_calls]}
             return SimpleNamespace(tool_calls=json.loads(json.dumps(self._lookup(key)["tool_calls"])))
 
@@ -168,6 +201,10 @@ class ToolCassette:
                 except ToolError as exc:
                     self.records[key] = {"error": {"code": exc.code, "retryable": exc.retryable,
                                                    "http_status": exc.http_status, "reason": exc.reason}}
+                except BaseException:
+                    # Quá hạn (huỷ từ `wait_for`) hoặc lỗi lạ của lời gọi thật: không ghi, lượt bị từ chối.
+                    _FAILURES.get().append(limits.TOOL_TIMEOUT)
+                    raise
             record = self.records.get(key)
             if record is None:
                 raise ToolError("CASSETTE_MISS")
@@ -224,8 +261,10 @@ class _FrozenDatetime(datetime):
 
 @contextmanager
 def frozen_world():
-    """Cố định "hôm nay" ở hai chỗ agent đọc giờ (`classification.vietnam_today`, `fares.answer`) và uuid hội thoại.
+    """Cố định "hôm nay" ở hai chỗ agent đọc giờ (`classification.vietnam_today`, `fares.answer`), đồng hồ đo ngân sách
+    của lượt (`clock.now`) và uuid hội thoại.
 
+    Đồng hồ đứng yên: mọi lượt có thời gian đã dùng bằng 0, nên nhánh "hết giờ" không xảy ra khi ghi lẫn khi phát lại.
     uuid đánh số theo kịch bản (`_UUIDS`), nên chạy song song hay tuần tự đều ra cùng `conversationId`.
     """
     def next_uuid():
@@ -235,8 +274,18 @@ def frozen_world():
 
     with mock.patch.object(classification, "datetime", _FrozenDatetime), \
             mock.patch.object(fares, "datetime", _FrozenDatetime), \
+            mock.patch.object(clock, "now", lambda: FROZEN_NOW.timestamp()), \
             mock.patch.object(nodes, "uuid", SimpleNamespace(uuid4=next_uuid)):
         yield
+
+
+def unreplayable(events: list[dict[str, Any]], failures: list[str]) -> list[str]:
+    """Nguyên nhân làm lượt không phát lại được: mã phụ thuộc thời gian/provider trong event, hoặc lời gọi thật hỏng.
+
+    `ROUND_LIMIT` và `TOOL_LIMIT` là hành vi tất định nên không nằm trong đây: snapshot giữ và kiểm chúng.
+    """
+    reasons = {(item.get("metadata") or {}).get("reason") for item in events}
+    return sorted({reason for reason in reasons if reason in limits.UNREPLAYABLE} | set(failures))
 
 
 def scrub(value: Any) -> Any:
@@ -255,29 +304,42 @@ def _request(turn: Any, conversation_id: str | None) -> dict[str, Any]:
     return request
 
 
-async def run_scenario(scenario: dict[str, Any], llm: CassetteLlm, tools: ToolCassette) -> list[dict[str, Any]]:
-    """Một hội thoại; mỗi lượt ghi request, HTTP status, node đã đi, response, lời gọi LLM, tool và state đã lưu."""
+async def run_scenario(scenario: dict[str, Any], llm: CassetteLlm, tools: ToolCassette,
+                       orchestrator_llm: CassetteLlm | None = None) -> list[dict[str, Any]]:
+    """Một hội thoại; mỗi lượt ghi request, HTTP status, node đã đi, response, lời gọi LLM, tool và state đã lưu.
+
+    Khi ghi (`llm.inner` khác None), lượt có nguyên nhân không phát lại được mang thêm khoá `unreplayable`; `record` từ
+    chối kịch bản đó và bỏ khoá này trước khi lưu. Khi phát lại, khoá này không bao giờ có.
+    """
     _UUIDS.set([scenario["index"], 0])
-    calls, tool_calls = _CALLS.get(), _TOOL_CALLS.get()
+    calls, tool_calls, failures = _CALLS.get(), _TOOL_CALLS.get(), _FAILURES.get()
     store = InMemoryConversationStore()
     gateway = ItineraryToolGateway(tools, tools, tools, similar=tools)
     runtime = RuntimeAgentDependencies(gateway, store, llm, None, owner=None, archive=None,
                                        tool_timeout_seconds=TOOL_TIMEOUT_SECONDS,
-                                       llm_timeout_seconds=LLM_TIMEOUT_SECONDS)
+                                       llm_timeout_seconds=LLM_TIMEOUT_SECONDS,
+                                       orchestrator_llm=orchestrator_llm,
+                                       orchestrator_budget_seconds=ORCHESTRATOR_BUDGET_SECONDS)
     planner = runtime.planner()
     conversation_id = None
     turns = []
     for index, turn in enumerate(scenario["turns"], start=1):
         request = _request(turn, conversation_id)
-        start, tool_start = len(calls), len(tool_calls)
+        start, tool_start, failure_start = len(calls), len(tool_calls), len(failures)
         state = await planner.ainvoke(PlanItinerary.inputs(request, f"{scenario['id']}-{index}"))
         conversation_id = state.get("conversation_id") or conversation_id
         stored = await store.load(conversation_id, runtime.owner) if conversation_id else None
+        risks = unreplayable(state.get("events", []), failures[failure_start:]) if llm.inner is not None else []
         turns.append(scrub({
+            **({"unreplayable": risks} if risks else {}),
             "request": request,
             "httpStatus": state.get("http_status"),
             "nodes": [item["node"] for item in state.get("events", [])],
-            "events": [{"node": item["node"], "message": item.get("message")} for item in state.get("events", [])],
+            # Trần vòng và trần tool phát lại được nên snapshot giữ mã của chúng (`steps/limits.py`).
+            "events": [{"node": item["node"], "message": item.get("message"),
+                        **({"reason": reason} if (reason := (item.get("metadata") or {}).get("reason"))
+                           in (limits.ROUND_LIMIT, limits.TOOL_LIMIT) else {})}
+                       for item in state.get("events", [])],
             "llmCalls": calls[start:],
             "cassetteMiss": [key for key in calls[start:] if key not in llm.records],
             # Search và tra vé chạy song song trong `tool`: thứ tự theo độ trễ thật, không phải hành vi.
@@ -297,8 +359,8 @@ def dump_json(path: Path, value: Any) -> None:
     path.write_text(json.dumps(value, ensure_ascii=False, indent=1, sort_keys=True) + "\n", encoding="utf-8")
 
 
-async def run_all(llm: CassetteLlm, tools: ToolCassette,
-                  only: set[str] | None = None) -> dict[str, list[dict[str, Any]]]:
+async def run_all(llm: CassetteLlm, tools: ToolCassette, only: set[str] | None = None,
+                  orchestrator_llm: CassetteLlm | None = None) -> dict[str, list[dict[str, Any]]]:
     scenarios = [{**scenario, "index": index} for index, scenario in enumerate(load_json(SCENARIOS, []), start=1)
                  if not only or scenario["id"] in only]
     gate = asyncio.Semaphore(CONCURRENCY)
@@ -307,7 +369,8 @@ async def run_all(llm: CassetteLlm, tools: ToolCassette,
         async with gate:
             _CALLS.set([])
             _TOOL_CALLS.set([])
-            return scenario["id"], await run_scenario(scenario, llm, tools)
+            _FAILURES.set([])
+            return scenario["id"], await run_scenario(scenario, llm, tools, orchestrator_llm)
 
     with frozen_world():
         done = await asyncio.gather(*(one(scenario) for scenario in scenarios))
@@ -315,4 +378,6 @@ async def run_all(llm: CassetteLlm, tools: ToolCassette,
 
 
 def replay(only: set[str] | None = None) -> dict[str, list[dict[str, Any]]]:
-    return asyncio.run(run_all(CassetteLlm(load_json(CASSETTE, {})), ToolCassette(load_tools()), only))
+    records = load_json(CASSETTE, {})
+    return asyncio.run(run_all(CassetteLlm(records), ToolCassette(load_tools()), only,
+                               CassetteLlm(records, model=ORCHESTRATOR_MODEL_TAG)))

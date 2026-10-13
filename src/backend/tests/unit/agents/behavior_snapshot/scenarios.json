@@ -308,7 +308,7 @@
   "id": "tc-TC-01",
   "source": "agent_test_cases_nhat.yaml",
   "turns": [
-   "Lên lịch trình 1 ngày tại Hà Nội, bắt đầu từ ngày 2026-10-11, cho 2 người lớn, ngân sách khoảng 1 triệu.",
+   "Lên lịch trình 1 ngày tại Hà Nội, bắt đầu từ ngày 2026-10-13, cho 2 người lớn, ngân sách khoảng 1 triệu.",
    "Đổi ngày",
    "Ngày 23 tháng 10",
    "À nhầm ngày 24 tháng 10"
@@ -352,7 +352,7 @@
   "id": "tc-TC-11",
   "source": "agent_test_cases_nhat.yaml",
   "turns": [
-   "Lên lịch trình 3 ngày tại Phú Quốc, bắt đầu từ ngày 2026-10-11, cho 2 người lớn, đi từ trung quoc.",
+   "Lên lịch trình 3 ngày tại Phú Quốc, bắt đầu từ ngày 2026-10-13, cho 2 người lớn, đi từ trung quoc.",
    "Chưa có ngân sách, cứ lên lịch giúp mình."
   ]
  },
@@ -377,7 +377,7 @@
   "id": "tc-TC-14",
   "source": "agent_test_cases_nhat.yaml",
   "turns": [
-   "Lên lịch trình 3 ngày tại Đà Nẵng, bắt đầu từ ngày 2026-10-18, cho 2 người lớn, ngân sách khoảng 10 triệu, đi từ Hà Nội.",
+   "Lên lịch trình 3 ngày tại Đà Nẵng, bắt đầu từ ngày 2026-10-20, cho 2 người lớn, ngân sách khoảng 10 triệu, đi từ Hà Nội.",
    "đổi chuyến bay"
   ]
  },
@@ -510,7 +510,7 @@
    "Nha Trang 2 ngày",
    {
     "intentOverride": {
-     "startDate": "2026-10-18",
+     "startDate": "2026-10-20",
      "party": {
       "type": "COUPLE",
       "adults": 2,
@@ -518,6 +518,71 @@
      }
     }
    }
+  ]
+ },
+ {
+  "id": "demo-K1",
+  "source": "demo-D1 (docs/plan/2026-10-12-go-luong-cu-orchestrator-chinh.md)",
+  "turns": [
+   "Hà Nội có gì chơi?",
+   "chỗ thứ hai mở cửa mấy giờ, vé bao nhiêu?",
+   "tìm khách sạn gần Hồ Gươm",
+   "có chỗ nào rẻ hơn không?",
+   "ok lên lịch 3 ngày từ thứ 7 này cho 2 người, đi từ TP. Hồ Chí Minh",
+   {
+    "selectStayOption": {
+     "index": 2
+    }
+   }
+  ]
+ },
+ {
+  "id": "demo-K2",
+  "source": "demo-D1 (docs/plan/2026-10-12-go-luong-cu-orchestrator-chinh.md)",
+  "turns": [
+   "vé sg ra hn bao nhiêu",
+   "ngày 24/10 thì sao, đi buổi sáng",
+   "từ Hà Nội đi đâu rẻ nhất?",
+   "lên lịch chỗ rẻ nhất đó 3 ngày cho mình"
+  ]
+ },
+ {
+  "id": "demo-K3",
+  "source": "demo-D1 (docs/plan/2026-10-12-go-luong-cu-orchestrator-chinh.md)",
+  "turns": [
+   "Hà Nội đi Đà Nẵng 3 ngày từ 24/10, 2 người lớn, thích biển, ngân sách 10 triệu",
+   "đổi sang khách sạn có hồ bơi",
+   "bỏ vé máy bay, mình tự đi",
+   "thêm 1 ngày nữa"
+  ]
+ },
+ {
+  "id": "demo-K4",
+  "source": "demo-D1 (docs/plan/2026-10-12-go-luong-cu-orchestrator-chinh.md)",
+  "turns": [
+   "khách sạn có hồ bơi ở Đà Nẵng, rẻ nhất trước",
+   "xem thêm",
+   "đắt hơn chút cũng được, chỗ nào đẹp nhất?",
+   "chỗ thứ hai còn phòng ngày 24/10 không?"
+  ]
+ },
+ {
+  "id": "demo-K5",
+  "source": "demo-D1 (docs/plan/2026-10-12-go-luong-cu-orchestrator-chinh.md)",
+  "turns": [
+   "không biết đi đâu",
+   "cứ chọn đại",
+   "chán, đi rồi",
+   "ok lên lịch đi"
+  ]
+ },
+ {
+  "id": "demo-K6",
+  "source": "demo-D1 (docs/plan/2026-10-12-go-luong-cu-orchestrator-chinh.md)",
+  "turns": [
+   "gia đình mình 2 người lớn 2 bé đi Nha Trang cuối tuần này",
+   "đi từ TP. Hồ Chí Minh, ngân sách 15 triệu",
+   "khách sạn gần biển hơn được không?"
   ]
  }
 ]

@@ -1,8 +1,9 @@
 """Lưới giữ hành vi khi refactor agent (`docs/plan/2026-10-11-refactor-agent-giu-hanh-vi.md`).
 
-Phát lại 57 hội thoại qua graph với tool ghi từ chế độ `inprocess` (`behavior_snapshot/tools.json.gz`) và LLM ghi sẵn
-(`behavior_snapshot/cassette.json`), rồi so từng lượt với `behavior_snapshot/snapshot.json`: HTTP status, node đã đi,
-response, lời gọi LLM và tool, state đã lưu. Fail nghĩa là hành vi, payload gửi LLM hoặc tham số gọi tool đã đổi. Đổi có
+Phát lại mọi hội thoại của `behavior_snapshot/scenarios.json` qua graph với tool ghi từ chế độ `inprocess`
+(`behavior_snapshot/tools.json.gz`) và LLM ghi sẵn (`behavior_snapshot/cassette.json`), rồi so từng lượt với
+`behavior_snapshot/snapshot.json`: HTTP status, node đã đi, mã trần vòng/trần tool, response, lời gọi LLM và tool, state
+đã lưu. Fail nghĩa là hành vi, payload gửi LLM hoặc tham số gọi tool đã đổi. Đổi có
 chủ ý thì ghi lại bằng `behavior_snapshot.record` và đọc diff của snapshot trước khi commit.
 """
 import unittest

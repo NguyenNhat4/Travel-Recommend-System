@@ -99,7 +99,7 @@ def _drop_reason(product: Product, intent: TripIntent, constraints: Constraints)
 
 
 def collect(tool_results: list[ToolResult], details: dict[str, Product], intent: TripIntent,
-            constraints: Constraints) -> tuple[Candidates, Sources, dict[str, str]]:
+            constraints: Constraints, *, counts=None) -> tuple[Candidates, Sources, dict[str, str]]:
     candidates, sources, dropped = {}, {}, {}
     for result in tool_results:
         data = result.get("data", {})
@@ -114,7 +114,12 @@ def collect(tool_results: list[ToolResult], details: dict[str, Product], intent:
                 if not product_id:
                     continue
                 product = {**deepcopy(details.get(product_id, {})), **deepcopy(projection)}
+                counter = counts(product.get('taxonomy')) if counts else None
+                if counter:
+                    counter.source_total = data.get('total')
                 if similar and _off_destination(product, intent):
+                    if counter:
+                        counter.record(product_id, 'PRODUCT_DROPPED_DESTINATION', outside=True)
                     continue
                 reason = _drop_reason(product, intent, constraints)
                 if (reason == "PRODUCT_DROPPED_DATE" and product.get("taxonomy") in REFERENCE_TAXONOMIES
@@ -123,6 +128,8 @@ def collect(tool_results: list[ToolResult], details: dict[str, Product], intent:
                     # khảo hay không (chỉ khi ngày đi không còn điểm tham quan nào mở bán).
                     product[NOT_ON_SALE] = True
                     reason = None
+                if counter:
+                    counter.record(product_id, reason, outside=reason in NOT_SUPPLY_REASONS)
                 if reason:
                     dropped[product_id] = reason
                     candidates.pop(product_id, None)

@@ -6,7 +6,8 @@ import yaml
 
 from src.backend.app.agents.nodes import finalize_node, intake_node
 from src.backend.app.agents.steps import phase, shown
-from src.backend.app.agents.steps.classification import extraction_input, route_input
+from src.backend.app.agents.steps.classification import extraction_input
+from src.backend.app.agents.steps.orchestration import payload as orchestrator_input
 from src.backend.app.agents.steps.conversation import conversation_input
 from src.backend.app.agents.steps.history import llm_context
 from src.backend.app.infrastructure.persistence.conversation_store import InMemoryConversationStore
@@ -154,10 +155,10 @@ class ContextTests(unittest.TestCase):
         self.assertFalse(any(line.startswith("#1 ") for line in block["items"]))  # lượt cũ nhất bị bỏ trước
 
     def test_every_node_gets_the_block_and_the_message_stays_first(self):
-        # Đo lặp `classify` 2026-10-12: đưa tin nhắn xuống cuối payload làm câu hỏi vé hiểu sai nhiều hơn; giữ thứ tự cũ.
+        # Đo lặp 2026-10-12: đưa tin nhắn xuống cuối payload làm câu hỏi vé hiểu sai nhiều hơn; giữ thứ tự cũ.
         state = {**self.planned(), "missing_fields": [], "interaction_type": "conversation"}
-        for name, build in (("classify", route_input), ("extract", extraction_input),
-                            ("converse", conversation_input)):
+        for name, build in (("orchestrate", orchestrator_input), ("extract", extraction_input),
+                            ("clarify", conversation_input)):
             with self.subTest(node=name):
                 payload = yaml.safe_load(build(state)[1][1])
                 keys = list(payload)
