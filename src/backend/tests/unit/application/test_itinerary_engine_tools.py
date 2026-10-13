@@ -457,6 +457,8 @@ def test_list_products_calls_the_catalog_use_case_and_maps_its_parameters():
     assert page["total"] == 0 and page["requestId"]
     assert seen == [{"destination": None, "taxonomy": None, "available_only": True, "sort": "popular", "limit": 50,
                      "offset": 0, "parent_product_id": "route-1"}]
+    run(tools.list_products({"taxonomy": "attraction", "freeOnly": True, "limit": 1}))
+    assert seen[-1]["free_only"] is True and seen[-1]["limit"] == 1
     unwired = InProcessItineraryTools(search=lambda: None, recommend=lambda: None, index=lambda: None,
                                       product_detail=lambda: None, similar_products=lambda: None,
                                       token_verifier=lambda: None, revoked_tokens=lambda: None)

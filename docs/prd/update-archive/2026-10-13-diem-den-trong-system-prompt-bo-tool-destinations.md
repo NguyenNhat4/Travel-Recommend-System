@@ -2,8 +2,8 @@
 
 - Ngày: 2026-10-13
 - Người đề xuất: Nguyễn Minh Nhật / Claude Code
-- Trạng thái: chờ chốt
-- Chốt bởi / ngày:
+- Trạng thái: đã áp dụng
+- Chốt bởi / ngày: Nguyễn Minh Nhật, 2026-10-13 (chốt A–G và triển khai toàn bộ trong chat)
 - PRD bị ảnh hưởng: `docs/prd/architecture.md` §3 (Công cụ, lập lịch và hai loại ngân sách), `docs/prd/requirements.md` §1.4 (FR-AGT-02)
 - Mã FR/NFR: FR-AGT-02
 

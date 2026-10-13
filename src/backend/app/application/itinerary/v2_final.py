@@ -5,15 +5,16 @@ build_itinerary. Không thêm, bớt hay xếp lại thẻ. Câu cảnh báo do 
 """
 from __future__ import annotations
 
+import re
+import secrets
 from datetime import date, timedelta
 from functools import lru_cache
 from pathlib import Path
-import re
-import secrets
 from typing import Any
 
 from jsonschema import Draft202012Validator, FormatChecker
 
+from src.backend.app.domain.itinerary.draft_validation import entry_mode
 from src.backend.app.domain.itinerary.planning import stay_rooms
 from src.shared.contracts.scripts.bundle_openapi import bundle
 
@@ -22,26 +23,28 @@ from .product_registry import ProductRegistry
 ENTRY = Path(__file__).resolve().parents[4] / "shared/contracts/assistant-v2.openapi.yaml"
 PRODUCT_FIELDS = ("productId", "name", "taxonomy", "destination", "brand", "status", "unitPrice", "currency",
                   "priceUnit", "priceAsOf", "available", "availabilityStatus", "bookable", "availableFrom",
-                  "availableTo", "imageUrl", "rating", "reviewCount", "attributes", "description", "fareClasses")
+                  "availableTo", "imageUrl", "rating", "reviewCount", "attributes", "description", "fareClasses", "entryPolicy")
 WARNINGS = {
     "vi": {
+        "FREE_ENTRY_ASSUMED": "Các điểm tham quan tự do chưa có xác nhận đầy đủ về phí vào cửa; bạn nên kiểm tra trước khi đi. Mua sắm và dịch vụ tại chỗ có thể tính phí riêng.",
         "OVER_TRIP_BUDGET": "Tổng chi phí các sản phẩm trong lịch là {total}, vượt ngân sách {budget} là {over}.",
         "PRICE_UNKNOWN": "Một số sản phẩm chưa có giá nên chưa tính được tổng; phần đã biết giá là {subtotal}.",
         "OPENING_HOURS_UNKNOWN": "Giờ mở cửa của một số điểm chưa có trong dữ liệu, bạn nên kiểm tra trước khi đi.",
         "TIMING_ESTIMATED": "Một số giờ trong lịch là ước tính, chưa xác minh từ dữ liệu.",
         "TRAVEL_TIME_UNKNOWN": "Thời gian di chuyển giữa các điểm chưa được tính vào lịch.",
-        "PRICE_CAPACITY_UNKNOWN": "Chưa rõ giá phòng đã bao gồm bao nhiêu người nên chưa tính đủ tiền lưu trú.",
+        "PRICE_CAPACITY_UNKNOWN": "Chưa rõ giá phòng đã bao gồm bao nhiêu người; tính theo sức chứa chỉ là ước tính, cần xác nhận trước khi đặt.",
         "ROOM_CAPACITY_UNKNOWN": "Chưa có sức chứa tối đa của một số hạng phòng; cần xác nhận trước khi đặt.",
         "OPTIMIZATION_UNAVAILABLE": "Chưa sắp lại thứ tự cho bớt đi lại được vì thiếu vị trí của một số điểm.",
         "SIMULATED_PRICE": "Giá vé máy bay trong lịch là giá minh hoạ của dữ liệu.",
     },
     "en": {
+        "FREE_ENTRY_ASSUMED": "Entry fees for these freely accessible places are not fully confirmed; please check before visiting. Shopping and on-site services may cost extra.",
         "OVER_TRIP_BUDGET": "The selected products total {total}, which is {over} over your {budget} budget.",
         "PRICE_UNKNOWN": "Some products have no price yet, so the total is unknown; the priced part is {subtotal}.",
         "OPENING_HOURS_UNKNOWN": "Opening hours of some places are not in our data; please check before you go.",
         "TIMING_ESTIMATED": "Some times in this plan are estimates, not verified from data.",
         "TRAVEL_TIME_UNKNOWN": "Travel time between places is not included in the plan.",
-        "PRICE_CAPACITY_UNKNOWN": "The number of guests included in the room price is unknown, so the stay total is unknown.",
+        "PRICE_CAPACITY_UNKNOWN": "Guests included in the room price are unknown; occupancy-based room costs are estimates to confirm before booking.",
         "ROOM_CAPACITY_UNKNOWN": "Maximum occupancy is missing for some room types; confirm it before booking.",
         "OPTIMIZATION_UNAVAILABLE": "The order could not be optimised because some locations are missing.",
         "SIMULATED_PRICE": "Flight prices in this plan are illustrative catalog prices.",
@@ -71,7 +74,9 @@ def card(product: dict[str, Any]) -> dict[str, Any]:
 def _fact_text(field: str, value: Any, language: str) -> str:
     if isinstance(value, bool):
         return ("có" if value else "không") if language == "vi" else ("yes" if value else "no")
-    if isinstance(value, (int, float)) and (field.endswith("_vnd") or field.endswith("Price")):
+    if isinstance(value, int) and field.endswith(("start_minute", "end_minute", "startMinute", "endMinute")):
+        return f"{value // 60:02d}:{value % 60:02d}"
+    if isinstance(value, (int, float)) and field.endswith(("_vnd", "Price")):
         return money(value, language)
     if isinstance(value, str) and ISO_DATE.match(value):
         day = date.fromisoformat(value[:10]).strftime("%d/%m/%Y")
@@ -91,13 +96,35 @@ def _segment_text(segment: dict[str, Any], registry: ProductRegistry, results: d
     return _fact_text(segment["field"], fact(registry, results, segment["ref"], segment["field"]), language)
 
 
-def _join(parts: list[str]) -> str:
-    """Nối đoạn chữ và dữ kiện, thêm khoảng trắng khi model quên."""
-    text = ""
-    for part in parts:
+_SENTENCE_END = re.compile(r"[.!?…](?=\s+\S)")
+
+
+def _join(parts: list[tuple[str, bool]]) -> str:
+    """Nối đoạn chữ và dữ kiện, thêm khoảng trắng khi model quên.
+
+    Widget đặt thẻ sau dòng đầu tiên nhắc sản phẩm, nên câu chứa sản phẩm (`True`) kết thúc đoạn: thẻ đứng ngay sau
+    câu đó thay vì dồn thành danh sách cuối câu trả lời (AC-AGT-07). Câu mới bắt đầu sau dấu kết câu, hoặc ngay sau
+    tên sản phẩm khi chữ tiếp theo viết hoa (model đặt tên như tiêu đề, không có dấu chấm).
+    """
+    text, open_product, after_product = "", False, False
+    for part, is_product in parts:
+        if is_product:
+            if text.strip() and text.rstrip()[-1] in ".!?…":
+                text = text.rstrip() + "\n\n"
+            open_product = True
+        elif open_product and part.strip():
+            body = part.lstrip()
+            if (after_product or text.rstrip()[-1:] in (".", "!", "?", "…")) and body[0].isupper():
+                text, part, open_product = text.rstrip() + "\n\n", body, False
+            else:
+                end = next((m for m in _SENTENCE_END.finditer(part) if part[m.end():].lstrip()[:1].isupper()), None)
+                if end:
+                    part = part[:end.end()] + "\n\n" + part[end.end():].lstrip()
+                    open_product = False
         if text and part and not text[-1].isspace() and not part[0].isspace() and part[0] not in ".,;:!?)…/":
             text += " "
         text += part
+        after_product = is_product
     return text.strip()
 
 
@@ -111,7 +138,7 @@ def _itinerary(plan: dict[str, Any], language: str) -> dict[str, Any]:
                              "assumption": a["assumption"]} for a in day["activities"]]}
             for day in plan["plan_days"]]
     stays = [{"product": card(products[stay["product_ref"]]), "checkIn": stay["check_in"],
-              "checkOut": stay["check_out"], "rooms": stay_rooms(products[stay["product_ref"]], party),
+              "checkOut": stay["check_out"], "rooms": stay.get("computed_rooms", stay_rooms(products[stay["product_ref"]], party)),
               "nights": (date.fromisoformat(stay["check_out"]) - date.fromisoformat(stay["check_in"])).days}
              for stay in draft["stays"]]
     return {"planResultId": plan["plan_result_id"], "party": party,
@@ -140,12 +167,19 @@ def render_final(decision: dict[str, Any], *, registry: ProductRegistry, plans: 
     Response không khớp contract thì ValueError (orc sửa lại), không tự cắt cho vừa.
     """
     plan = plans[decision["plan_result_id"]] if decision["plan_effect"] == "replace" else None
-    paragraphs = [_join([_segment_text(segment, registry, results, language) for segment in decision["answer"]])]
+    paragraphs = [_join([(_segment_text(segment, registry, results, language), segment["type"] == "product")
+                         for segment in decision["answer"]])]
     if plan:
         paragraphs += [_warning_text(w["code"], plan["costs"], language) for w in plan["warnings"]
                        if w["code"] in decision["disclosures"]]
 
     shown_refs: list[str] = [ref for refs in decision["cards"].values() for ref in refs]
+    presented_refs = shown_refs + [a["product_ref"] for a in decision["alternatives"]]
+    presented_refs += [s["ref"] for s in decision["answer"] if s["type"] == "product"]
+    assumed_refs = [ref for ref in dict.fromkeys(presented_refs) if entry_mode(registry.product(ref)) == "assumed_free"]
+    plan_assumed = any(w["code"] == "FREE_ENTRY_ASSUMED" for w in plan["warnings"]) if plan else False
+    if assumed_refs and not plan_assumed and "FREE_ENTRY_ASSUMED" in decision["disclosures"]:
+        paragraphs.append(WARNINGS[language]["FREE_ENTRY_ASSUMED"])
     actions: dict[str, dict[str, Any]] = {}
     alternatives = []
     for alternative in decision["alternatives"]:
@@ -183,6 +217,15 @@ def render_final(decision: dict[str, Any], *, registry: ProductRegistry, plans: 
                      for w in plan["warnings"]] if plan else [],
         "suggestions": suggestions,
     }
+    if assumed_refs:
+        existing = next((w for w in final["warnings"] if w["code"] == "FREE_ENTRY_ASSUMED"), None)
+        product_ids = [registry.product(ref)["productId"] for ref in assumed_refs]
+        if existing:
+            existing["productIds"] = list(dict.fromkeys(existing["productIds"] + product_ids))
+        else:
+            final["warnings"].append({"id": "FREE_ENTRY_ASSUMED", "code": "FREE_ENTRY_ASSUMED",
+                                      "severity": "warning", "message": WARNINGS[language]["FREE_ENTRY_ASSUMED"],
+                                      "productIds": product_ids})
     errors = [error.message for error in _validator().iter_errors(final)]
     if errors:
         raise ValueError("; ".join(errors)[:500])
@@ -201,5 +244,10 @@ def fact(registry: ProductRegistry, results: dict[str, dict[str, Any]], ref: str
         return registry.fact(ref, field)
     value: Any = (results.get(ref) or {}).get("data")
     for key in field.split("."):
-        value = value.get(key) if isinstance(value, dict) else None
+        if isinstance(value, dict):
+            value = value.get(key)
+        elif isinstance(value, list) and key.isdigit() and int(key) < len(value):
+            value = value[int(key)]
+        else:
+            value = None
     return value if isinstance(value, (str, int, float, bool)) else None

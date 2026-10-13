@@ -68,7 +68,7 @@ def test_g01_over_budget_is_a_warning_with_exact_amount():
 
 
 def test_g03_missing_price_is_unknown_not_free():
-    products = {"p1": product("a", price=500_000), "p2": product("b", price=None)}
+    products = {"p1": product("a", price=500_000), "p2": product("b", price=None, ticketed=True)}
     result = check_draft(draft([activity("p1", 480, 540), activity("p2", 600, 660)], trip_budget_vnd=2_000_000),
                          products)
     costs = result["costs"]
@@ -84,10 +84,21 @@ def test_g04_zero_budget_with_paid_item_is_over_not_unset():
 
 def test_free_only_rejects_paid_and_unknown_price_but_accepts_evidence_of_free():
     products = {"p1": product("a", price=0), "p2": product("b", price=None, ticketed=False),
-                "p3": product("c", price=None), "p4": product("d")}
+                "p3": product("c", price=None, ticketed=True), "p4": product("d")}
     result = check_draft(draft([activity(f"p{i}", 360 + 90 * i, 420 + 90 * i) for i in range(1, 5)],
                                free_only=True), products)
     assert next(v for v in result["violations"] if v["code"] == "NOT_FREE")["refs"] == ["p3", "p4"]
+
+
+def test_free_entry_assumption_has_zero_entry_cost_but_keeps_source_price_null():
+    products = {"p1": product("public-place", price=None)}
+    result = check_draft(draft([activity("p1", 480, 600)], free_only=True), products)
+    assert result["violations"] == []
+    assert result["costs"]["estimated_total_vnd"] == 0
+    assert "FREE_ENTRY_ASSUMED" in codes(result["warnings"])
+    assert products["p1"]["unitPrice"] is None
+    for taxonomy in ("hotel", "flight", "combo"):
+        assert cost_mode(product("unknown", taxonomy, price=None)) == "unknown"
 
 
 def test_overlap_full_day_and_opening_hours_are_violations_not_silent_drops():

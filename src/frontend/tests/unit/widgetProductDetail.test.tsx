@@ -49,6 +49,9 @@ describe('WidgetProductDetail', () => {
     expect(screen.getByText('4.6/5')).toBeTruthy();
     expect(screen.getByText(/13\.246 đánh giá/)).toBeTruthy();
     expect(screen.getByText('Tham quan tự do')).toBeTruthy();
+    // Điểm tham quan tự do không gọi là vé (nhãn loại ở đầu khung chi tiết).
+    expect(screen.getByText('Điểm tham quan')).toBeTruthy();
+    expect(screen.queryByText('Vé tham quan')).toBeNull();
     expect(screen.queryByRole('link', { name: /Xem trang chi tiết/ })).toBeNull();
     expect(mocks.trackProductView).toHaveBeenCalledWith('vanmieu');
   });
@@ -66,6 +69,7 @@ describe('WidgetProductDetail', () => {
     const link = await screen.findByRole('link', { name: /Xem trang chi tiết/ });
     expect(link.getAttribute('href')).toBe('/product/vanmieu');
     expect(screen.queryByText('Tham quan tự do')).toBeNull();
+    expect(screen.getByText('Vé tham quan')).toBeTruthy();
   });
 
   it('hides the detail link when ticketed=false even if a price is present', async () => {

@@ -42,3 +42,10 @@ def test_cursor_only_continues_the_same_query():
     assert registry.cursor_offset(cursor, {**args, "cursor": cursor, "limit": 50, "exclude_refs": ["p1"]}) == 20
     with pytest.raises(ToolError, match="CURSOR_MISMATCH"):
         registry.cursor_offset(cursor, {**args, "destination": "Huế", "cursor": cursor})
+
+
+def test_trip_date_availability_is_computed_before_presentation():
+    registry = ProductRegistry()
+    ref = registry.add(product('a', availability={'from':'2026-10-25','calendar':'101'}))
+    view = registry.view(ref, dates=['2026-10-25','2026-10-26','2026-10-27'])
+    assert view['availability_by_date'] == {'2026-10-25':True,'2026-10-26':False,'2026-10-27':True}

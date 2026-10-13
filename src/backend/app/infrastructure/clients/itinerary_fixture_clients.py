@@ -1,7 +1,7 @@
 """Development itinerary ports backed by the checked-in 50-product fixture."""
 
-from copy import deepcopy
 import json
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -75,6 +75,7 @@ class FixtureItineraryClients:
         return deepcopy(product)
 
     async def list_products(self, params: dict[str, Any]) -> dict[str, Any]:
+        from src.backend.app.domain.itinerary.draft_validation import cost_mode
         parent = params.get("parentProductId")
         products = [p for p in deepcopy(self._products)
                     if (p.get("attributes", {}).get("parentProductId") == parent if parent
@@ -85,6 +86,8 @@ class FixtureItineraryClients:
             products = [p for p in products if p["taxonomy"] == taxonomy]
         if params.get("availableOnly"):
             products = [p for p in products if p["available"]]
+        if params.get("freeOnly"):
+            products = [p for p in products if cost_mode(p) == "free"]
         offset, limit = params.get("offset", 0), params.get("limit", 20)
         return {"results": products[offset:offset + limit], "total": len(products), "limit": limit,
                 "offset": offset, "requestId": "fixture-products"}

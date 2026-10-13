@@ -9,7 +9,6 @@ import { WidgetOpening } from './WidgetOpening';
 import { WidgetNarration } from './WidgetNarration';
 import { WidgetComposer } from './WidgetComposer';
 import { WidgetProgressSummary } from './WidgetProgressSummary';
-import { WidgetProgressPreview } from './WidgetProgressPreview';
 import { productFromApi } from '../../../services/catalog';
 import { useTravel } from '../../../context/TravelContext';
 import { WidgetProgress } from './WidgetProgress';
@@ -99,7 +98,6 @@ export function WidgetChat({ widget }: { widget: FloatingWidgetController }) {
           <div className="flex flex-col gap-3">
             <AssistantHeader />
             <WidgetProgress progress={assistantState.progress} model={assistantState.progressModel} activity={assistantState.activities.at(-1)} isSlow={assistantState.isSlow} debugMode={debugMode} />
-            {assistantState.previewVisible && assistantState.preview && <WidgetProgressPreview products={assistantState.preview.products} onOpen={(productId) => openProductDetail(productId, {products:Object.fromEntries(assistantState.preview!.products.map((p) => [p.productId,productFromApi(p)]))})} />}
           </div>
         )}
         {assistantState.error && (

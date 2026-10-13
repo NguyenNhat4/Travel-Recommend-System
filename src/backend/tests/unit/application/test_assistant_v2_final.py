@@ -33,6 +33,16 @@ def test_cards_are_exactly_the_selected_refs_in_order():
                                refs[0]: {"productId": "h0", "name": "Sản phẩm h0", "taxonomy": "hotel"}}
 
 
+def test_public_place_assumption_is_visible_without_changing_source_price():
+    registry = ProductRegistry()
+    ref = registry.add(product("market", price=None))
+    final, _ = render(respond("Bạn có thể ghé tham quan tự do.", attraction=[ref],
+                              disclosures=["FREE_ENTRY_ASSUMED"]), registry)
+    assert final["recommendations"]["attraction"][0]["unitPrice"] is None
+    assert final["warnings"][0]["productIds"] == ["market"]
+    assert "phí vào cửa" in final["message"] and "catalog" not in final["message"]
+
+
 def test_fact_segments_are_filled_from_current_data():
     registry = ProductRegistry()
     ref = registry.add(product("h", "hotel", price=1_500_000))
@@ -41,6 +51,45 @@ def test_fact_segments_are_filled_from_current_data():
                                {"type": "fact", "ref": "c2", "field": "period.cheapest_price_vnd"}])
     final, _ = render(decision, registry, results={"c2": {"data": {"period": {"cheapest_price_vnd": 900_000}}}})
     assert final["message"] == "Giá từ 1.500.000 ₫ mỗi đêm, rẻ nhất đợt là 900.000 ₫"
+
+
+def test_sentence_naming_a_product_ends_its_paragraph():
+    """Một đoạn liền làm mọi thẻ dồn xuống cuối như danh sách; widget đặt thẻ sau dòng đầu nhắc sản phẩm."""
+    registry = ProductRegistry()
+    hotel, beach, bridge = (registry.add(product(i)) for i in ("dao-ngoc", "my-khe", "cau-rong"))
+    decision = respond(answer=[
+        {"type": "text", "text": "Khách sạn nổi bật là"}, {"type": "product", "ref": hotel},
+        {"type": "text", "text": "Nơi này có hồ bơi. Bạn đi ngày nào?"},
+        {"type": "product", "ref": beach},
+        {"type": "text", "text": "là bãi biển dài. Tối có thể ghé"}, {"type": "product", "ref": bridge},
+        {"type": "text", "text": "xem cầu phun lửa."}])
+    final, _ = render(decision, registry)
+    assert final["message"].split("\n\n") == [
+        "Khách sạn nổi bật là [Sản phẩm dao-ngoc](product:dao-ngoc)",
+        "Nơi này có hồ bơi. Bạn đi ngày nào?",
+        "[Sản phẩm my-khe](product:my-khe) là bãi biển dài.",
+        "Tối có thể ghé [Sản phẩm cau-rong](product:cau-rong) xem cầu phun lửa."]
+
+
+def test_sentence_end_split_across_segments_still_ends_the_paragraph():
+    registry = ProductRegistry()
+    bridge, park = registry.add(product("cau-rong")), registry.add(product("ba-na"))
+    decision = respond(answer=[{"type": "text", "text": "Ngày đầu: tối ghé"}, {"type": "product", "ref": bridge},
+                               {"type": "text", "text": "."}, {"type": "text", "text": "Ngày thứ hai: trọn ngày ở"},
+                               {"type": "product", "ref": park}, {"type": "text", "text": "."}])
+    final, _ = render(decision, registry)
+    assert final["message"].split("\n\n") == ["Ngày đầu: tối ghé [Sản phẩm cau-rong](product:cau-rong).",
+                                               "Ngày thứ hai: trọn ngày ở [Sản phẩm ba-na](product:ba-na)."]
+
+
+def test_facts_and_lowercase_text_stay_in_the_product_sentence():
+    registry = ProductRegistry()
+    ref = registry.add(product("h", "hotel", price=563_333))
+    decision = respond(answer=[{"type": "product", "ref": ref}, {"type": "text", "text": "giá từ"},
+                               {"type": "fact", "ref": ref, "field": "unitPrice"},
+                               {"type": "text", "text": "mỗi đêm."}])
+    final, _ = render(decision, registry)
+    assert final["message"] == "[Sản phẩm h](product:h) giá từ 563.333 ₫ mỗi đêm."
 
 
 def test_g01_over_budget_plan_shows_exact_amounts_and_zero_nights():
@@ -98,4 +147,15 @@ def test_stay_rooms_and_totals_are_consistent_with_the_price_basis(basis, expect
     assert final['itinerary']['stays'][0]['rooms'] == expected_rooms
     assert final['itinerary']['costs']['estimatedTotalVnd'] == (None if basis is None else 1_000_000)
     if basis is None:
-        assert 'chưa tính đủ' in final['message'] and 'tạm cho 1 phòng' not in final['message']
+        assert 'Chưa rõ giá phòng' in final['message'] and 'tạm cho 1 phòng' not in final['message']
+
+
+def test_plan_array_facts_and_computed_minutes_are_rendered_from_source():
+    from src.backend.app.application.itinerary.v2_final import _fact_text, fact
+    registry = ProductRegistry()
+    results = {'c1': {'data': {'days': [{'activities': [{'start_minute': 780}]}], 'stays': [{'nights': 2}]}}}
+    assert fact(registry, results, 'c1', 'stays.0.nights') == 2
+    assert fact(registry, results, 'c1', 'days.0.activities.0.start_minute') == 780
+    assert _fact_text('days.0.activities.0.start_minute', 780, 'vi') == '13:00'
+    assert fact(registry, results, 'c1', 'stays.9.nights') is None
+    assert fact(registry, results, 'c1', 'stays.-1.nights') is None

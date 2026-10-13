@@ -1,93 +1,222 @@
-"""Dispatcher v2: chạy đúng lời gọi orc chọn, trong ngân sách request; lỗi không biến thành rỗng."""
+"""Five tools: physical source budget, paging, nested rooms and partial failures."""
+
 import asyncio
 from time import monotonic
 
-from src.backend.app.application.itinerary.orc_dispatch import OrcToolDispatcher, SourceBudget
+from src.backend.app.application.itinerary.orc_dispatch import (
+    OrcToolDispatcher,
+    SourceBudget,
+)
 from src.backend.app.application.itinerary.product_registry import ProductRegistry
 from src.backend.tests.fakes.orc_tools import FakeTools, call, product
 
 
-def dispatcher(tools: FakeTools, *, limit: int = 10, known: dict | None = None) -> OrcToolDispatcher:
-    return OrcToolDispatcher(tools, ProductRegistry(known), SourceBudget(deadline=monotonic() + 30, limit=limit),
-                             timeout_seconds=1)
+def dispatcher(tools, limit=10, known=None):
+    return OrcToolDispatcher(
+        tools,
+        ProductRegistry(known),
+        SourceBudget(deadline=monotonic() + 30, limit=limit),
+        timeout_seconds=1,
+    )
 
 
-def test_search_sends_exactly_the_orc_arguments_and_reports_next_page():
-    tools = FakeTools([product(f"h{i}", "hotel") for i in range(3)], total=5)
+def test_find_paging_and_cursor_scope():
+    tools = FakeTools([product(str(i)) for i in range(3)], total=5)
     d = dispatcher(tools)
-    result = asyncio.run(d.run(call("search_products", query="khách sạn có hồ bơi", taxonomy="hotel", limit=3,
-                                    guests=2)))
-    assert tools.calls == [("search_products", {"query": "khách sạn có hồ bơi", "taxonomy": "hotel", "limit": 3,
-                                                "offset": 0, "travelContext": {"guests": {"adults": 2}}})]
-    assert result["status"] == "ok" and result["refs"] == ["p1", "p2", "p3"]
-    assert result["coverage"]["checked"] == 3 and result["coverage"]["next_cursor"]
-    following = asyncio.run(d.run(call("search_products", "c2", query="khách sạn có hồ bơi", taxonomy="hotel",
-                                       limit=3, guests=2, cursor=result["coverage"]["next_cursor"])))
-    assert tools.calls[-1][1]["offset"] == 3 and following["coverage"]["next_cursor"] is None
+    first = asyncio.run(
+        d.run(call("find_products", query="lịch sử", taxonomy="attraction", limit=3))
+    )
+    cursor = first["coverage"]["next_cursor"]
+    second = asyncio.run(
+        d.run(
+            call(
+                "find_products",
+                "c2",
+                query="lịch sử",
+                taxonomy="attraction",
+                limit=3,
+                cursor=cursor,
+            )
+        )
+    )
+    assert tools.calls[-1][1]["offset"] == 3 and second["refs"] == []
+    wrong = asyncio.run(
+        d.run(call("find_products", query="biển", taxonomy="attraction", cursor=cursor))
+    )
+    assert wrong["error"]["code"] == "CURSOR_MISMATCH"
+    assert wrong["error"]["reason"] == "parameters_changed:query"
 
 
-def test_free_only_counts_paid_and_unknown_price_separately():
-    tools = FakeTools([product("free", price=0), product("paid", price=50_000), product("unknown", price=None),
-                       product("ticketless", price=None, ticketed=False)])
-    result = asyncio.run(dispatcher(tools).run(call("search_products", query="điểm miễn phí", free_only=True)))
-    assert result["refs"] == ["p1", "p2"]
-    assert result["data"] == {"dropped_not_free": {"paid": 1, "unknown_price": 1}}
+def test_free_only_and_exclusion_are_grounded():
+    tools = FakeTools(
+        [
+            product("free", price=0),
+            product("paid"),
+            product("unknown", price=None, ticketed=True),
+            product("no-ticket", price=None, ticketed=False),
+        ]
+    )
+    d = dispatcher(tools, known={"p1": "free"})
+    result = asyncio.run(
+        d.run(
+            call(
+                "find_products",
+                query="điểm",
+                taxonomy="attraction",
+                free_only=True,
+                exclude_refs=["p1"],
+            )
+        )
+    )
+    assert len(result["refs"]) == 1
+    assert result["data"]["dropped_not_free"] == {"paid": 1, "unknown_price": 1}
 
 
-def test_exclude_refs_drop_known_products_without_extra_requests():
-    tools = FakeTools([product("a"), product("b")])
-    result = asyncio.run(dispatcher(tools, known={"p1": "a"}).run(call("search_products", query="x",
-                                                                       exclude_refs=["p1"])))
-    assert result["refs"] == ["p2"] and len(tools.calls) == 1
+def test_free_only_is_forwarded_to_catalog_before_paging():
+    tools = FakeTools([product("public-place", price=None)])
+    d = dispatcher(tools)
+    result = asyncio.run(d.run(call("find_products", taxonomy="attraction", free_only=True, limit=1)))
+    assert tools.calls == [("list", {"taxonomy": "attraction", "availableOnly": True, "sort": "popular",
+                                      "limit": 1, "offset": 0, "freeOnly": True})]
+    assert result["refs"] == ["p1"] and d.budget.used == 1
+    assert d.registry.view("p1")["entryPolicy"] == "assumed_free"
 
 
-def test_error_is_not_empty_and_transient_error_retries_once():
-    flaky = FakeTools([product("a")], failures=1)
-    d = dispatcher(flaky)
-    assert asyncio.run(d.run(call("search_products", query="x")))["refs"] == ["p1"]
-    assert len(flaky.calls) == 2 and d.budget.used == 2
-    broken = FakeTools([product("a")], failures=5)
-    result = asyncio.run(dispatcher(broken).run(call("search_products", query="x")))
-    assert result["status"] == "error" and result["error"] == {"code": "SEARCH_UNAVAILABLE", "retryable": True}
-    assert result["refs"] == []
+def test_hotels_include_room_refs_and_date_filter_with_one_business_call():
+    hotel = product("h", "hotel", price=800_000, unit="PER_NIGHT")
+    good = product(
+        "r",
+        "hotel",
+        price=900_000,
+        unit="PER_NIGHT",
+        parentProductId="h",
+        priceAdults=2,
+    )
+    closed = product(
+        "x",
+        "hotel",
+        parentProductId="h",
+        availability={"from": "2026-10-25", "calendar": "10"},
+    )
+    tools = FakeTools([hotel], listing={"h": [good, closed]})
+    d = dispatcher(tools)
+    result = asyncio.run(
+        d.run(
+            call(
+                "find_products",
+                taxonomy="hotel",
+                destination="Huế",
+                check_in="2026-10-25",
+                check_out="2026-10-27",
+            )
+        )
+    )
+    assert result["refs"] == ["p1"] and result["data"]["rooms"] == {"p1": ["p2"]}
+    assert d.registry.product("p2")["productId"] == "r" and d.budget.used == 2
 
 
-def test_g09_parallel_calls_cannot_exceed_the_source_budget():
-    tools = FakeTools([product("a")])
-    d = dispatcher(tools, limit=1)
+def test_room_request_failure_preserves_hotels_as_partial():
+    d = dispatcher(FakeTools([product("h", "hotel")]), limit=1)
+    result = asyncio.run(d.run(call("find_products", taxonomy="hotel")))
+    assert result["status"] == "partial" and result["refs"] == ["p1"]
+    assert result["data"]["room_errors"] == {"p1": "TOOL_LIMIT"}
+
+
+def test_unexpected_room_adapter_failure_preserves_hotels_as_partial():
+    class BrokenRoomTools(FakeTools):
+        async def list_products(self, params):
+            if params.get("parentProductId"):
+                raise RuntimeError("room adapter unavailable")
+            return await super().list_products(params)
+
+    d = dispatcher(BrokenRoomTools([product("h", "hotel")]))
+    result = asyncio.run(d.run(call("find_products", taxonomy="hotel")))
+    assert result["status"] == "partial" and result["refs"] == ["p1"]
+    assert result["data"]["room_errors"] == {"p1": "TOOL_FAILED"}
+
+
+def test_plan_feedback_requires_consent_without_granting_it():
+    d = dispatcher(FakeTools([]))
+    d.registry.add(product("a"))
+    planning = call(
+        "plan_itinerary",
+        destination="Huế",
+        start_date="2026-10-25",
+        days=1,
+        adults=1,
+        schedule=[{"day": 1, "morning": "p1"}],
+    )
+    denied = asyncio.run(d.run(planning, context={}))
+    assert denied["data"]["commit_allowed"] is False
+    assert denied["data"]["needs_update_trip"] == ["planning_consent"]
+    accepted = asyncio.run(d.run(planning, context={"planning_consent": True}))
+    assert accepted["data"]["commit_allowed"] is True
+    assert accepted["data"]["needs_update_trip"] == []
+    stopped = asyncio.run(
+        d.run(planning, context={"planning_consent": True, "stopped": True})
+    )
+    assert stopped["data"]["commit_allowed"] is False
+
+
+def test_batch_detail_refreshes_once_and_reports_individual_error():
+    d = dispatcher(FakeTools([product("a")]), known={"p1": "a", "p2": "missing"})
+    result = asyncio.run(d.run(call("get_products", refs=["p1", "p9"])))
+    assert result["status"] == "partial" and result["refs"] == ["p1"]
+    assert result["data"]["errors"]["p9"] == "UNKNOWN_REF"
+    again = asyncio.run(d.run(call("get_products", refs=["p1"])))
+    assert again["refs"] == ["p1"] and d.budget.used == 1
+
+
+def test_transient_retry_and_parallel_budget():
+    d = dispatcher(FakeTools([product("a")], failures=1))
+    result = asyncio.run(
+        d.run(call("find_products", query="biển", taxonomy="attraction"))
+    )
+    assert result["status"] == "ok" and d.budget.used == 2
+    d = dispatcher(FakeTools([product("a")]), limit=1)
 
     async def both():
-        return await asyncio.gather(d.run(call("search_products", "c1", query="biển")),
-                                    d.run(call("search_products", "c2", query="núi")))
+        return await asyncio.gather(
+            d.run(call("find_products", query="biển", taxonomy="attraction")),
+            d.run(call("find_products", "c2", query="núi", taxonomy="attraction")),
+        )
 
     results = asyncio.run(both())
-    assert sorted(r["status"] for r in results) == ["error", "ok"]
-    assert [r["error"]["code"] for r in results if r["error"]] == ["TOOL_LIMIT"] and d.budget.used == 1
+    assert (
+        sorted(row["status"] for row in results) == ["error", "ok"]
+        and d.budget.used == 1
+    )
 
 
-def test_same_request_twice_uses_the_turn_cache():
-    tools = FakeTools([product("a")])
-    d = dispatcher(tools)
-    asyncio.run(d.run(call("search_products", "c1", query="x")))
-    asyncio.run(d.run(call("get_product_detail", "c2", product_ref="p1")))
-    asyncio.run(d.run(call("get_product_detail", "c3", product_ref="p1")))
-    assert [name for name, _ in tools.calls] == ["search_products", "detail"] and d.budget.used == 2
+def test_recommend_filters_without_claiming_personalisation():
+    d = dispatcher(FakeTools([product("a"), product("h", "hotel")]), known={"p1": "a"})
+    result = asyncio.run(
+        d.run(call("recommend", taxonomy="hotel", exclude_refs=["p1"]))
+    )
+    assert result["data"]["strategy"] == "popular" and len(result["refs"]) == 1
+    similar = asyncio.run(d.run(call("recommend", like_ref="p1", taxonomy="hotel")))
+    assert similar["data"]["strategy"] == "similar"
 
 
-def test_stale_ref_and_unavailable_tool_are_errors_for_the_orc():
+def test_only_new_tools_are_available_and_stale_plan_ref_is_rejected():
     d = dispatcher(FakeTools([product("a")]), known={"p1": "a"})
-    stale = asyncio.run(d.run(call("build_itinerary", destination="Huế", start_date="2026-10-24", days=1, adults=1,
-                                   children=0, plan_days=[{"day_index": 1, "activities": [
-                                       {"product_ref": "p1", "start_minute": 480, "end_minute": 540,
-                                        "timing_source": "estimate", "assumption": "1 giờ"}]}])))
-    assert stale["error"]["code"] == "STALE_REF"
-    no_catalog = FakeTools()
-    no_catalog.supports_catalog = False
-    d = dispatcher(no_catalog)
-    assert "lookup_flights" not in d.allowed
-    assert asyncio.run(d.run(call("list_destinations")))["error"]["code"] == "TOOL_NOT_ALLOWED"
-
-
-def test_recommendations_keep_strategy_for_honest_wording():
-    result = asyncio.run(dispatcher(FakeTools([product("a")])).run(call("get_recommendations", k=3)))
-    assert result["data"] == {"strategy": "popular", "because": {"p1": []}}
+    assert set(d.allowed) == {
+        "find_products",
+        "get_products",
+        "recommend",
+        "lookup_flights",
+        "plan_itinerary",
+    }
+    result = asyncio.run(
+        d.run(
+            call(
+                "plan_itinerary",
+                destination="Huế",
+                start_date="2026-10-24",
+                days=1,
+                adults=1,
+                schedule=[{"day": 1, "morning": "p1"}],
+            )
+        )
+    )
+    assert result["error"]["code"] == "STALE_REF"

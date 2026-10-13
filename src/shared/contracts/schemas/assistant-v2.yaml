@@ -222,6 +222,7 @@ Warning:
       enum:
       - OVER_TRIP_BUDGET
       - PRICE_UNKNOWN
+      - FREE_ENTRY_ASSUMED
       - OPENING_HOURS_UNKNOWN
       - TIMING_ESTIMATED
       - PARTIAL_COVERAGE
@@ -1924,7 +1925,7 @@ EventToolCompleted:
       $ref: ../assistant-v2.openapi.yaml#/components/schemas/ActivityData
 EventPreview:
   type: object
-  description: One preview event; final/error are terminal and only one terminal event is emitted.
+  description: Deprecated 2026-10-14 — the server no longer emits preview; kept so older clients still validate.
   additionalProperties: false
   required:
   - event

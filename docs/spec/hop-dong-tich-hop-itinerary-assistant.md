@@ -348,7 +348,7 @@ Accept: text/event-stream
 
 Request giống `POST /assistant/itineraries`. Stream phát lần lượt `run.started`, `graph.topology`, các `node.completed`, rồi `run.completed` hoặc `run.failed`. Event chỉ chứa ID node, thứ tự, trạng thái, thời lượng và response công khai; không chứa raw graph state, prompt, token hoặc credential. Vì HTTP status đã được gửi khi mở SSE, lỗi phát sinh sau đó nằm trong payload `run.failed.httpStatus`.
 
-**Tiến trình 1.27.0 (AC-AGT-09, chốt Phần A/C 13/10/2026).** Stream bổ sung `node.activity` ngay khi node bắt đầu hoặc đang tìm/tra vé/kiểm giá; `node.completed.progress` có loại lượt, bước hoàn thành, thông tin đã hiểu, nhóm tìm kiếm và thông báo bằng mã. Nhóm cập nhật thay toàn bộ theo `groupId`; số là cộng dồn do code đếm tại nơi lọc. Thông báo thay theo `(code, groupId, date)`, không cộng; nhóm `superseded` bị ẩn cùng thông báo. Không đếm được đúng phạm vi (ví dụ câu vé kèm ngày/giờ và thẻ ngày lân cận) thì bỏ số đó, không dùng tổng nguồn để ước lượng. `run.preview` sau compose chỉ có tối đa 6 sản phẩm của lịch đã kiểm nguồn; Web đợi 5 giây từ lúc gửi rồi mới hiện, chỉ để xem. Hoàn tất/dừng/lỗi thì gỡ preview. Chẩn đoán mức 1 chỉ dùng stream công khai; không có chi tiết tool/LLM theo khoá (Phần B chưa chốt). Tiến trình không được lưu vào hội thoại. Collector theo request, không đổi response JSON, payload LLM, tham số tool hoặc state lưu; `application` nhận bộ đếm/callback tuỳ chọn và không import `agents`.
+**Tiến trình 1.27.0 (AC-AGT-09, chốt Phần A/C 13/10/2026).** Stream bổ sung `node.activity` ngay khi node bắt đầu hoặc đang tìm/tra vé/kiểm giá; `node.completed.progress` có loại lượt, bước hoàn thành, thông tin đã hiểu, nhóm tìm kiếm và thông báo bằng mã. Nhóm cập nhật thay toàn bộ theo `groupId`; số là cộng dồn do code đếm tại nơi lọc. Thông báo thay theo `(code, groupId, date)`, không cộng; nhóm `superseded` bị ẩn cùng thông báo. Không đếm được đúng phạm vi (ví dụ câu vé kèm ngày/giờ và thẻ ngày lân cận) thì bỏ số đó, không dùng tổng nguồn để ước lượng. `run.preview` không còn phát (bỏ thẻ xem trước, chốt 2026-10-14, `../prd/update-archive/2026-10-14-bo-the-xem-truoc-trong-tien-trinh.md`); schema giữ cho client cũ. Chẩn đoán mức 1 chỉ dùng stream công khai; không có chi tiết tool/LLM theo khoá (Phần B chưa chốt). Tiến trình không được lưu vào hội thoại. Collector theo request, không đổi response JSON, payload LLM, tham số tool hoặc state lưu; `application` nhận bộ đếm/callback tuỳ chọn và không import `agents`.
 
 `GET /api/v1/assistant/status` trả readiness, graph version, data mode (`fixture` | `inprocess` | `http` | `disabled`) và số sản phẩm nếu adapter biết (`fixture`: 50; `inprocess`: số search unit trong index RecSys đang phục vụ, `null` khi RecSys chưa nạp). `fixture` chỉ được bật mặc định ở development/test; ngoài development/test mặc định là `disabled`, nên staging/production phải đặt `ITINERARY_DATA_MODE` tường minh (`inprocess` khi chạy dữ liệu thật).
 
@@ -751,8 +751,12 @@ Entry riêng `src/shared/contracts/assistant-v2.openapi.yaml`, prefix `/api/v2`;
   (mỗi thẻ kèm `uiAction` xác nhận), `itinerary` (ngày → hoạt động có giờ, `stays` có thể rỗng, `nights` có thể 0,
   `costs` có tổng/ngân sách/vượt hoặc unknown), `planEffect` (`keep` giữ lịch, `replace` thay lịch và tăng
   `planRevision`; revision lệch thì 409 `PLAN_REVISION_CONFLICT`), `warnings` (câu báo do code viết), `suggestions`.
-- `message` nhắc sản phẩm bằng `[Tên](product:id)` như lời diễn giải v1, để widget đặt thẻ ngay sau câu đó.
-- SSE: `start` → Think (`activity.kind=think`, `explanation` công khai đã kiểm) → Act (`activity` của tool) → Observe (`tool-completed`, `outcome` và số đếm thật) → Think tiếp theo hoặc `final`/`error`. Các call độc lập chạy song song; Observe phát khi từng call xong. Cập nhật số chọn/hiển thị của cùng group thay số cũ, không thêm vòng giả. `preview` chỉ lịch đã kiểm, chỉ xem. Mất kết nối không huỷ lượt. Không thêm model call để viết tiến trình.
+- `message` nhắc sản phẩm bằng `[Tên](product:id)` như lời diễn giải v1, để widget đặt thẻ ngay sau câu đó. Code
+  xuống đoạn sau câu chứa sản phẩm (và trước sản phẩm đứng đầu câu) để thẻ không dồn thành danh sách cuối câu trả lời
+  (AC-AGT-07). Khách xin lịch trình mà thiếu ngày đi: `clarification`, hỏi gộp một câu, không phác lịch theo ngày bằng
+  chữ (AC-AGT-01). Điểm `free`/`assumed_free` được giới thiệu là điểm tham quan tự do; câu lưu ý
+  `FREE_ENTRY_ASSUMED` do code viết một lần, orc không lặp ở từng điểm.
+- SSE: `start` → Think (`activity.kind=think`, `explanation` công khai đã kiểm) → Act (`activity` của tool) → Observe (`tool-completed`, `outcome` và số đếm thật) → Think tiếp theo hoặc `final`/`error`. Các call độc lập chạy song song; Observe phát khi từng call xong. Cập nhật số chọn/hiển thị của cùng group thay số cũ, không thêm vòng giả. `preview` không còn phát (bỏ thẻ xem trước, chốt 2026-10-14, `../prd/update-archive/2026-10-14-bo-the-xem-truoc-trong-tien-trinh.md`). Mất kết nối không huỷ lượt. Không thêm model call để viết tiến trình.
 - Lỗi theo §4.6: `LLM_UNAVAILABLE` 503 (model lỗi, hết giới hạn lượt), `ITINERARY_VALIDATION_FAILED` 500 (câu trả lời
   vẫn sai sau một lần sửa), `VALIDATION_ERROR` 400 (đầu vào bị chặn, NFR-SEC-04) hoặc 422 (request sai).
 - Chưa có: ghi archive Postgres cho user đăng nhập và endpoint đọc lại lịch sử v2 (làm cùng lúc chuyển widget).
@@ -927,4 +931,40 @@ Ba schema được tham chiếu từ `src/shared/contracts/openapi.yaml`. Fronte
 
 FR-AGT-01/06, AC-AGT-01/04/07/09: context_patch.engagement phân biệt rekindle (mất hứng, khơi tò mò một lần), stop (dừng rõ/từ chối tiếp), continue (chủ động khám phá tiếp). Khi dừng, consent lập lịch bị hủy; khám phá tiếp không tự cấp lại consent. curiosity_offered chỉ commit sau final hợp lệ. Một lần khơi tò mò tối đa một sản phẩm đã tra, một nút; prompt giới hạn hai câu, không tạo classifier/agent riêng. Khách chưa biết gì được gợi mở từ catalog/recommendation.
 
-Giá lưu trú dùng priceAdults theo PRD; maxOccupancy được kiểm riêng cho cả người lớn/trẻ em, không lấy sức chứa thay số khách giá đã gồm. Không có priceAdults thì rooms=null và tổng tiền unknown; không ghi “tính tạm một phòng”. Thiếu maxOccupancy có cảnh báo ROOM_CAPACITY_UNKNOWN; vượt sức chứa là violation ROOM_CAPACITY_EXCEEDED để orc chọn lại. Giờ sáng/chiều giữ qua response/UI; prompt phác lịch trọn ngày theo cửa sổ thực tế và giải thích khi chỉ có sáng. Chất lượng model thật do người dùng eval sau kiểm kỹ thuật.
+Giá lưu trú dùng priceAdults theo PRD; maxOccupancy được kiểm riêng cho cả người lớn/trẻ em, không lấy sức chứa thay số khách giá đã gồm. V2 plan_itinerary: số phòng = ceil(tổng khách/priceAdults); thiếu priceAdults dùng maxOccupancy kèm PRICE_CAPACITY_UNKNOWN. Thiếu cả hai thì rooms=null và tổng tiền unknown; không ghi “tính tạm một phòng”. V1 giữ luật cũ. Thiếu maxOccupancy có cảnh báo ROOM_CAPACITY_UNKNOWN; vượt sức chứa là violation ROOM_CAPACITY_EXCEEDED để orc chọn lại. Giờ sáng/chiều giữ qua response/UI; prompt phác lịch trọn ngày theo cửa sổ thực tế và giải thích khi chỉ có sáng. Chất lượng model thật do người dùng eval sau kiểm kỹ thuật.
+
+
+### Function calling và lập lịch theo buổi v2 (chốt 2026-10-13)
+
+Lời chat, nhãn nút và Think công khai dùng ngôn ngữ về chuyến đi/điểm tham quan. Catalog, cursor, offset,
+registry, taxonomy, tên tool và cơ chế phân trang chỉ ở payload nội bộ; final có nội dung này được trả về orc
+để sửa trong quota hiện có (`INTERNAL_IMPLEMENTATION_DETAILS`). Think của tool chứa thông tin nội bộ bị bỏ.
+Kết quả rỗng nhưng còn cursor: orc tự quyết tra tiếp trong quota trước khi trả lời, không bắt khách xác nhận chỉ
+để đọc trang khác. Chưa kiểm đủ thì nói giới hạn xác minh bằng lời cho khách, không kết luận không có điểm phù hợp.
+Việc ngoài du lịch (xin/mượn tiền, nhờ đặt chỗ/thanh toán thay) trả lời 200: nói rõ chỉ hỗ trợ du lịch, chỉ việc
+gần nhất kèm nút, không gọi tool tra. Số tiền/giờ trong lời văn vẫn phải qua fact; ngoại lệ duy nhất là câu trả lời
+không có sản phẩm, dữ kiện, thẻ hay phương án nào được nhắc lại đúng con số khách viết trong tin hiện tại.
+Phục vụ FR-AGT-02/04/06, NFR-REL-01, AC-AGT-06/07.
+
+FR-AGT-02/03, NFR-REL-01; đề xuất A–G `../prd/update-archive/2026-10-13-thiet-ke-lai-bo-tool-orc.md`,
+plan `../plan/2026-10-13-orc-function-calling-va-tool-lap-lich.md`.
+Năm function nghiệp vụ: find_products, get_products, recommend, lookup_flights, plan_itinerary; hai function điều khiển
+update_trip (evidence) và respond. Response và SSE v2 giữ nguyên; kind vẫn search/recommend/detail/flights/itinerary.
+Trong một lượt, các message chỉ nối thêm, ToolMessage gắn đúng provider call id và có mã cN do server cấp cho fact/plan.
+Quá ba call nghiệp vụ: chỉ chạy tối đa ba call, trả TOO_MANY_CALLS cho call thừa. Hết ba lượt chỉ còn respond;
+respond sai schema hoặc guard cũng chỉ được sửa một lần. Model vẫn tối đa năm lần, nguồn vật lý tối đa mười request.
+Khách sạn kèm phòng vẫn tính request nguồn mỗi trang phòng; báo rõ room_errors/coverage nếu đọc thiếu, không nhận đã
+có đủ phòng. Get nhiều refs báo lỗi từng sản phẩm và giữ kết quả thành công. Không tự tiếp trang.
+
+Orc chọn một ref mỗi buổi sáng 08–12, chiều 13–18, tối 18:30–22; cùng ref sáng/chiều là hoạt động cả ngày, tính một lần.
+Code tính giờ từ durationMinutes, thiếu thì 120 phút kèm giả định. Giờ phải nằm trong buổi/giờ mở/cửa sổ bay với đệm
+90/150 phút; không vừa trả violations với fix_hint, không tự chuyển buổi. Khách chỉ định giờ vẫn được kiểm/giữ.
+Lưu trú mặc định nhận ngày đầu, trả ngày cuối (N−1 đêm), chia khách sạn bằng from_day/to_day. Số phòng khách nói rõ
+được giữ và kiểm sức chứa, tối đa chín. Thiếu giá không cộng thành không đồng; vượt ngân sách chỉ là cảnh báo.
+Chi phí từng dòng, tỷ trọng và savings từ registry của lượt để orc cân nhắc; không tự thay refs đã khoá. Combo gợi ý
+riêng trong cards.combo; không nằm trong lịch. Ngày trọn vẹn ưu tiên hai–ba hoạt động; ngày bay hoặc hoạt động cả ngày
+có thể ít hơn; thiếu dữ liệu thì nói rõ. Nghiệm thu model thật ghi riêng trong report, không suy từ test model giả.
+Khách muốn phương án tiết kiệm hơn khi đã có lịch: orc tra lại ref của lịch định giữ (ref cũ là STALE_REF nếu chưa
+tra), tìm ứng viên rẻ hơn cho dòng tốn nhất (khách sạn price_asc dưới giá đang dùng, hoạt động free_only/price_asc),
+rồi plan_itinerary thay dòng đó, giữ ngày, số khách và ref đã khoá; trả itinerary/replace với chi phí mới qua fact.
+Một tra cứu lỗi không chặn dựng lịch bằng ứng viên đã có; không rẻ hơn được thì nói lý do và giữ lịch.
