@@ -264,6 +264,14 @@ class SerialisedDeploys(unittest.TestCase):
         self.assertIn("image-key.sh", body(APP_CD, "  plan:\n", "  backend-ci:\n"))
         self.assertIn("backend_key", body(APP_CD, "Record last good"))
 
+    def test_changing_the_deploy_mechanism_alone_still_rolls(self):
+        # 2026-10-13 (#198): chỉ đổi slot-deploy.sh -> key backend/frontend không đổi -> App CD bỏ qua deploy.
+        key_script = (ROOT / "scripts" / "ci" / "image-key.sh").read_text()
+        self.assertRegex(key_script, r"slot\)\s+paths=\(infra/terraform/environments/staging-ha/slot-deploy\.sh scripts/roll-staging-ha-app-slots\.sh\)")
+        self.assertIn("for c in backend frontend slot; do", APP_CD)
+        self.assertIn("needs.plan.outputs.slot_changed == 'true'", body(APP_CD, "  deploy:\n"))
+        self.assertIn(".slot_key = $sk", body(APP_CD, "Record last good"))
+
     def test_infra_cd_uses_its_own_lock(self):
         self.assertIn("group: staging-ha-infra", INFRA_CD)
         self.assertNotIn("group: staging-ha-app", INFRA_CD)
