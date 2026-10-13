@@ -223,8 +223,7 @@ ngân sách thời gian đặt bằng số đo. Orchestrator là luồng duy nh�
 còn cờ bật/tắt, không còn bước phân loại bằng LLM và các node khám phá, trò chuyện bằng LLM của luồng cũ; code của luồng
 cũ đã gỡ để nhóm không phải đọc và sửa trùng. Không ý AC nào bị bỏ: ý AC trước đây chỉ luồng cũ đáp ứng được kiểm và làm
 trên orchestrator. Không còn đo so sánh hai
-kiến trúc. Kiểm tra bắt buộc gồm: các kịch bản demo chạy với LLM thật; ý AC mà kịch bản chạm tới đạt; snapshot hành vi
-ghi bằng orchestrator và phát lại được offline.
+kiến trúc. Kiểm tra bắt buộc gồm: các kịch bản demo chạy với LLM thật; ý AC mà kịch bản chạm tới đạt.
 
 ### Tiêu chuẩn Grounding (Chống Bịa Đặt):
 - **Khung tiến trình (AC-AGT-09):** dữ kiện do code tính từ state hoặc đếm tại nơi lọc kết quả tool của lượt đó, gửi qua SSE dạng mã và số; Web viết câu chữ. Stream không mang prompt, output thô của LLM hay token. Thẻ hiện trước lời tư vấn chỉ gồm sản phẩm của lịch `compose` đã dựng và đã kiểm nguồn. Chốt Phần A và C ngày 2026-10-13.
