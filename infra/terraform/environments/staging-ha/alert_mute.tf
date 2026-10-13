@@ -3,8 +3,8 @@
 # Khi kênh tắt, các alert của staging-ha không gửi email trong khung này. Incident vẫn được ghi nhận trong Monitoring.
 # Kênh `vota-staging` (stack cũ, ngoài staging-ha) không đổi.
 #
-# Lịch tắt/bật VM nằm trong scheduler.tf (23:59 tắt, 08:30 bật). Khung mute 23:55–08:35 bao quanh lịch đó:
-# lúc VM bật lại, cảnh báo của lần khởi động được mute đến 08:35, trong khi MIG app cần thêm vài phút để sẵn sàng.
+# Lịch tắt/bật VM ban đêm đã bị vô hiệu (2026-10-12, xem history/2026-10-12-tat-lich-vm-va-bo-chan-cd.md): VM chạy 24/7.
+# Khung mute 23:55–08:35 không còn bao quanh lần khởi động VM nào. Giữ hay bỏ là quyết định của người vận hành (còn lại trong entry).
 
 variable "alert_mute_start_schedule" {
   description = "Lúc tắt kênh cảnh báo HA (mute bắt đầu)."

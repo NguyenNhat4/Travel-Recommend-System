@@ -1,6 +1,6 @@
 # Xếp lịch và tính tiền
 
-Phục vụ FR-AGT-02, FR-AGT-03, FR-AGT-04, AC-AGT-02, AC-AGT-04. Mô tả theo code tại 2026-10-09; khi lệch, PRD và contract thắng.
+Phục vụ FR-AGT-02, FR-AGT-03, FR-AGT-04, AC-AGT-02, AC-AGT-04. Mô tả theo code tại 2026-10-11; khi lệch, PRD và contract thắng.
 
 ## Mục đích
 
@@ -188,8 +188,30 @@ timeline
   chia thành `flights` (vé), `stays` (khách sạn), `activities` (tour, điểm tham quan, golf; tự do 0 đ), cộng lại bằng
   `estimatedTotal`; vắng khi tổng chưa biết. `validate_plan` kiểm cả phần chia. Không có khoản ăn uống ước tính.
 
+<a id="ngay-ngoai-cua-so"></a>
+**Ngày đi chưa mở bán** (chat thử 10–11/10/2026, `history/2026-10-10-lich-tham-khao-ngoai-cua-so-mo-ban.md`)
+
+Trợ lý không bao giờ chỉ nói "không có sản phẩm" khi lý do là ngày.
+
+```mermaid
+flowchart TD
+    A{Ngày đi còn điểm<br/>tham quan mở bán?} -- có --> B[Lịch thường; điểm chưa mở bán<br/>bị loại PRODUCT_DROPPED_DATE]
+    A -- không --> C{Có điểm tham quan<br/>chỉ vướng ngày?}
+    C -- có --> D[Lịch tham khảo: tối đa 8 điểm<br/>nhiều đánh giá nhất]
+    C -- không --> E[NO_RESULTS + ngày gần nhất còn bán]
+    D --> F[Câu mở đầu nêu ngày mở bán thật<br/>+ nút 'Đi nơi n ngày từ ngày X']
+```
+
+- [Lịch tham khảo](glossary.md#lich-tham-khao) là `COMPLETED`. Điểm có vé được xếp nhưng không tính là đặt được, mỗi điểm một
+  cảnh báo `PRODUCT_NOT_ON_SALE_FOR_DATE`. Khách sạn và vé máy bay vướng ngày vẫn bị loại như thường.
+- **[Ngày đi chung](glossary.md#ngay-di-chung):** vé máy bay, khách sạn, vé tham quan cùng thiếu vì ngày thì code tính **một**
+  ngày đi gần nhất mà cả ba cùng có (vé đủ hai chiều, khách sạn đủ các đêm, vé tham quan còn bán tới ngày về). Câu mở đầu,
+  mục vé và mục khách sạn cùng gợi ý ngày đó, thay cho ba ngày khác nhau (chat thử M09).
+
 ## Edge case
 
+- Chuyến bay đêm hạ cánh rạng sáng vẫn để lại trọn ngày: tour cả ngày được xếp sau dòng di chuyển từ sân bay (trước
+  2026-10-10 làm lịch thành `FALLBACK`).
 - Không có khách sạn nào dùng được (chuyến từ 2 ngày): vẫn lập lịch, kèm câu "chưa có khách sạn" nêu lý do thật lấy từ
   `drop_summary` (vd chỉ mở bán từ ngày X) và ngày gần nhất còn phòng.
 - Ngày không có sản phẩm: cảnh báo `DAY_WITHOUT_PRODUCTS`. Riêng ngày mà giờ bay không chừa buổi nào thì không cảnh báo.
@@ -212,5 +234,7 @@ timeline
 - [`agents/steps/filtering.py`](../../../../src/backend/app/agents/steps/filtering.py) — luật trước, payload LLM, cảnh báo `PRODUCT_DROPPED_DUPLICATE`
 - [`domain/itinerary/flights.py`](../../../../src/backend/app/domain/itinerary/flights.py) — `airports` (toạ độ sân bay của chặng đã chọn)
 - [`domain/itinerary/geo.py`](../../../../src/backend/app/domain/itinerary/geo.py) — `located`, `medoid`, `band`, `haversine_km`
-- [`agents/steps/composition.py`](../../../../src/backend/app/agents/steps/composition.py) — ghép vé, tiền vé trừ vào ngân sách, cảnh báo (`PLAN_CRITERIA`, `STAY_OPTIONS`), `NO_RESULTS`/`FALLBACK`
+- [`agents/steps/composition.py`](../../../../src/backend/app/agents/steps/composition.py) — ghép vé, tiền vé trừ vào ngân sách, cảnh báo (`PLAN_CRITERIA`, `STAY_OPTIONS`), `NO_RESULTS`/`FALLBACK`, lịch tham khảo
+- [`application/itinerary/retrieval.py`](../../../../src/backend/app/application/itinerary/retrieval.py) — `reference_only` (điểm chỉ vướng ngày)
+- [`domain/itinerary/flights.py`](../../../../src/backend/app/domain/itinerary/flights.py) — `joint_start` (ngày đi chung), `nearest_dates`
 - [`agents/steps/explanations.py`](../../../../src/backend/app/agents/steps/explanations.py) — câu "chưa có khách sạn"

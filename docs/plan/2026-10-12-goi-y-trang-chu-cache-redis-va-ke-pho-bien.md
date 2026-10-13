@@ -11,7 +11,7 @@
 - Đề xuất PRD liên quan: `docs/prd/update-archive/2026-10-12-cache-goi-y-tren-redis.md` (đã chốt, tqanh123, 2026-10-12; đã áp dụng vào PRD)
 - Trạng thái: hoàn thành phần code, test và tài liệu (2026-10-12); còn phần đo (mục "Còn lại" cuối file)
   - Xong:
-    - đề xuất áp dụng vào PRD; contract 1.25.0;
+    - đề xuất áp dụng vào PRD; contract 1.27.0;
     - giai đoạn 1: `/products` trộn theo nhóm loại, kệ Phổ biến ở trang chủ, spec kệ Phổ biến và timeout, cold-start tối đa 2 mỗi taxonomy;
     - giai đoạn 2: thời gian từng bước, 500 event, gọi Weaviate song song, nạp sẵn vector vào RAM;
     - giai đoạn 3: cache gợi ý trên Redis, làm ấm sau đăng nhập, spec.
@@ -52,7 +52,7 @@
 
 ## Giai đoạn 1 — Kệ Phổ biến, cold-start, timeout frontend (không lệch PRD)
 
-### 1a. Contract (làm trước), lên 1.25.0
+### 1a. Contract (làm trước), lên 1.27.0
 
 Sửa `src/shared/contracts/paths/catalog.yaml` và `openapi.yaml`:
 - **`taxonomy`:** nhận nhiều giá trị, cách nhau bằng dấu phẩy (`style: form`, `explode: false`, mảng `Taxonomy`), ví dụ `taxonomy=attraction,golf`. Một giá trị như cũ vẫn hợp lệ, nên đây là thay đổi tương thích ngược.
@@ -144,7 +144,7 @@ Phải làm trước hoặc cùng giai đoạn 3. Cache không giúp được c�
 Quy tắc chi tiết nằm trong đề xuất (khoá theo dấu vân tay event, TTL 900 s, giới hạn 64 KB, bỏ qua khi Redis lỗi, chống tính trùng, làm ấm sau đăng nhập). Thứ tự làm:
 
 1. ~~Cập nhật PRD theo đề xuất (`architecture.md` §1/§4, `deployment-plan.md` §2), đổi trạng thái đề xuất và `git mv` sang `docs/prd/update-archive/`.~~ Xong 2026-10-12.
-2. Contract: mô tả `diagnostics.userVectorCacheHit`, bỏ `[CHỜ DUYỆT: P3]`; làm cùng lần nâng 1.25.0 của giai đoạn 1.
+2. Contract: mô tả `diagnostics.userVectorCacheHit`, bỏ `[CHỜ DUYỆT: P3]`; làm cùng lần nâng 1.27.0 của giai đoạn 1.
 3. Backend:
    - **Port:** `application/ports/recommendation_cache.py` (`get`, `put`, `try_lock`/`unlock` khoá tính kèm token; lỗi `RecommendationCacheUnavailable`).
    - **Cache nằm trong engine** (`application/recommendation/cache.py` + field `RecommendForUser.cache`), không phải lớp bọc riêng: engine đã đọc event thô, và đường CDP lỗi trả trước khi đụng cache nên kết quả lui không bao giờ được ghi.
@@ -157,7 +157,7 @@ Quy tắc chi tiết nằm trong đề xuất (khoá theo dấu vân tay event, 
    - **Test:** bản giả trong `tests/fakes/`, unit test cho cache (hit, miss, event mới ra khoá mới, Redis lỗi, CDP lỗi không ghi, chống tính trùng), integration test với Redis tạm, và test kiến trúc.
 4. Hạ tầng:
    - `.env.example` và `docker-compose.yml` (DB index chưa dùng; dev hiện dùng 1, 2, 3).
-   - Không cần sửa `infra/terraform/environments/staging-ha/compose.ha.yml`: container backend đọc mọi biến từ `env_file` (`/etc/vota/backend.env`, chép từ secret).
+   - Không cần sửa hạ tầng: container backend đọc mọi biến từ `env_file` (`/etc/vota/backend.env`, chép từ secret). Từ 2026-10-12, file compose này do `infra/terraform/environments/staging-ha/slot-deploy.sh` sinh ra; `compose.ha.yml` cũ đã bị xoá.
    - Secret `vota-ha-backend-env`: người vận hành cập nhật; kiểm DB index đang dùng trên prod trước.
 5. Spec: `hop-dong-tich-hop-search-recommendation.md` §5, §7.1, §10 S5; mục Recommendation của `hop-dong-tich-hop-backend.md`.
 6. Đo tỷ lệ trúng cache và bộ nhớ Redis sau khi deploy. Cảnh báo bộ nhớ trên 80% đã có.
@@ -183,4 +183,4 @@ Không còn (mọi điểm đã chốt ngày 2026-10-12, xem "Quyết định đ
 - **Vận hành:** thêm `RECOMMEND_CACHE_REDIS_URL` (DB index chưa dùng) vào secret `vota-ha-backend-env`. Chưa có biến thì cache tắt, production ghi WARNING `recsys.cache.disabled`.
 - **Hai điểm hiện thực khác phần "thay đổi source" của đề xuất:**
   - cache nằm trong engine (`application/recommendation/cache.py`), không phải lớp bọc riêng;
-  - không sửa `compose.ha.yml`, vì biến lấy từ `env_file`.
+  - không sửa hạ tầng, vì biến lấy từ `env_file` (`slot-deploy.sh` sinh compose có `env_file: /etc/vota/backend.env`).

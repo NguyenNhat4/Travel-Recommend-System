@@ -32,7 +32,7 @@ const AI_CHIPS = ['Resort Sota Nha Trang cho gia đình', 'Combo Phú Quốc 3N2
 
 /**
  * Tab của khối "Phổ biến" (frontend §4.1 ④): chỉ tab đang chọn gọi API, mỗi tab một request. `Tất cả` nhờ Backend trộn theo
- * nhóm loại (`diversify`, contract 1.25.0) và là kệ duy nhất gắn nhãn loại trên thẻ; `Vé tham quan` gồm cả sân golf
+ * nhóm loại (`diversify`, contract 1.27.0) và là kệ duy nhất gắn nhãn loại trên thẻ; `Vé tham quan` gồm cả sân golf
  * (chốt 2026-10-12).
  */
 const POPULAR_TABS: Array<{

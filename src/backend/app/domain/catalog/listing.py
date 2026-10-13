@@ -10,7 +10,7 @@ from .models import Product
 
 PRODUCT_SORTS = ("popular", "price_asc", "price_desc")
 DIVERSIFY_MODES = ("taxonomy",)
-#: `diversify=taxonomy` (contract 1.25.0): nhóm trộn theo thứ tự cố định, chốt 2026-10-12. Golf chung nhóm vé tham quan.
+#: `diversify=taxonomy` (contract 1.27.0): nhóm trộn theo thứ tự cố định, chốt 2026-10-12. Golf chung nhóm vé tham quan.
 DIVERSIFY_GROUPS: tuple[tuple[str, frozenset[str]], ...] = (
     ("hotel", frozenset({"hotel"})),
     ("experience", frozenset({"attraction", "golf"})),
@@ -49,7 +49,7 @@ def summarize_variants(children: Iterable[Product]) -> VariantSummary:
 
 def filter_items(items: Iterable[ListingItem], *, destination: str | None = None,
                  taxonomy: str | Collection[str] | None = None, available_only: bool = False) -> list[ListingItem]:
-    """`taxonomy` là một loại hoặc một tập loại (contract 1.25.0, `taxonomy=attraction,golf`)."""
+    """`taxonomy` là một loại hoặc một tập loại (contract 1.27.0, `taxonomy=attraction,golf`)."""
     wanted = None if taxonomy is None else ({taxonomy} if isinstance(taxonomy, str) else set(taxonomy))
     return [
         i for i in items

@@ -141,4 +141,4 @@ def test_contract_declares_every_domain_constant():
     assert combo_flags == set(qp["mustNot"]["properties"]["flags"]["items"]["enum"])
     scored = DOC["components"]["schemas"]["ScoredProduct"]["allOf"][1]["properties"]
     assert scored["matchedChildren"]["maxItems"] == 5
-    assert DOC["info"]["version"] == app.version == "1.25.0"
+    assert DOC["info"]["version"] == app.version == "1.27.0"

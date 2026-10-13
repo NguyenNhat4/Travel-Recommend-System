@@ -122,7 +122,7 @@ def test_unknown_sort_with_diversify_reports_both_fields(products):
     assert err.value.details == {"fields": ["sort", "diversify"]}
 
 
-# --- nhiều taxonomy và diversify=taxonomy (contract 1.25.0) -----------------------------------
+# --- nhiều taxonomy và diversify=taxonomy (contract 1.27.0) -----------------------------------
 
 def test_several_taxonomies_filter_as_union_and_ignore_duplicates(products):
     page = run(ListProducts(products)(taxonomy=["attraction", "golf", "golf"], limit=50))

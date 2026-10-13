@@ -54,7 +54,7 @@ describe('catalog API calls', () => {
     expect(page.results.map((r) => r.productId)).toEqual(['nt-h-10-r1', 'nt-h-10-r2']);
   });
 
-  it('sends several taxonomies as one comma-separated parameter (contract 1.25.0)', async () => {
+  it('sends several taxonomies as one comma-separated parameter (contract 1.27.0)', async () => {
     const fetchMock = respond(popularFixture);
     await listProducts({ taxonomy: ['attraction', 'golf'], sort: 'popular', availableOnly: true, limit: 8 });
     expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/products?taxonomy=attraction%2Cgolf&sort=popular&availableOnly=true&limit=8');

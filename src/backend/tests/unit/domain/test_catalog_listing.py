@@ -101,7 +101,7 @@ def test_unknown_sort_is_rejected():
         sort_items([], "newest")
 
 
-# --- diversify=taxonomy (contract 1.25.0) ----------------------------------------------------
+# --- diversify=taxonomy (contract 1.27.0) ----------------------------------------------------
 
 TAX = {"h": "hotel", "a": "attraction", "g": "golf", "c": "combo", "f": "flight", "x": "cruise"}
 

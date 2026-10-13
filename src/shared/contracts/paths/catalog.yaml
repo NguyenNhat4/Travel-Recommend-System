@@ -9,7 +9,9 @@
       giống /search và /recommendations. Có parentProductId: trả các sản phẩm tầng con (hạng phòng, chuyến bay
       cụ thể) của sản phẩm cha đó, là đơn vị đặt chỗ mà Web thêm vào giỏ; sort=popular với tầng con xếp theo
       giá tăng dần. parentProductId không có trong catalog hoặc không có tầng con thì trả results rỗng.
-      diversify=taxonomy (1.25.0) trộn danh sách theo nhóm loại; kệ Phổ biến tab Tất cả ở Home dùng tham số này.
+      Response 200 có `Cache-Control: public, max-age=60, s-maxage=300`: danh mục không đọc người dùng nên giống
+      nhau cho mọi người, trình duyệt giữ 60 giây và lớp cache trung gian giữ 5 phút. Lỗi 400 không có header này.
+      diversify=taxonomy (1.27.0) trộn danh sách theo nhóm loại; kệ Phổ biến tab Tất cả ở Home dùng tham số này.
     security:
     - {}
     - bearerAuth: []
@@ -30,7 +32,7 @@
       in: query
       required: false
       description: >-
-        Lọc một hoặc nhiều danh mục (1.25.0): nhiều giá trị cách nhau bằng dấu phẩy, ví dụ taxonomy=attraction,golf.
+        Lọc một hoặc nhiều danh mục (1.27.0): nhiều giá trị cách nhau bằng dấu phẩy, ví dụ taxonomy=attraction,golf.
         Một giá trị như cũ vẫn hợp lệ. Giá trị trùng được bỏ qua; giá trị ngoài enum hoặc đoạn rỗng (taxonomy=hotel,)
         trả 400 VALIDATION_ERROR, details.fields có "taxonomy".
       style: form
@@ -53,7 +55,7 @@
       in: query
       required: false
       description: >-
-        (1.25.0) Chỉ nhận taxonomy. Trộn danh sách đã lọc và xếp theo round-robin giữa các nhóm loại, thứ tự nhóm cố
+        (1.27.0) Chỉ nhận taxonomy. Trộn danh sách đã lọc và xếp theo round-robin giữa các nhóm loại, thứ tự nhóm cố
         định: khách sạn (hotel) → vé tham quan và golf (attraction, golf) → combo → vé máy bay (flight); trong mỗi nhóm
         giữ thứ tự của sort, nhóm hết món thì bỏ qua. Trộn trước khi cắt offset/limit nên kết quả là một hoán vị: total
         không đổi, các trang nối tiếp nhau. Lọc taxonomy chỉ còn một nhóm thì thứ tự không đổi. Chỉ đi với sort=popular
@@ -82,6 +84,9 @@
     - catalog
     operationId: getProduct
     summary: Chi tiết sản phẩm
+    description: >-
+      Response 200 có `Cache-Control: public, max-age=60, s-maxage=300` (chi tiết không đọc người dùng). 404 không có
+      header này.
     security:
     - {}
     - bearerAuth: []
@@ -105,6 +110,9 @@
     - catalog
     operationId: getSimilarProducts
     summary: Sản phẩm tương tự theo độ gần vector sản phẩm
+    description: >-
+      Response 200 có `Cache-Control: public, max-age=60, s-maxage=300` (vector và danh sách tương tự không đọc người
+      dùng). 400, 404, 409 và 503 không có header này.
     security:
     - {}
     - bearerAuth: []

@@ -1,7 +1,7 @@
 import React, { useId, useState } from 'react';
 import Image from 'next/image';
 import { ChevronDown, Compass, Palmtree, Users } from 'lucide-react';
-import { AssistantTripStarter, tripStarterMessage } from '../../../components/assistant/AssistantTripStarter';
+import { TripDetailsForm, vietnamToday, type ClarificationForm } from '../../../components/assistant/TripDetailsForm';
 import { WidgetComposer } from './WidgetComposer';
 
 const SUGGESTIONS = [
@@ -9,6 +9,19 @@ const SUGGESTIONS = [
   { label: 'Gia đình', icon: Users, prompt: 'Giúp mình lên lịch trình cho gia đình có trẻ nhỏ.' },
   { label: 'Khám phá', icon: Compass, prompt: 'Mình muốn khám phá văn hóa và ẩm thực địa phương.' },
 ];
+
+/**
+ * Form của màn chào là đúng form thông tin chuyến đi trong chat (AC-AGT-01), mở bằng nút, không chọn sẵn gì và không gọi
+ * LLM. Năm lựa chọn sở thích là bộ cố định PRD đã chốt 12/10 (`preferences.PREFERENCES` ở backend).
+ */
+function openingForm(): ClarificationForm {
+  return {
+    fields: ['destination', 'days', 'startDate', 'party', 'budget', 'origin', 'interests'],
+    defaults: { destination: null, startDate: null, days: null, party: null, budget: null, interests: [], pace: null, origin: null },
+    startDateMin: vietnamToday(),
+    interestOptions: ['Hồ bơi', 'Phù hợp trẻ nhỏ', 'View biển', 'Có bữa sáng', 'Spa'],
+  };
+}
 
 interface WidgetOpeningProps {
   value: string;
@@ -40,7 +53,7 @@ export function WidgetOpening({ value, onChange, onSend, busy }: WidgetOpeningPr
         Thêm thông tin chuyến đi <ChevronDown className={`h-4 w-4 transition ${detailsOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
       </button>
       <div id={detailsId} hidden={!detailsOpen} className="w-full">
-        {detailsOpen && <AssistantTripStarter disabled={busy} onSubmit={(selection) => onSend(tripStarterMessage(selection))} />}
+        {detailsOpen && <TripDetailsForm form={openingForm()} disabled={busy} onConfirm={(prompt) => onSend(prompt)} />}
       </div>
     </section>
   );

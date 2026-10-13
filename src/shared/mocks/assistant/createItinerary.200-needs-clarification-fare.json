@@ -1,0 +1,90 @@
+{
+  "status": "NEEDS_CLARIFICATION",
+  "conversationId": "conv-01JXYZ",
+  "question": "**Vé TP. Hồ Chí Minh – Hà Nội**\nVé một chiều TP. Hồ Chí Minh → Hà Nội rẻ nhất mình thấy là 632.000 ₫/khách, bay ngày 12/10 ([VietJet Air VJ124](product:fl-sgn-han-1012), cất cánh 05:05).\nGiá theo dữ liệu hiện có, có thể đổi khi đặt.",
+  "knownIntent": {
+    "destination": "Hà Nội",
+    "origin": "TP. Hồ Chí Minh",
+    "startDate": null,
+    "days": null,
+    "party": null,
+    "budget": null,
+    "interests": [],
+    "pace": null
+  },
+  "suggestions": [
+    "Đắt nhất thì sao?",
+    "Ngày nào còn vé?",
+    "Khách sạn ở Hà Nội"
+  ],
+  "searchResults": {
+    "flight": [
+      {
+        "productId": "fl-sgn-han-1012",
+        "name": "VietJet Air VJ124 TP. Hồ Chí Minh - Hà Nội",
+        "taxonomy": "flight",
+        "destination": "Hà Nội",
+        "unitPrice": 632000,
+        "currency": "VND",
+        "available": true,
+        "availableFrom": "2026-10-12",
+        "availableTo": "2026-10-12",
+        "priceUnit": "PER_PERSON",
+        "attributes": {
+          "airline": "VietJet Air",
+          "flightNumber": "VJ124",
+          "departureAt": "2026-10-12T05:05:00+07:00",
+          "departureTimeLocal": "05:05",
+          "originCity": "TP. Hồ Chí Minh",
+          "destinationCity": "Hà Nội",
+          "nonstop": true,
+          "tripType": "oneWay"
+        }
+      },
+      {
+        "productId": "fl-sgn-han-1028",
+        "name": "VietJet Air VJ120 TP. Hồ Chí Minh - Hà Nội",
+        "taxonomy": "flight",
+        "destination": "Hà Nội",
+        "unitPrice": 632000,
+        "currency": "VND",
+        "available": true,
+        "availableFrom": "2026-10-28",
+        "availableTo": "2026-10-28",
+        "priceUnit": "PER_PERSON",
+        "attributes": {
+          "airline": "VietJet Air",
+          "flightNumber": "VJ120",
+          "departureAt": "2026-10-28T05:55:00+07:00",
+          "departureTimeLocal": "05:55",
+          "originCity": "TP. Hồ Chí Minh",
+          "destinationCity": "Hà Nội",
+          "nonstop": true,
+          "tripType": "oneWay"
+        }
+      },
+      {
+        "productId": "fl-sgn-han-1013",
+        "name": "VietJet Air VJ1120 TP. Hồ Chí Minh - Hà Nội",
+        "taxonomy": "flight",
+        "destination": "Hà Nội",
+        "unitPrice": 680000,
+        "currency": "VND",
+        "available": true,
+        "availableFrom": "2026-10-13",
+        "availableTo": "2026-10-13",
+        "priceUnit": "PER_PERSON",
+        "attributes": {
+          "airline": "VietJet Air",
+          "flightNumber": "VJ1120",
+          "departureAt": "2026-10-13T03:40:00+07:00",
+          "departureTimeLocal": "03:40",
+          "originCity": "TP. Hồ Chí Minh",
+          "destinationCity": "Hà Nội",
+          "nonstop": true,
+          "tripType": "oneWay"
+        }
+      }
+    ]
+  }
+}

@@ -9,6 +9,7 @@ const travel = vi.hoisted(() => ({
 }));
 vi.mock('../../src/services/flights', () => api);
 vi.mock('../../src/context/TravelContext', () => ({ useTravel: () => travel }));
+vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams() }));
 vi.mock('next/link', () => ({ default: ({ href, children, ...rest }: any) => <a href={href} {...rest}>{children}</a> }));
 
 import { FlightResultsView } from '../../src/features/flights/results/FlightResultsView';

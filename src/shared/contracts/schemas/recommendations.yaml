@@ -1,6 +1,6 @@
 # recommendations.yaml — GET /api/v1/recommendations
 #
-# Đã áp dụng: C1 (priceUnit bắt buộc) · C4 (EngineDiagnostics) · P3 (cache kết quả gợi ý trên Redis, 1.25.0)
+# Đã áp dụng: C1 (priceUnit bắt buộc) · C4 (EngineDiagnostics) · P3 (cache kết quả gợi ý trên Redis, 1.27.0)
 # [CHỜ DUYỆT: U1] because với sản phẩm INACTIVE
 
 BecauseItem:

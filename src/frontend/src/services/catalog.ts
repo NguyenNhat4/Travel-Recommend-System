@@ -18,14 +18,14 @@ export type VariantSummary = NonNullable<ProductDetail['variantSummary']>;
 
 export interface ListProductsParams {
   destination?: string;
-  /** Một loại, hoặc nhiều loại gửi thành `taxonomy=a,b` (contract 1.25.0). */
+  /** Một loại, hoặc nhiều loại gửi thành `taxonomy=a,b` (contract 1.27.0). */
   taxonomy?: Taxonomy | Taxonomy[];
   availableOnly?: boolean;
   sort?: ProductSort;
   limit?: number;
   offset?: number;
   parentProductId?: string;
-  /** Trộn danh sách theo nhóm loại (contract 1.25.0); chỉ đi với `sort: 'popular'`, không có `parentProductId`. */
+  /** Trộn danh sách theo nhóm loại (contract 1.27.0); chỉ đi với `sort: 'popular'`, không có `parentProductId`. */
   diversify?: 'taxonomy';
 }
 

@@ -2,9 +2,10 @@
 
 - Ngày: 2026-10-09
 - Người đề xuất: Nguyễn Minh Nhật / Claude Code
-- Trạng thái: đã chốt, source đã áp dụng một phần; PRD chưa cập nhật
+- Trạng thái: đã áp dụng (source 2026-10-10; PRD 2026-10-11)
 - Chốt bởi / ngày: Nguyễn Minh Nhật, 2026-10-10. Người dùng giao agent tự quyết các điểm còn mở và bỏ bước cập nhật PRD
-  trước khi sửa source (`history/2026-10-10-tro-ly-kham-pha-truoc-khi-lap-lich.md`).
+  trước khi sửa source (`history/2026-10-10-tro-ly-kham-pha-truoc-khi-lap-lich.md`). Cập nhật PRD: agent chốt theo uỷ
+  quyền của Nguyễn Minh Nhật ("về phần technical PRD mình cho bạn quyết định mọi thứ"), 2026-10-11.
 - PRD bị ảnh hưởng: `docs/prd/requirements.md` §1.4 (FR-AGT-01, thêm FR-AGT-06), §3 (AC-AGT-01, thêm AC-AGT-06,
   AC-AGT-07);
   `docs/prd/architecture.md` §3; `docs/prd/user-flow.md` §3.2, §4.2
@@ -306,3 +307,24 @@ Người dùng giao agent tự quyết, với yêu cầu "linh hoạt, không c�
 
 Chưa làm: ẩn lựa chọn sở thích theo dữ liệu từng điểm đến, cẩm nang điểm đến (cần DDL), đổi riêng một chiều của vé khứ hồi,
 cập nhật PRD (người dùng cho bỏ qua).
+
+## Áp dụng vào PRD (2026-10-11)
+
+PRD được cập nhật theo nội dung đề xuất ở trên, sửa theo mục "Quyết định khi áp dụng" và theo source đang chạy:
+
+- `requirements.md` §1.4: FR-AGT-01 thay câu đầu; thêm FR-AGT-06.
+- `requirements.md` §3: AC-AGT-01 (không hỏi lại có muốn lập lịch, hỏi gộp có sở thích, ô sở thích trong form, sở thích là
+  ưu tiên và lọc mềm khi còn ít nhất 3 khách sạn hợp); thêm AC-AGT-06 và AC-AGT-07.
+- Khác với bản ở mục "Nội dung đề xuất": tối đa 4 thẻ mỗi lượt (2 + 2, hỏi riêng chỗ ở thì 4 khách sạn); câu có thông tin
+  chuyến ngoài điểm đến là đồng ý; đổi nơi ngay sau lời mời không phải đồng ý; vừa "ok" thì hỏi gộp trước, chưa form; "cứ
+  chọn đại", "tuỳ bạn" thì trợ lý tự chọn ngay; câu chat không nêu điểm, lượt đánh giá, giờ, giá (trừ khi người dùng hỏi);
+  hỏi về chính một nơi chỉ trả lời nơi đó; nút tối đa 3, ít nhất hai hướng; ngoài phạm vi là câu trả lời 200 kèm nút, chỉ
+  đầu vào bị luật chặn mới là lỗi 400.
+- `architecture.md` §3: sơ đồ có nhánh `Explore` và luật đồng ý; gạch đầu dòng grounding thêm câu trả lời khám phá; response
+  `NEEDS_CLARIFICATION` có `searchResults` (1.24.0).
+- `user-flow.md` §3.2: sơ đồ có bước "Đã đồng ý lập lịch?"; §4.2: thẻ của câu trả lời khám phá, ô sở thích của form, form chỉ
+  sau khi đồng ý.
+- Hỏi giá vé trước khi lập lịch (mục "Quyết định khi áp dụng") được ghi vào PRD qua đề xuất
+  `2026-10-11-tu-van-ve-may-bay-va-sua-loi-chat-thu-lan-3.md` (FR-AGT-07, AC-AGT-08). Đổi khách sạn, chuyến bay khi chưa nói
+  rõ được ghi vào AC-AGT-05 qua đề xuất `2026-10-09-hoi-dap-doi-ve-khach-san-sau-lich.md`.
+- Không đưa vào PRD: chỉ tiếng Việt ở đợt này (quyết định tạm, không phải yêu cầu sản phẩm); các việc ở dòng "Chưa làm".

@@ -1,9 +1,12 @@
 name: Staging-HA Backend CD
 
 # CD backend lên MIG vota-ha-app (staging-ha). Build image nằm ở staging-ha-backend-build.yml (gọi qua workflow_call,
-# không xếp hàng). Job deploy gộp apply, verify và rollback thành MỘT job để khoá concurrency `staging-ha-app` giữ suốt
-# cả ba bước; nếu tách verify ra job khác thì deploy của run khác có thể apply xen giữa lúc verify.
+# không xếp hàng). Job deploy gộp apply, roll, verify và rollback thành MỘT job.
+# Khoá concurrency `staging-ha-app` (dùng chung với workflow còn lại) giữ suốt apply, roll, verify và rollback, nên hai deploy không
+# chạy chồng. slot-deploy.sh còn dùng flock trên từng VM như lớp bảo vệ thứ hai (vd. dispatch tay từ nhánh khác).
 # Frontend cùng MIG và cùng Terraform state, nên image frontend lấy từ last-good, không build lại ở đây.
+# Không gián đoạn: Terraform chỉ đổi template (MIG OPPORTUNISTIC, không thay VM); image trên VM đổi tại chỗ bằng
+# scripts/roll-staging-ha-app-slots.sh (slot blue/green + proxy cục bộ, xem infra/terraform/environments/staging-ha/slot-deploy.sh).
 # Output job chỉ truyền digest: đường dẫn image là secret, GitHub che giá trị secret trong output nên job sau nhận chuỗi rỗng.
 # Migration DB chạy ở job deploy, trước khi apply: run.py chỉ áp migration chưa có trong app.schema_migrations,
 # DSN của role vota_migrator đọc từ Secret Manager vota-ha-migrate-database-url (không lưu trong repo).
@@ -23,6 +26,8 @@ on:
       - 'src/shared/contracts/**'
       - 'db/migrations/**'
       - 'scripts/deploy-staging-ha-app.sh'
+      - 'scripts/roll-staging-ha-app-slots.sh'
+      - 'scripts/pin-staging-ha-mig-opportunistic.sh'
       - 'infra/terraform/environments/staging-ha/**'
   workflow_dispatch:
 
@@ -38,26 +43,7 @@ env:
   BACKEND_SERVICE: vota-ha-app
 
 jobs:
-  window-guard:
-    # CD staging-ha bị vô hiệu trong khung 23:45–08:40 (giờ VN): runner và app/crawler tắt theo lịch ban đêm.
-    # Job này chạy trên runner tự host vì repo không dùng GitHub-hosted runner; nó chỉ được xếp hàng khi push/dispatch.
-    name: Chặn CD ngoài khung giờ runner
-    runs-on: [self-hosted, vota-staging-ha]
-    outputs:
-      allowed: ${{ steps.check.outputs.allowed }}
-    steps:
-      - id: check
-        run: |
-          h=$((10#$(TZ=Asia/Ho_Chi_Minh date +%H%M)))
-          if (( h >= 2345 || h < 840 )); then
-            echo "allowed=false" >> "$GITHUB_OUTPUT"
-            echo "CD bị vô hiệu trong khung 23:45–08:40 (giờ VN). Chạy lại sau 08:40." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "allowed=true" >> "$GITHUB_OUTPUT"
-          fi
   build:
-    needs: window-guard
-    if: ${{ needs.window-guard.outputs.allowed == 'true' }}
     name: Build backend image
     permissions:
       contents: read
@@ -66,11 +52,11 @@ jobs:
     secrets: inherit
 
   deploy:
-    if: ${{ needs.window-guard.outputs.allowed == 'true' }}
     name: Apply, verify and roll back backend on staging-ha
-    needs: [window-guard, build]
+    needs: build
     runs-on: [self-hosted, vota-staging-ha]
     # Khoá dùng chung với Staging-HA Frontend CD. Đặt ở job chứ không ở workflow để job build không phải chờ.
+    # GitHub chỉ giữ MỘT job chờ trong nhóm: job chờ cũ hơn bị huỷ khi có job mới vào.
     concurrency:
       group: staging-ha-app
       cancel-in-progress: false
@@ -139,12 +125,25 @@ jobs:
           python3 db/migrations/run.py --status
           python3 db/migrations/run.py
 
-      - name: Apply backend image
+      - name: Keep the MIG from replacing VMs when the template changes
+        # Lần đầu MIG còn PROACTIVE: đặt OPPORTUNISTIC trước khi Terraform đổi template, nếu không MIG tự thay hết VM và app sập.
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        run: bash scripts/pin-staging-ha-mig-opportunistic.sh
+
+      - name: Apply backend image to the template
+        # Chỉ cập nhật Terraform (template mang image mới nhất cho VM tạo sau này). Không thay VM đang chạy.
         env:
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
           TFVARS_FILE: ${{ runner.temp }}/staging-ha.tfvars
         run: bash scripts/deploy-staging-ha-app.sh
+
+      - name: Roll app VMs to the new image without downtime
+        # Từng VM: chạy bản mới song song bản cũ, đợi ready, đổi proxy, rút bản cũ. Lỗi ở VM nào thì VM đó vẫn chạy bản cũ.
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        run: bash scripts/roll-staging-ha-app-slots.sh
 
       - name: Authenticate to Google Cloud for verification
         # Job này có thể chạy hơn một giờ khi MIG chậm; xác thực lại trước khi verify để không dựa vào phiên của bước apply.
@@ -153,7 +152,7 @@ jobs:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_CI_SERVICE_ACCOUNT }}
 
-      - name: Wait for the MIG to be stable on the new template
+      - name: Wait for the MIG to be stable
         env:
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
         run: |
@@ -161,20 +160,18 @@ jobs:
             --region "$MIG_REGION" --project "$GCP_PROJECT_ID" \
             --stable --timeout=1800
 
-      - name: Check every app VM runs the new template and is healthy
-        # wait-until --stable chỉ nói MIG đã ổn định, không nói từng VM đã đổi. Kiểm từng instance.
+      - name: Check every app VM is running and healthy
+        # Image trên từng VM đã được roll-staging-ha-app-slots.sh đối chiếu. Template không còn là tiêu chí: MIG là
+        # OPPORTUNISTIC nên VM giữ template cũ cho tới khi bị thay. Ở đây kiểm VM RUNNING và LB báo HEALTHY.
         env:
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
         run: |
           mig_json="$(gcloud compute instance-groups managed describe "$MIG_NAME" --region "$MIG_REGION" --project "$GCP_PROJECT_ID" --format=json)"
           target_size="$(jq -er .targetSize <<< "$mig_json")"
-          target_template="$(jq -er '.versions[0].instanceTemplate | split("/") | last' <<< "$mig_json")"
           instances="$(gcloud compute instance-groups managed list-instances "$MIG_NAME" --region "$MIG_REGION" --project "$GCP_PROJECT_ID" --format=json)"
           [ "$(jq 'length' <<< "$instances")" = "$target_size" ] || { echo "Số VM khác targetSize $target_size" >&2; exit 1; }
-          bad="$(jq -r --arg t "$target_template" '.[]
-            | select(.instanceStatus != "RUNNING" or .currentAction != "NONE" or ((.version.instanceTemplate // "" | split("/") | last) != $t))
-            | .instance | split("/") | last' <<< "$instances")"
-          [ -z "$bad" ] || { echo "VM chưa đúng template đích hoặc chưa RUNNING: $bad" >&2; exit 1; }
+          bad="$(jq -r '.[] | select(.instanceStatus != "RUNNING" or .currentAction != "NONE") | .instance | split("/") | last' <<< "$instances")"
+          [ -z "$bad" ] || { echo "VM chưa RUNNING hoặc MIG đang thao tác: $bad" >&2; exit 1; }
           # min_ready_sec = 0 nên MIG có thể báo stable trước khi VM mới nạp xong RecSys. Chờ LB báo đủ HEALTHY tối đa 10 phút.
           healthy=0
           for i in $(seq 1 60); do
@@ -231,3 +228,5 @@ jobs:
           FRONTEND_REF="$(jq -er .frontend_ref last-good.json)" || { echo 'last-good thiếu frontend_ref.' >&2; exit 1; }
           BACKEND_REF="$BACKEND_REF" FRONTEND_REF="$FRONTEND_REF" TF_STATE_BUCKET="$TF_STATE_BUCKET" \
             GCP_PROJECT_ID="$GCP_PROJECT_ID" TFVARS_FILE="$TFVARS_FILE" bash scripts/deploy-staging-ha-app.sh
+          # Trả cả image trên VM về last-good, cùng cách không gián đoạn (VM đã đúng image thì bỏ qua).
+          BACKEND_REF="$BACKEND_REF" FRONTEND_REF="$FRONTEND_REF" GCP_PROJECT_ID="$GCP_PROJECT_ID" bash scripts/roll-staging-ha-app-slots.sh

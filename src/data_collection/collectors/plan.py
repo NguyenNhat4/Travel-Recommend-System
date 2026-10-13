@@ -26,6 +26,13 @@ class Destination:
     # tìm thêm (collectors/trip_hotels.py), rồi dán tay vào đây.
 
 
+# trip_city của Bạc Liêu, Tam Đảo, Cà Mau, Lạng Sơn, Sơn La, Bắc Ninh, Sóc Trăng thêm 12/10/2026 (mở
+# vn.trip.com/travel-guide/attraction/<slug>/tourist-attractions/ bằng crawler, tiêu đề trang khớp tên). Cà Mau, Lạng Sơn,
+# Sơn La, Bắc Ninh dùng mã cấp tỉnh vì mã thành phố (Cà Mau 24733, Lạng Sơn 1447671, Sơn La 24744, Bắc Ninh 1447661) chỉ có
+# ở www.trip.com, vn.trip.com báo 404; Sóc Trăng dùng 2186660 (24740, 1524648 báo 404). Nhóm @extra giữ trip_city = None
+# theo quy ước chỉ cào Booking; mã đã kiểm cho lượt cào tay: Sầm Sơn sam-son-1525754, Hà Tiên ha-tien-24758, Vân Đồn
+# van-don-district-1542075, Lý Sơn ly-son-1526936; Tuyên Quang (chưa có trong kế hoạch) tuyen-quang-province-1524609.
+# vn.trip.com báo 404 cho Côn Đảo 24761, Mộc Châu 1540494 / 2133290, Tuyên Quang 24760, Bảo Lộc 121753.
 DESTINATIONS: tuple[Destination, ...] = (
     Destination("Nha Trang", "Nha Trang", "nha-trang-vn", "nha-trang-670", ("CXR",), vinpearl=True, trip_hotel_city_id="1777"),
     Destination("Phú Quốc", "Phu Quoc", "phu-quoc-island-vn", "phu-quoc-island-24779", ("PQC",), vinpearl=True, trip_hotel_city_id="5649"),
@@ -63,26 +70,26 @@ DESTINATIONS: tuple[Destination, ...] = (
     Destination("Pleiku", "Pleiku", None, "gia-lai-24722", ("PXU",)),
     Destination("Tuy Hòa", "Tuy Hoa", None, "tuy-hoa-24764", ("TBB",)),
     Destination("Châu Đốc", "Chau Doc", None, "chau-doc-24757", ()),
-    Destination("Bắc Ninh", "Bac Ninh", "bac-ninh-vn", None, ()),
+    Destination("Bắc Ninh", "Bac Ninh", "bac-ninh-vn", "bac-ninh-province-1445852", ()),
     Destination("Thanh Hóa", "Thanh Hoa", "thanh-hoa-vn", None, ("THD",)),
     Destination("Quảng Bình", "Quang Binh", None, "dong-hoi-24726", ("VDH",)),
     Destination("Tây Ninh", "Tay Ninh", "tay-ninh-vn", None, ()),
     Destination("Kon Tum", "Kon Tum", "kon-tum-vn", "kon-tum-24782", ()),
-    Destination("Cà Mau", "Ca Mau", "ca-mau-vn", None, ("CAH",)),
+    Destination("Cà Mau", "Ca Mau", "ca-mau-vn", "ca-mau-province-1524647", ("CAH",)),
     Destination("Bến Tre", "Ben Tre", "ben-tre-vn", "ben-tre-24725", ()),
     Destination("Mỹ Tho", "My Tho", None, "my-tho-24763", ()),
-    Destination("Sóc Trăng", "Soc Trang", "soc-trang-vn", None, ()),
-    Destination("Bạc Liêu", "Bac Lieu", "bac-lieu-vn", None, ()),
+    Destination("Sóc Trăng", "Soc Trang", "soc-trang-vn", "soc-trang-2186660", ()),
+    Destination("Bạc Liêu", "Bac Lieu", "bac-lieu-vn", "bac-lieu-2044758", ()),
     Destination("Điện Biên", "Dien Bien Phu", "dien-bien-phu-vn", "dien-bien-phu-24777", ("DIN",)),
-    Destination("Lạng Sơn", "Lang Son", "lang-son-vn", None, ()),
-    Destination("Sơn La", "Son La", "son-la-vn", None, ()),
+    Destination("Lạng Sơn", "Lang Son", "lang-son-vn", "lang-son-province-1445821", ()),
+    Destination("Sơn La", "Son La", "son-la-vn", "son-la-province-1524635", ()),
     Destination("Biên Hòa", "Bien Hoa", None, "bien-hoa-24729", ()),
     Destination("Vĩnh Long", "Vinh Long", "vinh-long-vn", None, ()),
     Destination("Đồng Tháp", "Dong Thap", "sa-dec-vn", None, ()),
     Destination("Quảng Trị", "Dong Ha", "dong-ha-vn", "dong-ha-24781", ()),
     Destination("Quảng Ngãi", "Quang Ngai", "quang-ngai-vn", None, ()),
     Destination("Phan Rang", "Phan Rang", None, None, ()),
-    Destination("Tam Đảo", "Tam Dao", "tam-dao-vn", None, ()),
+    Destination("Tam Đảo", "Tam Dao", "tam-dao-vn", "tam-dao-1447662", ()),
     Destination("Mai Châu", "Mai Chau", None, None, ()),
     Destination("Rạch Giá", "Rach Gia", None, "rach-gia-24732", ("VKG",)),
     # ---- Điểm đến nhỏ chỉ cào từ Booking (chỉ cần tên tìm kiếm; chưa có slug Agoda / ID Trip đã kiểm chứng).

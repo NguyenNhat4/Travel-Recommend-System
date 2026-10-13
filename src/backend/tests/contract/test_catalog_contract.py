@@ -88,7 +88,29 @@ def test_bad_listing_query_is_400_validation_error(client):
     assert body["error"]["code"] == "VALIDATION_ERROR" and body["error"]["details"] == {"fields": ["limit"]}
 
 
-# --- nhiều taxonomy và diversify=taxonomy (contract 1.25.0) -----------------------------------
+def test_listing_is_publicly_cacheable_and_errors_are_not(client):
+    # Danh mục công khai, không đọc người dùng: giống nhau cho mọi người nên cache chung được.
+    ok = client.get("/api/v1/products", params={"sort": "popular", "limit": 5})
+    assert ok.status_code == 200
+    assert ok.headers["cache-control"] == "public, max-age=60, s-maxage=300"
+    bad = client.get("/api/v1/products", params={"limit": 99})
+    assert bad.status_code == 400 and "cache-control" not in bad.headers
+
+
+def test_detail_and_similar_are_publicly_cacheable_and_errors_are_not(client):
+    detail = client.get("/api/v1/products/H1")
+    assert detail.status_code == 200
+    assert detail.headers["cache-control"] == "public, max-age=60, s-maxage=300"
+    similar = client.get("/api/v1/products/R1/similar", params={"limit": 4})
+    assert similar.status_code == 200
+    assert similar.headers["cache-control"] == "public, max-age=60, s-maxage=300"
+    missing = client.get("/api/v1/products/khong-co")
+    assert missing.status_code == 404 and "cache-control" not in missing.headers
+    unknown = client.get("/api/v1/products/khong-co/similar")
+    assert unknown.status_code == 404 and "cache-control" not in unknown.headers
+
+
+# --- nhiều taxonomy và diversify=taxonomy (contract 1.27.0) -----------------------------------
 
 def test_listing_query_parameters_are_declared_in_contract():
     params = {p["name"]: p for p in DOC["paths"]["/products"]["get"]["parameters"] if "name" in p}

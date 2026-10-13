@@ -49,7 +49,8 @@ def _explore_issues(state: dict, response: dict) -> list[str]:
         if any(p != summary(state.get("candidates", {}).get(p["productId"], {})) for p in products):
             issues.append("explore_grounding")
             break
-    if any(match.group(2) not in shown for match in PRODUCT_LINK.finditer(response.get("question", ""))):
+    allowed_links = shown | set(state.get("orchestrator_fare_ids") or [])
+    if any(match.group(2) not in allowed_links for match in PRODUCT_LINK.finditer(response.get("question", ""))):
         issues.append("message_grounding")
     return issues
 

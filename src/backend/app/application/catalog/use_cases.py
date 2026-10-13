@@ -73,7 +73,7 @@ class ListProducts:
                        parent_product_id: str | None = None, diversify: str | None = None) -> dict:
         """`taxonomy`: một loại hoặc nhiều loại (route tách `taxonomy=a,b`), giá trị trùng bỏ qua.
 
-        `diversify="taxonomy"` (contract 1.25.0): trộn theo nhóm loại sau khi sắp xếp, trước khi cắt trang; chỉ với
+        `diversify="taxonomy"` (contract 1.27.0): trộn theo nhóm loại sau khi sắp xếp, trước khi cắt trang; chỉ với
         `sort=popular` và không có `parent_product_id`.
         """
         taxonomies = [taxonomy] if isinstance(taxonomy, str) else (None if taxonomy is None else list(taxonomy))
