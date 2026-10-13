@@ -104,5 +104,6 @@ thương hiệu: "Sun World…", "VinWonders…"); không chắc thì để tr�
   `SIMULATED_TEST_DATABASE_URL` = bản sao `vota_simbiz_test_*` của DB có vé `demo:business:*` (vd. `TEMPLATE vota_crawl_vmcheck`).
   Kết quả: **704 passed, 1 failed, 0 skipped**. Lỗi duy nhất `test_stream_feed_db::test_rows_loaded_separately_then_merged_leave_one_visible`
   có từ trước (cũng lỗi ở `70e142e2` và `origin/release-mvp-v2`): test 29/09 dùng khách sạn không có hạng phòng, bị quy tắc FR-CAT-02
-  (06/10) tắt — chỉ cần thêm một phòng vào dữ liệu test; chưa sửa (ngoài phạm vi, hỏi người dùng).
+  (06/10) tắt. → Đã sửa 13/10: thực ra là bug của `seed/simulated_rooms.plan` (tắt nhầm khách sạn giữ sau khi gộp), xem
+  `history/2026-10-13-sua-phong-mo-phong-tat-nham-khach-san-giu.md`; cả suite **706 passed, 0 failed, 0 skipped**.
 - Hạ tầng (VM, lịch tắt) thuộc Khoa: chỉ đọc. Không `pkill -f`. Mọi thay đổi `src/`/`docs/`/`db/` cần entry `history/` mới.

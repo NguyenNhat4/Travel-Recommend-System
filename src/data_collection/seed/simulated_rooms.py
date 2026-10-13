@@ -74,11 +74,14 @@ def plan(rows: list[dict], as_of: date, on: bool) -> tuple[list[dict], list[dict
                              "attributes": {k: v for k, v in a.items() if k != "noBookableRoom"},
                              "available_from": prop.get("available_from") or lo, "available_to": prop.get("available_to") or hi})
     by_id = {r["product_id"]: r for r in rows}
+    # Gộp A vào B chuyển phòng mô phỏng của A sang làm con của B: tắt phòng đó không được tắt B khi B còn phòng mô phỏng của chính nó.
+    keeps_room = {r["attributes"]["parentProductId"] for r in out.values()}
     for ref, row in existing.items():
         if ref not in out and row["available"]:
             out[ref] = {**row, "available": False}
             parent = by_id.get((row["attributes"] or {}).get("parentProductId"))
-            if parent and parent["available"] and parent["product_id"] not in with_rooms:  # chỉ còn phòng mô phỏng: tắt như FR-CAT-02
+            if (parent and parent["available"] and parent["product_id"] not in with_rooms
+                    and parent["product_id"] not in keeps_room):  # chỉ còn phòng mô phỏng: tắt như FR-CAT-02
                 reopened.append({**parent, "available": False,
                                  "attributes": {**(parent["attributes"] or {}), "noBookableRoom": True}})
     return list(out.values()), reopened
