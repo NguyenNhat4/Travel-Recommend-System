@@ -22,7 +22,7 @@ on:
     paths:
       - '.github/workflows/staging-ha-app-cd.yml'
       - '.github/workflows/staging-ha-image-build.yml'
-      - '.github/workflows/backend-ci-cd.yml'
+      - '.github/workflows/backend-ci.yml'
       - '.github/workflows/frontend-ci-cd.yml'
       - '.dockerignore'
       - 'Dockerfile.backend'
@@ -110,7 +110,7 @@ jobs:
     name: Backend CI gate
     needs: plan
     if: ${{ needs.plan.outputs.backend_changed == 'true' }}
-    uses: ./.github/workflows/backend-ci-cd.yml
+    uses: ./.github/workflows/backend-ci.yml
     secrets: inherit
 
   frontend-ci:
