@@ -58,7 +58,7 @@ Việc còn lại của mục 1:
    chính `~/code/Travel-Recommendation-Product`): mặc định **chỉ đọc** (transaction read-only) in đúng các dòng sẽ đổi; `--apply` chỉ chạy
    khi người dùng đồng ý **trong chat**.
    - Script đọc thẳng `collectors/name_overrides.csv` và `excluded_products.csv` qua các hàm của `normalise` (không liệt kê ref trong
-     script), nên phủ cả mục 1, 2 và 4 (bản xem trước gộp ở §4: 115 dòng + nạp 41 điểm Tuyên Quang); đọc thêm
+     script), nên phủ cả mục 1, 2 và 4 (bản xem trước gộp ở §4a: 169 dòng + nạp 40 điểm Tuyên Quang); đọc thêm
      `destination_overrides.csv` (chỉ dòng có "13/10/2026" trong bằng chứng) để đổi `destination` của khách sạn/điểm và hạng phòng con.
    - Đổi tên: `name` + đầu `description` nếu bắt đầu bằng tên cũ + ".".
    - Ẩn (`available = false`) 7 ref (6 ref trên + `trip:attraction:141833025`) + hạng phòng con của chúng (đếm lúc rà: Cubicity Trip 2 phòng, Gia An 2, Mango House 6 —
@@ -73,7 +73,8 @@ Việc còn lại của mục 1:
 
 Xem `history/2026-10-13-ten-tieng-viet-cho-diem-ten-tieng-anh.md`. Rà 127 search unit `trip:attraction:*` đang bán có tên không chứa
 chữ tiếng Việt (121 điểm tham quan + 6 sân golf), đối chiếu điểm có tên tiếng Việt trong 400 m. Người dùng duyệt 13/10:
-- **33 tên tiếng Việt** → `collectors/name_overrides.csv` (tổng 35 dòng, evidence ghi tên nguồn, URL, địa chỉ).
+- **33 tên tiếng Việt** → `collectors/name_overrides.csv` (tổng 35 dòng, evidence ghi tên nguồn, URL, địa chỉ). Sau đó (§4a) "Lantern
+  Making Class" bị ẩn (điểm thu phí không giá) nên bỏ tên soát tay của nó → còn 32 tên mục 2, tổng 34 dòng.
 - **9 bản trùng** bản tiếng Việt ngay cạnh → `collectors/excluded_products.csv` (tổng 54 dòng; lý do trỏ tới bản giữ): Mui Nai Beach,
   Battle of Ap Bac War Memorial, Bao Ninh Beach, Dark Cave, Tien Trang Beach, Tam Thang Square, Tay Ninh Black Virgin Temple,
   Halong Park (Dragon Park), Hacoconut Coconut Basket Boat.
@@ -105,7 +106,8 @@ Xem `history/2026-10-13-sua-diem-den-toa-do-va-mo-rong-tuyen-quang.md`. Đọc p
   "Thành phố TP. Hồ Chí Minh" trong mô tả, làm giàu mô tả, bổ sung chùa TP.HCM).
 - **Tuyên Quang:** cào BFS `/travel-guide/attraction/` (robots cho phép) 227 trang, 0 lần bị chặn, dữ liệu ở
   `~/code/Travel-Recommendation-Product/src/data_collection/data/attractions-fill-20261012/trip_bfs_tq/`. Đợt `4tq`
-  (`trip_poi_wave4tq/`, `trip_poi_load4tq/`): 110 dòng → duyệt tay → **41 điểm mới** (Tuyên Quang 40, Hà Giang 1: Cổng Trời Quản Bạ).
+  (`trip_poi_wave4tq/`, `trip_poi_load4tq/`): 110 dòng → duyệt tay → **41 điểm mới** (Tuyên Quang 40, Hà Giang 1: Cổng Trời Quản Bạ); sau quyết định A/B (§4a) bỏ thêm khu khoáng nóng
+  Mỹ Lâm Hà Phú (thu phí, không giá) → **40 điểm**.
   Bỏ 60 điểm ngoài tỉnh (Đền Hùng/Việt Trì bị gán Tam Đảo; TP Yên Bái, Đoan Hùng, ATK Định Hóa bị gán Tuyên Quang theo tâm gần nhất),
   6 rác (thêm vào `tools/drop_reviewed.txt`), 3 trùng (`trip_poi_wave4tq/review_4tq.json`, `drop_4tq.txt`). `tools/build_wave.py` thêm
   biến `HOTELS_SEEDS` (danh sách điểm đến có khách sạn khác; mặc định như cũ) vì `trip_bfs/seeds.json` không có Tuyên Quang.
@@ -113,14 +115,34 @@ Xem `history/2026-10-13-sua-diem-den-toa-do-va-mo-rong-tuyen-quang.md`. Đọc p
   Xem trước `load_attractions.py` (read-only): `{'new': 41}`, demo_data `changed=0`.
 
 **Đợt sửa production gộp mục 1 + 2 + 4** (xem trước read-only 13/10, `normalise` của worktree trên dữ liệu production): đổi tên 35, ẩn 38
-(28 ref + 10 hạng phòng con; PANAMA là hạng phòng), đổi điểm đến 16 + 26 hạng phòng con → **115 dòng**, cộng nạp 41 điểm Tuyên Quang
+(28 ref + 10 hạng phòng con; PANAMA là hạng phòng), đổi điểm đến 16 + 26 hạng phòng con → 115 dòng, cộng nạp 41 điểm Tuyên Quang (số trước quyết định A/B — **số cuối ở §4a**)
 (`cd <data>/attractions-fill-20261012/trip_poi_load4tq && python load_attractions.py --code-root <worktree>/src [--apply]`). Không thành
 phần combo, không dòng đơn hàng nào trỏ vào dòng sắp ẩn. Đổi điểm đến trên production phải sửa cả hạng phòng con (job giữ `destination`
 của dòng không phải vé máy bay).
 
+### 4a. Mục còn treo — chốt 13/10 chiều
+
+Xem `history/2026-10-13-an-golf-va-diem-thu-phi-khong-gia.md`. Điểm tham quan/golf không giá bị trợ lý tính "tham quan tự do" 0 đ — quy
+tắc PRD (`docs/prd/architecture.md` §3, người dùng chốt 01/10); nguồn không phân biệt được miễn phí thật với có vé thiếu giá (Trip
+`isFree: true` hiếm nhưng đúng, `isFree: false` gắn cả cho nơi miễn phí như "Sông Nho Quế"; collector không lưu trường này). Đề xuất
+PRD "chưa có giá" đã nêu, người dùng chọn chỉ sửa data:
+- **B:** ẩn 17 sân golf đang bán không giá (còn 7 sân có giá).
+- **A:** ẩn 36 điểm chắc chắn thu phí không giá (khu vui chơi, công viên nước, cáp treo, du thuyền, khoáng nóng, vườn thú/safari, show/tour/
+  lớp học) sau khi duyệt tay 85 dòng theo từ khoá: giữ 40 bảo tàng và 9 nơi có thể miễn phí (Grand World Phú Quốc, Bãi biển Sun World Hạ
+  Long, công viên lấn biển Rạch Giá, cảng du thuyền Mỹ Tho, Hang Thuỷ Cung, quảng trường nhạc nước Sơn Đoòng, đèo Khau Cốc Chà, 2 phòng
+  tranh). Lý do loại ghi "bỏ dòng này khi có giá hiện hành". Chưa xét: điểm thương hiệu không giá ngoài bộ từ khoá (vd. Red Dragon Junk,
+  Mango Cruises, MADALAND, CaraWorld, trại voi) — hỏi nếu cần.
+- **2 cặp tour Booking cùng tên** (Mũi Né từ TP.HCM, khác mã/giá/mô tả): ẩn bản đắt hơn (`przjecq6mcez`, `pr5d00274odq`).
+- Quy tắc ẩn là danh sách tĩnh theo `sourceRef`: điểm golf/thu phí không giá mới của lượt cào sau vẫn bị tính 0 đ. Muốn tự động (vd. job ẩn
+  golf không giá) là thay đổi job — chưa làm, hỏi người dùng.
+
+**Đợt sửa production gộp (xem trước read-only 13/10 chiều):** đổi tên 34, ẩn 93 (82 ref + 11 hạng phòng, gồm PANAMA), đổi điểm đến 16 +
+26 hạng phòng con → **169 dòng**, cộng nạp **40** điểm Tuyên Quang (xem trước `{'new': 40}`, demo_data `changed=0`). 0 thành phần combo,
+0 dòng đơn hàng trỏ vào dòng sắp ẩn.
+
 ## 5. Việc người dùng chưa quyết
 
-- A/B (điểm thu phí và sân golf không giá bị tính 0 đ): ẩn, gắn cờ, hay để trợ lý ghi "chưa có giá"? — hỏi.
+- ~~A/B~~ — đã chốt 13/10: ẩn (§4a).
 - Thí nghiệm làm sạch text embed (nhánh `exp/lam-sach-text-embed`, worktree `~/code/trp-embed-clean`, **chưa commit**): kết luận nên
   ship phần normalise (giữ `catalog-text-v2`), không ship `text_builder` v3 (lát cắt parent_child .626 → .427). Chờ người dùng.
 - Nhánh `fix/crawl-stall-watchdog` (ee7b4201) đã cherry-pick vào `test/newcrawl` → thừa; xoá hay giữ do người dùng quyết.

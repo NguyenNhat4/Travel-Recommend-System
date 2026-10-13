@@ -457,7 +457,9 @@ class QualityTests(unittest.TestCase):
         self.assertEqual(names["trip:attraction:56080997"][0], "Động Tiên Sơn")
         self.assertEqual(names["trip:attraction:55894440"][0], "Bãi Kỳ Co")
         self.assertEqual(names["trip:attraction:148936843"][0], "Làng hương Quảng Phú Cầu")
-        self.assertEqual(sum("người dùng duyệt 13/10/2026" in evidence for _, evidence in names.values()), 33)
+        # 33 tên duyệt; "Lantern Making Class" sau đó bị ẩn (điểm thu phí không giá, nhóm A) nên bỏ tên soát tay của nó
+        self.assertEqual(sum("người dùng duyệt 13/10/2026" in evidence for _, evidence in names.values()), 32)
+        self.assertIn("trip:attraction:142507515", excluded)
         dropped_for_kept = {"137220354": "142270484", "142677977": "138841792", "142701301": "146597815",
                             "137912295": "140139148", "150930088": "150792617", "153186120": "153196176",
                             "136719903": "144437227", "142290987": "32862148", "134100373": "137069524"}
@@ -498,6 +500,26 @@ class QualityTests(unittest.TestCase):
         reviewed = [ref for ref, (_, evidence) in overrides.items() if "13/10/2026" in evidence]
         self.assertEqual(len(reviewed), 16)  # 2 hang vịnh Hạ Long + 12 Cát Bà + 2 Hội An
         self.assertEqual(set(reviewed) & set(excluded), set())
+
+    def test_unpriced_golf_and_paid_venues_are_hidden_not_called_free(self):
+        """Nhóm A/B rà soát 13/10/2026: điểm không giá bị trợ lý tính "tham quan tự do" 0 đ (architecture.md §3). Người dùng chốt ẩn
+        sân golf không giá và điểm chắc chắn thu phí; bảo tàng, nơi có thể miễn phí và bản có giá giữ nguyên; tour trùng tên giữ bản rẻ."""
+        excluded = n.load_excluded_products()
+        golf = [r for r, why in excluded.items() if why.startswith("sân golf không có giá")]
+        paid = [r for r, why in excluded.items() if why.startswith("điểm thu phí không có giá")]
+        self.assertEqual((len(golf), len(paid)), (17, 36))
+        for ref in ("trip:attraction:146743966", "trip:attraction:133828288", "trip:attraction:152914801"):  # Hanoi Golf, Aquatopia, Ambassador
+            self.assertIn(ref, excluded)
+        for kept in ("trip:attraction:58257538",    # Bà Nà Hills Golf Club: có giá (golf_prices.csv)
+                     "trip:attraction:130369440",   # Cáp Treo Sun World Bà Đen có giá
+                     "trip:attraction:130898816",   # Grand World Phú Quốc: vào cổng miễn phí
+                     "trip:attraction:90606"):      # bảo tàng: giữ
+            self.assertNotIn(kept, excluded)
+        self.assertIn("booking:attraction:przjecq6mcez", excluded)
+        self.assertIn("booking:attraction:pr5d00274odq", excluded)
+        self.assertNotIn("booking:attraction:pri4tsmsmghd", excluded)
+        self.assertNotIn("booking:attraction:prwoctoyh7fd", excluded)
+        self.assertEqual(set(n.load_name_overrides()) & set(excluded), set())
 
 
 if __name__ == "__main__":
