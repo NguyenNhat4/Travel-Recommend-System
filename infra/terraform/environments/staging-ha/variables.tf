@@ -92,7 +92,7 @@ variable "max_replicas" {
 variable "cpu_target" {
   description = "Autoscaler target CPU utilization (0-1). Với min_replicas = 1 không còn đảm bảo sống sót khi mất VM; ràng buộc (N-1)/N đã gỡ theo quy tắc chốt 2026-10-08."
   type        = number
-  default     = 0.55
+  default     = 0.9
 
   validation {
     condition     = var.cpu_target > 0 && var.cpu_target <= 1
@@ -103,7 +103,7 @@ variable "cpu_target" {
 variable "memory_target_percent" {
   description = "Autoscaler target memory percent_used (needs Ops Agent on the VM). 0 disables the memory signal."
   type        = number
-  default     = 60
+  default     = 90
 
   validation {
     condition     = var.memory_target_percent >= 0 && var.memory_target_percent <= 100
