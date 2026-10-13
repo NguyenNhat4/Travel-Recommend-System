@@ -1,10 +1,11 @@
 name: Staging-HA Infra CD
 
-# Apply Terraform root staging-ha khi infra/terraform/environments/staging-ha/** đổi (trước đây hai CD ứng dụng cùng chạy).
-# Không build, không migration, không ghi last-good: lấy backend_ref và frontend_ref đang chạy từ last-good để plan chỉ
-# còn phần hạ tầng đổi. Cổng allowed_changes của scripts/deploy-staging-ha-app.sh vẫn áp dụng: thay đổi ngoài danh sách
+# Apply Terraform root staging-ha khi infra/terraform/environments/staging-ha/** đổi. Đây là luồng DUY NHẤT chạy Terraform:
+# deploy ứng dụng (staging-ha-app-cd.yml) không đụng Terraform. Không build, không migration, không roll VM, không ghi
+# last-good: backend_ref/frontend_ref lấy từ last-good chỉ là image dự phòng của template (VM boot đọc image mong muốn từ
+# all-instances config của MIG). Cổng allowed_changes của scripts/deploy-staging-ha-app.sh vẫn áp dụng: thay đổi ngoài danh sách
 # làm job dừng TRƯỚC apply (thêm địa chỉ vào danh sách kèm chú thích rồi chạy lại, không nới để cho qua).
-# Dùng chung khoá concurrency `staging-ha-app` với hai CD ứng dụng. Không rollback tự động: ref ứng dụng không đổi nên
+# Không rollback tự động: ref ứng dụng không đổi nên
 # apply lại last-good không hoàn tác được thay đổi hạ tầng; revert commit rồi để workflow này chạy lại.
 
 on:
@@ -17,9 +18,11 @@ on:
     paths:
       - '.github/workflows/staging-ha-infra-cd.yml'
       - 'scripts/deploy-staging-ha-app.sh'
-      - 'scripts/roll-staging-ha-app-slots.sh'
       - 'scripts/pin-staging-ha-mig-opportunistic.sh'
+      - 'scripts/verify-staging-ha-app.sh'
       - 'infra/terraform/environments/staging-ha/**'
+      # Agent giám sát nạp vào template app qua file() trong main.tf.
+      - 'infra/monitoring/**'
   workflow_dispatch:
 
 permissions:
@@ -37,10 +40,12 @@ jobs:
   apply:
     name: Apply Terraform and verify staging-ha
     runs-on: [self-hosted, vota-staging-ha]
+    # Khoá riêng: deploy ứng dụng không chạy Terraform nữa (image nằm ở all-instances config), nên hạ tầng và ứng dụng
+    # không chặn nhau. Trước 2026-10-13 dùng chung `staging-ha-app` và làm huỷ deploy ứng dụng đang chờ.
     concurrency:
-      group: staging-ha-app
+      group: staging-ha-infra
       cancel-in-progress: false
-    timeout-minutes: 150
+    timeout-minutes: 60
     environment: staging
     permissions:
       contents: read
@@ -98,63 +103,7 @@ jobs:
           TFVARS_FILE: ${{ runner.temp }}/staging-ha.tfvars
         run: bash scripts/deploy-staging-ha-app.sh
 
-      - name: Roll app VMs to the new image without downtime
-        # Từng VM: chạy bản mới song song bản cũ, đợi ready, đổi proxy, rút bản cũ. Lỗi ở VM nào thì VM đó vẫn chạy bản cũ.
+      - name: Verify MIG, load balancer and public readiness
         env:
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-        run: bash scripts/roll-staging-ha-app-slots.sh
-
-      - name: Authenticate to Google Cloud for verification
-        # Job này có thể chạy hơn một giờ khi MIG chậm; xác thực lại trước khi verify để không dựa vào phiên của bước apply.
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
-          service_account: ${{ secrets.GCP_CI_SERVICE_ACCOUNT }}
-
-      - name: Wait for the MIG to be stable
-        env:
-          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-        run: |
-          gcloud compute instance-groups managed wait-until "$MIG_NAME" \
-            --region "$MIG_REGION" --project "$GCP_PROJECT_ID" \
-            --stable --timeout=1800
-
-      - name: Check every app VM is running and healthy
-        # Image trên từng VM đã được roll-staging-ha-app-slots.sh đối chiếu. Template không còn là tiêu chí: MIG là
-        # OPPORTUNISTIC nên VM giữ template cũ cho tới khi bị thay. Ở đây kiểm VM RUNNING và LB báo HEALTHY.
-        env:
-          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-        run: |
-          mig_json="$(gcloud compute instance-groups managed describe "$MIG_NAME" --region "$MIG_REGION" --project "$GCP_PROJECT_ID" --format=json)"
-          target_size="$(jq -er .targetSize <<< "$mig_json")"
-          instances="$(gcloud compute instance-groups managed list-instances "$MIG_NAME" --region "$MIG_REGION" --project "$GCP_PROJECT_ID" --format=json)"
-          [ "$(jq 'length' <<< "$instances")" = "$target_size" ] || { echo "Số VM khác targetSize $target_size" >&2; exit 1; }
-          bad="$(jq -r '.[] | select(.instanceStatus != "RUNNING" or .currentAction != "NONE") | .instance | split("/") | last' <<< "$instances")"
-          [ -z "$bad" ] || { echo "VM chưa RUNNING hoặc MIG đang thao tác: $bad" >&2; exit 1; }
-          # min_ready_sec = 0 nên MIG có thể báo stable trước khi VM mới nạp xong. Chờ LB báo đủ HEALTHY tối đa 10 phút.
-          healthy=0
-          for i in $(seq 1 60); do
-            health="$(gcloud compute backend-services get-health "$BACKEND_SERVICE" --global --project "$GCP_PROJECT_ID" --format=json)"
-            # get-health trả về mảng (một mục mỗi backend group), không phải object.
-            healthy="$(jq '[(if type == "array" then .[] else . end) | .status.healthStatus[]? | select(.healthState == "HEALTHY")] | length' <<< "$health")"
-            [ "$healthy" = "$target_size" ] && break
-            sleep 10
-          done
-          [ "$healthy" = "$target_size" ] || { echo "LB chỉ có $healthy/$target_size instance HEALTHY sau 10 phút" >&2; exit 1; }
-
-      - name: Check readiness through the public endpoint
-        # Cần 6 lần 200 liên tiếp qua Cloudflare → load balancer.
-        run: |
-          ok=0
-          for i in $(seq 1 90); do
-            code="$(curl -s -o /dev/null -m 10 -w '%{http_code}' "$STAGING_HA_URL/health/ready" || true)"
-            if [ "$code" = 200 ]; then
-              ok=$((ok + 1))
-            else
-              ok=0
-              echo "attempt $i: $code"
-            fi
-            [ "$ok" -ge 6 ] && break
-            sleep 10
-          done
-          [ "$ok" -ge 6 ] || { echo 'Readiness chưa đạt 6 lần liên tiếp.' >&2; exit 1; }
+        run: bash scripts/verify-staging-ha-app.sh

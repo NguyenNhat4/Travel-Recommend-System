@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Đưa image backend và frontend (digest bất biến) vào MIG vota-ha-app qua Terraform root staging-ha.
-# Dùng bởi .github/workflows/staging-ha-cd.yml (triển khai và rollback). Không chạy migration DB ở đây.
+# Apply Terraform root staging-ha. Từ 2026-10-13 chỉ staging-ha-infra-cd.yml gọi: deploy ứng dụng không chạy Terraform
+# (image mong muốn nằm ở all-instances config của MIG). BACKEND_REF/FRONTEND_REF lấy từ last-good và chỉ là image dự
+# phòng của template. Không chạy migration DB ở đây.
 #
 # Biến môi trường (bắt buộc):
 #   BACKEND_REF   image@sha256:...   (ví dụ europe-.../vota-backend@sha256:...)
@@ -76,6 +77,8 @@ google_cloud_scheduler_job.app_autoscaler_on|delete
 google_cloud_scheduler_job.app_resize_zero|delete
 google_cloud_scheduler_job.crawler_extra_start[0]|delete
 google_cloud_scheduler_job.crawler_extra_stop[0]|delete
+# Alert runner CI không chạy (2026-10-13).
+google_monitoring_alert_policy.ci_runner_down|create
 '
 unexpected="$(terraform show -json "$plan_file" | jq -r '
   .resource_changes[]

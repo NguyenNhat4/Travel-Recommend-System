@@ -139,8 +139,8 @@ resource "google_compute_region_instance_group_manager" "app" {
   update_policy {
     # OPPORTUNISTIC: đổi template KHÔNG tự thay VM. Image trên VM đang chạy được đổi tại chỗ không gián đoạn bằng
     # slot-deploy.sh (chạy bản mới song song bản cũ, đổi proxy khi bản mới ready); CD gọi qua
-    # scripts/roll-staging-ha-app-slots.sh. Template vẫn giữ image mới nhất để VM do autoscaler hoặc autohealing
-    # tạo sau này khởi động đúng image. (Trước 2026-10-12: PROACTIVE + max_surge 0, mỗi deploy thay hết VM và sập.)
+    # scripts/roll-staging-ha-app-slots.sh. VM do autoscaler hoặc autohealing tạo đọc image mong muốn từ
+    # all-instances config (CD ghi); image trong template chỉ là dự phòng. (Trước 2026-10-12: PROACTIVE + max_surge 0, mỗi deploy thay hết VM và sập.)
     type               = "OPPORTUNISTIC"
     minimal_action     = "REPLACE"
     replacement_method = "SUBSTITUTE"
@@ -154,7 +154,8 @@ resource "google_compute_region_instance_group_manager" "app" {
   }
 
   lifecycle {
-    ignore_changes = [target_size]
+    # all_instances_config giữ image mong muốn do CD ghi (scripts/set-staging-ha-desired-images.sh); Terraform không đụng.
+    ignore_changes = [target_size, all_instances_config]
   }
 }
 
