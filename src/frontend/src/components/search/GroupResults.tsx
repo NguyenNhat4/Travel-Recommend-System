@@ -10,6 +10,7 @@ import {
 import type { Taxonomy } from '../../types/travel';
 import { loadSection } from '../../hooks/useLazySection';
 import { ProductCard } from '../common/ProductCard';
+import { ProductRowSkeleton, SkeletonStatus } from '../common/Skeleton';
 import { SearchAssistantBanner } from './SearchAssistantBanner';
 import { SortMenu } from './SortMenu';
 
@@ -194,9 +195,9 @@ export const GroupResults: React.FC<GroupResultsProps> = ({ group, query, destin
     );
   } else if (loading && !loaded) {
     body = (
-      <div className="space-y-4" aria-busy="true">
-        {[0, 1, 2].map((i) => <div key={i} className="h-36 rounded-xl bg-slate-100 animate-pulse" />)}
-      </div>
+      <SkeletonStatus label="Đang tải kết quả" className="space-y-4">
+        {[0, 1, 2, 3, 4].map((i) => <ProductRowSkeleton key={i} />)}
+      </SkeletonStatus>
     );
   } else if (visible.length > 0) {
     body = (

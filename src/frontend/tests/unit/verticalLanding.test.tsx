@@ -74,8 +74,10 @@ describe('VerticalLanding', () => {
 
   it('adds ?destination= to the requests and the titles and has no "Xem thêm" link', async () => {
     render(<VerticalLanding vertical="flights" destination="Nha Trang" />);
-    await waitFor(() => expect(api.listProducts).toHaveBeenCalled());
-    expect(paramsOf(api.listProducts.mock.calls[0])).toMatchObject({ taxonomy: 'flight', destination: 'Nha Trang' });
+    // Tấm tìm kiếm vé máy bay cũng tải danh sách sân bay (không có destination), nên tìm kệ phổ biến theo `sort`.
+    const popularShelf = () => api.listProducts.mock.calls.map(paramsOf).find((p) => p.sort === 'popular');
+    await waitFor(() => expect(popularShelf()).toBeDefined());
+    expect(popularShelf()).toMatchObject({ taxonomy: 'flight', destination: 'Nha Trang' });
     expect(await screen.findByRole('heading', { name: 'Chặng bay phổ biến đến Nha Trang' })).toBeTruthy();
     expect(screen.queryByRole('link', { name: /Xem thêm/ })).toBeNull();
   });

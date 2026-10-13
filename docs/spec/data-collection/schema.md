@@ -230,7 +230,7 @@ Mỗi sản phẩm mang `attributes.fieldSources` nên truy nguồn được t�
 Sản phẩm trùng giữa các nguồn đã gộp: 220 dòng trong `dedup_report.csv`.
 Theo nguồn chính của dòng: booking 9.470 · trip 991 · agoda 498 · vinpearl 428.
 
-Ngoài các quy tắc tự động, 10 sản phẩm bị loại sau khi soát tay (`collectors/excluded_products.csv`), và các dòng lỗi dữ liệu
+Ngoài các quy tắc tự động, các sản phẩm bị loại sau khi soát tay (`collectors/excluded_products.csv`) — loại khách sạn thì loại luôn hạng phòng con (13/10/2026); tên soát tay ở `collectors/name_overrides.csv` (`attributes.originalName`, `nameSource`, `nameEvidence`), và các dòng lỗi dữ liệu
 (toạ độ sai/thiếu, hạng phòng giá phi lý, mồ côi) bị xoá tự động, danh sách ở `data/excluded_location.csv`.
 
 ## 7. Bắt đầu nhanh

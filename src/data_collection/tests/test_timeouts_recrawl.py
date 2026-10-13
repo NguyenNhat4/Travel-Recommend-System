@@ -69,6 +69,46 @@ class RunSourceTimeoutTests(unittest.TestCase):
         self.assertEqual(code, 0)
 
 
+class RunSourceStallTests(unittest.TestCase):
+    """Nguồn không in log và không ghi thêm interim quá `timeout.stallMinutes`: chỉ dừng riêng nguồn đó."""
+
+    def run_source(self, script, stall_seconds, run_dir=None):
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.object(fresh_catalog, 'source_command', lambda *a: [sys.executable, '-c', script]), Quiet():
+            started = time.monotonic()
+            code = fresh_catalog.run_source(Path(run_dir or tmp), 'booking-hotels', '@x', 'booking',
+                                            stall_seconds=stall_seconds)
+            return code, time.monotonic() - started, list(fresh_catalog.SOURCE_TAIL['booking-hotels'])
+
+    def test_silent_source_is_stopped_with_its_children(self):
+        code, seconds, tail = self.run_source(RunSourceTimeoutTests.CHILD, 1.0)
+        self.assertEqual(code, perr.EXIT_STALLED)
+        self.assertLess(seconds, 15)
+        child = int(next(line for line in tail if line.startswith('child')).split()[1])
+        deadline = time.monotonic() + 5
+        while alive(child) and time.monotonic() < deadline:
+            time.sleep(0.1)
+        self.assertFalse(alive(child), 'tiến trình con của nguồn (vd. Chromium) phải bị dừng cùng')
+
+    def test_log_lines_keep_a_slow_source_alive(self):
+        code, seconds, _ = self.run_source('import time\nfor i in range(10):\n    print(i, flush=True); time.sleep(0.4)', 1.5)
+        self.assertEqual(code, 0)
+        self.assertGreater(seconds, 3.5)
+
+    def test_growing_interim_keeps_a_quiet_source_alive(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / 'interim').mkdir()
+            target = Path(tmp) / 'interim' / 'booking_hotels.jsonl'
+            script = (f'import time\nfor i in range(12):\n    open({str(target)!r}, "a").write("{{}}\\n"); time.sleep(0.3)')
+            code, seconds, _ = self.run_source(script, 2.0, run_dir=tmp)
+        self.assertEqual(code, 0)
+        self.assertGreater(seconds, 3.0)
+
+    def test_zero_turns_stall_detection_off(self):
+        code, _, _ = self.run_source('import time; time.sleep(1.5)', 0)
+        self.assertEqual(code, 0)
+
+
 class DeadlineHelpersTests(unittest.TestCase):
     def test_step_deadline_takes_the_earlier_of_own_timeout_and_crawl_deadline(self):
         values = {f.key: f.default for f in fresh_catalog.fresh_settings.FIELDS}
@@ -98,6 +138,13 @@ class DeadlineHelpersTests(unittest.TestCase):
         self.assertEqual(perr.classify_exit(perr.EXIT_TIMEOUT, []), perr.TIMEOUT)
         self.assertEqual(perr.strategy(perr.TIMEOUT, {})['action'], 'skip')
         self.assertEqual(perr.StepTimeout('x').step_status, 'timeout')
+
+    def test_stalled_source_is_retried_like_a_transient_error(self):
+        values = {f.key: f.default for f in fresh_catalog.fresh_settings.FIELDS}
+        self.assertEqual(perr.classify_exit(perr.EXIT_STALLED, []), perr.STALLED)
+        plan = perr.strategy(perr.STALLED, values)
+        self.assertEqual((plan['action'], plan['retries']), ('retry', values['retry.transientAttempts']))
+        self.assertEqual(values['timeout.stallMinutes'], 30)  # gấp đôi lần nghỉ dài nhất khi bị chặn (900 s)
 
 
 class SealInterimTests(unittest.TestCase):
@@ -172,6 +219,19 @@ class CrawlSitesTimeoutTests(unittest.TestCase):
         self.assertEqual((self.run / 'interim' / 'vinpearl.jsonl').read_text(), '{"a": 1}\n')
         self.assertIn(('vinpearl', ('vinpearl', 'vinpearl_bundles')), recorder.sources)  # vẫn chuẩn hoá phần đã cào
         self.assertEqual(self.calls.count('vinpearl'), 1)  # không thử lại
+        self.assertIn('catalog.group.done name=booking status=ok', log)
+
+    def test_stalled_source_is_retried_then_kept_as_timeout_and_others_continue(self):
+        values = {f.key: f.default for f in fresh_catalog.fresh_settings.FIELDS}
+        (self.run / 'interim' / 'vinpearl.jsonl.tmp').write_text('{"a": 1}\n{"b"', encoding='utf-8')
+        with patch.object(fresh_catalog, 'CFG', {**values, 'retry.transientDelay': 0}):
+            statuses, recorder, log = self.crawl([('vinpearl', ('vinpearl',)), ('booking', ('booking-hotels',))],
+                                                 {'vinpearl': perr.EXIT_STALLED})
+        self.assertEqual(self.calls.count('vinpearl'), 1 + values['retry.transientAttempts'])
+        self.assertEqual(statuses, {'vinpearl': perr.EXIT_STALLED, 'booking-hotels': 0})
+        self.assertIn('catalog.source.incomplete name=vinpearl kind=stalled', log)
+        self.assertEqual((self.run / 'interim' / 'vinpearl.jsonl').read_text(), '{"a": 1}\n')  # giữ phần đã cào
+        self.assertIn(('vinpearl', ('vinpearl', 'vinpearl_bundles')), recorder.sources)
         self.assertIn('catalog.group.done name=booking status=ok', log)
 
     def test_each_step_gets_its_own_deadline_capped_by_the_crawl_deadline(self):
@@ -256,6 +316,21 @@ class JobTimeoutTests(unittest.TestCase):
         kinds = [a['kind'] for a in alerts.run_alerts(data, run)]
         self.assertIn('timeout', kinds)
         self.assertEqual(json.loads((run / 'trip_targets.run.json').read_text())['hotels'][0]['trip_hotel_id'], '1')
+
+    def test_stalled_source_makes_a_partial_run_whose_later_steps_all_run(self):
+        code, data, run, calls = self.run_job({'vinpearl': perr.EXIT_STALLED},
+                                              settings={'retry.transientAttempts': 1, 'retry.transientDelay': 1})
+        self.assertEqual(code, 0)
+        self.assertEqual(data['status'], 'partial')
+        self.assertEqual(calls, ['normalize', 'validate', 'load', 'index'])
+        step = next(s for s in data['steps'] if s['name'] == 'vinpearl')
+        self.assertEqual((step['status'], step['detail']['errorKind'], step['detail']['stalls']), ('timeout', 'stalled', 2))
+        self.assertIn('Nghẽn', step['detail']['reason'])
+        later = [s for s in data['steps'] if s['name'] in ('normalise', 'validate', 'db', 'index')]
+        self.assertTrue(later and all(s['status'] == 'ok' for s in later), later)
+        stalled = [a for a in alerts.run_alerts(data, run) if a['kind'] == 'stalled']
+        self.assertEqual(len(stalled), 1)
+        self.assertIn('Nguồn nghẽn', stalled[0]['message'])
 
     def test_trip_price_timeout_drops_trip_hotels_but_not_the_run(self):
         code, data, _, calls = self.run_job({}, settings={'timeout.tripHotelsPrices': 0, 'crawl.maxHours': 0.0003},

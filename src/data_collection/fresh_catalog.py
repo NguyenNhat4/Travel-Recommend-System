@@ -224,35 +224,71 @@ def refresh_coverage(run_dir: Path, trip_targets: list[dict], trip_records: list
     return report, problems
 
 
+def interim_sizes(run_dir: Path, source: str) -> tuple:
+    """Kích thước các file interim của một bước cào (cả bản `.tmp` đang ghi): đổi = nguồn còn ghi thêm dữ liệu."""
+    out = []
+    for stem in STEP_INTERIM.get(source, ()):
+        for name in (f'{stem}.jsonl', f'{stem}.jsonl.tmp'):
+            try:
+                out.append((name, (run_dir / 'interim' / name).stat().st_size))
+            except OSError:
+                pass
+    return tuple(out)
+
+
 def run_source(run_dir: Path, source: str, destinations: str, group: str, deadline: float | None = None,
-               on_start=None) -> int:
+               on_start=None, stall_seconds: float | None = None) -> int:
     """Chạy `crawl.py <source>`. `deadline` (time.monotonic): quá hạn thì dừng cả cây tiến trình của nguồn này (crawl.py,
-    Chromium) và trả perr.EXIT_TIMEOUT (P4); các nguồn khác không bị đụng. `on_start(pid)`: ghi pid vào chi tiết bước để
-    supervisor (pipeline_runtime.supervise) dừng riêng nguồn này nếu chính nó không tự dừng kịp."""
+    Chromium) và trả perr.EXIT_TIMEOUT (P4); các nguồn khác không bị đụng. `stall_seconds` (mặc định
+    `timeout.stallMinutes`): nguồn không in dòng log nào và không ghi thêm interim trong ngần ấy giây thì cũng dừng riêng
+    nguồn này, trả perr.EXIT_STALLED. `on_start(pid)`: ghi pid vào chi tiết bước để supervisor
+    (pipeline_runtime.supervise) dừng riêng nguồn này nếu chính nó không tự dừng kịp."""
     command = source_command(run_dir, source, destinations, settings_values())
     say(f'[{group}] $ ' + ' '.join(command), source=source)
     env = dict(os.environ, CRAWL_LIVE_KEY=LIVE_KEYS.get(source, ''), PYTHONUNBUFFERED='1', CRAWL_LOG_PLAIN='1')
     tail = SOURCE_TAIL[source] = deque(maxlen=80)
-    timed_out = threading.Event()
+    timed_out, stalled = threading.Event(), threading.Event()
+    if stall_seconds is None:
+        stall_seconds = float(settings_values().get('timeout.stallMinutes') or 0) * 60
+    last_activity = [time.monotonic()]  # lần cuối nguồn in log hoặc ghi thêm interim
     with subprocess.Popen(command, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                           text=True, errors='replace', env=env) as proc:
         if on_start is not None:
             on_start(proc.pid)
-        if deadline is not None:
+        if deadline is not None or stall_seconds > 0:
             def watch() -> None:
+                sizes, checked = interim_sizes(run_dir, source), 0.0
+                every = min(5.0, stall_seconds / 4)  # nhịp đọc kích thước interim
                 while proc.poll() is None:
-                    if time.monotonic() >= deadline:
+                    now = time.monotonic()
+                    if deadline is not None and now >= deadline:
                         timed_out.set()
                         say(f'[{group}] catalog.source.timeout name={source}: quá hạn giờ, dừng nguồn này',
                             source=source, step=source, severity='ERROR')
                         terminate_tree(proc.pid)
                         return
+                    if stall_seconds > 0:
+                        if now - checked >= every:
+                            checked, current = now, interim_sizes(run_dir, source)
+                            if current != sizes:
+                                sizes, last_activity[0] = current, now
+                        idle = now - last_activity[0]
+                        if idle >= stall_seconds:
+                            stalled.set()
+                            say(f'[{group}] catalog.source.stalled name={source}: không có tiến triển {idle / 60:.0f} '
+                                f'phút (không log, không ghi thêm dữ liệu), dừng nguồn này', source=source, step=source,
+                                severity='ERROR')
+                            terminate_tree(proc.pid)
+                            return
                     time.sleep(0.5)
-            threading.Thread(target=watch, name=f'timeout-{source}', daemon=True).start()
+            threading.Thread(target=watch, name=f'watch-{source}', daemon=True).start()
         for line in proc.stdout:
+            last_activity[0] = time.monotonic()
             tail.append(line.rstrip())
             say(f'[{group}] {line.rstrip()}', event='source.output', source=source, step=source)
-    return perr.EXIT_TIMEOUT if timed_out.is_set() else proc.returncode
+    if timed_out.is_set():
+        return perr.EXIT_TIMEOUT
+    return perr.EXIT_STALLED if stalled.is_set() else proc.returncode
 
 
 def deadline_after(seconds: float) -> float | None:
@@ -737,6 +773,8 @@ def crawl_sites(run_dir: Path, destinations: str, groups, parallel: int,
                             detail['exitCode'] = code
                             if kind == 'ok':
                                 break
+                            if kind == perr.STALLED:
+                                detail['stalls'] = detail.get('stalls', 0) + 1
                             plan = perr.strategy(kind, settings_values())
                             if plan['action'] == 'retry' and attempt < plan['retries']:
                                 attempt += 1
@@ -745,10 +783,15 @@ def crawl_sites(run_dir: Path, destinations: str, groups, parallel: int,
                                     delay = min(delay, max(0, limit - time.monotonic()))
                                 wait_or_stop(delay)
                                 continue
-                            if kind not in (perr.BLOCKED, perr.TIMEOUT):
+                            # nghẽn hết lượt thử: như quá giờ — giữ phần đã cào, nguồn khác và các bước sau chạy tiếp
+                            ended = 'blocked' if kind == perr.BLOCKED else \
+                                'timeout' if kind in (perr.TIMEOUT, perr.STALLED) else 'error'
+                            if ended == 'error':
                                 status = 'error'
-                            detail.update(_status='blocked' if kind == perr.BLOCKED else
-                                          'timeout' if kind == perr.TIMEOUT else 'error', errorKind=kind)
+                            detail.update(_status=ended, errorKind=kind)
+                            if kind == perr.STALLED:
+                                detail['reason'] = (f'Nghẽn: không có tiến triển {settings_values()["timeout.stallMinutes"]} '
+                                                    f'phút, {detail["stalls"]} lần')
                             if kind == perr.BLOCKED:
                                 statuses[key] = perr.EXIT_BLOCKED
                             detail['sealed'] = seal_interim(run_dir, STEP_INTERIM.get(key, ()))

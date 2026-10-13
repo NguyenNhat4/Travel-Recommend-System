@@ -102,6 +102,15 @@ describe('SearchView', () => {
     expect(calls.filter((c) => c.taxonomy).every((c) => c.limit === 6)).toBe(true);
   });
 
+  it('while counting, the header shows a skeleton line instead of a spinner; the count replaces it', async () => {
+    stubSearch();
+    render(<SearchView />);
+    expect(screen.getByRole('status', { name: 'Đang đếm kết quả' })).toBeTruthy();
+    expect(document.querySelector('.animate-spin')).toBeNull();
+    expect(await screen.findByText('Tìm thấy 188 dịch vụ phù hợp')).toBeTruthy();
+    expect(screen.queryByRole('status', { name: 'Đang đếm kết quả' })).toBeNull();
+  });
+
   it('tab counts and row counts come from the same requests, so they always agree', async () => {
     const calls = stubSearch();
     render(<SearchView />);
@@ -182,6 +191,18 @@ describe('SearchView', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Xem thêm/ }));
     await screen.findByTestId('row-hotel-20');
     expect(calls.filter((c) => c.taxonomy === 'hotel').map((c) => c.offset)).toEqual([20]);
+  });
+
+  it('a group tab holds its place with five row skeletons until the first page arrives', async () => {
+    stubSearch();
+    state.params = new URLSearchParams('q=Nha+Trang&type=stay');
+    render(<SearchView />);
+    const skeleton = screen.getByRole('status', { name: 'Đang tải kết quả' });
+    expect(skeleton.getAttribute('aria-busy')).toBe('true');
+    expect(skeleton.querySelectorAll(':scope > [aria-hidden="true"]')).toHaveLength(5);
+    expect(skeleton.querySelector('.animate-pulse')).toBeNull();
+    await screen.findByTestId('row-hotel-0');
+    expect(screen.queryByRole('status', { name: 'Đang tải kết quả' })).toBeNull();
   });
 
   it('non-stay tabs have the sort popup but no star/price sidebar; sorting is in the popup', async () => {

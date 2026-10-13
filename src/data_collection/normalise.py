@@ -2069,6 +2069,55 @@ def load_excluded_products(path: Path | None = None) -> dict[str, str]:
     return out
 
 
+def excluded_reason(ref: str, excluded: dict[str, str]) -> str | None:
+    """Lý do loại của một sourceRef: chính nó trong danh sách, hoặc khách sạn cha của hạng phòng (`<khách sạn>:room:<id>`)
+    trong danh sách. Hạng phòng phải đi cùng khách sạn: còn phòng đặt được thì job bật lại khách sạn đã ẩn (FR-CAT-02)."""
+    if ref in excluded:
+        return excluded[ref]
+    parent = ref.split(":room:", 1)[0] if ":room:" in ref else None
+    return f"khách sạn cha đã loại: {excluded[parent]}" if parent in excluded else None
+
+
+NAME_OVERRIDES_CSV = Path(__file__).resolve().parent / "collectors" / "name_overrides.csv"
+
+
+def load_name_overrides(path: Path | None = None) -> dict[str, tuple[str, str]]:
+    """Tên đúng theo sourceRef khi tên của nguồn sai hoặc khó hiểu (vd. trip.com đặt "Halong Bay Cruises" cho Động Trung
+    Trang); bắt buộc ghi bằng chứng. Job giữ tên đã có trong DB nên bảng này lo cho dòng mới và catalog dựng lại."""
+    path = path or NAME_OVERRIDES_CSV
+    if not path.exists():
+        return {}
+    out = {}
+    with open(path, encoding="utf-8-sig", newline="") as f:
+        for n, row in enumerate(csv.DictReader(f), 2):
+            ref, name, evidence = (str(row.get(k) or "").strip() for k in ("sourceRef", "name", "evidence"))
+            if not ref or not name or not evidence:
+                log.warning("%s dòng %d: thiếu sourceRef/tên/bằng chứng – bỏ qua", path.name, n)
+                continue
+            out[ref] = (name, evidence)
+    return out
+
+
+def apply_name_overrides(products: list[dict], overrides: dict[str, tuple[str, str]]) -> int:
+    """Đổi tên theo name_overrides.csv; mô tả dựng sẵn bắt đầu bằng tên cũ ("Nguyễn Huệ. Loại hình: …") đổi theo."""
+    changed = 0
+    for p in products:
+        if p["sourceRef"] not in overrides:
+            continue
+        name, evidence = overrides[p["sourceRef"]]
+        a = p["attributes"]
+        if p["name"] != name:
+            old = p["name"]
+            a["originalName"] = old
+            p["name"] = name
+            if p.get("description") and p["description"].startswith(old + "."):
+                p["description"] = name + p["description"][len(old):]
+            changed += 1
+        a["nameSource"] = "reviewed: collectors/name_overrides.csv"
+        a["nameEvidence"] = evidence
+    return changed
+
+
 # Trip xếp cả văn phòng bảo hiểm, hãng taxi, phòng khám... vào danh sách "điểm tham quan". Danh sách tay
 # (excluded_products.csv) không theo kịp khi mở rộng ra nhiều thành phố, nên loại thêm theo quy tắc trên tên đã bỏ dấu.
 # Quy tắc cố ý hẹp (từ khoá rõ nghĩa) và chỉ áp cho điểm tham quan của trip.com; sản phẩm bị loại được ghi ra
@@ -3428,11 +3477,14 @@ def merge_catalog(a: argparse.Namespace, clock: StepClock, paths: Paths, entries
     stage_report["rowsBuilt"] = len(products)
     stages.snapshot("merged", products)
     clock.begin("lọc", len(products), done=len(products))
+    # Tên đã soát tay: trên mọi sản phẩm của lượt (cả tour booking.com, combo — không chỉ khách sạn / vé / điểm trip.com).
+    stage_report["namesOverridden"] = apply_name_overrides(products, load_name_overrides())
     excluded = load_excluded_products()
     if excluded:
         before = len(products)
-        stages.drop("excluded", [(p, excluded[p["sourceRef"]]) for p in products if p["sourceRef"] in excluded])
-        products = [p for p in products if p["sourceRef"] not in excluded]
+        reasons = {p["sourceRef"]: excluded_reason(p["sourceRef"], excluded) for p in products}
+        stages.drop("excluded", [(p, reasons[p["sourceRef"]]) for p in products if reasons[p["sourceRef"]]])
+        products = [p for p in products if not reasons[p["sourceRef"]]]
         if before - len(products):
             dropped["đã soát tay và loại (collectors/excluded_products.csv)"] += before - len(products)
 

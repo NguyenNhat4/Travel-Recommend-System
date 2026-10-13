@@ -74,6 +74,8 @@ def test_create_session_sends_vnd_amounts_metadata_and_idempotency_key():
     assert form["line_items[1][quantity]"] == "2"
     assert form["metadata[bookingId]"] == form["payment_intent_data[metadata][bookingId]"] == "b-1"
     assert form["expires_at"] == str(int(datetime(2026, 9, 16, 3, 31, tzinfo=timezone.utc).timestamp()))
+    # Stripe không còn nhận payment_method_types trên Checkout Session; phương thức do Dashboard quyết định.
+    assert not any(key.startswith("payment_method_types") for key in form)
     assert session.session_id == "cs_test_1" and session.url.startswith("https://checkout.stripe.com")
 
 

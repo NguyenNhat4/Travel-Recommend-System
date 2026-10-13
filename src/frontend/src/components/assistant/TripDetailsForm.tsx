@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Calendar, LocateFixed, Loader2, MapPin, PlaneTakeoff, RotateCcw, Send, Users, Wallet } from 'lucide-react';
 import { listDestinations } from '../../services/destinations';
 import { listDepartureAirports, nearestDepartureCity } from '../../services/flights';
+import { SkeletonBlock, SkeletonStatus } from '../common/Skeleton';
 import { TripPreferenceFields } from './TripPreferenceFields';
 import type { components } from '../../types/api.gen';
 
@@ -228,9 +229,9 @@ export function TripDetailsForm({
               <MapPin className="h-3.5 w-3.5 text-ai-600" aria-hidden="true" /> Điểm đến
             </legend>
             {loadState === 'loading' && (
-              <div role="status" className="flex min-h-9 items-center gap-2 rounded-lg bg-slate-50 px-3 text-xs text-slate-500">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> Đang tải điểm đến…
-              </div>
+              <SkeletonStatus label="Đang tải điểm đến…" className="flex flex-wrap gap-1.5">
+                {['w-20', 'w-24', 'w-16', 'w-24', 'w-20'].map((w, i) => <SkeletonBlock key={i} className={`h-9 rounded-full ${w}`} />)}
+              </SkeletonStatus>
             )}
             {loadState === 'error' && (
               <div role="alert" className="flex min-h-9 items-center justify-between gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs text-rose-800">

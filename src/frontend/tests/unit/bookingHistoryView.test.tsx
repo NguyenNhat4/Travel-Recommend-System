@@ -47,8 +47,11 @@ describe('BookingHistoryView — Đơn hàng của tôi', () => {
 
   it('mở vào tab Sắp đến, hỏi Backend đúng tham số và hiện thẻ đơn', async () => {
     render(<BookingHistoryView />);
-    expect(screen.getByLabelText('Đang tải đơn hàng')).toBeTruthy();
+    const skeleton = screen.getByRole('status', { name: 'Đang tải đơn hàng' });
+    expect(skeleton.getAttribute('aria-busy')).toBe('true');
+    expect(skeleton.querySelectorAll(':scope > [aria-hidden="true"]')).toHaveLength(3);
     expect(await screen.findAllByTestId('booking-card')).toHaveLength(2);
+    expect(screen.queryByRole('status', { name: 'Đang tải đơn hàng' })).toBeNull();
     expect(api.listBookings).toHaveBeenCalledWith(
       { tab: 'upcoming', taxonomy: undefined, days: undefined, page: 1, pageSize: 5 }, expect.any(AbortSignal));
     expect(screen.getByRole('tab', { name: 'Sắp đến' }).getAttribute('aria-selected')).toBe('true');

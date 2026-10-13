@@ -114,7 +114,6 @@ class StripePaymentGateway:
     ) -> CheckoutSession:
         params = {
             "mode": "payment",
-            "payment_method_types": ["card"],
             "locale": "vi",
             "submit_type": "book",
             "expires_at": int(expires_at.timestamp()),

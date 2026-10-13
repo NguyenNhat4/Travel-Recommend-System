@@ -6,6 +6,7 @@ docs/plan/2026-09-28-normalize-on-dinh-theo-buoc.md).
 | transient   | timeout, mất kết nối, HTTP 429/5xx, SQLite "database is locked"   | thử lại, chờ tăng dần                    |
 | blocked     | crawl.py mã 75, captcha/challenge, "bị chặn", HTTP 403            | không thử lại; đánh dấu nguồn bị chặn, nguồn khác chạy tiếp |
 | timeout     | bước cào vượt hạn giờ `timeout.*` / `crawl.maxHours` (P4)          | dừng riêng bước đó, giữ phần đã cào, không thử lại; nguồn khác chạy tiếp |
+| stalled     | crawl.py không in log, không ghi thêm interim `timeout.stallMinutes` | dừng riêng nguồn đó, thử lại như lỗi tạm thời; hết lượt thử thì như timeout |
 | code        | TypeError/KeyError/…, quá nhiều bản ghi lỗi khi ánh xạ             | dừng ngay, báo tên bước + traceback      |
 | quality     | catalog thiếu nhóm bắt buộc, số dòng tụt mạnh so với lượt trước   | không nạp DB, giữ dữ liệu cũ             |
 | infra       | Postgres, Weaviate, Cohere không kết nối được                      | thử lại lâu hơn                          |
@@ -19,11 +20,12 @@ from __future__ import annotations
 import re
 import sqlite3
 
-TRANSIENT, BLOCKED, TIMEOUT, CODE, QUALITY, INFRA, UNKNOWN = \
-    "transient", "blocked", "timeout", "code", "quality", "infra", "unknown"
-LABELS = {TRANSIENT: "lỗi tạm thời", BLOCKED: "bị chặn", TIMEOUT: "quá giờ", CODE: "lỗi code", QUALITY: "chặn chất lượng",
-          INFRA: "lỗi hạ tầng", UNKNOWN: "chưa phân loại"}
+TRANSIENT, BLOCKED, TIMEOUT, STALLED, CODE, QUALITY, INFRA, UNKNOWN = \
+    "transient", "blocked", "timeout", "stalled", "code", "quality", "infra", "unknown"
+LABELS = {TRANSIENT: "lỗi tạm thời", BLOCKED: "bị chặn", TIMEOUT: "quá giờ", STALLED: "nghẽn", CODE: "lỗi code",
+          QUALITY: "chặn chất lượng", INFRA: "lỗi hạ tầng", UNKNOWN: "chưa phân loại"}
 EXIT_BLOCKED = 75  # crawl.py: bị chặn liên tiếp, đã lưu tiến độ
+EXIT_STALLED = 76  # job dừng tiến trình crawl.py vì không có tiến triển trong `timeout.stallMinutes`
 EXIT_TIMEOUT = 124  # job dừng tiến trình crawl.py vì vượt hạn giờ (cùng mã với lệnh `timeout` của coreutils)
 
 
@@ -59,7 +61,8 @@ class InfraError(PipelineError):
     kind = INFRA
 
 
-ERROR_CLASS = {TRANSIENT: TransientError, BLOCKED: BlockedError, TIMEOUT: StepTimeout, CODE: CodeError, QUALITY: QualityGateError,
+ERROR_CLASS = {TRANSIENT: TransientError, BLOCKED: BlockedError, TIMEOUT: StepTimeout, STALLED: StepTimeout, CODE: CodeError,
+               QUALITY: QualityGateError,
                INFRA: InfraError, UNKNOWN: PipelineError}
 
 _TRANSIENT = re.compile(r"database is locked|timed? ?out|Timeout|Connection (reset|aborted|refused)|RemoteProtocolError|"
@@ -83,7 +86,9 @@ def classify_exit(code: int, tail: list[str]) -> str:
         return BLOCKED
     if code == EXIT_TIMEOUT:
         return TIMEOUT
-    lines = [line for line in tail if line.strip()]
+    if code == EXIT_STALLED:
+        return STALLED
+    lines =[line for line in tail if line.strip()]
     exception = next((line for line in reversed(lines) if _EXCEPTION_LINE.search(line)), "")
     if exception:
         if _TRANSIENT.search(exception):
@@ -128,7 +133,7 @@ def classify_exception(exc: BaseException) -> str:
 
 def strategy(kind: str, values: dict) -> dict:
     """Việc cần làm với một loại lỗi: `retry` (kèm số lần, giây chờ lần đầu, hệ số tăng), `skip` hoặc `fail`."""
-    if kind == TRANSIENT:
+    if kind in (TRANSIENT, STALLED):  # trình duyệt/kết nối treo thường hết khi chạy lại tiến trình
         return {"action": "retry", "retries": int(values["retry.transientAttempts"]),
                 "delay": float(values["retry.transientDelay"]), "factor": 2.0}
     if kind == INFRA:

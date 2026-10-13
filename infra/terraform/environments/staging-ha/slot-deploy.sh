@@ -12,6 +12,7 @@
 #
 # Bố cục trên VM (network_mode: host cho mọi container):
 #   vota-proxy (nginx) :3000  ->  frontend của slot đang hoạt động  ->  backend cùng slot
+#   vota-proxy (nginx) :3000  ->  /api/v1/payments/stripe/webhook  ->  backend của slot đang hoạt động (không qua frontend)
 #   slot blue : frontend :3001, backend :8001      slot green: frontend :3002, backend :8002
 #   vota-pgbouncer :6432 dùng chung. VM dựng theo kiểu cũ (một stack ở 3000/8000, không proxy) gọi là `legacy`
 #   và được chuyển sang slot ở lần deploy đầu tiên (xem migrate_from_legacy).
@@ -26,6 +27,7 @@ MODE="${1:-}"
 ETC=/etc/vota
 PROXY_DIR="$ETC/proxy"
 UPSTREAM="$PROXY_DIR/upstream.conf"
+BACKEND_UPSTREAM="$PROXY_DIR/backend-upstream.conf"
 PROXY_IMAGE="${PROXY_IMAGE:-nginx:1.27-alpine}"
 DRAIN_SECONDS="${DRAIN_SECONDS:-110}"
 READY_TIMEOUT="${READY_TIMEOUT:-600}"
@@ -177,6 +179,10 @@ events {
 }
 
 http {
+  # Kho /_next/static do nginx phục vụ trực tiếp: thiếu mime.types thì .js/.css ra text/plain và trình duyệt từ chối CSS
+  # (lỗi thật 2026-10-13 sau deploy đầu tiên có kho tĩnh). File này có sẵn trong image nginx chính thức.
+  include /etc/nginx/mime.types;
+  default_type application/octet-stream;
   access_log off;
   client_max_body_size 50m;
 
@@ -188,6 +194,11 @@ http {
   upstream vota_frontend {
     include /etc/vota/proxy/upstream.conf;
     keepalive 64;
+  }
+
+  # Backend của slot đang hoạt động, chỉ dùng cho webhook Stripe (xem location bên dưới).
+  upstream vota_backend {
+    include /etc/vota/proxy/backend-upstream.conf;
   }
 
   server {
@@ -208,6 +219,16 @@ http {
       proxy_set_header Host $http_host;
     }
 
+    # Webhook Stripe đi thẳng tới backend, không qua Next.js: BFF kiểm phiên và CSRF nên sẽ chặn request không có Origin
+    # và X-CSRF-Token. Backend tự kiểm Stripe-Signature trên body gốc, nên nginx chỉ chuyển tiếp, không đọc hay sửa body.
+    location = /api/v1/payments/stripe/webhook {
+      limit_except POST { deny all; }
+      proxy_pass http://vota_backend;
+      proxy_http_version 1.1;
+      proxy_set_header Host $http_host;
+      proxy_set_header X-Request-ID $request_id;
+    }
+
     location / {
       proxy_pass http://vota_frontend;
       proxy_http_version 1.1;
@@ -223,6 +244,7 @@ http {
   }
 }
 NGINXCONF
+  seed_backend_upstream
 }
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -336,10 +358,27 @@ wait_ready() { # $1 = url, $2 = timeout giây, $3 = số lần 200 liên tiếp
   return 1
 }
 
-write_upstream() { # $1 = cổng frontend
+write_upstream() { # $1 = cổng frontend, $2 = cổng backend của cùng slot
   mkdir -p "$PROXY_DIR"
   printf 'server 127.0.0.1:%s;\n' "$1" > "$UPSTREAM.new"
   mv -f "$UPSTREAM.new" "$UPSTREAM"
+  printf 'server 127.0.0.1:%s;\n' "$2" > "$BACKEND_UPSTREAM.new"
+  mv -f "$BACKEND_UPSTREAM.new" "$BACKEND_UPSTREAM"
+}
+
+# VM chạy bản trước chưa có backend-upstream.conf, nhưng nginx.conf mới đã include nó. Phải có file này trước khi
+# proxy khởi động lại (ví dụ VM reboot giữa lúc prepare và switch), nên ghi mặc định theo slot đang phục vụ.
+seed_backend_upstream() {
+  if [ -f "$BACKEND_UPSTREAM" ]; then return 0; fi
+  local port=8000 # kiểu cũ (legacy) chỉ có backend ở 8000
+  if [ -f "$UPSTREAM" ]; then
+    case "$(cat "$UPSTREAM")" in
+      *:3001\;*) port=8001 ;;
+      *:3002\;*) port=8002 ;;
+    esac
+  fi
+  mkdir -p "$PROXY_DIR"
+  printf 'server 127.0.0.1:%s;\n' "$port" > "$BACKEND_UPSTREAM"
 }
 
 ensure_proxy() {
@@ -384,7 +423,7 @@ report() { # dòng kết quả cho CD đối chiếu
 migrate_from_legacy() {
   local new="$1" waited=0
   slot_ports "$new"
-  write_upstream "$FRONTEND_PORT"
+  write_upstream "$FRONTEND_PORT" "$BACKEND_PORT"
   # Không để Docker tự khởi động lại container cũ khi nó thoát.
   docker update --restart=no vota-frontend vota-backend >/dev/null
   log "legacy: tắt êm frontend cũ để giải phóng cổng 3000"
@@ -450,7 +489,7 @@ mode_boot() {
       stop_slot green
       start_slot blue
       slot_ports blue
-      write_upstream "$FRONTEND_PORT"
+      write_upstream "$FRONTEND_PORT" "$BACKEND_PORT"
       ensure_proxy
       wait_ready "http://127.0.0.1:$FRONTEND_PORT/health/ready" "$READY_TIMEOUT" 1 || log "cảnh báo: blue chưa ready sau $READY_TIMEOUT giây"
       ;;
@@ -531,17 +570,17 @@ mode_switch() {
   if [ "$active" = legacy ]; then
     migrate_from_legacy "$new"
   elif running vota-proxy; then
-    write_upstream "$FRONTEND_PORT"
+    write_upstream "$FRONTEND_PORT" "$BACKEND_PORT"
     if ! reload_proxy; then
       log "reload proxy lỗi: đưa upstream về $active, bỏ slot $new"
       slot_ports "$active"
-      write_upstream "$FRONTEND_PORT"
+      write_upstream "$FRONTEND_PORT" "$BACKEND_PORT"
       stop_slot "$new"
       rm -f "$PENDING"
       die "không đổi được proxy sang $new; $active vẫn phục vụ"
     fi
   else
-    write_upstream "$FRONTEND_PORT"
+    write_upstream "$FRONTEND_PORT" "$BACKEND_PORT"
     ensure_proxy
   fi
 
@@ -550,7 +589,7 @@ mode_switch() {
     if [ "$active" = blue ] || [ "$active" = green ]; then
       log "proxy không ready với slot mới: đổi lại $active"
       slot_ports "$active"
-      write_upstream "$FRONTEND_PORT"
+      write_upstream "$FRONTEND_PORT" "$BACKEND_PORT"
       reload_proxy || log "cảnh báo: reload proxy về $active cũng lỗi"
       stop_slot "$new"
       rm -f "$PENDING"

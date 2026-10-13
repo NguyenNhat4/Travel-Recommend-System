@@ -141,7 +141,13 @@ def run_alerts(data: dict, run_dir: Path, include_warnings: bool = True) -> list
             if s.get("status") == "blocked":
                 out.append(alert("warning", "blocked", f"Nguồn bị chặn, lượt bỏ qua nguồn này: {s.get('error') or s.get('name')}",
                                  run=run, step=s.get("name"), source=s.get("group")))
-            if s.get("status") == "timeout":  # P4: bước cào quá hạn giờ, đã dừng riêng bước đó
+            if s.get("status") == "timeout":  # P4: bước cào quá hạn giờ (hoặc nghẽn), đã dừng riêng bước đó
+                detail = s.get("detail") or {}
+                if detail.get("errorKind") == "stalled":
+                    out.append(alert("warning", "stalled", f"Nguồn nghẽn, lượt chỉ giữ phần đã cào: "
+                                                           f"{detail.get('reason') or s.get('name')}",
+                                     run=run, step=s.get("name"), source=s.get("group")))
+                    continue
                 out.append(alert("warning", "timeout", f"Nguồn quá hạn giờ, lượt chỉ giữ phần đã cào: {s.get('error') or s.get('name')}",
                                  run=run, step=s.get("name"), source=s.get("group")))
         for meta in sorted((Path(run_dir) / "normalised").glob("*.meta.json")):

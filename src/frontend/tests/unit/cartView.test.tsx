@@ -144,4 +144,24 @@ describe('CartView — khách và dòng giá theo loại khách', () => {
     expect(within(sold).getByText('Xóa')).toBeTruthy();
     expect((screen.getByRole('button', { name: /Tiến hành đặt chỗ/ }) as HTMLButtonElement).disabled).toBe(true);
   });
+
+  it('giỏ chưa về: hiện khung giỏ (một nhóm hai mục và hộp tóm tắt) thay cho vòng xoay, không báo giỏ trống', () => {
+    travel.cart = null;
+    render(<CartView />);
+    const skeleton = screen.getByRole('status', { name: 'Đang tải giỏ hàng' });
+    expect(skeleton.getAttribute('aria-busy')).toBe('true');
+    expect(skeleton.querySelectorAll('.divide-y > div')).toHaveLength(2);
+    expect(screen.queryByText('Giỏ hàng của bạn đang trống')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Tiến hành đặt chỗ/ })).toBeNull();
+  });
+
+  it('giỏ về thì khung chờ biến mất và hiện các mục thật', () => {
+    travel.cart = null;
+    const { rerender } = render(<CartView />);
+    expect(screen.getByRole('status', { name: 'Đang tải giỏ hàng' })).toBeTruthy();
+    travel.cart = clone(familyCart);
+    rerender(<CartView />);
+    expect(screen.queryByRole('status', { name: 'Đang tải giỏ hàng' })).toBeNull();
+    expect(screen.getAllByTestId('cart-item').length).toBeGreaterThan(0);
+  });
 });

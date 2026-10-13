@@ -198,6 +198,11 @@ FIELDS: tuple[Field, ...] = (
     Field("crawl.maxHours", "reliability", "Hạn giờ – cả phần cào của một lượt (giờ)", "float", 14.0, env="CRAWL_MAX_HOURS",
           minimum=0, maximum=72, help="Quá hạn thì dừng mọi nguồn còn đang cào, rồi vẫn gộp, kiểm tra, nạp DB phần đã có. "
                                       "0 = không giới hạn."),
+    Field("timeout.stallMinutes", "reliability", "Nguồn không có tiến triển quá (phút) thì coi là nghẽn", "int", 30,
+          minimum=0, maximum=600,
+          help="Nguồn chạy bằng crawl.py không in log và không ghi thêm dữ liệu trong ngần ấy phút: dừng riêng nguồn đó và "
+               "thử lại như lỗi tạm thời (retry.transientAttempts); vẫn nghẽn thì bỏ nguồn, giữ phần đã cào, các nguồn khác "
+               "và các bước sau cào chạy tiếp. Nên lớn hơn lần nghỉ dài nhất khi bị chặn (15 phút). 0 = tắt."),
     Field("timeout.vinpearl", "reliability", "Hạn giờ – Vinpearl (phút)", "int", 90, minimum=0, maximum=1440,
           help="0 = không giới hạn."),
     Field("timeout.tripFlights", "reliability", "Hạn giờ – trip.com vé máy bay (phút)", "int", 60, minimum=0, maximum=1440),

@@ -33,6 +33,61 @@ export function listRouteFlights(routeProductId: string, signal?: AbortSignal): 
   return allPages({ parentProductId: routeProductId, sort: 'price_asc' }, signal);
 }
 
+/**
+ * Sân bay hiện hành: một mã IATA gắn với thành phố của tuyến còn bán (spec ui-dia-diem-san-bay-va-khach-san-noi-tieng §2.1).
+ * Không có danh sách sân bay cố định nào trong mã nguồn: mọi sân bay đến từ `attributes` của tuyến trong catalog.
+ */
+export interface FlightAirport {
+  /** Mã IATA, ví dụ "SGN". */
+  code: string;
+  /** Đúng giá trị `originCity` / `destinationCity` của catalog; cũng là điểm đi, điểm đến trên URL. */
+  city: string;
+  /** `destinationAirportName` của catalog; null khi catalog chưa có tên cho mã này. */
+  name: string | null;
+  /** Số tuyến còn bán đi hoặc đến sân bay này: dùng để xếp "phổ biến". */
+  routeCount: number;
+}
+
+const textOf = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
+const codesOf = (value: unknown): string[] => (Array.isArray(value) ? value.map(textOf).filter(Boolean) : []);
+
+/**
+ * Gom sân bay từ các tuyến (tầng cha của `GET /products`). Một tuyến góp mỗi sân bay của nó một lần vào `routeCount`.
+ * Tên lấy từ `destinationAirportName` khi tuyến chỉ có một sân bay đến. Thứ tự kết quả: thành phố, rồi mã.
+ */
+export function collectFlightAirports(routes: readonly ProductSummary[]): FlightAirport[] {
+  const airports = new Map<string, FlightAirport>();
+  for (const route of routes) {
+    const a = (route.attributes ?? {}) as Record<string, unknown>;
+    if (a.level !== 'route') continue;
+    const touched = new Set<string>();
+    const sides = [
+      { city: textOf(a.originCity), codes: codesOf(a.originAirports) },
+      { city: textOf(a.destinationCity), codes: codesOf(a.destinationAirports) },
+    ];
+    for (const side of sides) {
+      if (!side.city) continue;
+      for (const code of side.codes) {
+        if (!airports.has(code)) airports.set(code, { code, city: side.city, name: null, routeCount: 0 });
+        if (!touched.has(code)) {
+          touched.add(code);
+          airports.get(code)!.routeCount += 1;
+        }
+      }
+    }
+    const destinationCodes = codesOf(a.destinationAirports);
+    const name = textOf(a.destinationAirportName);
+    const airport = destinationCodes.length === 1 ? airports.get(destinationCodes[0]) : undefined;
+    if (name && airport && !airport.name) airport.name = name;
+  }
+  return [...airports.values()].sort((x, y) => x.city.localeCompare(y.city, 'vi') || x.code.localeCompare(y.code));
+}
+
+/** Sân bay hiện hành: mọi tuyến còn bán (`availableOnly`), gom theo `collectFlightAirports`. */
+export async function listFlightAirports(signal?: AbortSignal): Promise<FlightAirport[]> {
+  return collectFlightAirports(await allPages({ taxonomy: 'flight', availableOnly: true }, signal));
+}
+
 /** Sân bay đi có trong catalog: tên thành phố (`originCity`, đúng giá trị Backend nhận) và toạ độ sân bay. */
 export interface DepartureAirport {
   city: string;

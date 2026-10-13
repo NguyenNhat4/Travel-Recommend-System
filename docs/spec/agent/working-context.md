@@ -143,13 +143,11 @@ Mã sản phẩm `p1, p2…` và mã lời gọi `c1, c2…` do server cấp; s�
 Bằng chứng tối thiểu: state trước/sau node, node path, tool name/arguments, final status. Không dùng chất
 lượng ranking để kết luận prompt tốt hoặc xấu.
 
-**Snapshot hành vi** (`tests/unit/agents/test_behavior_snapshot.py`, chạy cùng unit test agent). Phát lại mọi hội thoại
-của `behavior_snapshot/scenarios.json` (63 ngày 13/10, gồm `demo-K1`…`demo-K6`) với tool ghi từ chế độ `inprocess` (dữ
-liệu thật) và LLM ghi sẵn, rồi so từng lượt (response, node path, mã `ROUND_LIMIT`/`TOOL_LIMIT`, state lưu, payload gửi
-LLM, tham số gọi tool). Đồng hồ đứng yên (`agents/clock.now`), nên phát lại không phụ thuộc tốc độ máy. Phát lại không cần
-DB hay mạng. Refactor phải giữ nó xanh. Đổi prompt hoặc hành vi **có chủ ý** thì test fail. Khi đó ghi lại bằng
-`inprocess` và LLM thật (cần Postgres, Weaviate local), chỉ những kịch bản bị ảnh hưởng, rồi đọc diff của `snapshot.json`
-trước khi commit:
+**Snapshot hành vi: đã gỡ test** (chốt 2026-10-13, `docs/prd/update-archive/2026-10-13-bo-kiem-tra-snapshot-hanh-vi.md`).
+`tests/unit/agents/test_behavior_snapshot.py` không còn; không còn lưới phát lại offline để báo đổi hành vi orchestrator.
+`behavior_snapshot/` vẫn còn: `harness.py` và `record.py` do `test_turn_limits.py` và công cụ ghi lại dùng. Cassette và
+`snapshot.json` là dữ liệu ghi lại, không còn được kiểm tự động. Khi cần ghi lại bằng `inprocess` và LLM thật (cần Postgres,
+Weaviate local), chỉ những kịch bản bị ảnh hưởng, rồi đọc diff của `snapshot.json` trước khi commit:
 
 ```bash
 HF_HUB_OFFLINE=1 .venv/bin/python -m src.backend.tests.unit.agents.behavior_snapshot.record --only X01-plan-doi,v5-SC-A

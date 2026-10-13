@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import popularFixture from '../../../shared/mocks/catalog/listProducts.200-popular.json';
 import diversifiedFixture from '../../../shared/mocks/catalog/listProducts.200-diversified.json';
@@ -19,6 +19,7 @@ vi.mock('../../src/services/suggest', () => ({ fetchSuggestions: api.fetchSugges
 vi.mock('../../src/context/TravelContext', () => ({ useTravel: () => travel }));
 
 import { HomeView } from '../../src/components/home/HomeView';
+import { productFromApi } from '../../src/services/catalog';
 import { clearSectionCache } from '../../src/hooks/useLazySection';
 import { clearSuggestionCache } from '../../src/features/search/instant/useInstantSearch';
 
@@ -131,6 +132,83 @@ describe('HomeView', () => {
     fireEvent.change(screen.getByLabelText('Mô tả chuyến đi bạn muốn'), { target: { value: 'resort có hồ bơi' } });
     fireEvent.submit(screen.getByRole('search'));
     expect(travel.navigate).toHaveBeenCalledWith('/search?q=resort%20c%C3%B3%20h%E1%BB%93%20b%C6%A1i');
+  });
+
+  describe('recommendation block skeleton (product.md §4.1.5)', () => {
+    const block = () => screen.queryByRole('region', { name: 'Gợi ý cho bạn' });
+    const skeleton = () => screen.queryByRole('status', { name: 'Đang tải gợi ý cho bạn' });
+    const recs = (count = 4) => ({
+      strategy: 'cross_vertical', destination: 'Nha Trang', nextVertical: 'flight',
+      recommendations: popularFixture.results.slice(0, count).map((item, i) => ({
+        product: productFromApi(item as never), score: 0.9 - i / 10, rank: i + 1, because: [],
+      })),
+      diagnostics: { eventsUsed: 3, coldStart: false, excludedVerticals: [], modelVersion: 't' },
+      generatedAt: '',
+    });
+
+    beforeEach(() => { travel.currentPersona = { id: 'VP1', name: 'Minh Anh' }; });
+
+    it('logged in: shows a 4-card skeleton in the block until /recommendations answers, then the real cards', async () => {
+      let answer!: (value: unknown) => void;
+      api.fetchRecommendations.mockReturnValue(new Promise((resolve) => { answer = resolve; }));
+      render(<HomeView />);
+      expect(block()!.getAttribute('aria-busy')).toBe('true');
+      expect(within(block()!).getByRole('heading', { name: 'Gợi ý' })).toBeTruthy();
+      expect(skeleton()!.querySelectorAll(':scope > [aria-hidden="true"]')).toHaveLength(4);
+      expect(within(block()!).queryByRole('button', { name: 'Vì sao có gợi ý này?' })).toBeNull();
+
+      answer(recs());
+      await waitFor(() => expect(skeleton()).toBeNull());
+      expect(block()!.getAttribute('aria-busy')).toBe('false');
+      expect(within(block()!).getByRole('button', { name: 'Vì sao có gợi ý này?' })).toBeTruthy();
+      expect(within(block()!).getByText(popularFixture.results[0].name)).toBeTruthy();
+    });
+
+    it('an error removes the skeleton and leaves only the retry line; retrying shows the skeleton again', async () => {
+      api.fetchRecommendations.mockRejectedValueOnce(new Error('503')).mockReturnValueOnce(new Promise(() => {}));
+      render(<HomeView />);
+      expect(skeleton()).toBeTruthy();
+      fireEvent.click(await screen.findByRole('button', { name: 'Thử lại' }));
+      expect(skeleton()).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Thử lại' })).toBeNull();
+    });
+
+    it('an empty answer removes the block instead of leaving the skeleton', async () => {
+      api.fetchRecommendations.mockResolvedValue(recs(0));
+      render(<HomeView />);
+      expect(skeleton()).toBeTruthy();
+      await waitFor(() => expect(block()).toBeNull());
+      expect(screen.queryByRole('button', { name: 'Thử lại' })).toBeNull();
+    });
+
+    it('after the 10 s timeout the skeleton gives way to the retry line', async () => {
+      vi.useFakeTimers();
+      api.fetchRecommendations.mockImplementation(({ signal }: { signal: AbortSignal }) => new Promise((_, reject) => {
+        signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+      }));
+      try {
+        render(<HomeView />);
+        expect(skeleton()).toBeTruthy();
+        await act(async () => { await vi.advanceTimersByTimeAsync(9_900); });
+        expect(skeleton()).toBeTruthy();
+        await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+        expect(skeleton()).toBeNull();
+        expect(screen.getByRole('button', { name: 'Thử lại' })).toBeTruthy();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('guests and a still-restoring session never see the recommendation skeleton', () => {
+      travel.currentPersona = null;
+      const { unmount } = render(<HomeView />);
+      expect(skeleton()).toBeNull();
+      unmount();
+      travel.authReady = false;
+      render(<HomeView />);
+      expect(skeleton()).toBeNull();
+      expect(api.fetchRecommendations).not.toHaveBeenCalled();
+    });
   });
 
   describe('instant search (FR-SRC-05)', () => {
