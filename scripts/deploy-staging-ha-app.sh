@@ -96,6 +96,8 @@ google_cloud_scheduler_job.crawler_extra_start[0]|delete
 google_cloud_scheduler_job.crawler_extra_stop[0]|delete
 # Alert runner CI không chạy (2026-10-13).
 google_monitoring_alert_policy.ci_runner_down|create
+# cpu_target 0.55 -> 0.9 (commit 10aa9488): alert group_at_max dùng var.cpu_target làm ngưỡng nên chỉ đổi threshold.
+google_monitoring_alert_policy.group_at_max|update
 '
 unexpected="$(terraform show -json "$plan_file" | jq -r '
   .resource_changes[]

@@ -145,4 +145,10 @@ jobs:
         env:
           CI: 'true'
           PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/ms-playwright
-        run: npm run test:e2e
+        # Mọi runner chung một VM: cổng cố định 3100 đụng nhau khi hai job E2E chạy cùng lúc ("127.0.0.1:3100 is already
+        # used", run 38340468294, 2026-10-13). Mỗi job lấy một cổng trống.
+        run: |
+          PLAYWRIGHT_PORT="$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')"
+          export PLAYWRIGHT_PORT
+          echo "Playwright dùng cổng $PLAYWRIGHT_PORT"
+          npm run test:e2e
