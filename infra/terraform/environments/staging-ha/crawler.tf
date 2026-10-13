@@ -1,5 +1,5 @@
 # VM job cào (crawler) của staging-ha. Một VM đơn, không thuộc MIG: job chạy bằng cron (scripts/install-vota-cron.sh),
-# được CD cài qua IAP SSH (.github/workflows/staging-ha-cd.yml). Chỉ một VM được phép ghi catalog, nên không có
+# được CD cài qua IAP SSH (.github/workflows/staging-ha-crawler-cd.yml). Chỉ một VM được phép ghi catalog, nên không có
 # bản sao thứ hai trong root này.
 # Tag `vota-crawler` là tag mà patroni.tf đã cho phép tới cổng 5432 của Postgres; đừng đổi tên mà không sửa patroni.tf.
 # Không có IP public: job cào gọi ra ngoài qua Cloud NAT (variables.tf create_nat).
@@ -46,7 +46,7 @@ locals {
   crawler_tag     = "vota-crawler"
 }
 
-# Lịch bật/tắt riêng cho VM job cào. Chỉ áp dụng cho VM đơn này, không dùng cho MIG app.
+# Lịch bật/tắt của VM job cào. Đã gỡ khỏi VM (2026-10-12, không còn tham chiếu); xoá ở PR sau, xem scheduler.tf.
 resource "google_compute_resource_policy" "crawler_schedule" {
   count  = local.crawler_enabled ? 1 : 0
   name   = "${var.name_prefix}-crawler-schedule"
@@ -70,7 +70,7 @@ resource "google_compute_instance" "crawler" {
   machine_type              = var.crawler_machine_type
   tags                      = [local.crawler_tag]
   allow_stopping_for_update = true
-  resource_policies         = [google_compute_resource_policy.crawler_schedule[0].self_link]
+  # Không gắn lịch tắt/bật: staging-ha chạy 24/7 (xác nhận 2026-10-12). Policy ở scheduler.tf giữ lại nhưng không gắn vào VM.
 
   boot_disk {
     initialize_params {

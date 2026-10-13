@@ -1,0 +1,109 @@
+name: Staging-HA Infra CD
+
+# Apply Terraform root staging-ha khi infra/terraform/environments/staging-ha/** đổi. Đây là luồng DUY NHẤT chạy Terraform:
+# deploy ứng dụng (staging-ha-app-cd.yml) không đụng Terraform. Không build, không migration, không roll VM, không ghi
+# last-good: backend_ref/frontend_ref lấy từ last-good chỉ là image dự phòng của template (VM boot đọc image mong muốn từ
+# all-instances config của MIG). Cổng allowed_changes của scripts/deploy-staging-ha-app.sh vẫn áp dụng: thay đổi ngoài danh sách
+# làm job dừng TRƯỚC apply (thêm địa chỉ vào danh sách kèm chú thích rồi chạy lại, không nới để cho qua).
+# Không rollback tự động: ref ứng dụng không đổi nên
+# apply lại last-good không hoàn tác được thay đổi hạ tầng; revert commit rồi để workflow này chạy lại.
+
+on:
+  push:
+    branches:
+      - main
+      - release-mvp-v1
+      - release-mvp-v2
+      - release-mvp-v3
+    paths:
+      - '.github/workflows/staging-ha-infra-cd.yml'
+      - 'scripts/deploy-staging-ha-app.sh'
+      - 'scripts/pin-staging-ha-mig-opportunistic.sh'
+      - 'scripts/verify-staging-ha-app.sh'
+      - 'infra/terraform/environments/staging-ha/**'
+      # Agent giám sát nạp vào template app qua file() trong main.tf.
+      - 'infra/monitoring/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TF_VERSION: '1.15.8'
+  STAGING_HA_URL: https://praxis.io.vn
+  STAGING_HA_LAST_GOOD_OBJECT: deploy/staging-ha-last-good.json
+  MIG_NAME: vota-ha-app
+  MIG_REGION: asia-southeast1
+  BACKEND_SERVICE: vota-ha-app
+
+jobs:
+  apply:
+    name: Apply Terraform and verify staging-ha
+    runs-on: [self-hosted, vota-staging-ha]
+    # Khoá riêng: deploy ứng dụng không chạy Terraform nữa (image nằm ở all-instances config), nên hạ tầng và ứng dụng
+    # không chặn nhau. Trước 2026-10-13 dùng chung `staging-ha-app` và làm huỷ deploy ứng dụng đang chờ.
+    concurrency:
+      group: staging-ha-infra
+      cancel-in-progress: false
+    timeout-minutes: 60
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_CI_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Write staging-ha tfvars from secret
+        env:
+          STAGING_HA_TFVARS: ${{ secrets.STAGING_HA_TFVARS }}
+        run: |
+          umask 077
+          printf '%s\n' "$STAGING_HA_TFVARS" > "$RUNNER_TEMP/staging-ha.tfvars"
+
+      - name: Read image references from last good
+        env:
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+        run: |
+          gcloud storage cp "gs://$TF_STATE_BUCKET/$STAGING_HA_LAST_GOOD_OBJECT" last-good.json \
+            || { echo 'Chưa có last-good. Chạy Staging-HA Backend CD và Frontend CD một lần trước (workflow_dispatch).' >&2; exit 1; }
+          backend_ref="$(jq -er .backend_ref last-good.json)" \
+            || { echo 'last-good thiếu backend_ref.' >&2; exit 1; }
+          frontend_ref="$(jq -er .frontend_ref last-good.json)" \
+            || { echo 'last-good thiếu frontend_ref.' >&2; exit 1; }
+          echo "BACKEND_REF=$backend_ref" >> "$GITHUB_ENV"
+          echo "FRONTEND_REF=$frontend_ref" >> "$GITHUB_ENV"
+
+      - name: Keep the MIG from replacing VMs when the template changes
+        # Lần đầu MIG còn PROACTIVE: đặt OPPORTUNISTIC trước khi Terraform đổi template, nếu không MIG tự thay hết VM và app sập.
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        run: bash scripts/pin-staging-ha-mig-opportunistic.sh
+
+      - name: Apply Terraform (template mang image đang chạy)
+        # Chỉ phần hạ tầng đổi; image giữ nguyên last-good. Không thay VM đang chạy.
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+          TFVARS_FILE: ${{ runner.temp }}/staging-ha.tfvars
+        run: bash scripts/deploy-staging-ha-app.sh
+
+      - name: Verify MIG, load balancer and public readiness
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        run: bash scripts/verify-staging-ha-app.sh

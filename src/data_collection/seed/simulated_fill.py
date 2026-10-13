@@ -206,6 +206,12 @@ class Templates:
         return float(value) if value else None
 
 
+def _airline_logo(airline: str | None) -> str | None:
+    """Logo hãng của vé (collectors/airlines.py); import trong hàm như AIRPORTS, vì src/ được đưa vào sys.path lúc chạy."""
+    from data_collection.collectors.airlines import airline_logo
+    return airline_logo(airline)
+
+
 def reverse_routes(rows: list[dict], as_of: date, on: bool) -> list[dict]:
     """Tuyến chiều ngược mô phỏng (`demo:reverse:*`) cho tuyến thật A → B có vé thật mà chưa có tuyến thật B → A, cùng các dòng cũ
     cần khoá (đã có tuyến thật B → A, tuyến gốc hết vé, hoặc tắt cấu hình). PRD data-model §3.1 (chốt 09/10/2026)."""
@@ -257,7 +263,9 @@ def reverse_routes(rows: list[dict], as_of: date, on: bool) -> list[dict]:
                                     f"giá chép từ vé thật chiều đi. Chỉ dùng cho demo."),
                     "attributes": {k: v for k, v in attrs.items() if v is not None}, "unit_price": price,
                     "currency": route.get("currency") or "VND", "available": price is not None, "available_from": lo,
-                    "available_to": hi, "image_url": route.get("image_url"), "source_ref": ref}
+                    "available_to": hi, "source_ref": ref,
+                    # Ảnh đã có trên DB (ảnh thành phố đến, đặt 12/10/2026) thắng ảnh tuyến gốc: tuyến gốc có thành phố đến khác.
+                    "image_url": (existing.get(ref) or {}).get("image_url") or route.get("image_url")}
     for ref, row in existing.items():
         if ref not in out and row["available"]:
             out[ref] = {**row, "available": False}
@@ -325,7 +333,7 @@ def build(route: dict, kind: str, day: date, templates: Templates) -> dict | Non
     return {"product_id": str(uuid.uuid5(NAMESPACE, ref)), "name": name, "taxonomy": "flight",
             "destination": route["destination"], "description": description, "attributes": attrs, "unit_price": price,
             "currency": route.get("currency") or "VND", "available": price is not None, "available_from": day,
-            "available_to": day, "image_url": route.get("image_url"), "source_ref": ref}
+            "available_to": day, "image_url": _airline_logo(attrs.get("airline")) or route.get("image_url"), "source_ref": ref}
 
 
 def plan(rows: list[dict], as_of: date, on: bool) -> tuple[list[dict], list[dict]]:

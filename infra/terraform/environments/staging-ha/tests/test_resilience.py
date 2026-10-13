@@ -10,7 +10,7 @@ import unittest
 D = pathlib.Path(__file__).resolve().parents[1]
 MAIN = (D / "main.tf").read_text()
 VARS = (D / "variables.tf").read_text()
-COMPOSE = (D / "compose.ha.yml").read_text()
+COMPOSE = (D / "slot-deploy.sh").read_text()  # compose của slot nằm trong script
 PATRONI = (D / "patroni.tf").read_text()
 STARTUP = (D / "startup.sh.tftpl").read_text()
 DOCKERFILE = (D.parents[3] / "Dockerfile.backend").read_text()
@@ -41,18 +41,23 @@ class RollingUpdate(unittest.TestCase):
         mig = block(MAIN, "google_compute_region_instance_group_manager", "app")
         self.assertIn("provider                  = google-beta", mig)
 
-    def test_rollout_replaces_all_vms_at_once_without_surge(self):
-        # Chấp nhận downtime khi thay VM (chốt 2026-10-09): không surge; unavailable = 3 vì regional MIG 3 zone chỉ nhận 0 hoặc >= 3.
+    def test_template_change_does_not_replace_vms(self):
+        # Chốt 2026-10-12: đổi template không được tự thay VM (sập). Image đổi tại chỗ bằng slot-deploy.sh.
+        # Regional MIG 3 zone: fixed chỉ nhận 0 hoặc >= 3 nên unavailable = 3.
         mig = block(MAIN, "google_compute_region_instance_group_manager", "app")
+        self.assertRegex(mig, r'type\s*=\s*"OPPORTUNISTIC"')
+        self.assertNotRegex(mig, r'type\s*=\s*"PROACTIVE"')
         self.assertRegex(mig, r'replacement_method\s*=\s*"SUBSTITUTE"')
         self.assertRegex(mig, r"max_surge_fixed\s*=\s*0\b")
         self.assertRegex(mig, r"max_unavailable_fixed\s*=\s*3\b")
 
     def test_cd_waits_for_lb_healthy_before_last_good(self):
         # Không có min_ready_sec thì MIG báo stable trước khi LB thấy VM HEALTHY; Verify phải chờ, nếu không sẽ rollback nhầm.
-        for wf in ("staging-ha-backend-cd.yml", "staging-ha-frontend-cd.yml"):
+        verify = (D.parents[3] / "scripts" / "verify-staging-ha-app.sh").read_text()
+        self.assertIn('[ "$healthy" = "$target_size" ] && break', verify)
+        for wf in ("staging-ha-app-cd.yml", "staging-ha-infra-cd.yml"):
             text = (D.parents[3] / ".github" / "workflows" / wf).read_text()
-            self.assertIn('[ "$healthy" = "$target_size" ] && break', text, wf)
+            self.assertIn("scripts/verify-staging-ha-app.sh", text, wf)
 
     def test_autohealing_initial_delay_covers_boot(self):
         mig = block(MAIN, "google_compute_region_instance_group_manager", "app")
@@ -101,9 +106,9 @@ class GracefulShutdown(unittest.TestCase):
 
 class SecretPermissions(unittest.TestCase):
     def test_jwt_files_are_root_owned_and_readable_by_backend_group(self):
-        self.assertIn("chown root:10001 /etc/vota/secrets /etc/vota/secrets/*.pem", STARTUP)
-        self.assertRegex(STARTUP, r"chmod 750 /etc/vota/secrets")
-        self.assertRegex(STARTUP, r"chmod 640 /etc/vota/secrets/\*\.pem")
+        self.assertIn("chown root:10001 /etc/vota/secrets /etc/vota/secrets/*.pem", COMPOSE)
+        self.assertRegex(COMPOSE, r"chmod 750 /etc/vota/secrets")
+        self.assertRegex(COMPOSE, r"chmod 640 /etc/vota/secrets/\*\.pem")
 
 
 class PatroniTier(unittest.TestCase):

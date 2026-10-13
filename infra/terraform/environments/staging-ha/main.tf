@@ -15,8 +15,8 @@ locals {
   }
 
   registry_host = split("/", var.backend_image)[0]
-  # The host-network compose used by the single staging VM, plus resource limits for the HA tier.
-  compose = file("${path.module}/compose.ha.yml")
+  # Script slot-deploy.sh (compose của slot blue/green, proxy nginx, đổi image không gián đoạn) cài lên VM bởi startup.
+  slot_deploy = file("${path.module}/slot-deploy.sh")
   startup = templatefile("${path.module}/startup.sh.tftpl", {
     backend_env_secret = var.backend_env_secret
     registry_host      = local.registry_host
@@ -26,7 +26,7 @@ locals {
     # Chuỗi tắt êm: SSE (90s) <= LB draining (100s) = uvicorn graceful (100s) < stop_grace (110s).
     graceful_seconds   = var.lb_connection_draining_seconds
     stop_grace_seconds = var.lb_connection_draining_seconds + 10
-    compose            = local.compose
+    slot_deploy        = local.slot_deploy
     pgbouncer_ini      = file("${path.module}/pgbouncer.ini")
     pgbouncer_setup    = file("${path.module}/pgbouncer-setup.sh")
   })
@@ -137,12 +137,15 @@ resource "google_compute_region_instance_group_manager" "app" {
   }
 
   update_policy {
-    type               = "PROACTIVE"
+    # OPPORTUNISTIC: đổi template KHÔNG tự thay VM. Image trên VM đang chạy được đổi tại chỗ không gián đoạn bằng
+    # slot-deploy.sh (chạy bản mới song song bản cũ, đổi proxy khi bản mới ready); CD gọi qua
+    # scripts/roll-staging-ha-app-slots.sh. VM do autoscaler hoặc autohealing tạo đọc image mong muốn từ
+    # all-instances config (CD ghi); image trong template chỉ là dự phòng. (Trước 2026-10-12: PROACTIVE + max_surge 0, mỗi deploy thay hết VM và sập.)
+    type               = "OPPORTUNISTIC"
     minimal_action     = "REPLACE"
     replacement_method = "SUBSTITUTE"
-    # Chấp nhận downtime khi thay VM (chốt 2026-10-09, docs/prd/update-archive/2026-10-09-rut-ngan-cd-chap-nhan-downtime.md):
-    # thay toàn bộ VM app một lượt, không surge nên không cần quota VM thêm. Regional MIG 3 zone: fixed chỉ nhận 0 hoặc >= 3,
-    # nên unavailable = 3 (>= số VM tối đa). scripts/deploy-staging-ha-app.sh giữ APP_SURGE = 0 đồng bộ với đây.
+    # Regional MIG 3 zone: fixed chỉ nhận 0 hoặc >= 3, nên unavailable = 3 (>= số VM tối đa). Giữ 0 surge: nếu một VM
+    # bị thay thủ công thì không cần quota thêm. scripts/deploy-staging-ha-app.sh giữ APP_SURGE = 0 đồng bộ với đây.
     max_surge_fixed       = 0
     max_unavailable_fixed = 3
     # min_ready_sec = 0: không chờ thêm sau khi VM qua liveness. Cổng sẵn sàng là bước Verify của workflow CD
@@ -151,7 +154,8 @@ resource "google_compute_region_instance_group_manager" "app" {
   }
 
   lifecycle {
-    ignore_changes = [target_size]
+    # all_instances_config giữ image mong muốn do CD ghi (scripts/set-staging-ha-desired-images.sh); Terraform không đụng.
+    ignore_changes = [target_size, all_instances_config]
   }
 }
 

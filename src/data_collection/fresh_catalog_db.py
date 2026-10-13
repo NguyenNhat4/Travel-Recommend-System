@@ -482,6 +482,11 @@ def _as_date(value) -> date | None:
     return date.fromisoformat(value) if isinstance(value, str) else value
 
 
+def _price(value) -> float | None:
+    """So giá dòng DB (Decimal) với dòng tính lại (float/int) theo numeric(12,2)."""
+    return None if value is None else round(float(value), 2)
+
+
 def _with_observed(calendar: str, attrs: dict, as_of: date) -> str:
     """Ngày đã hỏi giá nằm trong cửa sổ ghi theo kết quả thật: có giá = 1, hết phòng = 0."""
     marks, priced = list(calendar), attrs.get("pricesByDate") or {}
@@ -521,7 +526,7 @@ def apply_window(rows: list[dict], as_of: date) -> dict[str, dict]:
     nó (còn giá, chưa gộp, không có priceFreshness). Dòng tắt vì lý do khác (hết bán, giá quá hạn…) không bị bật lại:
     nguồn còn bán thì lượt cào sau ghi lại.
     Hạng phòng, điểm tham quan, golf có `attributes.availability` phủ đúng cửa sổ (xem `_calendar`). Khách sạn tổng quan không
-    có phòng con đặt được thì tắt (`_hide_hotels_without_rooms`).
+    có phòng con đặt được thì tắt, có phòng đặt được thì bật lại (`_hide_hotels_without_rooms`).
     Trả về các dòng có thay đổi (kể cả name/description của vé được dời), theo product_id.
     """
     meta, loader = _seed_rules()
@@ -602,32 +607,41 @@ def apply_window(rows: list[dict], as_of: date) -> dict[str, dict]:
     for pid, row in after.items():
         old = before[pid]
         if ((row["available"], row["available_from"], row["available_to"], row["attributes"], row.get("name"),
-             row.get("description"))
+             row.get("description"), _price(row.get("unit_price")))
                 != (old["available"], _as_date(old["available_from"]), _as_date(old["available_to"]),
-                    old["attributes"] or {}, old.get("name"), old.get("description"))):
+                    old["attributes"] or {}, old.get("name"), old.get("description"), _price(old.get("unit_price")))):
             changed[pid] = row
     return changed
 
 
 def _hide_hotels_without_rooms(rows: dict[str, dict], kinds: dict[str, str]) -> None:
     """PRD FR-CAT-02 (chốt 06/10): khách sạn tổng quan không có hạng phòng con nào đặt được (đang bán, có giá, không
-    `ticketed: false`) thì `available = false` kèm `noBookableRoom`; có phòng đặt được trở lại thì bỏ dấu và bật lại (trừ
-    dòng đã gộp, giá quá hạn hoặc ngoài cửa sổ). Dòng tắt vì lý do khác không có dấu nên không bị bật."""
-    bookable = {(row["attributes"] or {}).get("parentProductId") for pid, row in rows.items()
-                if kinds[pid] == "hotel_room" and row["available"] and row.get("unit_price") is not None
-                and (row["attributes"] or {}).get("ticketed") is not False}
+    `ticketed: false`) thì `available = false` kèm `noBookableRoom`; có phòng đặt được thì bỏ dấu và bật lại (trừ dòng đã
+    gộp, giá quá hạn hoặc ngoài cửa sổ) — kể cả khách sạn tắt không có dấu: lượt cào sau nguồn không trả giá cho đúng ngày
+    hỏi nên khách sạn bị tắt, trong khi hạng phòng vẫn đang bán với giá đã thấy (87 khách sạn kẹt như vậy, bật lại 12/10/2026).
+    Khách sạn được bật mà chưa có giá thì lấy giá hạng phòng rẻ nhất đang bán, như chuẩn hoá (giá khách sạn = phòng rẻ nhất)."""
+    cheapest: dict[str, object] = {}
+    for pid, row in rows.items():
+        attrs = row["attributes"] or {}
+        if (kinds[pid] == "hotel_room" and row["available"] and row.get("unit_price") is not None
+                and attrs.get("ticketed") is not False):
+            parent = attrs.get("parentProductId")
+            if parent not in cheapest or float(row["unit_price"]) < float(cheapest[parent]):
+                cheapest[parent] = row["unit_price"]
     for pid, row in rows.items():
         if kinds[pid] != "hotel_property":
             continue
         attrs = row["attributes"] or {}
-        if pid not in bookable:
+        if pid not in cheapest:
             if row["available"]:
                 row.update(available=False, attributes=dict(attrs, noBookableRoom=True))
-        elif attrs.get("noBookableRoom"):
-            attrs = {key: value for key, value in attrs.items() if key != "noBookableRoom"}
-            reopen = (row["available_from"] is not None and not attrs.get("mergedInto")
-                      and not attrs.get("priceFreshness") and not attrs.get("windowClosed"))
-            row.update(attributes=attrs, available=row["available"] or reopen)
+            continue
+        attrs = {key: value for key, value in attrs.items() if key != "noBookableRoom"}
+        reopen = (row["available_from"] is not None and not attrs.get("mergedInto")
+                  and not attrs.get("priceFreshness") and not attrs.get("windowClosed"))
+        row.update(attributes=attrs, available=row["available"] or reopen)
+        if row["available"] and row.get("unit_price") is None:
+            row["unit_price"] = cheapest[pid]
 
 
 def pipeline_connection(url: str, **kwargs):

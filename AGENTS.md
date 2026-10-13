@@ -89,6 +89,7 @@ Không tự chọn phương án cho các mục đang "chờ xác nhận" trong b
   làm lại trên orchestrator theo `docs/plan/2026-10-12-go-luong-cu-orchestrator-chinh.md` (mục 1.5).
 - Không tự làm các hạng mục PRD đã ghi **ngoài phạm vi** (`docs/prd/project-brief.md` §4.2): cổng thanh toán ngân hàng thật, tồn kho thời gian thực nối hãng bay/khách sạn ngoài, app di động native. Người dùng yêu cầu thì xác nhận lại rằng đây là mở rộng phạm vi trước khi code.
 - Không commit hoặc log secret, API key, JWT. Biến bí mật theo bảng ở `docs/prd/deployment-plan.md` §2.
+- Secret key và cấu hình môi trường chạy trên VM (kể cả biến không bí mật như `ITINERARY_DATA_MODE`) được quản lý trong GCP Secret Manager. Không đặt giá trị trong repo, `docker-compose`, Terraform hay sửa tay `/etc/vota/*.env` trên VM. Staging-HA dùng secret `vota-ha-backend-env` (project `vinpearl-508801`). Đổi giá trị = thêm version mới của secret, rồi deploy backend để `slot-deploy.sh` làm mới env. Agent không in giá trị secret ra chat, log hay file trong repo; khi cần kiểm tra thì chỉ đọc đúng khoá cần thiết.
 
 ## 4. Trước khi báo hoàn thành
 

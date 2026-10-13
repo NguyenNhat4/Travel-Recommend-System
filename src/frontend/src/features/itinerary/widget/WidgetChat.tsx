@@ -24,7 +24,7 @@ function AssistantHeader() {
       <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-ai-50">
         <Image src="/mascot_welcome.webp" alt="" width={28} height={28} className="h-7 w-7 object-contain" />
       </span>
-      <span className="text-xs font-semibold tracking-wide text-slate-500">Trợ lý du lịch V-OTA</span>
+      <span className="text-xs font-semibold tracking-wide text-slate-500">Trợ lý du lịch Sota</span>
     </div>
   );
 }
@@ -124,7 +124,7 @@ export function WidgetChat({ widget }: { widget: FloatingWidgetController }) {
       {!isInitial && (
         <div className="shrink-0 border-t border-slate-100 bg-slate-50/80 px-4 pb-4 pt-4 sm:px-6">
           <WidgetComposer value={inputVal} onChange={setInputVal} onSend={handleSendMessage} busy={isRunning} onStop={abort} />
-          <p className="mt-2 text-xs text-slate-500">{assistantState.conversationId ? 'Đang tiếp tục cuộc trò chuyện' : 'Trợ lý AI V-OTA'}</p>
+          <p className="mt-2 text-xs text-slate-500">{assistantState.conversationId ? 'Đang tiếp tục cuộc trò chuyện' : 'Trợ lý AI Sota'}</p>
         </div>
       )}
     </div>

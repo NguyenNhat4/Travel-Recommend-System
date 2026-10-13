@@ -1,0 +1,271 @@
+name: Staging-HA App CD
+
+# Một luồng CD cho backend và frontend trên MIG vota-ha-app (staging-ha). Thay staging-ha-backend-cd.yml và
+# staging-ha-frontend-cd.yml (2026-10-13, docs/prd/update-archive/2026-10-13-cd-staging-ha-mot-luong-hai-pha.md).
+#
+# 1. plan: content key của từng thành phần (scripts/ci/image-key.sh) so với key trong last-good. Chỉ thành phần đổi mới
+#    qua CI và build. Run mới nhất luôn chứa trọn mọi thay đổi chưa deploy, nên khoá concurrency ở mức workflow có thể
+#    thay run đang chờ mà không mất thay đổi nào (trước đây CD backend bị huỷ khi CD frontend vào hàng).
+# 2. CI gate: gọi lại đúng Backend CI / Frontend CI (workflow_call). CI đỏ thì không build, không deploy.
+# 3. image: build hoặc tái dùng theo key (staging-ha-image-build.yml).
+# 4. deploy: migration (nếu backend đổi) -> ghi image mong muốn vào all-instances config của MIG -> roll hai pha
+#    (prepare song song, switch canary rồi các VM còn lại) -> verify -> ghi last-good. Không chạy Terraform.
+#    Lỗi hoặc bị huỷ thì đưa image mong muốn và mọi VM về last-good.
+
+on:
+  push:
+    branches:
+      - main
+      - release-mvp-v1
+      - release-mvp-v2
+      - release-mvp-v3
+    paths:
+      - '.github/workflows/staging-ha-app-cd.yml'
+      - '.github/workflows/staging-ha-image-build.yml'
+      - '.github/workflows/backend-ci.yml'
+      - '.github/workflows/frontend-ci-cd.yml'
+      - '.dockerignore'
+      - 'Dockerfile.backend'
+      - 'src/backend/**'
+      - 'src/frontend/**'
+      - 'src/shared/**'
+      - 'db/migrations/**'
+      - 'scripts/roll-staging-ha-app-slots.sh'
+      - 'scripts/set-staging-ha-desired-images.sh'
+      - 'scripts/verify-staging-ha-app.sh'
+      - 'scripts/probe-staging-ha.sh'
+      - 'scripts/pin-staging-ha-mig-opportunistic.sh'
+      - 'scripts/ci/**'
+      - 'infra/terraform/environments/staging-ha/slot-deploy.sh'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Roll lại cả backend và frontend dù content key không đổi'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# Một deploy ứng dụng mỗi lần. GitHub chỉ giữ một run chờ: run chờ cũ bị thay bằng run mới hơn, và run mới hơn tính
+# lại toàn bộ thay đổi so với last-good nên không mất gì. slot-deploy.sh còn dùng flock trên từng VM.
+concurrency:
+  group: staging-ha-app
+  cancel-in-progress: false
+
+env:
+  STAGING_HA_URL: https://praxis.io.vn
+  STAGING_HA_LAST_GOOD_OBJECT: deploy/staging-ha-last-good.json
+  MIG_NAME: vota-ha-app
+  MIG_REGION: asia-southeast1
+  BACKEND_SERVICE: vota-ha-app
+
+jobs:
+  plan:
+    name: Plan (content key so với last-good)
+    runs-on: [self-hosted, vota-staging-ha]
+    timeout-minutes: 10
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      backend_key: ${{ steps.plan.outputs.backend_key }}
+      frontend_key: ${{ steps.plan.outputs.frontend_key }}
+      backend_changed: ${{ steps.plan.outputs.backend_changed }}
+      frontend_changed: ${{ steps.plan.outputs.frontend_changed }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_CI_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Compare content keys with what is running
+        id: plan
+        env:
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+          FORCE: ${{ inputs.force || false }}
+        run: |
+          set -euo pipefail
+          gcloud storage cp "gs://$TF_STATE_BUCKET/$STAGING_HA_LAST_GOOD_OBJECT" last-good.json 2>/dev/null || echo '{}' > last-good.json
+          echo '### Plan' >> "$GITHUB_STEP_SUMMARY"
+          for c in backend frontend; do
+            key="$(bash scripts/ci/image-key.sh "$c")"
+            running="$(jq -r --arg k "${c}_key" '.[$k] // empty' last-good.json)"
+            changed=true
+            if [ "$key" = "$running" ] && [ "$FORCE" != true ]; then changed=false; fi
+            echo "${c}_key=$key" >> "$GITHUB_OUTPUT"
+            echo "${c}_changed=$changed" >> "$GITHUB_OUTPUT"
+            echo "- $c: key \`$key\`, đang chạy \`${running:-không rõ}\`, deploy: **$changed**" | tee -a "$GITHUB_STEP_SUMMARY"
+          done
+
+  backend-ci:
+    name: Backend CI gate
+    needs: plan
+    if: ${{ needs.plan.outputs.backend_changed == 'true' }}
+    uses: ./.github/workflows/backend-ci.yml
+    secrets: inherit
+
+  frontend-ci:
+    name: Frontend CI gate
+    needs: plan
+    if: ${{ needs.plan.outputs.frontend_changed == 'true' }}
+    uses: ./.github/workflows/frontend-ci-cd.yml
+    secrets: inherit
+
+  backend-image:
+    name: Backend image
+    needs: [plan, backend-ci]
+    if: ${{ needs.plan.outputs.backend_changed == 'true' }}
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/staging-ha-image-build.yml
+    with:
+      component: backend
+    secrets: inherit
+
+  frontend-image:
+    name: Frontend image
+    needs: [plan, frontend-ci]
+    if: ${{ needs.plan.outputs.frontend_changed == 'true' }}
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/staging-ha-image-build.yml
+    with:
+      component: frontend
+    secrets: inherit
+
+  deploy:
+    name: Deploy, verify and roll back on staging-ha
+    needs: [plan, backend-image, frontend-image]
+    if: ${{ !cancelled() && !failure() && (needs.plan.outputs.backend_changed == 'true' || needs.plan.outputs.frontend_changed == 'true') }}
+    runs-on: [self-hosted, vota-staging-ha]
+    timeout-minutes: 90
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_CI_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Resolve target and last-good image references
+        env:
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+          BACKEND_IMAGE: ${{ secrets.GAR_BACKEND_IMAGE }}
+          BACKEND_CHANGED: ${{ needs.plan.outputs.backend_changed }}
+          FRONTEND_CHANGED: ${{ needs.plan.outputs.frontend_changed }}
+          BACKEND_DIGEST: ${{ needs.backend-image.outputs.digest }}
+          FRONTEND_DIGEST: ${{ needs.frontend-image.outputs.digest }}
+        run: |
+          set -euo pipefail
+          gcloud storage cp "gs://$TF_STATE_BUCKET/$STAGING_HA_LAST_GOOD_OBJECT" last-good.json 2>/dev/null || echo '{}' > last-good.json
+          old_backend="$(jq -r '.backend_ref // empty' last-good.json)"
+          old_frontend="$(jq -r '.frontend_ref // empty' last-good.json)"
+          if [ "$BACKEND_CHANGED" = true ]; then backend="$BACKEND_IMAGE@$BACKEND_DIGEST"; else backend="$old_backend"; fi
+          if [ "$FRONTEND_CHANGED" = true ]; then frontend="${BACKEND_IMAGE%/vota-backend}/vota-frontend@$FRONTEND_DIGEST"; else frontend="$old_frontend"; fi
+          [ -n "$backend" ] && [ -n "$frontend" ] || { echo 'Thiếu image đích: last-good chưa có ref của thành phần không đổi.' >&2; exit 1; }
+          {
+            echo "BACKEND_REF=$backend"
+            echo "FRONTEND_REF=$frontend"
+            echo "OLD_BACKEND_REF=$old_backend"
+            echo "OLD_FRONTEND_REF=$old_frontend"
+          } >> "$GITHUB_ENV"
+
+      - name: Apply pending DB migrations
+        # Chỉ khi backend đổi. Áp migration chưa có (idempotent) trước khi roll. Bản cũ và bản mới cùng chạy trong lúc roll,
+        # nên migration phải tương thích ngược (expand trước, contract ở lần phát hành sau).
+        if: ${{ needs.plan.outputs.backend_changed == 'true' }}
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          MIGRATE_DSN_SECRET: vota-ha-migrate-database-url
+        run: |
+          set -euo pipefail
+          umask 077
+          printf 'psycopg[binary]>=3.2,<4\n' > "$RUNNER_TEMP/migrate-requirements.txt"
+          deps="$(bash scripts/ci/py-deps.sh migrate "$RUNNER_TEMP/migrate-requirements.txt")"
+          export PYTHONPATH="$deps"
+          dsn="$(gcloud secrets versions access latest --secret="$MIGRATE_DSN_SECRET" --project="$GCP_PROJECT_ID")"
+          echo "::add-mask::$dsn"
+          export SEED_DATABASE_URL="$dsn"
+          python3 db/migrations/run.py --status
+          python3 db/migrations/run.py
+
+      - name: Keep the MIG from replacing VMs
+        # MIG phải là OPPORTUNISTIC trước khi đổi all-instances config, nếu không MIG tự thay hết VM.
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        run: bash scripts/pin-staging-ha-mig-opportunistic.sh
+
+      - name: Record desired images on the MIG
+        # VM do autoscaler hoặc autohealing tạo (kể cả trong lúc roll) khởi động đúng image đích.
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        run: bash scripts/set-staging-ha-desired-images.sh
+
+      - name: Start downtime probe
+        run: bash scripts/probe-staging-ha.sh start
+
+      - name: Roll app VMs (prepare in parallel, then switch)
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          ROLL_LOG_DIR: ${{ runner.temp }}/roll
+        run: bash scripts/roll-staging-ha-app-slots.sh
+
+      - name: Verify MIG, load balancer and public readiness
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        run: bash scripts/verify-staging-ha-app.sh
+
+      - name: Stop downtime probe
+        if: ${{ always() }}
+        run: bash scripts/probe-staging-ha.sh stop
+
+      - name: Record last good
+        env:
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+          BACKEND_KEY: ${{ needs.plan.outputs.backend_key }}
+          FRONTEND_KEY: ${{ needs.plan.outputs.frontend_key }}
+        run: |
+          set -euo pipefail
+          if gcloud storage objects describe "gs://$TF_STATE_BUCKET/$STAGING_HA_LAST_GOOD_OBJECT" >/dev/null 2>&1; then
+            gcloud storage cp "gs://$TF_STATE_BUCKET/$STAGING_HA_LAST_GOOD_OBJECT" last-good.json
+          else
+            echo '{}' > last-good.json
+          fi
+          jq --arg b "$BACKEND_REF" --arg f "$FRONTEND_REF" --arg bk "$BACKEND_KEY" --arg fk "$FRONTEND_KEY" \
+             --arg sha "$GITHUB_SHA" --arg at "$(date -u +%FT%TZ)" \
+             '.backend_ref = $b | .frontend_ref = $f | .backend_key = $bk | .frontend_key = $fk | .git_sha = $sha | .deployed_at = $at' \
+             last-good.json > next-last-good.json
+          gcloud storage cp next-last-good.json "gs://$TF_STATE_BUCKET/$STAGING_HA_LAST_GOOD_OBJECT"
+          jq . next-last-good.json
+
+      - name: Roll back to last good
+        # Chạy khi một bước trên lỗi HOẶC run bị huỷ giữa chừng. Bước này phải là bước cuối cùng của job.
+        if: ${{ failure() || cancelled() }}
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          ROLL_LOG_DIR: ${{ runner.temp }}/rollback
+        run: |
+          set -euo pipefail
+          [ -n "${OLD_BACKEND_REF:-}" ] && [ -n "${OLD_FRONTEND_REF:-}" ] || { echo 'Không có last-good để rollback.' >&2; exit 1; }
+          BACKEND_REF="$OLD_BACKEND_REF" FRONTEND_REF="$OLD_FRONTEND_REF" bash scripts/set-staging-ha-desired-images.sh
+          BACKEND_REF="$OLD_BACKEND_REF" FRONTEND_REF="$OLD_FRONTEND_REF" bash scripts/roll-staging-ha-app-slots.sh

@@ -25,7 +25,7 @@ Hệ thống được thiết kế để vận hành trên ba cấp môi trườ
 
 ### 1.1. Tầng DB HA riêng cho `staging-ha`
 
-`staging-ha` là Terraform root và state riêng (`infra/staging-ha`), tách khỏi root/state `infra/staging`. Vì hai root có state khác nhau, thay đổi Patroni không làm thay đổi tài nguyên do workflow `infra-terraform-staging.yml` quản lý; các workflow CI/CD ứng dụng và crawler cũng không bị sửa trong phạm vi này.
+`staging-ha` là môi trường staging duy nhất, có Terraform root và state riêng (`infra/staging-ha`). Staging cũ đã ngừng ngày 2026-10-13: repo không còn Terraform, workflow CI/CD hay code monitoring của nó (`infra/terraform/environments/staging`, `infra/monitoring` dạng Terraform). Cùng ngày, monitoring cũ đã xoá khỏi GCP: 18 alert policy (15 gắn VM cũ đã nghỉ hoặc probe đã hỏng, 3 policy VM do Compute Engine tự tạo), 4 log-metric, dashboard, uptime check và exclusion log `vota-staging-debug-and-health-ok`. Còn lại trên GCP, chưa có code quản lý: 8 alert policy toàn project và log-metric `vota-staging_*` của chúng, kênh email `vota-staging email alerts`, metric descriptor `custom.googleapis.com/vota/container/*` (dashboard staging-ha dùng), IP tĩnh `34.142.132.251` (bastion dùng), và hai state `infra/staging`, `monitoring/staging`, state này đã lệch so với GCP nên không chạy plan hay apply. Muốn dọn phần còn lại thì import vào root staging-ha trước (task riêng). *(Theo `update-archive/2026-10-13-xoa-monitoring-staging-cu.md`.)*
 
 Khi được bật có chủ đích bằng `create_patroni = true`, staging-ha tạo hai node PostgreSQL + Patroni ở hai zone, một witness etcd ở zone thứ ba và một ILB private. ILB chỉ gửi kết nối ghi tới node trả HTTP `200` ở `/primary`; Patroni tự bầu leader khi mất node. `create_patroni = false` vẫn là mặc định, nên việc merge mã không tự dựng cụm.
 
@@ -72,6 +72,8 @@ Hệ thống phân tách ranh giới bảo mật bằng các chuỗi kết nối
 | `BOOKING_DRAFT_TTL_MINUTES` | Thời gian hiệu lực của đơn nháp (Đặt ngay), mặc định `30` | Tất cả | Không bí mật |
 | `GUEST_BOOKING_TTL_DAYS` | Thời gian Redis giữ giỏ và đơn nháp của khách chưa đăng nhập, mặc định `3` | Tất cả | Không bí mật |
 | `BOOKING_REDIS_URL` | Redis cho giỏ và đơn nháp của khách chưa đăng nhập, dùng DB index riêng | Tất cả | Có mật khẩu; không mở ra mạng ngoài |
+| `RECOMMEND_CACHE_REDIS_URL` | Redis cho cache kết quả gợi ý cá nhân hoá, DB index riêng (ví dụ `/4`) | Tất cả | Có mật khẩu; không mở ra mạng ngoài. Để trống thì tắt cache (dev/test) |
+| `RECOMMEND_CACHE_TTL_SECONDS` | Thời gian sống của một mục cache gợi ý, mặc định `900` | Tất cả | Không bí mật |
 | `PAYMENT_MAX_FAILED_ATTEMPTS` | Số lần thẻ bị từ chối tối đa, mặc định `3` | Tất cả | Không bí mật |
 | `PUBLIC_WEB_URL` | Gốc URL web để dựng `success_url`, `cancel_url` | Tất cả | Không bí mật |
 
@@ -153,12 +155,21 @@ Hệ thống cung cấp các endpoint kiểm tra trạng thái sức khỏe đ�
 
 ### 6.1. Quy trình phát hành phiên bản mới (Release Process)
 ```
-[Code Push] ──> [CI: Lint & Tests] ──> [DB Migration] ──> [Deploy Backend] ──> [Deploy Frontend] ──> [Smoke Test]
+[PR: CI] ──> [Merge] ──> [CD: CI gate] ──> [Build (nếu key đổi)] ──> [DB Migration] ──> [Prepare mọi VM] ──> [Switch: canary → còn lại] ──> [Verify + Smoke]
 ```
-1. Xác nhận toàn bộ automated tests và contract validation đều PASS trên CI.
-2. Thực thi migration cơ sở dữ liệu bằng `db/migrations/run.py`.
-3. Triển khai phiên bản Backend mới. Staging-HA thay toàn bộ VM app một lượt và chấp nhận downtime ngắn (vài phút) để rút ngắn thời gian phát hành; không dùng VM surge. Cổng sẵn sàng là LB báo đủ VM HEALTHY và `/health/ready` qua public endpoint đạt 6 lần liên tiếp. Quyết định này áp dụng cho staging-HA; production chưa có quyết định riêng. *(Chốt 2026-10-09, đề xuất `update-archive/2026-10-09-rut-ngan-cd-chap-nhan-downtime.md`.)*
-4. Triển khai phiên bản Frontend mới tương ứng.
+1. CI chạy trên mọi PR. Sau khi merge, CD gọi lại đúng CI đó (`workflow_call`) làm cổng: CI đỏ thì không build và không deploy.
+2. Thực thi migration cơ sở dữ liệu bằng `db/migrations/run.py`. Migration phải tương thích ngược với bản đang chạy (expand trước, contract ở lần phát hành sau), vì bản cũ và bản mới cùng chạy trong lúc roll.
+3. Triển khai backend và frontend trong **một** luồng CD (`staging-ha-app-cd.yml`):
+   - CD so *content key* của từng thành phần (hash các thư mục đầu vào của image) với bản đang chạy (last-good). Chỉ thành phần đổi mới qua CI và build. Image có key đã tồn tại thì không build lại.
+   - Run mới nhất luôn chứa trọn mọi thay đổi chưa deploy, nên run đang chờ bị thay thế mà không mất thay đổi nào. Khoá `concurrency: staging-ha-app` đặt ở mức workflow và giữ `flock` trên VM.
+   - Image mong muốn được ghi vào *all-instances config* của MIG (metadata `vota-backend-image`, `vota-frontend-image`), để VM do autoscaler hoặc autohealing tạo khởi động đúng bản. Deploy ứng dụng **không chạy Terraform**; Terraform chỉ chạy ở `staging-ha-infra-cd.yml`.
+   - Roll theo hai pha. Pha `prepare` chạy song song trên mọi VM: dựng slot mới, đợi `/health/ready`, chép `/_next/static` vào kho tĩnh của proxy. Pha `switch`: đổi proxy trên VM đầu trước (canary), rồi các VM còn lại song song.
+   - Kho tĩnh giữ asset của các phiên bản gần đây, để trình duyệt đang chạy bản cũ không bị 404 chunk.
+   - Cổng sẵn sàng: mọi VM chạy đúng image đích, LB báo đủ VM HEALTHY, và `/health/ready` qua public endpoint đạt 3 lần liên tiếp (cách 5 s).
+   - Lỗi hoặc run bị huỷ thì đưa image mong muốn và các VM về last-good.
+
+   Quyết định này áp dụng cho staging-HA; production chưa có quyết định riêng. *(Theo `update-archive/2026-10-13-cd-staging-ha-mot-luong-hai-pha.md`, thay mô tả ngày 2026-10-12; chi tiết vận hành ở `docs/guide/van-hanh-cd-staging-ha.md`.)*
+4. Frontend đi cùng luồng ở bước 3; không còn CD frontend riêng.
 5. Thực hiện kịch bản Smoke Test trên Staging/Production để xác nhận luồng tìm kiếm và đặt hàng hoạt động bình thường.
 
 ### 6.2. Kế hoạch hoàn tác khi phát sinh sự cố (Rollback Strategy)
@@ -182,4 +193,4 @@ gcloud dns record-sets update db.vota.internal. \
   --rrdatas=<old-primary-private-ip>
 ```
 
-Không chạy `terraform apply` của root `infra/terraform/environments/staging` để rollback Patroni; hai state có ranh giới riêng.
+Không dùng state `infra/staging` của staging cũ (đã gỡ khỏi repo) để rollback Patroni; hai state có ranh giới riêng.

@@ -30,12 +30,11 @@ function stubSearch() {
   global.fetch = vi.fn().mockImplementation(async (_url, init) => {
     const body = JSON.parse((init as RequestInit).body as string);
     calls.push(body);
-    if (body.taxonomy === null) {
-      return new Response(JSON.stringify({ results: [], total: 201, facets: { taxonomy: { hotel: 128, flight: 13, attraction: 48, combo: 11, golf: 1 }, destination: {} } }), { status: 200 });
-    }
     const n = Math.min(body.limit, 3);
     const results = Array.from({ length: n }, (_, i) => item(`${body.taxonomy}-${body.offset + i}`, body.taxonomy, 1000 * (i + 1)));
-    return new Response(JSON.stringify({ results, total: TOTALS[body.taxonomy] }), { status: 200 });
+    // Có bộ lọc sao/giá thì backend trả ít hơn; hybrid luôn khai totalExact: false (không được thành dấu "+").
+    const total = body.starRatingMin !== undefined || body.priceMax !== undefined ? 30 : TOTALS[body.taxonomy];
+    return new Response(JSON.stringify({ results, total, topScore: 0.9, diagnostics: { totalExact: false } }), { status: 200 });
   });
   return calls;
 }
@@ -94,12 +93,55 @@ describe('SearchView', () => {
     await screen.findByRole('tab', { name: /Lưu trú \(128\)/ });
 
     expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Tất cả (188)', 'Lưu trú (128)', 'Tour và trải nghiệm (49)', 'Tiện ích khác (11)']);
+    // Không có dấu "+" dù backend khai totalExact: false.
     expect(screen.getByText('Tìm thấy 188 dịch vụ phù hợp')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Sắp xếp/ })).toBeNull();
     expect(screen.queryByText('Điểm đến')).toBeNull();
     expect(calls.some((c) => c.taxonomy === 'flight')).toBe(false);
     // Chỉ xem nhanh: mỗi request của hàng lấy 6 mục đầu, không lấy hết.
     expect(calls.filter((c) => c.taxonomy).every((c) => c.limit === 6)).toBe(true);
+  });
+
+  it('tab counts and row counts come from the same requests, so they always agree', async () => {
+    const calls = stubSearch();
+    render(<SearchView />);
+    await screen.findByRole('tab', { name: /Lưu trú \(128\)/ });
+    await waitFor(() => expect(screen.getByText('11 kết quả')).toBeTruthy());
+    expect(screen.getByText('128 kết quả')).toBeTruthy();
+    expect(screen.getByText('49 kết quả')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Xem tất cả 128/ })).toBeTruthy();
+    // Không có request tổng quan không lọc taxonomy; mỗi loại đúng một request, hàng và tab dùng chung.
+    expect(calls.every((c) => typeof c.taxonomy === 'string')).toBe(true);
+    expect(calls.map((c) => c.taxonomy).sort()).toEqual(['attraction', 'combo', 'golf', 'hotel']);
+  });
+
+  it('stay tab: star and price filters go to the API, reset to page one and show the filtered count', async () => {
+    const calls = stubSearch();
+    state.params = new URLSearchParams('q=Nha+Trang&type=stay');
+    render(<SearchView />);
+    await screen.findByTestId('row-hotel-0');
+    expect(screen.getByRole('button', { name: 'Xem thêm (3/128)' })).toBeTruthy();
+    expect(screen.queryByText(/kết quả theo bộ lọc/)).toBeNull();
+
+    fireEvent.click(screen.getByRole('radio', { name: '4 sao trở lên' }));
+    expect(await screen.findByText('· 30 kết quả theo bộ lọc')).toBeTruthy();
+    expect(calls.at(-1)).toMatchObject({ taxonomy: 'hotel', starRatingMin: 4, offset: 0, limit: 20 });
+    expect(screen.getByRole('button', { name: 'Xem thêm (3/30)' })).toBeTruthy();
+    // Số trên tab là số chưa áp bộ lọc.
+    expect(screen.getByRole('tab', { name: 'Lưu trú (128)' })).toBeTruthy();
+
+    // Thanh trượt giá: một request sau khi dừng kéo, không phải một request mỗi nấc.
+    const before = calls.length;
+    const slider = screen.getByRole('slider', { name: 'Mức giá tối đa' });
+    fireEvent.change(slider, { target: { value: '3000000' } });
+    fireEvent.change(slider, { target: { value: '2000000' } });
+    await waitFor(() => expect(calls.length).toBe(before + 1));
+    expect(calls.at(-1)).toMatchObject({ starRatingMin: 4, priceMax: 2000000, offset: 0 });
+
+    // Bỏ hết bộ lọc: về danh sách ban đầu (từ bộ đệm), không còn số theo bộ lọc.
+    fireEvent.click(screen.getByRole('button', { name: 'Xóa tất cả' }));
+    expect(await screen.findByRole('button', { name: 'Xem thêm (3/128)' })).toBeTruthy();
+    expect(screen.queryByText(/kết quả theo bộ lọc/)).toBeNull();
   });
 
   it('the search box suggests while typing and keeps Enter, chips and the see-all button going to /search', async () => {

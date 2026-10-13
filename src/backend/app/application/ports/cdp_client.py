@@ -126,6 +126,10 @@ class BrowseEventRecorder(Protocol):
         ...
 
 
+#: Số event tối đa đọc cho một lần tính gợi ý (hop-dong-tich-hop-cdp.md §6, quy tắc 1).
+HISTORY_MAX_EVENTS = 500
+
+
 class CdpHistoryReader(Protocol):
     """Đường ĐỌC đồng bộ của RecSys: lịch sử một khách và purchase toàn hệ thống.
 
@@ -136,7 +140,10 @@ class CdpHistoryReader(Protocol):
     bắt lỗi này ở `events_for_user` để lui về `popular`.
     """
 
-    def events_for_user(self, cdp_user_id: str) -> list[dict]: ...
+    def events_for_user(self, cdp_user_id: str) -> list[dict]:
+        """Lịch sử một khách, mới nhất trước (cùng thời điểm thì id nội bộ tăng dần), tối đa `HISTORY_MAX_EVENTS` event."""
+        ...
+
     def purchase_events(self, since_days: int = 730) -> list[dict]: ...
 
     def all_events(self, until: datetime | None = None) -> list[dict]:

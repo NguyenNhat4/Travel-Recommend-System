@@ -11,8 +11,8 @@ from urllib.parse import urlparse
 #: Biến kết nối mà test có thể đọc. Chỉ xét biến có trong môi trường shell (conftest đã tắt đọc `.env`).
 CONNECTION_VARS = (
     "DATABASE_URL", "CDP_DATABASE_URL", "SEED_DATABASE_URL", "INSIDER_DATABASE_URL",
-    "AUTH_REDIS_URL", "ITINERARY_REDIS_URL", "WEAVIATE_URL", "CDP_BASE_URL", "INSIDER_BASE_URL",
-    "ITINERARY_SERVICE_BASE_URL",
+    "AUTH_REDIS_URL", "ITINERARY_REDIS_URL", "RECOMMEND_CACHE_REDIS_URL", "WEAVIATE_URL", "CDP_BASE_URL",
+    "INSIDER_BASE_URL", "ITINERARY_SERVICE_BASE_URL",
 )
 LOOPBACK = {"localhost", "127.0.0.1", "::1"}
 #: Cổng tunnel SSH tới Postgres staging (primary, replica): loopback nhưng là máy từ xa.

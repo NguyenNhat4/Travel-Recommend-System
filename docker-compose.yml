@@ -92,6 +92,8 @@ services:
       VECTOR_COLLECTION: ${VECTOR_COLLECTION:-ProductE5Small}
       WEAVIATE_GRPC_PORT: ${BACKEND_WEAVIATE_GRPC_PORT:-50051}
       CATALOG_REFRESH_SECONDS: ${CATALOG_REFRESH_SECONDS:-900}
+      # Cache kết quả gợi ý (PRD architecture §4): DB index riêng của Redis compose; trống = tắt.
+      RECOMMEND_CACHE_REDIS_URL: ${BACKEND_RECOMMEND_CACHE_REDIS_URL:-redis://:devpass@redis:6379/4}
       # Stripe test mode (docs/prd/deployment-plan.md §2). Webhook: `stripe listen --forward-to
       # localhost:${BACKEND_PORT:-8000}/api/v1/payments/stripe/webhook` chạy trên máy host.
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}

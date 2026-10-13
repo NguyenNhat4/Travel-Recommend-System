@@ -458,6 +458,9 @@ ProductListResponse:
       type: integer
     requestId:
       type: string
+      description: >-
+        Id của request đã tạo bản cache khi response được cache (`Cache-Control: public`). Lượt trúng cache không đến
+        backend nên không có log tương ứng; không dùng giá trị này để truy vết lượt đó.
 
 SimilarProductsResponse:
   type: object
@@ -493,6 +496,9 @@ SimilarProductsResponse:
       $ref: ../openapi.yaml#/components/schemas/EngineDiagnostics
     requestId:
       type: string
+      description: >-
+        Id của request đã tạo bản cache khi response được cache (`Cache-Control: public`). Lượt trúng cache không đến
+        backend nên không có log tương ứng; không dùng giá trị này để truy vết lượt đó.
 
 DestinationListResponse:
   type: object

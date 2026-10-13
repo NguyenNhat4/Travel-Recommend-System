@@ -133,15 +133,15 @@ Ký hiệu auth: **—** không gửi JWT · **tùy** gửi nếu có · **bắt
 | Khu vực | Endpoint | Auth | Trường Web đọc | Khi lỗi / rỗng |
 |---|---|---|---|---|
 | Lời chào | `GET /auth/me` (khi khôi phục phiên) | bắt buộc | `fullName` (`AuthUser`) | Không có phiên → lời chào chung |
-| ① Gợi ý cá nhân hóa | `GET /recommendations?k=5` | tùy | `strategy`, `nextVertical`, `destination`, `recommendations[]` (`rank`, `productId`, `name`, `taxonomy`, `destination`, `unitPrice`, `currency`, `available`, `imageUrl`, `attributes`, `score`, `because[]`), `diagnostics.excludedVerticals`, `diagnostics.coldStart` | 5xx / timeout > 3 giây → ẩn ①, hiện dòng "Chưa tải được gợi ý · Thử lại". Khách vãng lai → không gọi, hiện banner đăng nhập |
+| ① Gợi ý cá nhân hóa | `GET /recommendations?k=4` | tùy | `strategy`, `nextVertical`, `destination`, `recommendations[]` (`rank`, `productId`, `name`, `taxonomy`, `destination`, `unitPrice`, `currency`, `available`, `imageUrl`, `attributes`, `score`, `because[]`), `diagnostics.excludedVerticals`, `diagnostics.coldStart` | 5xx / timeout > 10 giây (`RECOMMENDATION_TIMEOUT_MS`, §6.4) → ẩn ①, hiện dòng "Chưa tải được gợi ý · Thử lại". Chưa có kết quả thì chưa hiện khối, không hiện bản cũ. Khách vãng lai → không gọi, hiện banner đăng nhập |
 | ② Đã xem gần đây | — | — | — | **Bỏ section** (D13) |
 | ③ Thẻ trợ lý | dùng lại response ① | — | `destination` | Không có → câu chung |
-| ④ Phổ biến | `GET /products?sort=popular&availableOnly=true&limit=8` (thêm `taxonomy=<tab>` khi chọn tab) | — | `results[]` (`ProductSummary`) | **Luôn render**. Một carousel có tab Tất cả · Khách sạn · Vé máy bay · Vé tham quan · Combo; **chỉ tab đang chọn gọi API**. Lỗi → "Chưa tải được · Thử lại" cục bộ |
+| ④ Phổ biến | `GET /products?sort=popular&availableOnly=true&limit=8`, thêm theo tab (contract 1.27.0): Tất cả `diversify=taxonomy`; Khách sạn / Vé máy bay / Combo `taxonomy=<loại>`; Vé tham quan `taxonomy=attraction,golf` | — | `results[]` (`ProductSummary`) | **Luôn render**. Một carousel có tab Tất cả · Khách sạn · Vé máy bay · Vé tham quan (gồm sân golf, không có tab Golf riêng) · Combo; **chỉ tab đang chọn gọi API**, mỗi tab một request. Tab Tất cả do Backend trộn theo nhóm loại (2 ô mỗi nhóm trong 8 ô khi đủ hàng) và là kệ duy nhất hiện nhãn loại trên thẻ (`TaxonomyBadge`); các tab khác không có nhãn. Lỗi → "Chưa tải được · Thử lại" cục bộ |
 | Điểm đến ("Bạn muốn đi đâu?") | `GET /destinations` | — | `destinations[].destination`, `productCount` | Chỉ gọi khi khối tới gần vùng nhìn (≤ 300 px), bộ đệm 5 phút dùng chung với tấm tìm kiếm. Lỗi hoặc rỗng → ẩn khối |
 | Lối vào danh mục | — | — | — | Bốn ô tĩnh từ `navConfig.ts` → `/flights`, `/hotels`, `/experiences`, `/combos` |
 | Gợi ý khi gõ ở ô tìm kiếm (FR-SRC-05) | `GET /search/suggestions?q=&limit=8` | — | `suggestions[]` (`type` = `destination` \| `product`, `label`, `productId`, `taxonomy`, `destination`, `productCount`) | Chỉ gọi khi có ≥ 2 ký tự chữ/số, sau 200 ms không gõ; huỷ lượt cũ; bộ nhớ đệm trang 50 khoá / 5 phút. Lỗi → "Chưa tải được gợi ý", vẫn có "Xem tất cả". Không tính vào ngân sách request khi tải trang vì chỉ gọi lúc gõ. Ô rỗng không gọi |
 
-**Ngân sách request của Home:** khách ≤ 1 request khi tải (khối ④ nếu trong vùng nhìn), đã đăng nhập ≤ 2 (thêm ①); các khối dưới màn hình chỉ tải khi cuộn tới (`useInView` + `useLazySection`). ① quá 3 giây (`RECOMMENDATION_TIMEOUT_MS`) thì ẩn khối và hiện dòng "Thử lại".
+**Ngân sách request của Home:** khách ≤ 1 request khi tải (khối ④ nếu trong vùng nhìn), đã đăng nhập ≤ 2 (thêm ①); các khối dưới màn hình chỉ tải khi cuộn tới (`useInView` + `useLazySection`). ① quá 10 giây (`RECOMMENDATION_TIMEOUT_MS`) thì ẩn khối và hiện dòng "Thử lại".
 
 ### 4.1a. Trang danh mục `/hotels`, `/flights`, `/experiences`, `/combos`
 
@@ -157,7 +157,7 @@ Một template (`features/catalog/landing`), cấu hình ở `verticals.ts`. Her
 | Điểm đến (tải khi vào vùng nhìn) | `GET /destinations` | — | `destination`, `productCount` | Lỗi hoặc rỗng → ẩn khối |
 | Gợi ý điểm đến trong tấm tìm kiếm (vé máy bay: cả ô Điểm đi) | `GET /destinations` | — | như trên | Lỗi → vẫn gõ tự do được |
 
-`/experiences` có hai tab (`?type=attraction|golf`); các trang khác một tab. Tấm tìm kiếm gửi bằng điều hướng về **chính trang danh mục** `/{hotels|experiences|combos}?q[&type][&destination]&checkIn&checkOut&adults&children&rooms` (`searchHref.ts` `buildSearchHref`; `type` chỉ ghi khi không phải tab đầu; vé máy bay **không** rời trang: tìm ngay tại `/flights`, §4.1b): điểm đến chọn từ gợi ý (hoặc gõ đúng nhãn) thành `destination`, còn lại vào `q` (rỗng thì dùng câu mặc định theo danh mục, `services/search.ts` `DEFAULT_QUERY`; câu mặc định không hiện thành "Kết quả cho …"). Mở lại URL thì tấm tìm kiếm được điền sẵn từ `destination`, `q` (chữ tự do), ngày, số khách và số phòng. Kết quả có bộ lọc hạng sao và giá (chỉ khách sạn), popup sắp xếp và "Xem thêm" như tab nhóm của `/search`; ngày và số khách mang tiếp tới liên kết sản phẩm. Băng "kết quả yếu" chỉ có ở `/search`.
+`/experiences` có hai tab (`?type=attraction|golf`); các trang khác một tab. Tấm tìm kiếm gửi bằng điều hướng về **chính trang danh mục** `/{hotels|experiences|combos}?q[&type][&destination]&checkIn&checkOut&adults&children&rooms` (`searchHref.ts` `buildSearchHref`; `type` chỉ ghi khi không phải tab đầu; vé máy bay **không** rời trang: tìm ngay tại `/flights`, §4.1b): điểm đến chọn từ gợi ý (hoặc gõ đúng nhãn) thành `destination`, còn lại vào `q` (rỗng thì dùng câu mặc định theo danh mục, `services/search.ts` `DEFAULT_QUERY`; câu mặc định không hiện thành "Kết quả cho …"). Mở lại URL thì tấm tìm kiếm được điền sẵn từ `destination`, `q` (chữ tự do), ngày, số khách và số phòng. Kết quả có bộ lọc hạng sao và giá (chỉ khách sạn; gửi lên API cùng số khách và ngày, §4.2), popup sắp xếp và "Xem thêm" như tab nhóm của `/search`; ngày và số khách mang tiếp tới liên kết sản phẩm. Băng "kết quả yếu" chỉ có ở `/search`.
 
 **Số khách là bộ lọc thật ở trang danh mục** (đang tìm bằng `?q=`): gửi `travelContext.guests` (contract 1.16.0, hard filter sức chứa; sản phẩm chưa khai sức chứa vẫn giữ). Backend so `adults + children` với sức chứa của **một** hạng phòng, nên nhiều phòng thì chia đều làm tròn lên (4 người ở 2 phòng gửi 2; `LandingResults.guestsOf`); không có số người lớn trên URL thì không gửi. `/search` không gửi.
 
@@ -198,16 +198,18 @@ Quy tắc:
 
 | Khu vực | Endpoint | Auth | Trường Web đọc | Khi lỗi / rỗng |
 |---|---|---|---|---|
-| Số kết quả các tab | `POST /search` không `taxonomy`, `limit: 1` | tùy | `facets.taxonomy` (Lưu trú = hotel, Tour và trải nghiệm = attraction + golf, Tiện ích khác = combo; bỏ `flight`), `topScore` | Lỗi → tab không hiện số; tab 0 kết quả vẫn hiện |
-| Tab **Tất cả**: hàng theo nhóm | `POST /search` một lần cho mỗi taxonomy của nhóm, `limit: 6` | tùy | `results[]`, `total` | Lỗi → "Chưa tải được nhóm này · Thử lại" ngay hàng; nhóm 0 kết quả bị ẩn; tất cả 0 → EmptyState |
-| Tab nhóm: danh sách đầy đủ | như trên, `limit: 20`, `offset += 20` | tùy | `results[]` (`ProductSummary` + `score`), `total` | Lỗi → "Thử lại"; rỗng do lọc → "Xóa bộ lọc" |
-| Băng "kết quả yếu" | response của số kết quả các tab | — | `topScore` | `topScore < 0.35` → hiện băng; `null` → không hiện |
+| Tab **Tất cả**: hàng theo nhóm | `POST /search` một lần cho mỗi taxonomy của nhóm (hotel · attraction + golf · combo), `limit: 6` | tùy | `results[]`, `total`, `topScore` | Lỗi → "Chưa tải được nhóm này · Thử lại" ngay hàng; nhóm 0 kết quả bị ẩn; tất cả 0 → EmptyState |
+| Số kết quả các tab và dòng "Tìm thấy N dịch vụ phù hợp" | **cùng các request của hàng ở trên** (cùng khóa bộ đệm, không gọi thêm); ở tab nhóm vẫn gọi để có số cho cả bốn tab | tùy | `total` của từng nhóm (Tour và trải nghiệm = attraction + golf); Tất cả = tổng ba nhóm | Lỗi ở bất kỳ nhóm nào → tab không hiện số; tab 0 kết quả vẫn hiện |
+| Tab nhóm: danh sách đầy đủ | như hàng, `limit: 20`, `offset += 20`; tab Lưu trú gửi thêm `starRatingMin` / `priceMax` khi có bộ lọc | tùy | `results[]` (`ProductSummary` + `score`), `total` | Lỗi → "Thử lại"; rỗng do lọc → "Xóa bộ lọc" |
+| Băng "kết quả yếu" | response của các hàng | — | `topScore` cao nhất của các nhóm | `topScore < 0.35` → hiện băng; mọi nhóm `null` → không hiện |
 
 Quy tắc:
-- **Tất cả** chỉ lấy vài mục đầu mỗi nhóm (`PREVIEW_LIMIT` = 6) để tải nhanh. Hàng đầu tải ngay, các hàng dưới tải khi gần vào vùng nhìn (`useInView`). Cuối hàng có thẻ "Còn N kết quả · Xem tất cả"; "Xem tất cả" chuyển sang tab của nhóm, lúc đó mới tải trang đầy đủ (`GROUP_PAGE_SIZE` = 20, "Xem thêm" nối trang kế).
-- Mọi lần gọi qua bộ đệm 60 giây của `hooks/useLazySection` (`useLazySection`, `loadSection`), khóa theo (truy vấn, điểm đến, nhóm, limit, offset); quay lại tab hoặc "Xem thêm" không tải lại trang đã có. Đổi tài khoản thì xóa bộ đệm (§7 điều 7). Hệ quả: cùng truy vấn tìm lại trong 60 giây có thể không sinh thêm event `search` phía Backend.
+- **Một nguồn đếm** (sửa 2026-10-12): số trên tab, số trên hàng ("N kết quả", "Còn N · Xem tất cả N"), mẫu số "Xem thêm (x/N)" và dòng "Tìm thấy N" đều là `total` của request lọc theo taxonomy. **Không** đếm tab bằng `facets.taxonomy` của một request không lọc taxonomy: backend tính tập kết quả trên tập đã lọc của từng request (top-K dense, 10 suất vớt BM25 dùng chung cho mọi loại kể cả vé máy bay; hợp đồng Search §2.2), nên facets đó thường nhỏ hơn `total` của request lọc theo loại — đo trên backend local ngày 12/10, câu "Nha Trang": tab 14 / 9 / 5 / 0, trong khi các hàng ra 13 / 12 / 9. Số không kèm dấu "+": ở hybrid `totalExact` luôn `false`, dấu này không mang thông tin.
+- **Tất cả** chỉ lấy vài mục đầu mỗi nhóm (`PREVIEW_LIMIT` = 6) để tải nhanh. Ba hàng tải cùng lúc (số trên tab cần cả ba). Cuối hàng có thẻ "Còn N kết quả · Xem tất cả"; "Xem tất cả" chuyển sang tab của nhóm, lúc đó mới tải trang đầy đủ (`GROUP_PAGE_SIZE` = 20, "Xem thêm" nối trang kế).
+- Mọi lần gọi qua bộ đệm 60 giây của `hooks/useLazySection` (`useLazySection`, `loadSection`), khóa theo (truy vấn, điểm đến, nhóm, limit, offset, bộ lọc); quay lại tab hoặc "Xem thêm" không tải lại trang đã có. Đổi tài khoản thì xóa bộ đệm (§7 điều 7). Hệ quả: cùng truy vấn tìm lại trong 60 giây có thể không sinh thêm event `search` phía Backend.
 - Hàng cuộn ngang có nút trái/phải ở giữa chiều cao hàng, sát hai bên: nút trái ẩn ở đầu hàng, nút phải ẩn ở cuối hàng hoặc khi hàng không tràn; dưới `md` chỉ vuốt (`components/search/HScroller.tsx`).
-- **Sắp xếp** là popup ("Sắp xếp: Phù hợp nhất ▾": Phù hợp nhất · Giá thấp → cao · Giá cao → thấp) ở mọi tab trừ Tất cả. Hạng sao và giá tối đa chỉ ở tab Lưu trú. Backend chưa nhận `sort`, giá, sao nên sắp xếp và lọc chạy trên các mục đã tải (`viewItems`); mục chưa có giá luôn xếp cuối.
+- **Sắp xếp** là popup ("Sắp xếp: Phù hợp nhất ▾": Phù hợp nhất · Giá thấp → cao · Giá cao → thấp) ở mọi tab trừ Tất cả. Backend chưa nhận `sort` nên sắp xếp chạy trên các mục đã tải (`sortItems`); mục chưa có giá luôn xếp cuối.
+- **Hạng sao và giá tối đa** chỉ ở tab Lưu trú, gửi lên API (`starRatingMin`, `priceMax`; contract 1.15.0, hợp đồng Search §2.5): giá lọc cứng trên giá thấp nhất kể cả phòng con, sản phẩm chưa có giá bị loại; sao lọc mềm, sản phẩm khai sao thấp hơn bị loại, chưa khai sao vẫn giữ và xếp sau. Đổi bộ lọc thì về trang 1; thanh trượt giá chỉ gọi API sau khi dừng kéo 400 ms. Số trên tab là số **chưa** áp sao/giá; khi đang lọc, thanh "Đang lọc" ghi thêm "· N kết quả theo bộ lọc".
 - Nhóm Tour và trải nghiệm là hai request (attraction, golf) trộn theo `score`.
 
 `503 SEARCH_UNAVAILABLE` → `ErrorState` có "Thử lại", giữ nguyên truy vấn trong ô.
@@ -386,8 +388,8 @@ Prop của component dùng **đúng tên schema** trong OpenAPI. Không có lớ
 
 | Component | Prop dữ liệu | Schema nguồn | Ghi chú |
 |---|---|---|---|
-| `ProductCard` | `product` | `ProductSummary` (hoặc `RecommendationItem`, `ScoredProduct` — cùng tập trường tối thiểu) | Trường tối thiểu dùng: `productId`, `name`, `taxonomy`, `destination`, `unitPrice`, `currency`, `available`, `imageUrl`, `attributes`. `rating`/`reviewCount` vắng mặt hoặc `null` → không render. Link luôn là `/product/{productId}` |
-| `TaxonomyBadge` | `taxonomy` | `Taxonomy` | Giá trị lạ → badge trung tính "Dịch vụ" |
+| `ProductCard` | `product` | `ProductSummary` (hoặc `RecommendationItem`, `ScoredProduct` — cùng tập trường tối thiểu) | Trường tối thiểu dùng: `productId`, `name`, `taxonomy`, `destination`, `unitPrice`, `currency`, `available`, `imageUrl`, `attributes`. `rating`/`reviewCount` vắng mặt hoặc `null` → không render. Link luôn là `/product/{productId}`. Biến thể `tile` chỉ hiện `TaxonomyBadge` (góc trên trái ảnh) khi bật `showTaxonomy`; hiện chỉ khối ④ tab Tất cả ở Home bật |
+| `TaxonomyBadge` | `taxonomy` | `Taxonomy` | Giá trị lạ → badge trung tính "Dịch vụ". Dùng ở giỏ, checkout và khối ④ tab Tất cả ở Home (nơi trộn nhiều loại mà không có tab theo loại) |
 | `PriceTag` | `unitPrice`, `currency`, `taxonomy`, `prefix?` | `ProductSummary` | Hậu tố theo §6.2 |
 | `AttributeTags` | `attributes`, `max` | `ProductAttributes` | Key lạ bỏ qua; `starRating` render bằng sao, không thành tag |
 | `BecauseLine` | `because` | `BecauseItem[]` | Chỉ đọc `because[0]`; mảng rỗng → không render |
@@ -431,7 +433,7 @@ Dùng bảng nhãn tiếng Việt ở `hop-dong-tich-hop-backend.md` §2.5. Key 
 | Hằng số | Giá trị | Dùng ở |
 |---|---|---|
 | `WEAK_RESULT_TOP_SCORE` | `0.35` | Băng "kết quả yếu" ở Search |
-| `RECOMMENDATION_TIMEOUT_MS` | `3000` | Home ① |
+| `RECOMMENDATION_TIMEOUT_MS` | `10000` | Home ① |
 | `ASSISTANT_SLOW_MS` | `8000` | Trạng thái "chậm" của trợ lý |
 | `ITINERARY_NOTE_MAX_CHARS` | `160` | Ghi chú 💬 |
 | `BECAUSE_NAME_MAX_CHARS` | `32` | `BecauseLine` |
@@ -776,6 +778,7 @@ Ca biên bắt buộc để dựng đủ 8 màn hình:
 | Khách vãng lai | `recommendations/getRecommendations.200-anonymous` |
 | `because[].productId: null` (sản phẩm nguồn đã xóa) | nằm trong `200-p3-dormant` |
 | Sản phẩm `available: false`, `rating: null`, `attributes: {}` | `catalog/listProducts.200-popular` |
+| Kệ Phổ biến tab Tất cả trộn đủ 5 loại (`diversify=taxonomy`), có combo tên mở đầu "Vé máy bay khứ hồi" | `catalog/listProducts.200-diversified` |
 | Search rỗng, `topScore: null` | `search/searchProducts.200-empty` |
 | Sản phẩm 404 | `catalog/getProduct.404-not-found` |
 | Giỏ rỗng / có hai điểm đến | `booking/getCart.200-empty`, `booking/getCart.200-two-destinations` |

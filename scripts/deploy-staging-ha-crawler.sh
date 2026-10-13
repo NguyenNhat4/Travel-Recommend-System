@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Cài job cào (fresh catalog) lên VM crawler của staging-ha qua IAP SSH, theo cùng quy trình của
-# .github/workflows/crawler-ci-cd.yml (copy runner, cài cron, khởi động monitor). Dùng bởi staging-ha-cd.yml.
+# Cài job cào (fresh catalog) lên VM crawler của staging-ha qua IAP SSH: copy runner, cài cron, khởi động monitor.
+# Dùng bởi .github/workflows/staging-ha-crawler-cd.yml.
 #
 # Biến môi trường (bắt buộc):
 #   GCP_PROJECT_ID, CRAWLER_INSTANCE, CRAWLER_ZONE
@@ -38,7 +38,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 remote_dir="/tmp/vota-crawler-cd-${GITHUB_RUN_ID:-local-$(date +%s)}-${GITHUB_RUN_ATTEMPT:-0}"
 ssh_flags=(--project "$GCP_PROJECT_ID" --zone "$CRAWLER_ZONE" --tunnel-through-iap --quiet)
 
-# 0. Docker trên VM đăng nhập Artifact Registry bằng access token của CI (cùng cách với crawler-ci-cd.yml).
+# 0. Docker trên VM đăng nhập Artifact Registry bằng access token của CI.
 access_token="$(gcloud auth print-access-token)"
 printf '%s' "$access_token" | gcloud compute ssh "$CRAWLER_INSTANCE" "${ssh_flags[@]}" \
   --command 'docker login --username oauth2accesstoken --password-stdin https://asia-southeast1-docker.pkg.dev >/dev/null 2>&1 && echo docker-login-ok'
@@ -95,7 +95,7 @@ gcloud compute ssh "$CRAWLER_INSTANCE" "${ssh_flags[@]}" --command "$ops_cmd" \
 gcloud compute ssh "$CRAWLER_INSTANCE" "${ssh_flags[@]}" \
   --command "/opt/vota/bin/install-vota-cron.sh --job fresh --image '$CRAWLER_REF' --runner '$CRAWLER_RUNNER' --data-dir '$CRAWLER_DATA_DIR' --env-file '$CRAWLER_ENV_FILE' --log-dir '$CRAWLER_LOG_DIR'"
 
-# 4. Khởi động monitor job cào (cùng lệnh với crawler-ci-cd.yml).
+# 4. Khởi động monitor job cào.
 # staging-ha tắt realtime: BACKEND_URL trống (xem history/2026-10-09-realtime-tat-staging-ha.md).
 remote_monitor="set -eu; docker rm -f vota-daily-monitor vota-fresh-catalog-monitor 2>/dev/null || true; docker pull '$CRAWLER_REF'; mkdir -p '$CRAWLER_DATA_DIR' '$CRAWLER_LOG_DIR'; nohup env FRESH_IMAGE='$CRAWLER_REF' FRESH_DATA_DIR='$CRAWLER_DATA_DIR' CATALOG_ENV_FILE='$CRAWLER_ENV_FILE' CATALOG_LOG_DIR='$CRAWLER_LOG_DIR' PULL=0 MONITOR_HOST=0.0.0.0 MONITOR_PUBLIC=1 BACKEND_URL='' '$CRAWLER_RUNNER' fresh-monitor > '$CRAWLER_LOG_DIR/monitor-cd.log' 2>&1 < /dev/null & for attempt in \$(seq 1 30); do status=\$(docker inspect --format '{{.State.Status}}' vota-fresh-catalog-monitor 2>/dev/null || true); if [ \"\$status\" = running ]; then '$CRAWLER_RUNNER' prune-images '$CRAWLER_REF' || true; exit 0; fi; sleep 1; done; tail -n 100 '$CRAWLER_LOG_DIR/monitor-cd.log' || true; exit 1"
 gcloud compute ssh "$CRAWLER_INSTANCE" "${ssh_flags[@]}" --command "$remote_monitor"

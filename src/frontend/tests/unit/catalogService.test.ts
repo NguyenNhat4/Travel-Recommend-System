@@ -2,8 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import propertyFixture from '../../../shared/mocks/catalog/getProduct.200-property.json';
 import variantsFixture from '../../../shared/mocks/catalog/listProducts.200-variants.json';
 import notFoundFixture from '../../../shared/mocks/catalog/getProduct.404-not-found.json';
+import popularFixture from '../../../shared/mocks/catalog/listProducts.200-popular.json';
 import {
-  getProduct, hasVariants, listVariants, productFromApi, trackProductView,
+  getProduct, hasVariants, listProducts, listVariants, productFromApi, trackProductView,
 } from '../../src/services/catalog';
 
 const originalFetch = global.fetch;
@@ -51,6 +52,18 @@ describe('catalog API calls', () => {
     const page = await listVariants('nt-h-10');
     expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/products?parentProductId=nt-h-10&sort=price_asc&limit=50');
     expect(page.results.map((r) => r.productId)).toEqual(['nt-h-10-r1', 'nt-h-10-r2']);
+  });
+
+  it('sends several taxonomies as one comma-separated parameter (contract 1.27.0)', async () => {
+    const fetchMock = respond(popularFixture);
+    await listProducts({ taxonomy: ['attraction', 'golf'], sort: 'popular', availableOnly: true, limit: 8 });
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/products?taxonomy=attraction%2Cgolf&sort=popular&availableOnly=true&limit=8');
+  });
+
+  it('sends diversify=taxonomy for the mixed popular shelf', async () => {
+    const fetchMock = respond(popularFixture);
+    await listProducts({ diversify: 'taxonomy', sort: 'popular', availableOnly: true, limit: 8 });
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/products?diversify=taxonomy&sort=popular&availableOnly=true&limit=8');
   });
 
   it('turns 404 into PRODUCT_NOT_FOUND', async () => {

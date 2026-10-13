@@ -44,6 +44,11 @@ def get_recommend(request: Request) -> Any:
     return request.app.state.recommend
 
 
+def get_warm_recommendations(request: Request) -> Any:
+    """Làm ấm cache gợi ý sau đăng nhập; None khi cache gợi ý tắt."""
+    return getattr(request.app.state, "warm_recommendations", None)
+
+
 # --- Auth (docs/spec/hop-dong-tich-hop-auth.md §3.5, §3.11, §9.4, §14.4) --------------------------
 
 class ServiceTokenInvalid(AuthError):

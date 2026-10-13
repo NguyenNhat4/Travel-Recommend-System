@@ -285,6 +285,29 @@ class QualityTests(unittest.TestCase):
         self.assertEqual(n._route_city("Vân Đồn", ["VDO"], "vdo"), "Vân Đồn")  # tên khớp alias thì giữ, không đổi theo sân bay
         self.assertEqual(n._route_city("Nơi lạ", ["XXX"], None), "Nơi lạ")
 
+    def test_booking_tour_destination_ignores_departure_city(self):
+        cases = {
+            "From Hanoi: Sapa Trek, Cat Cat Village & Fansipan Summit Tour": "Sa Pa",
+            "Pu Luong 2 Days 1 Night tour from Hanoi": "Thanh Hóa",
+            "From Hanoi to Dien Bien Phu: 3 Day Adventure": "Điện Biên",
+            "Hue to DMZ Vinh Moc Tunnels and Khe Sanh Base Tour": "Quảng Trị",
+            "Hanoi: Ha Long Bay Day Cruise with Buffet, Kayak& Sunset Party": "Hạ Long",
+            "Hanoi to Cat Ba: 2-Day Cat Ba National Park & Lan Ha Bay Tour": "Cát Bà",
+            "From Saigon: Black Virgin Mountain, Cao Dai Temple & Cu Chi 1Day": "Tây Ninh",
+            "Cai Rang Floating market 1 Day Tour from Ho Chi Minh City": "Cần Thơ",
+            "Hanoi Imperial Citadel Tour": "Hà Nội",
+            "Mekong Delta Discovery Day Tours": None,
+        }
+        for name, expected in cases.items():
+            self.assertEqual(n.tour_destination(name), expected, name)
+        # Tên không nêu nơi đến: giữ cách cũ (thành phố khởi hành từ `city`).
+        p = n.booking_attraction_product({"name": "HCM: 2-Day Mekong Delta Floating Market", "city": "TP. Hồ Chí Minh",
+                                          "price": 50, "currency": "USD", "productId": "x"}, {"USD": 26000})
+        self.assertEqual(p["destination"], "TP. Hồ Chí Minh")
+        p = n.booking_attraction_product({"name": "Pu Luong Trek from Hanoi", "city": "Hà Nội",
+                                          "price": 50, "currency": "USD", "productId": "y"}, {"USD": 26000})
+        self.assertEqual(p["destination"], "Thanh Hóa")
+
     def test_tuyen_quang_hotel_name_is_not_a_destination(self):
         self.assertEqual(n.normalise_destination("Vinpearl Onsen Resort Tuyên Quang"), "Tuyên Quang")
 
@@ -321,6 +344,64 @@ class QualityTests(unittest.TestCase):
         self.assertEqual([p["productId"] for p, _ in removed], ["bad"])
         self.assertIn("giá phòng bất thường", removed[0][1])
         self.assertEqual({p["productId"] for p in kept}, {"a", "b", "c", "d", "e", "suite", "vin", "x1", "x2"})
+
+    def test_flights_without_image_get_the_airline_logo_routes_stay_empty(self):
+        """12/10/2026: vé mang logo hãng (collectors/airlines.py); tuyến để ảnh thành phố đến do DB đặt."""
+        products = [
+            {"taxonomy": "flight", "attributes": {"level": "flight", "airline": "VietJet Air"}, "imageUrl": None},
+            {"taxonomy": "flight", "attributes": {"level": "flight", "airline": "Hãng lạ"}, "imageUrl": None},
+            {"taxonomy": "flight", "attributes": {"level": "flight", "airline": "Vietnam Airlines"}, "imageUrl": "giữ"},
+            {"taxonomy": "flight", "attributes": {"level": "route", "airlines": ["VietJet Air"]}, "imageUrl": None},
+        ]
+        self.assertEqual(n.apply_airline_logos(products), 1)
+        self.assertEqual([p["imageUrl"] for p in products],
+                         ["https://pic.tripcdn.com/airline_logo/3x/vj.png", None, "giữ", None])
+
+    def test_points_hidden_on_production_are_in_the_reviewed_exclusion_list(self):
+        """27 điểm Trip không phải điểm tham quan đã ẩn trên production 12/10/2026: lượt cào sau không được bật lại."""
+        excluded = n.load_excluded_products()
+        for ref in ("trip:attraction:146226495", "trip:attraction:146505433", "trip:attraction:149736329",
+                    "trip:attraction:141660854", "trip:attraction:147617028"):
+            self.assertIn(ref, excluded)
+            self.assertTrue(excluded[ref].startswith("không phải sản phẩm du lịch"))
+
+    def test_trip_golf_duplicating_priced_vinpearl_voucher_is_excluded(self):
+        """Người dùng chốt 12/10/2026: điểm Trip không giá "Vinpearl Golf Hải Phòng" trùng voucher Vinpearl có giá."""
+        self.assertIn("trip:attraction:147484815", n.load_excluded_products())
+
+    def test_golf_prices_have_source_url_and_observation_time(self):
+        prices = n.load_golf_prices()
+        self.assertEqual(set(prices), {"trip:attraction:58257538", "trip:attraction:15151594"})
+        for price in prices.values():
+            self.assertGreater(price["unitPrice"], 0)
+            self.assertEqual(price["priceSource"], "golfscape.com")
+            self.assertTrue(price["observedAt"].startswith("2026-10-12T"))
+
+    def test_golf_price_only_fills_golf_without_own_price(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "golf_prices.csv"
+            with open(path, "w", encoding="utf-8", newline="") as f:
+                w = csv.writer(f)
+                w.writerow(["sourceRef", "name", "unitPrice", "priceSource", "priceSourceUrl", "observedAt", "evidence"])
+                for ref in ("trip:attraction:1", "trip:attraction:2", "trip:attraction:3"):
+                    w.writerow([ref, "Sân", "3950000", "golfscape.com", "https://golfscape.com/x", "2026-10-12T16:35:18Z", "e"])
+                w.writerow(["trip:attraction:4", "Sân không URL", "3950000", "golfscape.com", "", "2026-10-12T16:35:18Z", "e"])
+            prices = n.load_golf_prices(path)
+        self.assertNotIn("trip:attraction:4", prices)
+        sources = {"name": "trip.com", "unitPrice": "trip.com"}
+        no_price = {"sourceRef": "trip:attraction:1", "taxonomy": "golf", "unitPrice": None,
+                    "attributes": {"fieldSources": dict(sources), "priceObservedAt": "2026-10-12T15:49:01Z"}}
+        own_price = {"sourceRef": "trip:attraction:2", "taxonomy": "golf", "unitPrice": 2500000,
+                     "attributes": {"fieldSources": dict(sources)}}
+        attraction = {"sourceRef": "trip:attraction:3", "taxonomy": "attraction", "unitPrice": None,
+                      "attributes": {"fieldSources": dict(sources)}}
+        self.assertEqual(n.apply_golf_prices([no_price, own_price, attraction], prices), 1)
+        self.assertEqual(no_price["unitPrice"], 3950000)
+        self.assertEqual(no_price["attributes"]["fieldSources"], {"name": "trip.com", "unitPrice": "golfscape.com"})
+        self.assertEqual(no_price["attributes"]["priceObservedAt"], "2026-10-12T16:35:18Z")
+        self.assertEqual(own_price["unitPrice"], 2500000)
+        self.assertEqual(own_price["attributes"]["fieldSources"]["unitPrice"], "trip.com")
+        self.assertIsNone(attraction["unitPrice"])
 
 
 if __name__ == "__main__":
