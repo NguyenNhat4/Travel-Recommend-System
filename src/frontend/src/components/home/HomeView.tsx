@@ -18,9 +18,13 @@ import { CatalogShelf } from '../../features/catalog/landing/ProductShelf';
 import { DestinationTiles } from '../../features/catalog/landing/DestinationTiles';
 import { InstantSearchPanel } from '../../features/search/instant/InstantSearchPanel';
 import { useInstantSearchBox } from '../../features/search/instant/useInstantSearchBox';
+import { UNSPLASH_DEFAULT_WIDTH, unsplashSrcSet, unsplashUrl } from '../../lib/unsplash';
 
 /** Gợi ý cá nhân hóa quá 10 giây thì ẩn khối và hiện dòng "Thử lại" (frontend §6.4 RECOMMENDATION_TIMEOUT_MS). */
 const RECOMMENDATION_TIMEOUT_MS = 10000;
+// Ảnh hero là LCP trên mobile; ảnh panorama nằm sâu bên dưới, tải lười (xem khối panorama).
+const HERO_PHOTO_ID = '1582719508461-905c673771fd';
+const PANORAMA_PHOTO_ID = '1506929562872-bb421503ef21';
 
 const AI_PLACEHOLDERS = [
   'Tìm resort Sota view biển cho gia đình 4 người, ngân sách 10 triệu...',
@@ -166,7 +170,9 @@ export const HomeView: React.FC = () => {
       <section className="relative flex min-h-[560px] items-center justify-center px-4 pb-16 pt-28 sm:px-6 lg:min-h-[600px]">
         <div className="absolute inset-0 overflow-hidden bg-slate-800">
           <img
-            src="https://images.unsplash.com/photo-1582719508461-905c673771fd?q=80&w=2000&auto=format&fit=crop"
+            src={unsplashUrl(HERO_PHOTO_ID, UNSPLASH_DEFAULT_WIDTH)}
+            srcSet={unsplashSrcSet(HERO_PHOTO_ID)}
+            sizes="100vw"
             alt=""
             fetchPriority="high"
             loading="eager"
@@ -361,7 +367,11 @@ export const HomeView: React.FC = () => {
           {/* Panoramic Background with Light Gradient Overlay */}
           <div className="absolute inset-0 z-0">
             <img
-              src="https://images.unsplash.com/photo-1506929562872-bb421503ef21?q=80&w=2000&auto=format&fit=crop"
+              src={unsplashUrl(PANORAMA_PHOTO_ID, UNSPLASH_DEFAULT_WIDTH)}
+              srcSet={unsplashSrcSet(PANORAMA_PHOTO_ID)}
+              sizes="100vw"
+              loading="lazy"
+              decoding="async"
               alt="Coastal paradise panoramic"
               className="w-full h-full object-cover filter brightness-[0.85]"
             />
