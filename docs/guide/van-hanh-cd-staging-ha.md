@@ -5,6 +5,7 @@ Phục vụ `docs/prd/deployment-plan.md` §6.1. Nguồn sự thật là mã: `i
 ## 1. Cách hoạt động
 
 - Mỗi VM app chạy **hai slot** (blue: backend `:8001`, frontend `:3001`; green: `:8002`, `:3002`) và một proxy nginx giữ cổng `3000` (cổng LB và health check). Chỉ một slot nhận traffic.
+- URL gọi ngược chính backend (`ITINERARY_SERVICE_BASE_URL`, `ASSISTANT_API_BASE_URL`) được ghi đè theo port của slot trong `compose.slot.yml` (service `backend`). Secret `vota-ha-backend-env` vẫn giữ `:8000` của kiểu cũ và không cần đổi, vì blue và green dùng hai port khác nhau. URL loopback mới của backend khai báo ở cùng chỗ đó.
 - CD chạy theo thứ tự: pin MIG `OPPORTUNISTIC` → apply Terraform (chỉ đổi template) → `roll-staging-ha-app-slots.sh` đổi image từng VM (qua IAP SSH) → verify (VM RUNNING, LB HEALTHY, readiness công khai) → ghi last-good. Lỗi sau apply thì rollback (apply lại last-good và roll lại).
 - Trên VM, `deploy`: dựng slot còn lại → đợi `/health/ready` → đổi upstream nginx (`nginx -c … -s reload`, kèm `-c`) → kiểm qua `:3000` → rút slot cũ sau 110 s (nền). Slot mới không ready thì giữ nguyên slot cũ.
 - Thay đổi trong `infra/terraform/environments/staging-ha/**` chạy qua workflow riêng `staging-ha-infra-cd.yml` (không build, không migration, image lấy từ last-good, cùng cổng `allowed_changes`, không rollback tự động); hai CD ứng dụng không còn kích hoạt theo đường dẫn này. Workflow này không có reviewer: bước duyệt diễn ra trước khi merge.
