@@ -130,14 +130,20 @@ PRD "chưa có giá" đã nêu, người dùng chọn chỉ sửa data:
 - **A:** ẩn 36 điểm chắc chắn thu phí không giá (khu vui chơi, công viên nước, cáp treo, du thuyền, khoáng nóng, vườn thú/safari, show/tour/
   lớp học) sau khi duyệt tay 85 dòng theo từ khoá: giữ 40 bảo tàng và 9 nơi có thể miễn phí (Grand World Phú Quốc, Bãi biển Sun World Hạ
   Long, công viên lấn biển Rạch Giá, cảng du thuyền Mỹ Tho, Hang Thuỷ Cung, quảng trường nhạc nước Sơn Đoòng, đèo Khau Cốc Chà, 2 phòng
-  tranh). Lý do loại ghi "bỏ dòng này khi có giá hiện hành". Chưa xét: điểm thương hiệu không giá ngoài bộ từ khoá (vd. Red Dragon Junk,
-  Mango Cruises, MADALAND, CaraWorld, trại voi) — hỏi nếu cần.
+  tranh). Lý do loại ghi "bỏ dòng này khi có giá hiện hành".
+- **A, đợt 2** (`history/2026-10-13-an-diem-thu-phi-thuong-hieu-khong-gia.md`): rà 142 dòng không giá theo từ khoá mở rộng → ẩn thêm **22**
+  điểm chắc thu phí (dù lượn 4, xe trượt 2, trò chơi VinWonders/Vinpearl 2, du thuyền/tour thuyền 3, trại voi/ngựa/rắn/cá sấu/Puppy Farm 6,
+  MADALAND, Ozo Park, Seagate theme park, Sunset Sanato Beach Club, phim trường Kong Tràng An). **Chưa quyết, hỏi người dùng:** ~45 "khu du
+  lịch / sinh thái" (nhiều nơi có vé, có nơi không), ~17 farm, CaraWorld, K'Bin Camp, Everland, các nhà hát — đang giữ (danh sách:
+  scratchpad `brand2.json` của phiên 13/10 sẽ mất; dựng lại bằng truy vấn không giá + từ khoá như history).
 - **2 cặp tour Booking cùng tên** (Mũi Né từ TP.HCM, khác mã/giá/mô tả): ẩn bản đắt hơn (`przjecq6mcez`, `pr5d00274odq`).
-- Quy tắc ẩn là danh sách tĩnh theo `sourceRef`: điểm golf/thu phí không giá mới của lượt cào sau vẫn bị tính 0 đ. Muốn tự động (vd. job ẩn
-  golf không giá) là thay đổi job — chưa làm, hỏi người dùng.
+- Quy tắc ẩn là danh sách tĩnh theo `sourceRef`: điểm golf/thu phí không giá mới của lượt cào sau vẫn bị tính 0 đ. Người dùng yêu cầu
+  làm tự động (13/10 chiều) — **lệch PRD** (`docs/prd/architecture.md` §3 coi golf/điểm không giá là "tham quan tự do") nên phải viết đề
+  xuất `docs/prd/update/` và chờ chốt trước khi sửa job; **người dùng tạm dừng trước khi viết đề xuất**. Hướng đã nêu: luật từ khoá hẹp
+  cạnh `NON_TOURISM_RULES` trong `normalise.py`, áp sau `apply_golf_prices`, chỉ khi `unitPrice` null, ghi ra `data/excluded_auto.csv`.
 
-**Đợt sửa production gộp (xem trước read-only 13/10 chiều):** đổi tên 34, ẩn 93 (82 ref + 11 hạng phòng, gồm PANAMA), đổi điểm đến 16 +
-26 hạng phòng con → **169 dòng**, cộng nạp **40** điểm Tuyên Quang (xem trước `{'new': 40}`, demo_data `changed=0`). 0 thành phần combo,
+**Đợt sửa production gộp (xem trước read-only 13/10 chiều, trước đợt 2 của A):** đổi tên 34, ẩn 93 (82 ref + 11 hạng phòng, gồm PANAMA), đổi điểm đến 16 +
+26 hạng phòng con → 169 dòng; sau đợt 2 (xem trước lại 13/10): ẩn 115 → **191 dòng**; 0 combo, 0 đơn hàng trỏ vào, cộng nạp **40** điểm Tuyên Quang (xem trước `{'new': 40}`, demo_data `changed=0`). 0 thành phần combo,
 0 dòng đơn hàng trỏ vào dòng sắp ẩn.
 
 ## 5. Việc người dùng chưa quyết

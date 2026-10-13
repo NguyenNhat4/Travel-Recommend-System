@@ -507,7 +507,9 @@ class QualityTests(unittest.TestCase):
         excluded = n.load_excluded_products()
         golf = [r for r, why in excluded.items() if why.startswith("sân golf không có giá")]
         paid = [r for r, why in excluded.items() if why.startswith("điểm thu phí không có giá")]
-        self.assertEqual((len(golf), len(paid)), (17, 36))
+        self.assertEqual((len(golf), len(paid)), (17, 58))  # 36 theo từ khoá + 22 thương hiệu ngoài bộ từ khoá (đợt 2)
+        for ref in ("trip:attraction:142789240", "trip:attraction:50604546", "trip:attraction:142662661"):  # Wrath of Zeus, Red Dragon Junk, MADALAND
+            self.assertIn(ref, excluded)
         for ref in ("trip:attraction:146743966", "trip:attraction:133828288", "trip:attraction:152914801"):  # Hanoi Golf, Aquatopia, Ambassador
             self.assertIn(ref, excluded)
         for kept in ("trip:attraction:58257538",    # Bà Nà Hills Golf Club: có giá (golf_prices.csv)
