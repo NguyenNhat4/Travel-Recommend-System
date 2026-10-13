@@ -882,6 +882,7 @@ Chia theo quyết định đã chốt: **Redis giữ phần phù du, Postgres gi
 | `jwt:revoked:{jti}` | string | tới `exp` | Thu hồi khẩn (§10.3 điểm 9) |
 | `idx:user_sessions:{user_id}` | set | — | Danh sách `sid` để thu hồi hàng loạt (§3.8 dòng J) |
 | `guest:cart:{guestId}`, `guest:draft:{draftId}`, `guest:drafts:{guestId}` | string (JSON) / set | 3 ngày (`GUEST_BOOKING_TTL_DAYS`) | Giỏ và đơn nháp của khách chưa đăng nhập (§3.7a). Do **Backend** ghi qua `BOOKING_REDIS_URL`, không phải BFF |
+| `rec:v1:{hash}`, `rec:v1:lock:{hash}` | string (JSON) / string (token) | 15 phút (`RECOMMEND_CACHE_TTL_SECONDS`) / 30 giây | Cache kết quả gợi ý và khoá chống tính trùng (PRD `architecture.md` §4; `hop-dong-tich-hop-search-recommendation.md` §5). Do **Backend** ghi qua `RECOMMEND_CACHE_REDIS_URL` (DB index riêng). `{hash}` là mã băm, không chứa `cdpUserId` ở dạng rõ |
 
 Thêm service `redis:7-alpine` vào `docker-compose.yml`, bind `127.0.0.1` như Postgres, `--requirepass` ngay cả ở local. Cấu hình `maxmemory-policy noeviction` cho database chứa session: `allkeys-lru` sẽ ngẫu nhiên đá người dùng ra khi bộ nhớ đầy.
 

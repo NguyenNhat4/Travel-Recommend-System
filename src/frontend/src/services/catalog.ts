@@ -18,12 +18,15 @@ export type VariantSummary = NonNullable<ProductDetail['variantSummary']>;
 
 export interface ListProductsParams {
   destination?: string;
-  taxonomy?: Taxonomy;
+  /** Một loại, hoặc nhiều loại gửi thành `taxonomy=a,b` (contract 1.27.0). */
+  taxonomy?: Taxonomy | Taxonomy[];
   availableOnly?: boolean;
   sort?: ProductSort;
   limit?: number;
   offset?: number;
   parentProductId?: string;
+  /** Trộn danh sách theo nhóm loại (contract 1.27.0); chỉ đi với `sort: 'popular'`, không có `parentProductId`. */
+  diversify?: 'taxonomy';
 }
 
 const PLACEHOLDER_IMAGE: Record<Taxonomy, string> = {
@@ -83,7 +86,13 @@ export function hasVariants(product: Pick<Product, 'level'>): boolean {
 function query(params: object): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== null && value !== '') search.set(key, String(value));
+    if (value === undefined || value === null || value === '') continue;
+    // Mảng gửi một tham số, các giá trị cách nhau bằng dấu phẩy (OpenAPI style form, explode false).
+    if (Array.isArray(value)) {
+      if (value.length) search.set(key, value.join(','));
+      continue;
+    }
+    search.set(key, String(value));
   }
   const text = search.toString();
   return text ? `?${text}` : '';

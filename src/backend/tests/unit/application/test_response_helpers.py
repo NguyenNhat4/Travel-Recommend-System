@@ -23,6 +23,31 @@ def test_recommendation_response_forwards_arguments_and_adds_identity_and_latenc
     assert isinstance(result["diagnostics"]["latencyMs"], int) and result["diagnostics"]["latencyMs"] >= 0
 
 
+def test_recommendation_response_logs_engine_only_diagnostics_without_returning_them(caplog):
+    import logging
+
+    def recommend(cdp_user_id, **_):
+        return {"strategy": "popular", "recommendations": [],
+                "diagnostics": {"eventsUsed": 0, "stageMs": {"cdp": 3, "history": 1}, "cacheOutcome": "miss",
+                                "eventsRead": 7}}
+
+    with caplog.at_level(logging.INFO):
+        result = recommendation_response(recommend, "VP0000001", k=4, destination=None)
+    assert not {"stageMs", "cacheOutcome", "eventsRead"} & set(result["diagnostics"])
+    entry = next(r for r in caplog.records if getattr(r, "event", None) == "recsys.recommend")
+    assert entry.fields["stage_ms"] == {"cdp": 3, "history": 1}
+    assert (entry.fields["cache"], entry.fields["events_read"]) == ("miss", 7)
+
+
+def test_engine_reports_stage_timings_for_every_branch(services):
+    member = services["recommend"]("P1", k=3, now=services["now"])
+    guest = services["recommend"](None, k=3, now=services["now"])
+    assert {"cdp", "history", "candidates", "rank", "explore", "build"} <= set(member["diagnostics"]["stageMs"])
+    assert {"cdp", "history", "coldStart"} <= set(guest["diagnostics"]["stageMs"])
+    assert member["diagnostics"]["eventsRead"] == 2 and guest["diagnostics"]["eventsRead"] == 0
+    assert all(isinstance(ms, int) and ms >= 0 for ms in member["diagnostics"]["stageMs"].values())
+
+
 def test_recommendation_response_creates_diagnostics_when_missing():
     result = recommendation_response(lambda cdp_user_id, **_: {"recommendations": []}, None, k=5, destination=None)
     assert result["cdpUserId"] is None

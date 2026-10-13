@@ -115,6 +115,18 @@ def test_timeouts_follow_cdp_timeout_seconds(monkeypatch, timeout, connect_timeo
     assert len(bulk["executed"]) == 1 and bulk["executed"][0][0] != SET_TIMEOUT
 
 
+def test_events_for_user_is_newest_first_with_tie_break_and_capped(monkeypatch):
+    # cdp §6: tối đa 500 event mới nhất; cùng thời điểm thì event_id tăng dần (khớp thứ tự harness bench dựng lại).
+    calls = fake_connect(monkeypatch)
+    PostgresCdpReader(DSN).events_for_user("VP0000001")
+    sql, params = calls[0]["executed"][1]
+    assert sql.rstrip().endswith('ORDER BY "timestamp" DESC, event_id ASC LIMIT %s')
+    assert params == ("VP0000001", 500)
+    calls = fake_connect(monkeypatch)
+    PostgresCdpReader(DSN, history_limit=20).events_for_user("VP0000001")
+    assert calls[0]["executed"][1][1] == ("VP0000001", 20)
+
+
 def test_default_timeout_is_two_seconds(monkeypatch):
     calls = fake_connect(monkeypatch)
     PostgresCdpReader(DSN).events_for_user("VP0000001")
