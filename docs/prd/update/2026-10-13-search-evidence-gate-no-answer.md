@@ -2,11 +2,11 @@
 
 - Ngày: 2026-10-13
 - Người đề xuất: tqanh123 / Claude Code soạn
-- Trạng thái: chờ chốt
-- Chốt bởi / ngày:
+- Trạng thái: đã chốt (PRD đã cập nhật 2026-10-13; source chưa sửa — chuyển `update-archive/` khi plan làm xong)
+- Chốt bởi / ngày: tqanh123, 2026-10-13
 - PRD bị ảnh hưởng: `docs/prd/requirements.md` §1.2 (FR-SRC-03, FR-SRC-04); `docs/prd/deployment-plan.md` §2 (dòng `SEARCH_CUTOFF`, thêm các biến `SEARCH_*` mới); `docs/prd/architecture.md` §5 (index lexical, chỉ cho P1). Contract: định nghĩa R ở `src/shared/contracts/schemas/common.yaml` (1.28.0 additive).
 - Mã FR/NFR: FR-SRC-01, FR-SRC-03, FR-SRC-04, AC-SRC-01, NFR-PERF-01
-- Thay thế: `docs/prd/update/2026-10-06-search-hybrid-min-coverage-rrf.md` (hạ `lexicalMinCoverage` 0,6 → 0,1 đi ngược hướng đề xuất này). Khi đề xuất này được chốt, đề xuất cũ chuyển sang `update-archive/` với trạng thái `từ chối (thay bằng 2026-10-13-search-evidence-gate-no-answer)`.
+- Thay thế: `docs/prd/update-archive/2026-10-06-search-hybrid-min-coverage-rrf.md` (hạ `lexicalMinCoverage` 0,6 → 0,1 đi ngược hướng đề xuất này). Khi đề xuất này được chốt, đề xuất cũ chuyển sang `update-archive/` với trạng thái `từ chối (thay bằng 2026-10-13-search-evidence-gate-no-answer)`.
 - Plan chi tiết: `docs/plan/2026-10-13-search-evidence-gate-no-answer.md`
 
 ## Lý do
