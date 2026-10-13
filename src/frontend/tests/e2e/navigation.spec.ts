@@ -110,8 +110,10 @@ test('header controls share one 40px height and the header has no assistant entr
 test('the hotels search sheet shows results on /hotels itself, not on /search', async ({ page }) => {
   const requests = await mockApi(page);
   await page.goto('/hotels');
+  // Ô trống hiện khách sạn nổi tiếng; điểm đến chỉ hiện khi gõ (PRD update-archive/2026-10-13-san-bay-va-khach-san-noi-tieng.md).
   await page.getByRole('combobox').click();
-  await page.getByRole('option', { name: 'Nha Trang' }).click();
+  await page.getByRole('combobox').fill('Nha Trang');
+  await page.getByRole('option', { name: 'Nha Trang', exact: true }).click();
   await page.getByRole('button', { name: 'Tìm kiếm' }).click();
 
   // Đề xuất PRD update-archive/2026-10-07-tim-kiem-tai-trang-danh-muc.md: ở lại trang danh mục, kết quả hiện ngay dưới tấm tìm kiếm.
