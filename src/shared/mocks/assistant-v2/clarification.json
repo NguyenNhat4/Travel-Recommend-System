@@ -1,0 +1,19 @@
+{
+  "conversationId": "fixture-conversation",
+  "runId": "fixture-run",
+  "turnKind": "clarification",
+  "message": "Bạn muốn đi ngày nào?",
+  "recommendations": {
+    "hotel": [],
+    "flight": [],
+    "attraction": [],
+    "combo": [],
+    "golf": []
+  },
+  "alternatives": [],
+  "itinerary": null,
+  "planEffect": "keep",
+  "planRevision": 0,
+  "warnings": [],
+  "suggestions": []
+}

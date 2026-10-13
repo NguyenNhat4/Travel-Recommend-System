@@ -170,6 +170,10 @@ for schema, payload in [
 ]:
     assert not validator(schema).is_valid(payload), (schema, payload)
 
+# Assistant v2 is independently versioned; do not change v1 validation semantics.
+from validate_assistant_v2 import validate_assistant_v2
+validate_assistant_v2()
+
 # CDP clone is a separate service with its own entry document.
 CDP_DOC = bundle(SHARED / 'contracts/cdp-clone.openapi.yaml')
 CDP_FIXTURES = SHARED / 'mocks/cdp-clone'

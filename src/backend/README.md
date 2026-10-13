@@ -176,6 +176,14 @@ GPT-6.1 Sol không gửi temperature và không dùng `none`/`minimal` reasoning
 và ngân sách `ITINERARY_REQUEST_TIMEOUT_SECONDS` (chừa thời gian cho finalize). Dừng sớm có mã nguyên nhân
 (`agents/steps/limits.py`) trong log `itinerary.turn_limit`.
 
+**Assistant v2** (`POST /api/v2/assistant/itineraries` và `/stream`, contract `assistant-v2.openapi.yaml`, PRD
+architecture §3) chạy song song v1; widget vẫn gọi v1 cho tới khi nghiệm thu xong. Orc tự gọi tám tool, tự chọn thẻ và
+viết câu trả lời; code chỉ kiểm. Code nằm ở `agents/orc_v2.py` (graph, prompt), `application/itinerary/orc_*.py`
+(schema quyết định, tool), `v2_final.py` (dựng response), `domain/itinerary/{draft_validation,orc_guardrails}.py`
+(kiểm lịch, kiểm câu trả lời), `infrastructure/persistence/assistant_v2_store.py` (working memory, khoá lượt). Dùng
+chung model orchestrator, `ITINERARY_DATA_MODE` và các timeout ở trên. Mỗi lượt ghi một dòng log `itinerary.v2.turn`
+(kết quả, số lần gọi model, số lượt gọi tool, số request nguồn); không ghi câu người dùng. Chưa ghi archive Postgres.
+
 User đăng nhập được ghi thêm transcript vào `app.conversations`/`app.conversation_messages`; lỗi archive
 không làm hỏng lượt chat. Khách không được lưu lâu dài. Web đọc lại lịch sử qua hai endpoint
 `/assistant/conversations`; mọi truy vấn đều lọc bằng `cdp_user_id` từ JWT đã xác minh.

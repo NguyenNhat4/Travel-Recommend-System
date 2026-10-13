@@ -18,6 +18,7 @@ import json
 import os
 import unittest
 from copy import deepcopy
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -415,7 +416,8 @@ class AssistantContractTests(unittest.TestCase):
         thành `_IncludedRouter` không mang `path`, nên duyệt routes cho ra tập rỗng và phép so
         sánh luôn đúng một cách vô nghĩa.
         """
-        declared = {f"/api/v1{path}" for path in DOC["paths"]}
+        v2 = bundle(Path(__file__).resolve().parents[3] / "shared/contracts/assistant-v2.openapi.yaml")
+        declared = {f"/api/v1{path}" for path in DOC["paths"]} | {f"/api/v2{path}" for path in v2["paths"]}
         served = {
             path
             for path, operations in app.openapi()["paths"].items()

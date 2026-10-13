@@ -1,0 +1,49 @@
+{
+  "conversationId": "fixture-conversation",
+  "runId": "fixture-run",
+  "turnKind": "itinerary",
+  "message": "Fixture lịch không sản phẩm tính tiền; chưa gồm ăn uống/di chuyển.",
+  "recommendations": {
+    "hotel": [],
+    "flight": [],
+    "attraction": [],
+    "combo": [],
+    "golf": []
+  },
+  "alternatives": [],
+  "itinerary": {
+    "planResultId": "fixture-plan-result",
+    "destination": "Hội An",
+    "startDate": "2026-10-24",
+    "days": [
+      {
+        "dayIndex": 1,
+        "date": "2026-10-24",
+        "activities": []
+      }
+    ],
+    "stays": [],
+    "flights": [],
+    "nights": 0,
+    "feasibility": "provisional",
+    "costs": {
+      "knownSubtotalVnd": 0,
+      "estimatedTotalVnd": 0,
+      "unpricedProductIds": [],
+      "tripBudgetVnd": 0,
+      "overByVnd": 0,
+      "budgetStatus": "within",
+      "coverageNotes": [
+        "Fixture minh họa phép tính; không dùng làm giá catalog/demo. Chưa gồm ăn uống/di chuyển tự túc."
+      ]
+    },
+    "party": {
+      "adults": 1,
+      "children": 0
+    }
+  },
+  "planEffect": "replace",
+  "planRevision": 1,
+  "warnings": [],
+  "suggestions": []
+}

@@ -98,6 +98,26 @@ bằng việc gỡ luồng cũ; B13 (gỡ regex) chưa làm.
 
 Tiến trình 1.27.0 (AC-AGT-09): `LangGraphItineraryPlanner.astream` phát state/custom; `graph.timed` phát activity, gắn progress vào event và preview sau compose. Collector `steps/progress.py` chỉ sống trong stream của request, số đếm từ `application/itinerary/progress_counts.py` tại các bộ lọc. Không vào working memory hay payload LLM. Route chuyển thành `node.activity`, `node.completed.progress`, `run.preview`; Web gộp theo nhóm và viết nhãn, chẩn đoán mức 1 tại Shift+D. Snapshot vẫn dùng `ainvoke`, không ghi lại cho thay đổi tiến trình.
 
+### 3.1. Assistant v2 (orc tự chủ, chạy song song v1)
+
+```text
+POST /api/v2/assistant/itineraries hoặc /stream
+  -> api/v2/routes/assistant.py        validate request, rate limit, SSE
+  -> application/itinerary/v2_use_cases.py
+                                      khoá lượt (clientTurnId), nút server đã cấp, ghi đúng một lần
+  -> agents/orc_v2.py                  OrcV2Runtime + graph: precheck → decide ⇄ dispatch → guard; PROMPT
+       decide   model trả OrcDecision (schema: application/itinerary/orc_contracts.py), code kiểm schema
+       dispatch application/itinerary/orc_dispatch.py: chạy đúng tool orc gọi, ngân sách 10 request nguồn,
+                lookup_flights ở flight_lookup.py, build_itinerary kiểm bằng domain/itinerary/draft_validation.py
+       guard    domain/itinerary/orc_guardrails.py kiểm câu trả lời; v2_final.py dựng response theo contract v2
+  -> infrastructure/persistence/assistant_v2_store.py  working memory 24h (memory/Redis), mở tiếp hội thoại v1
+```
+
+Giới hạn mỗi lượt: 3 lượt gọi tool (1–3 tool mỗi lượt), 10 request nguồn, 5 lần gọi model, sửa câu trả lời 1 lần.
+Mã sản phẩm `p1, p2…` và mã lời gọi `c1, c2…` do server cấp; số liệu trong lời đáp đi qua đoạn `fact`, tên sản phẩm qua
+đoạn `product` (code điền tên và đặt thẻ). Test: `tests/unit/agents/test_orc_*.py`, `tests/unit/application/test_assistant_v2_*.py`,
+`tests/unit/domain/test_orc_*.py`, `tests/contract/test_assistant_v2_contract.py`; model giả ở `tests/fakes/orc_tools.py`.
+
 ## 4. Trách nhiệm các lớp — dùng để tránh sửa sai chỗ
 
 | Lớp | Chịu trách nhiệm | Không đặt ở đây |

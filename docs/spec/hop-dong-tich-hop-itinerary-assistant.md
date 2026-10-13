@@ -738,6 +738,26 @@ Lỗi thực sự không nằm trong `ItineraryResponse` và không dùng `statu
 
 ---
 
+### 4.7. Assistant v2 (orc tự chủ)
+
+Phục vụ FR-AGT-01–07, NFR-REL-01; PRD `architecture.md` §3, plan `docs/plan/2026-10-13-orc-tu-chu-goi-tool-va-chon-san-pham.md`.
+Entry riêng `src/shared/contracts/assistant-v2.openapi.yaml`, prefix `/api/v2`; v1 giữ nguyên cho client cũ.
+
+- Request: `clientTurnId` (gửi lại cùng mã và cùng nội dung thì nhận lại câu trả lời đã có; đang chạy thì 409
+  `TURN_IN_PROGRESS` kèm `Retry-After`; cùng mã khác nội dung thì 409 `IDEMPOTENCY_CONFLICT`), `basePlanRevision`
+  (revision lịch đang hiển thị), `message`, `intentOverride` (form), `uiAction` (chỉ lệnh server đã cấp ở lượt trước:
+  nút hỏi vé `fare_query`, xác nhận phương án `select_alternative`; lệnh lạ trả 422).
+- Response: `turnKind`, `message`, `recommendations` theo loại (tối đa 10 mỗi loại, không trần tổng), `alternatives`
+  (mỗi thẻ kèm `uiAction` xác nhận), `itinerary` (ngày → hoạt động có giờ, `stays` có thể rỗng, `nights` có thể 0,
+  `costs` có tổng/ngân sách/vượt hoặc unknown), `planEffect` (`keep` giữ lịch, `replace` thay lịch và tăng
+  `planRevision`; revision lệch thì 409 `PLAN_REVISION_CONFLICT`), `warnings` (câu báo do code viết), `suggestions`.
+- `message` nhắc sản phẩm bằng `[Tên](product:id)` như lời diễn giải v1, để widget đặt thẻ ngay sau câu đó.
+- SSE: `start` → `activity`/`tool-completed` theo lời gọi tool orc thực sự yêu cầu (đếm tìm thấy, đủ điều kiện, được
+  chọn, được hiện) → `preview` (lịch đã kiểm, chỉ xem) → đúng một `final` hoặc `error`. Mất kết nối không huỷ lượt.
+- Lỗi theo §4.6: `LLM_UNAVAILABLE` 503 (model lỗi, hết giới hạn lượt), `ITINERARY_VALIDATION_FAILED` 500 (câu trả lời
+  vẫn sai sau một lần sửa), `VALIDATION_ERROR` 400 (đầu vào bị chặn, NFR-SEC-04) hoặc 422 (request sai).
+- Chưa có: ghi archive Postgres cho user đăng nhập và endpoint đọc lại lịch sử v2 (làm cùng lúc chuyển widget).
+
 ## 5. Cam kết grounding từ Team Agent
 
 1. Mọi `productId` khác `null` đều đến từ kết quả tool Search/Recommendation, hoặc Similar khi đổi một sản phẩm đã hiển thị (§2.5; engine trong tiến trình hoặc API HTTP, tuỳ data mode).

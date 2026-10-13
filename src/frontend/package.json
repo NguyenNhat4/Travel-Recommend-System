@@ -20,7 +20,8 @@
     "test": "vitest run",
     "test:api": "vitest run tests/api tests/contract",
     "test:unit": "vitest run tests/unit",
-    "test:e2e": "npm run build:web && playwright test"
+    "test:e2e": "npm run build:web && playwright test",
+    "generate:assistant-v2-types": "openapi-typescript ../shared/contracts/assistant-v2.openapi.yaml -o src/types/assistant-v2.gen.ts"
   },
   "dependencies": {
     "dotenv": "^17.2.3",

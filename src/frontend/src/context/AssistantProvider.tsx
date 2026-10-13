@@ -4,6 +4,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import type { ReactNode } from 'react';
 import type { ProgressUpdate, ProgressActivity } from '../features/itinerary/widget/progressModel';
 import type { components } from '../types/api.gen';
+import type { components as V2 } from '../types/assistant-v2.gen';
 import { useTravel } from './TravelContext';
 import {
   assistantReducer,
@@ -20,9 +21,12 @@ import {
 } from '../services/assistantStream';
 import { getAssistantConversation } from '../services/assistantHistory';
 import { ApiError, apiJson } from '../services/http';
+import { newAssistantV2TurnId, requestAssistantV2Stream, type AssistantV2Request } from '../services/assistantV2Stream';
+import { v2Actions, v2Activity, v2AsV1Response, v2Progress } from '../features/itinerary/widget/widgetV2';
 
 const CONVERSATION_STORAGE_KEY = 'vota.assistant.conversationId';
 type IntentOverride = components['schemas']['TripIntentPatch'];
+type V2UiAction = V2['schemas']['UiAction'];
 type AssistantContextData = NonNullable<AssistantRequest['context']>;
 
 interface AssistantContextValue {
@@ -93,6 +97,9 @@ function isAssistantResponse(value: unknown): value is AssistantResponse {
 
 const SLOW_NODE_MS = 12_000;
 
+/** Widget gọi assistant v2 khi bật `NEXT_PUBLIC_ASSISTANT_API=v2`; mặc định v1 tới khi nghiệm thu xong (PRD §3). */
+const ASSISTANT_V2 = process.env.NEXT_PUBLIC_ASSISTANT_API === 'v2';
+
 function nodeProgress(data: Record<string, unknown>) {
   return {
     sequence: typeof data.sequence === 'number' ? data.sequence : undefined,
@@ -116,6 +123,10 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   const abortControllerRef = useRef<AbortController | null>(null);
   const historyVersionRef = useRef(0);
   const previousPersonaRef = useRef<string | null | undefined>(undefined);
+  // Assistant v2: revision lịch đang hiện, lệnh của các nút lượt trước, mã lượt để gửi lại không thành lượt mới.
+  const planRevisionRef = useRef<number | null>(null);
+  const v2ActionsRef = useRef(new Map<string, V2UiAction>());
+  const lastV2TurnRef = useRef<{ request: AssistantRequest; clientTurnId: string } | null>(null);
 
   const abortCurrentRun = useCallback(() => {
     historyVersionRef.current += 1;
@@ -198,6 +209,62 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       }, SLOW_NODE_MS);
     };
     armSlowTimer();
+
+    if (ASSISTANT_V2) {
+      // Gửi lại (retry) đúng request cũ thì giữ mã lượt: server trả câu trả lời đã có, không chạy lượt mới.
+      const clientTurnId = lastV2TurnRef.current?.request === request
+        ? lastV2TurnRef.current.clientTurnId : newAssistantV2TurnId();
+      lastV2TurnRef.current = { request, clientTurnId };
+      const uiAction = request.message ? v2ActionsRef.current.get(request.message) ?? null : null;
+      const body: AssistantV2Request = {
+        clientTurnId, basePlanRevision: planRevisionRef.current, conversationId: request.conversationId ?? null,
+        message: uiAction ? null : request.message ?? null, intentOverride: request.intentOverride ?? null, uiAction,
+        context: { language: request.context?.language === 'en' ? 'en' : 'vi' },
+      };
+      void requestAssistantV2Stream(body, {
+        signal: controller.signal,
+        onEvent: (event) => {
+          if (!isCurrent()) return;
+          if (event.event === 'start') dispatch({ type: 'run-started', runId: event.runId, requestId: event.runId });
+          else if (event.event === 'activity' && event.data.status === 'running') {
+            dispatch({ type: 'node-activity', activity: v2Activity(event.data) });
+            armSlowTimer();
+          } else if (event.event === 'tool-completed') {
+            dispatch({ type: 'node-completed', progress: v2Progress(event.data) });
+            armSlowTimer();
+          } else if (event.event === 'preview') {
+            dispatch({ type: 'run-preview', preview: { runId: event.runId, products: event.data.products.slice(0, 6) } });
+            window.clearTimeout(previewTimer);
+            previewTimer = window.setTimeout(() => {
+              if (isCurrent()) dispatch({ type: 'preview-visible' });
+            }, Math.max(0, 5000 - (Date.now() - requestStartedAt)));
+          }
+        },
+      }).then((final) => {
+        if (!isCurrent()) return;
+        planRevisionRef.current = final.planRevision;
+        v2ActionsRef.current = v2Actions(final);
+        dispatch({ type: 'response-received', response: v2AsV1Response(final) });
+        activeRunIdRef.current = null;
+      }).catch((error: unknown) => {
+        if (controller.signal.aborted || activeRunIdRef.current !== runId) return;
+        const failure = assistantError(error);
+        activeRunIdRef.current = null;
+        if (failure.code === 'CONVERSATION_NOT_FOUND' && request.conversationId && request.message) {
+          planRevisionRef.current = null;
+          dispatch({ type: 'conversation-restarted' });
+          executeRequestRef.current?.({ ...request, conversationId: null }, userText, false);
+          return;
+        }
+        dispatch(failure.code === 'VALIDATION_ERROR' && failure.status === 400
+          ? { type: 'request-refused', text: failure.message } : { type: 'request-failed', error: failure });
+      }).finally(() => {
+        window.clearTimeout(slowTimer);
+        window.clearTimeout(previewTimer);
+        if (abortControllerRef.current === controller) abortControllerRef.current = null;
+      });
+      return;
+    }
 
     void requestAssistantStream(request, {
       signal: controller.signal,
@@ -333,6 +400,8 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
 
   const resetConversation = useCallback(() => {
     abortCurrentRun();
+    planRevisionRef.current = null;
+    v2ActionsRef.current = new Map();
     dispatch({ type: 'reset' });
   }, [abortCurrentRun]);
 

@@ -34,6 +34,7 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 from src.backend.app.agents.runtime_dependencies import RuntimeAgentDependencies, orchestrator_budget
+from src.backend.app.agents.orc_v2 import OrcV2Runtime
 from src.backend.app.agents.tools.itinerary_gateway import ItineraryToolGateway
 from src.backend.app.api.errors import install_error_handlers
 from src.backend.app.api.middleware import (
@@ -45,6 +46,7 @@ from src.backend.app.api.middleware import (
 from src.backend.app.infrastructure.persistence import db_connection
 from src.backend.app.api.ops import ops_router
 from src.backend.app.api.v1.router import api_router, root_router
+from src.backend.app.api.v2.router import api_router as api_v2_router
 from src.backend.app.application.auth.use_cases import (
     AuthenticateUser,
     ChangePassword,
@@ -71,6 +73,7 @@ from src.backend.app.application.itinerary.history import ConversationHistory
 from src.backend.app.application.itinerary.engine_tools import InProcessItineraryTools
 from src.backend.app.application.telemetry import traced
 from src.backend.app.application.itinerary.use_cases import PlanItinerary
+from src.backend.app.application.itinerary.v2_use_cases import RunAssistantV2
 from src.backend.app.application.tracking.behaviour import BehaviourTracker
 from src.backend.app.domain.booking import DraftPolicy, HoldPolicy
 from src.backend.app.domain.catalog import ListingItem
@@ -110,6 +113,10 @@ from src.backend.app.infrastructure.payments.stripe_gateway import StripePayment
 from src.backend.app.infrastructure.persistence.conversation_store import (
     InMemoryConversationStore,
     RedisConversationStore,
+)
+from src.backend.app.infrastructure.persistence.assistant_v2_store import (
+    InMemoryAssistantV2Store,
+    RedisAssistantV2Store,
 )
 from src.backend.app.infrastructure.persistence.postgres_conversation_archive import PostgresConversationArchive
 from src.backend.app.infrastructure.persistence.guest_booking_store import (
@@ -660,6 +667,23 @@ def _itinerary_planner(app: FastAPI, settings: Settings, authorization: str | No
     return runtime.planner() if runtime is not None else None
 
 
+def _itinerary_v2_runtime(app: FastAPI, settings: Settings, *, known_refs: dict[str, str], authorization: str | None,
+                          progress=None, **_turn) -> OrcV2Runtime | None:
+    """Graph assistant v2 của một lượt; None khi chưa có model hoặc client tool (route trả 503)."""
+    clients = getattr(app.state, "itinerary_http_clients", None)
+    llm = getattr(app.state, "itinerary_orchestrator_llm", None) or getattr(app.state, "itinerary_llm", None)
+    if clients is None or llm is None:
+        return None
+    catalog = clients if getattr(clients, "supports_catalog", False) else None
+    similar = clients if getattr(clients, "supports_similar", False) else None
+    gateway = ItineraryToolGateway(clients, clients, catalog, recommendation_authorization=authorization,
+                                   similar=similar)
+    return OrcV2Runtime(tools=gateway, llm=llm, known_refs=known_refs,
+                        request_timeout_seconds=settings.itinerary_request_timeout_seconds,
+                        tool_timeout_seconds=settings.itinerary_tool_timeout_seconds,
+                        model_timeout_seconds=settings.itinerary_llm_timeout_seconds, progress=progress)
+
+
 def _forward_langsmith_env(settings) -> None:
     """Đẩy đúng 4 biến LangSmith vào os.environ khi được bật chủ ý qua Settings.
 
@@ -772,17 +796,25 @@ async def lifespan(app: FastAPI):
             stack.push_async_callback(itinerary_redis.aclose)
             app.state.itinerary_conversation_store = RedisConversationStore(
                 itinerary_redis, ttl_seconds=settings.itinerary_conversation_ttl_seconds)
+            app.state.itinerary_v2_store = RedisAssistantV2Store(
+                itinerary_redis, ttl_seconds=settings.itinerary_conversation_ttl_seconds,
+                legacy_store=app.state.itinerary_conversation_store)
             logger.info("startup.itinerary_conversation_store.ready mode=redis")
         elif settings.app_env == "production":
             raise RuntimeError("ITINERARY_REDIS_URL là bắt buộc khi APP_ENV=production")
         else:
             app.state.itinerary_conversation_store = InMemoryConversationStore(
                 ttl_seconds=settings.itinerary_conversation_ttl_seconds)
+            app.state.itinerary_v2_store = InMemoryAssistantV2Store(
+                ttl_seconds=settings.itinerary_conversation_ttl_seconds,
+                legacy_store=app.state.itinerary_conversation_store)
             logger.warning("startup.itinerary_conversation_store.ready mode=memory")
         app.state.plan_itinerary = PlanItinerary(
             lambda authorization, owner: _itinerary_planner(app, settings, authorization, owner),
             settings.itinerary_request_timeout_seconds,
         )
+        app.state.run_assistant_v2 = RunAssistantV2(
+            app.state.itinerary_v2_store, lambda **turn: _itinerary_v2_runtime(app, settings, **turn))
         mode = settings.itinerary_data_mode or ("fixture" if settings.app_env in {"development", "test"} else "disabled")
         app.state.itinerary_data_mode = mode
         logger.info("startup.itinerary_clients.start mode=%s", mode)
@@ -894,6 +926,7 @@ install_http_logging(app)  # trước install_request_id: nằm trong, đọc đ
 install_request_id(app)
 install_error_handlers(app, (psycopg.OperationalError,))
 app.include_router(api_router, prefix="/api/v1")
+app.include_router(api_v2_router, prefix="/api/v2")
 app.include_router(root_router)
 app.include_router(ops_router)
 

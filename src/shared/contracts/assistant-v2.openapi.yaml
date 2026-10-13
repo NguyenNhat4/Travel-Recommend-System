@@ -1,0 +1,100 @@
+openapi: 3.1.0
+info:
+  title: V-OTA autonomous assistant API
+  version: 2.0.0
+  description: Assistant v2; FR-AGT-01–07, NFR-REL-01, NFR-MAINT-02. Existing v1 remains compatible.
+servers:
+- url: /api/v2
+tags:
+- name: assistant
+  description: Orc-controlled read-only tools and explicit itinerary commit
+paths:
+  /assistant/itineraries:
+    $ref: ./paths/assistant-v2.yaml#/~1assistant~1itineraries
+  /assistant/itineraries/stream:
+    $ref: ./paths/assistant-v2.yaml#/~1assistant~1itineraries~1stream
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    serviceToken:
+      type: apiKey
+      in: header
+      name: X-Service-Token
+      description: Chỉ BFF, seed và job nội bộ. Tối thiểu 32 ký tự. Không bao giờ có trong code frontend, URL hay
+        log (docs/hop-dong-tich-hop-auth.md §14.4).
+  schemas:
+    UiSelectAlternative:
+      $ref: ./schemas/assistant-v2.yaml#/UiSelectAlternative
+    UiFareQuery:
+      $ref: ./schemas/assistant-v2.yaml#/UiFareQuery
+    UiAction:
+      $ref: ./schemas/assistant-v2.yaml#/UiAction
+    TripIntentPatch:
+      $ref: ./schemas/assistant-v2.yaml#/TripIntentPatch
+    RequestContext:
+      $ref: ./schemas/assistant-v2.yaml#/RequestContext
+    AssistantV2Request:
+      $ref: ./schemas/assistant-v2.yaml#/AssistantV2Request
+    Warning:
+      $ref: ./schemas/assistant-v2.yaml#/Warning
+    Costs:
+      $ref: ./schemas/assistant-v2.yaml#/Costs
+    Activity:
+      $ref: ./schemas/assistant-v2.yaml#/Activity
+    ItineraryDay:
+      $ref: ./schemas/assistant-v2.yaml#/ItineraryDay
+    ItineraryStay:
+      $ref: ./schemas/assistant-v2.yaml#/ItineraryStay
+    ItineraryFlight:
+      $ref: ./schemas/assistant-v2.yaml#/ItineraryFlight
+    Itinerary:
+      $ref: ./schemas/assistant-v2.yaml#/Itinerary
+    Recommendations:
+      $ref: ./schemas/assistant-v2.yaml#/Recommendations
+    Alternative:
+      $ref: ./schemas/assistant-v2.yaml#/Alternative
+    Suggestion:
+      $ref: ./schemas/assistant-v2.yaml#/Suggestion
+    AssistantV2Final:
+      $ref: ./schemas/assistant-v2.yaml#/AssistantV2Final
+    ProductSummary:
+      $ref: ./schemas/catalog.yaml#/ProductSummary
+    Taxonomy:
+      $ref: ./schemas/common.yaml#/Taxonomy
+    Currency:
+      $ref: ./schemas/common.yaml#/Currency
+    PriceUnit:
+      $ref: ./schemas/common.yaml#/PriceUnit
+    ProductAttributes:
+      $ref: ./schemas/catalog.yaml#/ProductAttributes
+    Party:
+      $ref: ./schemas/itinerary-agent.yaml#/Party
+    PartyType:
+      $ref: ./schemas/itinerary-agent.yaml#/PartyType
+    Pace:
+      $ref: ./schemas/itinerary-agent.yaml#/Pace
+    ErrorCode:
+      $ref: ./schemas/assistant-v2.yaml#/ErrorCode
+    ErrorResponse:
+      $ref: ./schemas/assistant-v2.yaml#/ErrorResponse
+    ProgressCounts:
+      $ref: ./schemas/assistant-v2.yaml#/ProgressCounts
+    ActivityData:
+      $ref: ./schemas/assistant-v2.yaml#/ActivityData
+    EventStart:
+      $ref: ./schemas/assistant-v2.yaml#/EventStart
+    EventActivity:
+      $ref: ./schemas/assistant-v2.yaml#/EventActivity
+    EventToolCompleted:
+      $ref: ./schemas/assistant-v2.yaml#/EventToolCompleted
+    EventPreview:
+      $ref: ./schemas/assistant-v2.yaml#/EventPreview
+    EventFinal:
+      $ref: ./schemas/assistant-v2.yaml#/EventFinal
+    EventError:
+      $ref: ./schemas/assistant-v2.yaml#/EventError
+    AssistantV2Event:
+      $ref: ./schemas/assistant-v2.yaml#/AssistantV2Event
