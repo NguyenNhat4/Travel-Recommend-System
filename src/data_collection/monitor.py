@@ -2323,6 +2323,7 @@ class Handler(BaseHTTPRequestHandler):
                                                       num("limit", 50)),
                 "/api/dbx/row": lambda: m.dbx().row(q.get("table", ""), prefixed(q, "k.")),
                 "/api/dbx/children": lambda: m.dbx().children(q.get("id", ""), num("offset", 0), num("limit", 50)),
+                "/api/dbx/search": lambda: m.dbx().search(q.get("q", ""), num("limit", 10)),
             }
             if url.path in routes:
                 return self._json(routes[url.path]())

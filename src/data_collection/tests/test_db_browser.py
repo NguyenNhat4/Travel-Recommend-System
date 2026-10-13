@@ -1,10 +1,13 @@
 import datetime as dt
 import decimal
 import os
+import re
+import time
+import unicodedata
 import unittest
 import uuid
 
-from db_browser import MASK, DbBrowser, is_secret, jsonable, masked
+from db_browser import COUNT_CAP, MASK, DbBrowser, accent_regex, fold, is_secret, jsonable, masked
 from monitor import prefixed
 
 
@@ -30,6 +33,19 @@ class PureTests(unittest.TestCase):
     def test_prefixed_query_params(self):
         self.assertEqual(prefixed({'f.email': 'a@b', 'f.phone': '\\N', 'table': 'app.users', 'k.id': '1'}, 'f.'),
                          {'email': 'a@b', 'phone': None})
+
+    def test_fold_drops_case_and_vietnamese_marks_even_in_nfd(self):
+        self.assertEqual(fold('Bà Nà HILLS Đà Lạt Ỷ'), 'ba na hills da lat y')
+        self.assertEqual(fold(unicodedata.normalize('NFD', 'Hà Nội Ước')), 'ha noi uoc')
+
+    def test_accent_regex_matches_every_case_and_accent_and_escapes_symbols(self):
+        pattern = re.compile(accent_regex('da  nang'))  # lớp ký tự + \s+ dùng được cho cả PostgreSQL ARE
+        for text in ('Đà Nẵng', 'DA NANG', 'đá   nặng', 'Dà Nang'):
+            self.assertTrue(pattern.search(text), text)
+        self.assertFalse(pattern.search('dan ang'))
+        symbols = re.compile(accent_regex('a.b+c(1)'))
+        self.assertTrue(symbols.search('x a.b+c(1) y'))
+        self.assertFalse(symbols.search('axb+c(1)'))
 
 
 @unittest.skipUnless(os.environ.get('DBX_TEST_DATABASE_URL'), 'isolated seeded PostgreSQL required')
@@ -147,6 +163,67 @@ class DatabaseTests(unittest.TestCase):
             self.db.row('cdp.products', {})
         with self.assertRaises(ValueError):
             self.db.row('cdp.products', {'taxonomy': 'flight'})
+
+    # -- tìm nhanh cả database (chốt 2026-10-13)
+    def test_quick_search_ignores_case_and_accents_and_ranks_the_whole_phrase_first(self):
+        out = self.db.search('ba na')
+        products = next(g for g in out['groups'] if g['table'] == 'cdp.products')
+        self.assertEqual(out['groups'][0]['table'], 'cdp.products')  # bảng hay tìm nhất đứng đầu
+        self.assertIn('Bà Nà', products['rows'][0]['values']['name'])
+        self.assertIn('name', products['rows'][0]['matched'])
+        self.assertEqual(self.db.search('BÀ NÀ')['groups'][0]['rows'], products['rows'])
+        self.assertEqual(self.db.search('Sun World Bà Nà Hills')['groups'][0]['rows'][0]['values']['name'],
+                         'Sun World Bà Nà Hills')
+        self.assertEqual(self.db.search('x'), {'q': 'x', 'groups': [], 'tables': 0, 'ms': 0})  # dưới 2 ký tự: không tìm
+
+    def test_quick_search_needs_every_word_in_any_short_text_column(self):
+        rows = next(g for g in self.db.search('vinpearl phu quoc', limit=50)['groups']
+                    if g['table'] == 'cdp.products')['rows']
+        self.assertTrue(rows)
+        for row in rows:
+            text = fold(' '.join(str(v) for v in row['values'].values()))
+            self.assertIn('vinpearl', text)
+            self.assertIn('phu quoc', text)
+
+    def test_quick_search_by_uuid_email_and_reference_code(self):
+        item = self.db.rows('app.booking_items', limit=1)['rows'][0]
+        tables = {g['table']: g for g in self.db.search(item['product_id'])['groups']}
+        self.assertEqual(tables['cdp.products']['rows'][0]['key'], {'product_id': item['product_id']})
+        self.assertIn('app.booking_items', tables)
+        user = self.db.rows('app.users', limit=1)['rows'][0]
+        hit = next(g for g in self.db.search(user['email'].upper())['groups'] if g['table'] == 'app.users')
+        self.assertEqual(hit['rows'][0]['key'], {'user_id': user['user_id']})
+        booking = self.db.rows('app.bookings', limit=1)['rows'][0]
+        hit = next(g for g in self.db.search(booking['reference_code'])['groups'] if g['table'] == 'app.bookings')
+        self.assertEqual(hit['rows'][0]['key'], {'booking_id': booking['booking_id']})
+
+    def test_quick_search_never_reads_secret_columns(self):
+        out = self.db.search('$argon2')
+        self.assertFalse([g for g in out['groups'] if g['table'] in ('app.users', 'app.refresh_tokens')])
+        for group in self.db.search('test')['groups']:
+            self.assertFalse([c for c in group['columns'] if is_secret(c)], group['table'])
+
+    def test_a_table_that_times_out_is_reported_and_the_others_still_answer(self):
+        import psycopg
+        from psycopg.rows import dict_row
+
+        slow = DbBrowser(self.url, connect=lambda: psycopg.connect(
+            self.url, row_factory=dict_row, options='-c default_transaction_read_only=on -c statement_timeout=1'))
+        slow._meta, slow._meta_at = self.db.metadata(), time.monotonic()  # chỉ câu lệnh tìm bị quá giờ
+        out = slow.search('ba na')
+        self.assertGreater(out['tables'], 5)
+        self.assertTrue(any(g.get('error') == 'quá giờ' for g in out['groups']), out['groups'])
+
+    def test_table_filter_ignores_accents_needs_every_word_and_caps_the_count(self):
+        plain, accented = self.db.rows('cdp.products', q='da nang', limit=1), self.db.rows('cdp.products', q='Đà Nẵng', limit=1)
+        self.assertGreater(plain['total'], 0)
+        self.assertEqual(plain['total'], accented['total'])
+        both = self.db.rows('cdp.products', q='vinpearl phu quoc', limit=1)['total']
+        self.assertLessEqual(both, self.db.rows('cdp.products', q='vinpearl', limit=1)['total'])
+        self.assertGreater(both, 11)  # các từ không cần đứng liền nhau
+        common = self.db.rows('cdp.products', q='a', limit=1)
+        self.assertEqual((common['total'], common['totalCapped']), (COUNT_CAP, True))
+        self.assertFalse(self.db.rows('cdp.products', limit=1)['totalCapped'])  # không tìm: đếm đủ
 
 
 if __name__ == '__main__':
