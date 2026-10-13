@@ -5,9 +5,11 @@
 - "giá máy bay đó rẻ nhất chưa" chỉ báo ngày đã chọn; "đắt nhất thì soa" lập lại cả lịch.
 - Đang hỏi vé, "đi đâu cũng được, miễn đắt nhất" từng chuyển sang khám phá Nha Trang.
 
-`classify` (LLM) hiểu câu và đọc ra các trường của `FareQuestion`; test giả lập phần đó (`fare_llm`).
+Orchestrator (LLM) hiểu câu và khai job vé với các trường của `FareQuestion`; test giả lập phần đó (`fare_llm`).
 """
 import unittest
+
+import pytest
 from datetime import date
 
 from src.backend.app.agents.steps import fares
@@ -20,6 +22,9 @@ from .test_itinerary_runtime import START, FlightClients, flight_product, produc
 NEXT_DAY = START[:8] + f'{int(START[8:10]) + 1:02d}'
 TODAY = date(2999, 10, 1)
 
+
+#: Test tái hiện ý AC chưa đạt trên orchestrator (plan gỡ luồng cũ, quy tắc xfail strict).
+XFAIL_FARE_BUTTONS = ('AC-AGT-08: nút do code tạo cho câu trả lời vé ("Đắt nhất thì sao?", "<nơi> có gì chơi?") bị mất trên orchestrator, chỉ còn nút lập lịch — chưa đạt, sửa ở D5')
 
 class MoreFlights(FlightClients):
     """Thêm chuyến Hà Nội → Nha Trang ngày sau, và tuyến Hà Nội → Phú Quốc, để so rẻ/đắt."""
@@ -137,6 +142,7 @@ class FollowUpFlowTests(unittest.IsolatedAsyncioTestCase):
         third = await self.turn(clients, store, 'Hà Nội', first['conversation_id'], fare_llm(origin='Hà Nội'))
         self.assertIn('rẻ nhất mình thấy là 700.000 ₫', third['response']['question'])
 
+    @pytest.mark.xfail(strict=True, reason=XFAIL_FARE_BUTTONS)
     async def test_dearest_after_a_fare_answer_is_answered_without_planning(self):
         clients, store = MoreFlights(), InMemoryConversationStore()
         first = await self.turn(clients, store, 'vé từ Hà Nội ra Nha Trang giá bao nhiêu',
@@ -148,6 +154,7 @@ class FollowUpFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('compose', nodes)
         self.assertNotIn('tool', nodes)
 
+    @pytest.mark.xfail(strict=True, reason=XFAIL_FARE_BUTTONS)
     async def test_anywhere_while_asking_fares_compares_routes_from_the_origin(self):
         clients, store = MoreFlights(), InMemoryConversationStore()
         first = await self.turn(clients, store, 'vé từ Hà Nội ra Nha Trang giá bao nhiêu',

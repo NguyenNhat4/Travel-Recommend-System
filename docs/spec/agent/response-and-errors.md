@@ -20,11 +20,11 @@ Luồng tiếp tục sau khi nhập điểm đến ngoài catalog:
 
 ```text
 Lượt 1: "tokyo 4 ngày từ ngày mai"
-  → classify (destination=Tokyo, days=4, startDate) → tool (đối chiếu danh sách điểm đến, chưa gọi Search)
+  → precheck → orchestrate (plan) → extract (destination=Tokyo, days=4, startDate) → tool (đối chiếu danh sách điểm đến, chưa gọi Search)
   → clarify → NEEDS_CLARIFICATION (missingFields=["destination"], suggestedValues.destination = danh sách hỗ trợ)
   → finalize lưu intent với destination=null, giữ days/startDate/party
 Lượt 2: "ha noi" + conversationId lấy từ response.conversationId
-  → intake nạp intent đã lưu → classify (destination=Hà Nội) → tool → evaluate → filter → compose → COMPLETED 4 ngày
+  → intake nạp intent đã lưu → precheck → orchestrate (plan) → extract (destination=Hà Nội) → tool → evaluate → filter → compose → COMPLETED 4 ngày
 ```
 
 - Mọi trường hợp không hợp lệ đều lưu phần intent còn lại (bỏ riêng trường sai) như mọi lượt hỏi lại, nên gửi lại `conversationId` cùng giá trị hợp lệ là tiếp tục chuyến đi. Lỗi thật (`LLM_UNAVAILABLE`...) không lưu nên client phải gửi lại đủ thông tin.

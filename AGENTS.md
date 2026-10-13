@@ -82,6 +82,11 @@ Không tự chọn phương án cho các mục đang "chờ xác nhận" trong b
 - Tuân thủ quy tắc phụ thuộc backend, quy tắc frontend và quy ước thêm module trong `docs/prd/architecture.md` (§2, §6).
 - Code mới đặt theo cấu trúc trong `docs/prd/architecture.md` §6.1 (`src/backend`, `src/frontend`...). Các thư mục/file cũ ở gốc `src/` (`src/agents`, `src/api`, `src/models`, `src/services`, `src/main.py`, `src/config.py`) đã bị xoá; không tạo lại. Backend theo cây thư mục và quy tắc 1–11 ở `docs/prd/architecture.md` §2; `src/backend/tests/architecture/` kiểm tự động các quy tắc này.
 - Grounding: mọi sản phẩm, giá, `productId` phải đến từ Search/Recommendation/Catalog; không để LLM tạo dữ liệu sản phẩm. Tỷ lệ grounding bắt buộc 100% (`docs/prd/requirements.md` NFR-REL-01).
+- **Itinerary Agent: orchestrator là luồng duy nhất** (chốt 13/10/2026, `docs/prd/architecture.md` §3). Luồng phân loại
+  cũ (`classify` bằng LLM, node `explore`, `converse` bằng LLM) và cờ `ITINERARY_ORCHESTRATOR` đã gỡ; không tạo lại. Hiểu câu
+  sửa ở orchestrator (`ORCHESTRATOR_PROMPT`, `agents/steps/orchestration.py`), việc chỉ đọc ở `jobs.py`, câu vé ở `fares.py`,
+  gác cổng ở `domain/itinerary/gatekeeper.py`; luật trước LLM ở `precheck`. Ý AC trước đây chỉ luồng cũ đáp ứng được kiểm và
+  làm lại trên orchestrator theo `docs/plan/2026-10-12-go-luong-cu-orchestrator-chinh.md` (mục 1.5).
 - Không tự làm các hạng mục PRD đã ghi **ngoài phạm vi** (`docs/prd/project-brief.md` §4.2): cổng thanh toán ngân hàng thật, tồn kho thời gian thực nối hãng bay/khách sạn ngoài, app di động native. Người dùng yêu cầu thì xác nhận lại rằng đây là mở rộng phạm vi trước khi code.
 - Không commit hoặc log secret, API key, JWT. Biến bí mật theo bảng ở `docs/prd/deployment-plan.md` §2.
 

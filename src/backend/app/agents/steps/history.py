@@ -98,7 +98,7 @@ def llm_context(state: dict[str, Any], *, intent: dict[str, Any] | None = None,
       phải tra lại cả hội thoại. Dữ kiện nêu trong câu trả lời vẫn tra lại ngay lượt đó.
     - `previous_selection`: sản phẩm của lịch gần nhất kèm id (để loại/đổi món).
     Thứ tự giữ như trước khi có `already_shown`: tin nhắn hiện tại (`message`, node tự thêm) đứng đầu payload. Đo lặp
-    `classify` 2026-10-12 (plan B3): đưa tin nhắn xuống cuối payload làm câu hỏi vé hiểu sai nhiều hơn rõ rệt ("vé nha
+    bước phân loại cũ 2026-10-12 (plan B3): đưa tin nhắn xuống cuối payload làm câu hỏi vé hiểu sai nhiều hơn rõ rệt ("vé nha
     trang đi phú quốc bao nhiêu" hỏi lại loại vé 24/24 lần → 10/24), còn thêm khối `already_shown` thì không đổi kết quả.
     Lịch sử bị giới hạn (20 message, 8.000 ký tự) nên phần tóm tắt giữ được thông tin của lượt cũ đã bị cắt.
     Node truyền `intent`/`constraints` khi đã có bản mới hơn state (ví dụ điểm đến đã chuẩn hóa ở `tool`).

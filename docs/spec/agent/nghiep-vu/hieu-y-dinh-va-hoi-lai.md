@@ -1,6 +1,6 @@
 # Hiểu ý định và hỏi lại
 
-Phục vụ FR-AGT-01, AC-AGT-01, NFR-SEC-01, NFR-SEC-04. Mô tả theo code tại 2026-10-11; khi lệch, PRD và contract thắng.
+Phục vụ FR-AGT-01, AC-AGT-01, NFR-SEC-01, NFR-SEC-04. Mô tả theo code tại 2026-10-13; khi lệch, PRD và contract thắng.
 
 ## Mục đích
 
@@ -10,37 +10,45 @@ Thiếu hoặc sai thì hỏi lại. Chỉ đủ thông tin mới đi tìm sản
 File này mô tả phần **sau khi người dùng [đồng ý lập lịch](glossary.md#dong-y-lap-lich)**. Trước đó trợ lý không hỏi
 thông tin chuyến: xem [tro-chuyen-va-kham-pha.md](tro-chuyen-va-kham-pha.md).
 
-## Phân luồng (`classify`)
+## Luật trước LLM (`precheck`) và orchestrator
 
-Thứ tự kiểm trong `classify`; bước nào khớp thì dừng ở đó:
+`precheck` không gọi LLM. Thứ tự kiểm, bước nào khớp thì dừng ở đó:
 
-1. **Chip sửa tay** (`intentOverride`, không có message) → du lịch, coi như đồng ý, không gọi LLM.
-2. **Chèn lệnh / đòi secret** khớp mẫu → từ chối 400, không gọi LLM nào nữa.
+1. **Chip sửa tay** (`intentOverride`, không có message) → `extract`, coi như đồng ý.
+2. **Chèn lệnh / đòi secret** khớp mẫu → từ chối 400 ở `converse` (câu cố định), không gọi LLM nào.
 3. **Tin rác** (tầng 1): rác → hỏi "chưa hiểu" (200); chỉ có tục tĩu → từ chối 400. Không gọi LLM. Câu cụt giữa hội
    thoại ("2 ng", "3n") không bị coi là rác.
-4. **Câu dừng chắc chắn** (`classification.says_stop`) → `stop`, không gọi LLM `classify`; lời chào ở `converse` vẫn do LLM
-   viết. So nguyên câu sau khi `fold` và bỏ từ đệm cuối câu (nhé, nha, đâu, luôn, rồi, mà, bạn), từ vựng đóng:
+4. **Câu dừng chắc chắn** (`classification.says_stop`) → `orchestrate` với `turn_stop`: orchestrator chỉ viết lời cảm ơn,
+   hẹn gặp lại; không nút, không thẻ, không hỏi thêm. So nguyên câu sau khi `fold` và bỏ từ đệm cuối câu (nhé, nha, đâu,
+   luôn, rồi, mà, bạn), từ vựng đóng:
    `[thôi | vậy thôi] [mình | tôi | tui | tao | em | anh | chị] không/ko/k/kh/khg/hong/hok/hk/hem/chẳng/chả [muốn | cần]
    đi / đi du lịch / du lịch / đi chơi / lên lịch / lập lịch / lên kế hoạch + nữa`; `[thôi] huỷ chuyến [đi] / lịch trình [này]`;
    `thôi khỏi lên/lập lịch`; `[ok | cảm ơn | thanks] tạm biệt / bye / goodbye / hẹn gặp lại`. Câu có "?", có thêm tên nơi, số,
-   ngày hay chữ ngoài danh sách không khớp và đi bước 6. Cố ý không nhận "thôi khỏi", "thôi cảm ơn", "cảm ơn" đứng riêng
-   (hay là từ chối một gợi ý hoặc còn nói tiếp) và "không đi" thiếu "nữa".
-5. **Luật tất định, không LLM:** chọn "phương án N", đổi khách sạn/chuyến bay
-   ([sua-lich-qua-nhieu-luot.md](sua-lich-qua-nhieu-luot.md#doi-ve-khach-san)), bấm nút của câu trả lời vé.
-6. **LLM gắn một nhãn** (`TurnRoute`) và đọc ra tên nơi, thành phố, câu hỏi vé, có xin lập lịch/xin form không:
+   ngày hay chữ ngoài danh sách không khớp và đi orchestrator; orchestrator vẫn có thể nhận ra câu dừng (`stop`). Cố ý
+   không nhận "thôi khỏi", "thôi cảm ơn", "cảm ơn" đứng riêng (hay là từ chối một gợi ý hoặc còn nói tiếp) và "không đi"
+   thiếu "nữa".
+5. **Luật tất định:** chọn "phương án N" → `extract`; đổi khách sạn/chuyến bay
+   ([sua-lich-qua-nhieu-luot.md](sua-lich-qua-nhieu-luot.md#doi-ve-khach-san)) → `clarify` hoặc `tool`; bấm nút của câu
+   trả lời vé → `run_jobs` (job vé), không gọi LLM.
+6. **Đã đồng ý lập lịch** và câu xin lập lịch ("lên lịch đi") hoặc trả lời "có" cho lời mời đang chờ → `extract`.
+7. Còn lại → `orchestrate`.
 
-| Nhãn | Đi đâu |
+Orchestrator (LLM, `OrchestratorTurn`) chọn một hành động:
+
+| Hành động | Đi đâu |
 |---|---|
-| `travel` | `extract`. Chưa đồng ý thì `extract` chỉ ghi lại rồi chuyển sang khám phá |
-| `explore` (hỏi về một nơi) | `explore` |
-| `fare` (hỏi giá, giờ vé máy bay) | `explore`, nhánh giá vé → [tu-van-ve-may-bay.md](tu-van-ve-may-bay.md) |
-| `vague` ("không biết", "tuỳ") | Đã đồng ý và còn thiếu trường bắt buộc: hỏi kèm form. Chưa đồng ý: bậc gợi ý của trò chuyện |
-| `stop` (không muốn đi hoặc lên lịch nữa: "ko đi nữa", "thôi huỷ lịch trình") | `converse` cảm ơn, hẹn gặp lại; không form, không hỏi thêm, không nút; chuyến đang lên giữ nguyên, chỉ bỏ lời mời lập lịch đang chờ (AC-AGT-01, chốt 2026-10-12) |
-| `conversation` | `converse` |
-| `out_of_scope` | `converse`, trả lời 200: nói rõ không làm được, kèm nút việc gần nhất |
+| `answer` (trò chuyện, ngoài phạm vi, dừng) | `gatekeep` → `finalize`. Ngoài phạm vi trả lời 200: nói rõ không làm được, kèm nút việc gần nhất |
+| `ask` (một câu hỏi khi chưa rõ đối tượng) | `gatekeep` → `finalize` |
+| `execute` (việc chỉ đọc: khám phá, vé) | `run_jobs` → `orchestrate` → `gatekeep`; vé xem [tu-van-ve-may-bay.md](tu-van-ve-may-bay.md) |
+| `plan` (người dùng đồng ý lập lịch: nhận lời mời, xin lập lịch, nêu thông tin chuyến, xin form) | Code kiểm lại đồng ý (`consent.py`), rồi `extract` |
 
-"Đổi ngày", "không đổi nữa", "không đi Đà Nẵng nữa" (chê một nơi) vẫn là `travel`; "không đi nữa" là `stop`, không phải huỷ đơn. Nối lại sau khi dừng ("thôi đi tiếp") là `travel` trên chuyến đã giữ. Luật guardrail chi tiết: [../langgraph-nodes.md](../langgraph-nodes.md) mục
-Guardrail.
+"Đổi ngày", "không đổi nữa", "không đi Đà Nẵng nữa" (chê một nơi) không phải câu dừng; "không đi nữa" là dừng, không phải
+huỷ đơn. Nối lại sau khi dừng ("thôi đi tiếp") giữ chuyến cũ. Luật guardrail chi tiết: [../langgraph-nodes.md](../langgraph-nodes.md)
+mục Guardrail.
+
+**Lỗi đã biết (13/10, `src/evaluation/reports/eval-2026-10-13-d3-snapshot-orchestrator.md`):** sau câu hỏi lại "nghỉ ở
+đâu?", người dùng trả lời bằng tên một nơi thì orchestrator khám phá nơi đó thay vì `plan`, nên điểm đến không vào intent
+(D3-01). Sửa ở D5 của `docs/plan/2026-10-12-go-luong-cu-orchestrator-chinh.md`.
 
 ## Trường của chuyến đi
 
@@ -60,7 +68,7 @@ Guardrail.
 ```mermaid
 flowchart TD
     A[LLM trích patch + constraints] --> Z{Đã đồng ý<br/>lập lịch?}
-    Z -- "chưa" --> ZK[Khám phá / trò chuyện<br/>tro-chuyen-va-kham-pha.md]
+    Z -- "chưa" --> ZK[gatekeep: mời lập lịch<br/>tro-chuyen-va-kham-pha.md]
     Z -- "có" --> B{Giá trị sai?<br/>ngày đã qua, ngoài giới hạn}
     B -- có --> Q1[Hỏi lại từng giá trị sai]
     B -- không --> C{Điểm đến ngoài catalog?}
@@ -123,9 +131,12 @@ flowchart TD
 
 ## Code liên quan
 
-- [`agents/steps/classification.py`](../../../../src/backend/app/agents/steps/classification.py) — phân luồng, trích, quyết định hỏi lại
+- [`agents/nodes.py`](../../../../src/backend/app/agents/nodes.py) — `precheck_node`: luật trước LLM
+- [`agents/steps/orchestration.py`](../../../../src/backend/app/agents/steps/orchestration.py) — orchestrator chọn hành động
+- [`agents/steps/consent.py`](../../../../src/backend/app/agents/steps/consent.py) — kiểm đồng ý lập lịch
+- [`agents/steps/classification.py`](../../../../src/backend/app/agents/steps/classification.py) — trích, quyết định hỏi lại, câu dừng
 - [`agents/steps/conversation.py`](../../../../src/backend/app/agents/steps/conversation.py) — câu hỏi, form, câu cố định khi LLM lỗi
 - [`agents/steps/guardrails.py`](../../../../src/backend/app/agents/steps/guardrails.py) — chèn lệnh, tin rác, kiểm câu đầu ra
 - [`agents/steps/tool_planning.py`](../../../../src/backend/app/agents/steps/tool_planning.py) — `check_destination`, `canonical_destination`
 - [`agents/steps/explanations.py`](../../../../src/backend/app/agents/steps/explanations.py) — câu hỏi khi điều kiện bắt buộc không đạt
-- [`agents/models.py`](../../../../src/backend/app/agents/models.py) — output LLM được phép (`TurnRoute`, `Extraction`)
+- [`agents/models.py`](../../../../src/backend/app/agents/models.py) — output LLM được phép (`OrchestratorTurn`, `Extraction`)

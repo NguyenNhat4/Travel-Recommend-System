@@ -167,7 +167,7 @@ Biên bản ghi vào `src/evaluation/reports/`:
 Chạy nhiều lần trong cùng ngày thì file bị ghi đè; biên bản còn lại là của lần chạy cuối.
 
 Trên LangSmith, mỗi lượt là một trace tên `TC-01#2 Đổi ngày`, gắn tag `golden`, id case và category.
-Lọc theo id case để xem đúng lượt đó; mở node `classify` để xem nhãn phân luồng, node `extract` để xem LLM trích ra gì, node `tool` để xem tool plan.
+Lọc theo id case để xem đúng lượt đó; mở node `orchestrate` để xem quyết định của orchestrator, node `extract` để xem LLM trích ra gì, node `tool` để xem tool plan.
 
 Khi có lượt FAIL, xác định là kỳ vọng sai, lỗi agent hay nhiễu LLM theo
 [golden-dataset-how-to-add-more-case.md](golden-dataset-how-to-add-more-case.md) mục 8.
@@ -221,7 +221,7 @@ Mục tiêu theo dõi — fail thì ghi nhận, không chặn:
   `ITINERARY_REQUEST_TIMEOUT_SECONDS=90`, **vượt** ngân sách spec, nên số đo ở chế độ đó chỉ để theo dõi xu
   hướng, không dùng làm bằng chứng SLA.
 - Độ ổn định: cùng `status` và cùng danh sách `productId` giữa các lần chạy lặp. Bước xếp lịch đã tất định
-  nên lệch nghĩa là `classify` trích xuất intent khác nhau — ghi lại `intent` từng lần để chỉ đúng chỗ lệch.
+  nên lệch nghĩa là orchestrator hoặc `extract` hiểu khác nhau — ghi lại `intent` từng lần để chỉ đúng chỗ lệch.
 
 ## 6. Khi nào chạy
 
@@ -238,7 +238,7 @@ Mục tiêu theo dõi — fail thì ghi nhận, không chặn:
 | Hầu hết case ra `FALLBACK` hoặc sai điểm đến | Backend chạy khi Postgres tắt, nên recsys bị tắt | Bật Postgres rồi khởi động lại backend; kiểm log có `startup.recsys.index.load.ready` |
 | `Không dựng được LLM` | `ITINERARY_USE_LLM=false` hoặc thiếu key | Sửa `.env` |
 | `--trace-project cần LANGSMITH_API_KEY` | Thiếu key LangSmith | Thêm `LANGSMITH_API_KEY` vào `.env` |
-| Một case lúc PASS lúc FAIL | Bước `classify` phân loại không ổn định | Đo bằng `--repeat 5` |
+| Một case lúc PASS lúc FAIL | Orchestrator hoặc `extract` hiểu không ổn định | Đo bằng `--repeat 5` |
 
 Đừng đọc P50 hay tổng token của project LangSmith dev (`nhat-23-9`) như số đo agent. `pytest src/backend/tests`
 gửi khoảng 140 trace giả (0 token, khoảng 30ms) lên project đó mỗi lần chạy.

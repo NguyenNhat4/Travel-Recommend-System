@@ -87,6 +87,8 @@ def record(state: dict, response: dict) -> dict:
         for product in row.get("products") or []:
             if turn_refs.get(product["productId"]) in (row.get("listed") or []):
                 via[product["productId"]] = {key: row["spec"].get(key) for key in ("destination", "taxonomy", "query", "near", "sort")}
+                if row["spec"].get("excluded_destinations"):
+                    via[product["productId"]]["excluded_destinations"] = deepcopy(row["spec"]["excluded_destinations"])
     remember_all = state.get("orchestrator_active") or "seen" in shown
     if remember_all:
         shown.setdefault("seen", {})

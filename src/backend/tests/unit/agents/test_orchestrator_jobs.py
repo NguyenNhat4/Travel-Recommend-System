@@ -53,7 +53,7 @@ class Tools:
 
 
 def initial(**extra):
-    return {**intake_node({"query": "hà nội"}, orchestrator_enabled=True),
+    return {**intake_node({"query": "hà nội"}),
             "supported_destinations": ["Hà Nội", "Đà Nẵng"], **extra}
 
 
@@ -62,6 +62,38 @@ async def run(state, tools, *specs):
 
 
 class JobTests(unittest.IsolatedAsyncioTestCase):
+    async def test_more_after_multicity_search_does_not_choose_last_card_city(self):
+        cards = [product("a", "attraction", "Hà Nội"), product("b", "attraction", "Đà Nẵng")]
+        memory = shown.record({}, {"searchResults": {"attraction": cards}})
+        for item in memory["items"]:
+            item["via"] = {"destination": None, "taxonomy": "attraction", "query": "chỗ chơi"}
+        tools = Tools([*cards, product("c", "attraction", "Hà Nội"), product("d", "attraction", "Đà Nẵng")])
+        update = await run(initial(shown=memory), tools, Job(kind="explore", intent="more", taxonomy="attraction"))
+        self.assertNotIn("destination", tools.calls[0][1])
+        self.assertEqual({p["productId"] for p in update["turn_jobs"][0]["products"]}, {"c", "d"})
+
+    async def test_more_with_legacy_multicity_cards_does_not_guess_one_city(self):
+        memory = shown.record({}, {"searchResults": {"attraction": [
+            product("a", "attraction", "Hà Nội"), product("b", "attraction", "Đà Nẵng")]}})
+        spec = jobs.inherited(initial(shown=memory), Job(kind="explore", intent="more", taxonomy="attraction").model_dump())
+        self.assertIsNone(spec["destination"])
+
+    async def test_more_can_replace_scope_without_repeating_seen_or_excluded_cities(self):
+        memory = shown.record({}, {"searchResults": {"attraction": [product("a", "attraction")]}})
+        memory["items"][0]["via"] = {"destination": "Hà Nội", "taxonomy": "attraction", "query": "bảo tàng",
+                                      "near": "Hồ Gươm", "sort": "price_asc"}
+        tools = Tools([product("a", "attraction"), product("b", "attraction"),
+                       product("c", "attraction", "Đà Nẵng")])
+        update = await run(initial(shown=memory), tools, Job(kind="explore", intent="more", scope_mode="replace",
+                            taxonomy="attraction", query="chỗ chơi", excluded_destinations=["ha noi"]))
+        row = update["turn_jobs"][0]
+        self.assertIsNone(row["spec"]["destination"])
+        self.assertIsNone(row["spec"]["near"])
+        self.assertEqual(row["spec"]["sort"], "relevance")
+        self.assertNotIn("destination", tools.calls[0][1])
+        self.assertEqual(row["spec"]["excluded_destinations"], ["Hà Nội"])
+        self.assertEqual([p["productId"] for p in row["products"]], ["c"])
+
     async def test_thematic_search_without_city_keeps_each_result_destination_in_brief(self):
         tools = Tools([product("temple-a", "attraction", "Hà Nội", name="Chùa A"),
                        product("temple-b", "attraction", "Đà Nẵng", name="Chùa B")])

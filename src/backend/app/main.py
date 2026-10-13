@@ -31,7 +31,7 @@ import psycopg
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
-from src.backend.app.agents.runtime_dependencies import RuntimeAgentDependencies
+from src.backend.app.agents.runtime_dependencies import RuntimeAgentDependencies, orchestrator_budget
 from src.backend.app.agents.tools.itinerary_gateway import ItineraryToolGateway
 from src.backend.app.api.errors import install_error_handlers
 from src.backend.app.api.middleware import (
@@ -585,11 +585,8 @@ def _itinerary_runtime(app: FastAPI, settings: Settings, authorization: str | No
         archive=getattr(app.state, "itinerary_conversation_archive", None),
         tool_timeout_seconds=settings.itinerary_tool_timeout_seconds,
         llm_timeout_seconds=settings.itinerary_llm_timeout_seconds,
-        orchestrator_enabled=settings.itinerary_orchestrator == "on",
         orchestrator_llm=getattr(app.state, "itinerary_orchestrator_llm", None),
-        # Leave a small part of the outer request budget for gatekeeping/finalize/store.
-        orchestrator_budget_seconds=max(0.1, settings.itinerary_request_timeout_seconds -
-                                        min(1.0, settings.itinerary_request_timeout_seconds / 10)),
+        orchestrator_budget_seconds=orchestrator_budget(settings.itinerary_request_timeout_seconds),
     )
 
 
@@ -805,7 +802,7 @@ settings = get_settings()
 app = FastAPI(
     title=settings.app_name,
     description="Travel recommendation and itinerary API",
-    version="1.26.0",
+    version="1.28.0",
     lifespan=lifespan,
 )
 

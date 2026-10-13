@@ -4,7 +4,8 @@ Mỗi thẻ mang một lý do khác nhau ("nhiều người đánh giá nhất",
 Search của lượt đó, không trên phần đã cắt: sản phẩm tốt nhất theo một lý do mà đã được chọn vì lý do khác thì lý do đó
 gộp vào thẻ cũ, không gán cho sản phẩm hạng hai. Kịch bản bản 4 từng nói sai "rẻ nhất" vì bỏ sót một hostel có hồ bơi.
 
-LLM chỉ viết câu dẫn từ lý do và số liệu ở đây; số trong câu do code điền (`agents/steps/exploration.py`).
+LLM của orchestrator chỉ viết câu dẫn từ lý do và số liệu ở đây; số trong câu do code điền (`gatekeep`,
+`agents/steps/orchestration.py`).
 """
 
 from __future__ import annotations
@@ -12,7 +13,6 @@ from __future__ import annotations
 from collections.abc import Iterable
 import re
 
-from ..search.amenities import amenity_keys
 from .geo import coords, haversine_km
 from .normalization import fold
 from .types import Product
@@ -22,15 +22,10 @@ TOP_RATED = "top_rated"
 CHEAPEST = "cheapest"
 FREE_ENTRY = "free_entry"
 ALSO_POPULAR = "also_popular"
-#: Nơi người dùng nêu tên trong câu hỏi ("Văn Miếu buổi tối có mở không?"): luôn là thẻ đầu tiên.
-ASKED = "asked"
 #: Gần nơi người dùng hỏi quanh ("gần Văn Miếu có gì nữa?").
 NEAR = "near"
-#: Người dùng muốn chỗ rẻ: thẻ sau thẻ rẻ nhất, cũng thuộc nhóm giá thấp (`cheapest_cards`).
-LOW_PRICE = "low_price"
 #: Người dùng hỏi chỗ đắt nhất, sang nhất: thẻ đầu đắt nhất, các thẻ sau cũng thuộc nhóm giá cao (`dearest_cards`).
 DEAREST = "dearest"
-HIGH_PRICE = "high_price"
 #: "Gần" tính theo đường chim bay; xa hơn thì không gọi là gần nữa.
 NEAR_KM = 3.0
 
@@ -145,33 +140,6 @@ def pick_cards(products: list[Product], limit: int, taxonomy: str | None = None)
     return cards
 
 
-def cheapest_cards(products: list[Product], limit: int) -> list[dict]:
-    """Người dùng muốn chỗ rẻ ("khách sạn giá rẻ", "rẻ nhất là chỗ nào"): các nơi có giá, rẻ nhất trước; thẻ đầu lý do
-    `CHEAPEST`, các thẻ sau `LOW_PRICE`. Mỗi nơi tối đa một thẻ (`distinct_places`)."""
-    priced = sorted((product for product in distinct_places(products) if price(product) is not None), key=price)
-    return [{"product": product, "reasons": [CHEAPEST if index == 0 else LOW_PRICE]}
-            for index, product in enumerate(priced[:limit])]
-
-
-def dearest_cards(products: list[Product], limit: int) -> list[dict]:
-    """Người dùng hỏi chỗ đắt nhất ("ks nào đắt nhất", "sang nhất"): các nơi có giá, đắt nhất trước; thẻ đầu lý do
-    `DEAREST`, các thẻ sau `HIGH_PRICE`."""
-    priced = sorted((product for product in distinct_places(products) if price(product) is not None),
-                    key=lambda product: -price(product))
-    return [{"product": product, "reasons": [DEAREST if index == 0 else HIGH_PRICE]}
-            for index, product in enumerate(priced[:limit])]
-
-
-def has_amenity(product: Product, key: str) -> bool:
-    """Catalog ghi nhận có tiện ích này: cờ `attributes.<key> = true`, hoặc một chuỗi trong `attributes.amenities` khớp
-    khoá đó theo từ vựng của Search (`domain/search/amenities.py`). Catalog thật hầu như chỉ có dạng chuỗi."""
-    attributes = product.get("attributes") or {}
-    if attributes.get(key) is True:
-        return True
-    strings = attributes.get("amenities")
-    return isinstance(strings, list) and key in amenity_keys(item for item in strings if isinstance(item, str))
-
-
 _NAME_CUT = re.compile(r"\s+[-–(|]|\s*\[")
 
 
@@ -220,13 +188,6 @@ def closest_matches(products: list[Product], name: str, exclude: Iterable[str] =
     return [product for share, product in scored if share == best]
 
 
-def closest_named(products: list[Product], name: str, exclude: Iterable[str] = ()) -> Product | None:
-    """Sản phẩm gần tên `name` nhất (`closest_matches`); các sản phẩm gần nhất nằm ở hai thành phố khác nhau ("phố cổ":
-    Hà Nội, Hội An) thì None, để hỏi lại thay vì tự chọn."""
-    matches = closest_matches(products, name, exclude)
-    return matches[0] if matches and len({fold(item.get("destination")) for item in matches}) == 1 else None
-
-
 def near_cards(products: list[Product], anchor: Product, limit: int) -> list[dict]:
     """Tối đa `limit` thẻ gần `anchor` nhất (trong `NEAR_KM`), không tính chính nó và nơi trùng nó; thiếu toạ độ thì
     rỗng (không đoán là gần)."""
@@ -253,7 +214,3 @@ def within_km(products: list[Product], anchor: Product, km: float) -> list[Produ
         return []
     scored = [(haversine_km(origin, point), product) for product in products if (point := coords(product)) is not None]
     return [product for distance, product in sorted(scored, key=lambda item: item[0]) if distance <= km]
-
-
-def with_amenity(products: list[Product], key: str) -> list[Product]:
-    return [item for item in products if has_amenity(item, key)]

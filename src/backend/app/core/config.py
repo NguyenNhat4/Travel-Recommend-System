@@ -55,7 +55,6 @@ class Settings(BaseSettings):
     # Chỉ áp cho OpenAI. Model reasoning (vd gpt-6-luna) từ chối function tools trên chat completions khi
     # reasoning bật mặc định (400); đặt "none" để tool calling chạy được. Bỏ trống thì không gửi tham số.
     itinerary_llm_reasoning_effort: Literal["none", "minimal", "low", "medium", "high"] | None = None
-    itinerary_orchestrator: Literal["off", "on"] = "off"
     itinerary_orchestrator_model: str | None = None
     itinerary_orchestrator_provider: Literal["gemini", "openai", "anthropic"] | None = None
     itinerary_orchestrator_reasoning_effort: Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"] | None = None

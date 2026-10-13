@@ -24,7 +24,7 @@ Mỗi thuật ngữ một dòng định nghĩa. Cột "Chi tiết" trỏ tới f
 |---|---|---|
 | <a id="dong-y-lap-lich"></a>Đồng ý lập lịch (`plan_consent`) | Người dùng xin lập lịch, nói "ok" sau lời mời, nêu số ngày/ngày đi/số người, xin form hoặc sửa form. Trước đó không hỏi thông tin chuyến | [tro-chuyen-va-kham-pha.md](tro-chuyen-va-kham-pha.md) |
 | <a id="loi-moi"></a>Lời mời lập lịch (`pending_offer`) | Câu "Bạn có muốn lập lịch <nơi> không?" đang chờ trả lời | [tro-chuyen-va-kham-pha.md](tro-chuyen-va-kham-pha.md) |
-| <a id="kham-pha"></a>Khám phá (`explore`) | Trả lời câu hỏi về một nơi bằng tối đa 4 thẻ thật từ Search, kèm lời dẫn và nút | [tro-chuyen-va-kham-pha.md](tro-chuyen-va-kham-pha.md) |
+| <a id="kham-pha"></a>Khám phá (job `explore`) | Trả lời câu hỏi về một nơi bằng thẻ thật từ Search (tối đa 3 điểm tham quan/tour + 2 khách sạn, hoặc 4 khách sạn khi hỏi riêng chỗ ở), kèm lời dẫn và nút. Orchestrator khai việc, `run_jobs` chạy | [tro-chuyen-va-kham-pha.md](tro-chuyen-va-kham-pha.md) |
 | <a id="ly-do-the"></a>Lý do thẻ | Vì sao thẻ được chọn (nhiều đánh giá nhất, điểm cao nhất, rẻ nhất, vào cửa tự do, gần nơi hỏi); code tính, LLM không viết số | [tro-chuyen-va-kham-pha.md](tro-chuyen-va-kham-pha.md) |
 | <a id="nut-goi-y"></a>Nút gợi ý (`suggestions`) | Tối đa 3 câu bấm được, viết như lời người dùng; LLM đề xuất, code kiểm | [tro-chuyen-va-kham-pha.md](tro-chuyen-va-kham-pha.md) |
 | <a id="noi-bi-che"></a>Nơi bị chê (`rejected_destinations`) | Nơi người dùng chê ("đi rồi", "chán"); không gợi ý lại cho tới khi người dùng tự nhắc lại | [tro-chuyen-va-kham-pha.md](tro-chuyen-va-kham-pha.md) |

@@ -1,7 +1,6 @@
 """Hai node dùng LLM để viết câu chữ: `clarify` (hỏi thiếu thông tin) và `converse` (chat/từ chối)."""
 from __future__ import annotations
 
-import re
 from copy import deepcopy
 from datetime import timedelta
 
@@ -11,7 +10,7 @@ from src.backend.app.domain.itinerary.normalization import fold
 from src.backend.app.domain.itinerary.planning import empty_intent
 
 from ..models import ConversationalAnswer
-from . import exploration, messages
+from . import messages, replies
 from .classification import TRIP_DETAILS, vietnam_today
 from .explanations import constraint_question
 from .history import llm_context, prompt_yaml
@@ -127,31 +126,6 @@ def reply_title(state: dict) -> str | None:
     return message(state, "title_missing_days")
 
 
-#: Giờ ("8h", "08:00", "8 giờ") hoặc số tiền ("50.000", "50k", "₫", "đồng") trong câu LLM viết khi không có dữ liệu.
-_FACT_NUMBER = re.compile(r"\d{1,2}\s*(?:h|giờ|:\d{2})|\d+[.,]\d{3}|\d+\s*(?:k|nghìn|ngàn|triệu)\b|₫|đồng|vnd",
-                          re.IGNORECASE)
-
-
-#: Câu nói về giờ, giá, vé, quy định của một nơi; và câu thừa nhận không kiểm được.
-_FACT_WORDS = re.compile(r"mở cửa|đóng cửa|miễn phí|vé|giá|giờ|nghỉ lễ|quy định|open|close|free|ticket|price",
-                         re.IGNORECASE)
-_CANNOT_CHECK = re.compile(r"(?:không|chưa)\s+(?:kiểm|tìm thấy|có dữ liệu|có thông tin|tra được|xác nhận)|"
-                           r"(?:cannot|can't|could not|couldn't)\s+(?:check|find|verify)", re.IGNORECASE)
-
-
-def _claims_a_fact(text: str) -> bool:
-    """Câu LLM viết khi không có dữ liệu mà vẫn nói giờ, giá: có con số giờ/tiền, hoặc nhắc giờ, giá, vé mà không nói là
-    không kiểm được ("Văn Miếu không mở cửa buổi tối", chat thử M03)."""
-    return bool(_FACT_NUMBER.search(text)) or bool(_FACT_WORDS.search(text) and not _CANNOT_CHECK.search(text))
-
-
-def place_not_found(state: dict) -> str | None:
-    """Nơi người dùng hỏi tới mà lượt khám phá không tra ra trong catalog (không phải câu hỏi chỗ ở)."""
-    if state.get("explore_focus") == "hotels" or state.get("blocked_by_guardrail") or state.get("refusal"):
-        return None
-    return state.get("explore_place") or None
-
-
 def conversation_input(state: dict) -> list:
     """Chỉ gửi ngữ cảnh đã chốt cho LLM; nó viết câu chữ, không được tự quyết luồng."""
     language = "Vietnamese" if state.get("language", "vi") == "vi" else "English"
@@ -166,10 +140,9 @@ def conversation_input(state: dict) -> list:
                "plan_consent": bool(state.get("plan_consent")),
                "pending_offer": state.get("pending_offer"),
                "dont_know_level": int(state.get("dont_know_count", 0) or 0),
-               "catalog_destinations": (state.get("supported_destinations") or [])[:exploration.CATALOG_HINT],
+               "catalog_destinations": (state.get("supported_destinations") or [])[:replies.CATALOG_HINT],
                "previous_suggestions": state.get("last_suggestions", []),
-               "rejected_destinations": state.get("rejected_destinations", []),
-               "place_not_found": place_not_found(state)}
+               "rejected_destinations": state.get("rejected_destinations", [])}
     if state.get("clarification_reason") == "invalid_input":
         payload.update(invalid_inputs=_invalid_for_llm(state), today=display_date(vietnam_today().isoformat()),
                        valid_ranges=_valid_ranges(), form_shown=_form_shown(state),
@@ -237,8 +210,8 @@ def with_suggestions(state: dict, update: dict, proposed: list[str] | None = Non
     if not state.get("offer_suggestions") or response.get("status") != "NEEDS_CLARIFICATION":
         return update
     supported = state.get("supported_destinations") or []
-    suggestions = exploration.checked_suggestions(proposed or [], state.get("last_suggestions", []),
-                                                  exploration.conversation_templates(state, supported),
+    suggestions = replies.checked_suggestions(proposed or [], state.get("last_suggestions", []),
+                                                  replies.conversation_templates(state, supported),
                                                   destinations=supported, avoid=state.get("rejected_destinations"))
     if not suggestions:
         return update
@@ -249,13 +222,6 @@ def conversational_update(state: dict, result: ConversationalAnswer) -> dict:
     """Câu LLM viết ra. Yêu cầu ngoài phạm vi (đặt vé hộ, chuyện ngoài du lịch) là câu trả lời thường 200 kèm nút, không
     còn là lỗi 400 (FR-AGT-06, chốt 2026-10-10); chỉ đầu vào bị guardrail chặn mới bị từ chối bằng lỗi."""
     answer = ConversationalAnswer.model_validate(result)
-    if place_not_found(state) and _claims_a_fact(answer.message):
-        # Hỏi về một nơi không tra ra trong catalog: LLM tự viết câu nói rõ là không kiểm được (chat thử 11/10: một câu
-        # cố định lặp lại mọi lượt), nhưng câu có giờ hay giá thì là LLM tự nói ("Văn Miếu không mở buổi tối" — sai, chat
-        # thử M03): thay bằng câu cố định, giữ nút.
-        answer = answer.model_copy(update={"title": message(state, "title_unverified_fact"),
-                                           "message": message(state, "unverified_fact",
-                                                              place=state["explore_place"])})
     fallback_title = reply_title(state)
     # Dòng đầu in đậm do backend ghép, để mọi câu trả lời có cùng một dạng; chào hỏi, cảm ơn thì không có tiêu đề.
     text = titled(answer.title or fallback_title, answer.message.strip()) if fallback_title else answer.message.strip()

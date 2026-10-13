@@ -100,7 +100,7 @@ class StructuredOrchestratorModel:
 
 def build_orchestrator_model(settings: Settings, shared_model: Any | None) -> Any | None:
     """Build the explicitly selected provider/model; the composition root handles safe fallback."""
-    if settings.itinerary_orchestrator != "on" or not settings.itinerary_use_llm or not settings.itinerary_orchestrator_model:
+    if not settings.itinerary_use_llm or not settings.itinerary_orchestrator_model:
         return shared_model
     provider = settings.itinerary_orchestrator_provider
     model = settings.itinerary_orchestrator_model

@@ -6,7 +6,7 @@ Phục vụ FR-AGT-02, FR-AGT-04, FR-AGT-05, NFR-REL-01. Mô tả theo code tạ
 
 Lấy sản phẩm thật từ catalog cho chuyến đi, rồi lọc còn những [ứng viên](glossary.md#candidate) dùng được. Mọi sản phẩm
 trong lịch trình phải đi ra từ bước này ([grounding](glossary.md#grounding)). Vé máy bay đi đường riêng:
-[ve-may-bay.md](ve-may-bay.md). Lượt khám phá gọi Search riêng trong node `explore`, không qua planner:
+[ve-may-bay.md](ve-may-bay.md). Lượt khám phá gọi Search riêng trong job `explore` của orchestrator (`run_jobs`), không qua planner:
 [tro-chuyen-va-kham-pha.md](tro-chuyen-va-kham-pha.md).
 
 ## Luồng chính

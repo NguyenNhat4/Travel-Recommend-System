@@ -61,7 +61,7 @@ Chỉ lượt trả 200 mới được lưu.
   - `compose` dựng sẵn lịch đầy đủ của từng phương án (cùng luật, cùng `validate_plan`); `finalize` lưu chúng vào
     `previous_options` cùng lịch đang chọn (`previous_plan`);
   - bấm "Dùng phương án này" (`selectStayOption.index`) hoặc nhắn "phương án N" / "option N" (so không dấu) mà N có lịch
-    đã lưu thì graph đi `intake → apply_option → finalize`: lấy đúng lịch đã báo, không phân luồng, không tìm lại, không
+    đã lưu thì graph đi `intake → apply_option → finalize`: lấy đúng lịch đã báo, không qua `precheck`, không tìm lại, không
     gọi LLM. Bấm thẻ thì không có lời đáp và không thêm lượt hội thoại (archive cập nhật câu trả lời gần nhất); gõ
     "lấy phương án N" thì có lời đáp ngắn do code dựng (đổi sang khách sạn nào, chênh tiền, chênh km, tổng km);
   - lịch vừa bỏ thành một phương án để quay lại; chênh km tính lại từ km tuyệt đối, chênh tiền tính lại tuyến tính, vượt
@@ -89,7 +89,9 @@ Chỉ lượt trả 200 mới được lưu.
 <a id="doi-ve-khach-san"></a>
 ## Đổi vé, khách sạn (AC-AGT-05, chốt 2026-10-11)
 
-Luật tất định chạy trong `classify` trước LLM, không gọi LLM để hỏi lại.
+Luật tất định chạy trong `precheck` trước LLM, không gọi LLM để hỏi lại. Câu đổi mà luật không nhận ra thì đi
+orchestrator; lỗi đã biết: orchestrator khám phá thay vì đổi và lập lại lịch (D1-04, D5 của
+`docs/plan/2026-10-12-go-luong-cu-orchestrator-chinh.md`).
 
 ```mermaid
 flowchart TD

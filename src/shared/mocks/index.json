@@ -769,6 +769,86 @@
       "status": 200,
       "case": "default",
       "file": "booking/removeBookingDraftItem.200-default.json"
+    },
+    {
+      "operationId": "streamItinerary",
+      "method": "post",
+      "path": "/assistant/itineraries/stream",
+      "status": 200,
+      "case": "stream-plan",
+      "file": "itinerary-agent/stream-plan.json",
+      "contentType": "text/event-stream"
+    },
+    {
+      "operationId": "streamItinerary",
+      "method": "post",
+      "path": "/assistant/itineraries/stream",
+      "status": 200,
+      "case": "stream-explore-jobs",
+      "file": "itinerary-agent/stream-explore-jobs.json",
+      "contentType": "text/event-stream"
+    },
+    {
+      "operationId": "streamItinerary",
+      "method": "post",
+      "path": "/assistant/itineraries/stream",
+      "status": 200,
+      "case": "stream-fare-job",
+      "file": "itinerary-agent/stream-fare-job.json",
+      "contentType": "text/event-stream"
+    },
+    {
+      "operationId": "streamItinerary",
+      "method": "post",
+      "path": "/assistant/itineraries/stream",
+      "status": 200,
+      "case": "stream-fare-button",
+      "file": "itinerary-agent/stream-fare-button.json",
+      "contentType": "text/event-stream"
+    },
+    {
+      "operationId": "streamItinerary",
+      "method": "post",
+      "path": "/assistant/itineraries/stream",
+      "status": 200,
+      "case": "stream-fare-superseded",
+      "file": "itinerary-agent/stream-fare-superseded.json",
+      "contentType": "text/event-stream"
+    },
+    {
+      "operationId": "streamItinerary",
+      "method": "post",
+      "path": "/assistant/itineraries/stream",
+      "status": 200,
+      "case": "stream-clarify",
+      "file": "itinerary-agent/stream-clarify.json",
+      "contentType": "text/event-stream"
+    },
+    {
+      "operationId": "streamItinerary",
+      "method": "post",
+      "path": "/assistant/itineraries/stream",
+      "status": 200,
+      "case": "stream-answer",
+      "file": "itinerary-agent/stream-answer.json",
+      "contentType": "text/event-stream"
+    },
+    {
+      "operationId": "streamItinerary",
+      "method": "post",
+      "path": "/assistant/itineraries/stream",
+      "status": 200,
+      "case": "stream-blocked",
+      "file": "itinerary-agent/stream-blocked.json",
+      "contentType": "text/event-stream"
+    },
+    {
+      "operationId": "createItinerary",
+      "method": "post",
+      "path": "/assistant/itineraries",
+      "status": 200,
+      "case": "explore-ten",
+      "file": "itinerary-agent/explore-ten.json"
     }
   ]
 }

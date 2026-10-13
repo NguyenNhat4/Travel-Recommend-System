@@ -87,7 +87,7 @@ Sự kiện SSE và tác động lên UI:
 
 `message` của `node.completed` là chuỗi debug của backend, **không bao giờ** hiện cho người dùng. Nhãn 3 bước do Web
 sở hữu, map từ `nodeId` trong `widgetProgress.ts` (`AFTER_NODE`): xong `extract`/`tool`/`retry` thì bước 2 đang chạy,
-xong `evaluate`/`compose` thì bước 3 đang chạy. Node khác (classify, converse, clarify, narrate...) không đẩy bước, nên nhánh trò chuyện
+xong `evaluate`/`compose` thì bước 3 đang chạy. Node khác (precheck, orchestrate, gatekeep, converse, clarify, narrate...) không đẩy bước, nên nhánh trò chuyện
 hay hỏi lại không có ✓ giả.
 
 "Chậm" = 12 giây không có `node.completed` nào (`SLOW_NODE_MS`), đo theo từng node chứ không theo cả lượt.

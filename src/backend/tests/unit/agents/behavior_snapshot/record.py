@@ -6,6 +6,10 @@ Chỉ chạy khi chủ ý đổi prompt, hành vi hoặc dữ liệu. Cần Post
     HF_HUB_OFFLINE=1 .venv/bin/python -m src.backend.tests.unit.agents.behavior_snapshot.record [--only X01,X02] [--fresh]
 
 Mặc định giữ bản ghi đã có, chỉ gọi tool/LLM cho tham số hoặc payload mới. `--fresh` ghi lại toàn bộ hai cassette.
+
+Kịch bản có lượt không phát lại được (hết giờ, model hoặc tool thật quá hạn hay lỗi; `harness.unreplayable`) bị từ chối:
+không lưu vào snapshot, ghi lại tối đa `ATTEMPTS` lần, vẫn bị từ chối thì dừng và in tên kịch bản cùng nguyên nhân. Trần
+vòng và trần tool là hành vi tất định nên được giữ.
 """
 from __future__ import annotations
 
@@ -14,8 +18,18 @@ import asyncio
 import os
 from contextlib import asynccontextmanager
 
-from .harness import (CASSETTE, SNAPSHOT, CassetteLlm, ToolCassette, dump_json, dump_tools, load_json, load_tools,
-                      run_all)
+from .harness import (CASSETTE, ORCHESTRATOR_MODEL_TAG, SNAPSHOT, CassetteLlm, ToolCassette, dump_json, dump_tools,
+                      load_json, load_tools, run_all)
+
+#: Số lần ghi một kịch bản trước khi bỏ cuộc vì lượt không phát lại được.
+ATTEMPTS = 3
+
+
+def rejected(result: dict) -> dict[str, list[str]]:
+    """Kịch bản → nguyên nhân của mọi lượt không phát lại được."""
+    found = {name: sorted({reason for turn in turns for reason in turn.get("unreplayable", [])})
+             for name, turns in result.items()}
+    return {name: reasons for name, reasons in found.items() if reasons}
 
 
 @asynccontextmanager
@@ -41,12 +55,23 @@ async def record(only: set[str] | None, fresh: bool) -> None:
     try:
         async with inprocess_app() as app:
             llm = CassetteLlm(llm_records, inner=app.state.itinerary_llm)
+            orchestrator_llm = CassetteLlm(llm_records, inner=app.state.itinerary_orchestrator_llm,
+                                           model=ORCHESTRATOR_MODEL_TAG)
             tools = ToolCassette(tool_records, inner=app.state.itinerary_http_clients)
-            result = await run_all(llm, tools, only)
+            result = await run_all(llm, tools, only, orchestrator_llm)
+            for attempt in range(2, ATTEMPTS + 1):
+                bad = rejected(result)
+                if not bad:
+                    break
+                print(f"attempt {attempt}: ghi lại {sorted(bad)} vì {bad}")
+                result.update(await run_all(llm, tools, set(bad), orchestrator_llm))
     finally:
         # Ghi cả khi một kịch bản lỗi giữa chừng: lần chạy sau không phải gọi lại phần đã ghi.
         dump_json(CASSETTE, llm_records)
         dump_tools(tool_records)
+    bad = rejected(result)
+    if bad:
+        raise SystemExit(f"kịch bản không phát lại được sau {ATTEMPTS} lần, chưa lưu snapshot: {bad}")
     snapshot = load_json(SNAPSHOT, {}) if only else {}
     snapshot.update(result)
     dump_json(SNAPSHOT, snapshot)

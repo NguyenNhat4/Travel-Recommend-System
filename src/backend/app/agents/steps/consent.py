@@ -9,7 +9,8 @@ Chưa đồng ý thì trợ lý chỉ trò chuyện và khám phá: không hỏi
 - câu nêu thông tin chuyến ngoài điểm đến, như "Hà Nội 3 ngày" (`planning_implied`, xét sau `extract`);
 - xin form ("cho mình cái form").
 
-`classify` xét các điều kiện trước `extract` qua `plan_consented`; `extract` xét `planning_implied` qua `implied_update`.
+`precheck` xét các điều kiện trước `extract` qua `plan_consented`; `extract` xét `planning_implied` qua `implied_update`;
+orchestrator khai lý do lập lịch và code kiểm bằng `structured_plan_allowed`.
 """
 from __future__ import annotations
 
@@ -45,12 +46,12 @@ def planning_implied(intent: dict) -> bool:
 
 
 def plan_consented(state: dict, label: str | None = None, llm_plan_request: bool = False) -> bool:
-    """Người dùng đã đồng ý lập lịch chưa, xét ở `classify` (trước `extract`).
+    """Người dùng đã đồng ý lập lịch chưa, xét ở `precheck` (trước `extract`).
 
     Đồng ý khi: đã đồng ý ở lượt trước; sửa form/chip (`intent_override`); câu xin lập lịch; hoặc trợ lý vừa mời mà người
     dùng trả lời "ok". Trả lời lời mời bằng thông tin chuyến ("3 ngày thôi") được `extract_result` nhận qua
     `planning_implied`, không nhận ở đây: "Thôi, Hà Nội thì sao?" cũng là câu du lịch nhưng là đổi nơi, không phải đồng
-    ý (LLM thật, 10/10/2026). LLM báo `plan_request` không được tin ở câu hỏi về một nơi (`explore`).
+    ý (LLM thật, 10/10/2026). Cách nói khác do orchestrator khai lý do lập lịch (`structured_plan_allowed`).
     """
     if state.get("plan_consent") or state.get("intent_override"):
         return True
