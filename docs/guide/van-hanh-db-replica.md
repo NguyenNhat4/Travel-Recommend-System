@@ -1,5 +1,7 @@
 # Vận hành DB replica (staging)
 
+> **Staging cũ đã ngừng (13/10/2026).** Cặp primary/replica cũ đã nghỉ, staging dùng cụm Patroni (`docs/guide/van-hanh-db-patroni.md`). Workflow `infra-terraform-staging.yml`, Terraform `infra/terraform/environments/staging` và các script `ops/ci-db-replication.sh`, `ops/bootstrap-db-primary-replication.sh`, `ops/bootstrap-db-replica.sh`, `ops/db-replica-lag-probe.sh` đã gỡ khỏi repo (`docs/prd/update-archive/2026-10-13-ngung-ci-cd-staging-cu.md`). Các mục 1–5 và 6.1 chỉ còn giá trị tham khảo, lấy lại script từ một commit trước ngày này. Mục 6 (`ops/promote-db-replica.sh`) vẫn còn trong repo.
+
 Hướng dẫn dựng, kiểm tra và xử lý sự cố cho PostgreSQL replica. Kế hoạch: `docs/plan/2026-10-01-db-replica-terraform.md`. Cụm tự failover (Patroni, thay cho promote tay): `docs/guide/van-hanh-db-patroni.md`. Nếu lệch PRD, contract hoặc `AGENTS.md` thì các nguồn đó thắng.
 
 ## 1. Dựng lần đầu (tự động qua CI/CD)

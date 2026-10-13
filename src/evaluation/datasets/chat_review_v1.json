@@ -1,0 +1,74 @@
+[
+  {
+    "id": "R01",
+    "persona": "Đổi điểm đến không nêu nơi mới",
+    "turns": [
+      "Lên lịch Hà Nội cho mình",
+      "đổi sang chỗ khác",
+      "Huế"
+    ]
+  },
+  {
+    "id": "R02",
+    "persona": "Hỏi vé rẻ ra Hà Nội rồi hỏi tiếp ngày khác, đắt nhất, tại sao đắt (M05 lần 3)",
+    "turns": [
+      "có vé nào rẻ đi hn ko bạn",
+      "Vé máy bay ra Hà Nội rẻ nhất",
+      "Từ TP. Hồ Chí Minh",
+      "thế ngày khác thì sao",
+      "Đắt nhất thì sao?",
+      "tại sao đắt"
+    ]
+  },
+  {
+    "id": "R03",
+    "persona": "Tư vấn vé theo giờ và ngày",
+    "turns": [
+      "vé máy bay sài gòn ra hà nội",
+      "mình muốn đi sớm, ngày 20/10 có chuyến nào không",
+      "buổi tối thì sao",
+      "khi nào có vé khi nào không"
+    ]
+  },
+  {
+    "id": "R04",
+    "persona": "Hỏi vị trí một nơi gõ sai tên (M03 biến thể)",
+    "turns": [
+      "chùa thiên mậu ở đâu",
+      "chùa trấn quốc mấy giờ đóng cửa"
+    ]
+  },
+  {
+    "id": "R05",
+    "persona": "Khách sạn rẻ nhất, đắt nhất (M04)",
+    "turns": [
+      "khách sạn ở hà nội",
+      "rẻ nhất là chỗ nào",
+      "còn đắt nhất"
+    ]
+  },
+  {
+    "id": "R06",
+    "persona": "Xin form để điền",
+    "turns": [
+      "Khách sạn ở Sầm Sơn",
+      "Lên lịch Sầm Sơn cho mình",
+      "cho mình cái form"
+    ]
+  },
+  {
+    "id": "R07",
+    "persona": "Nói 'vé' không rõ loại (M06)",
+    "turns": [
+      "tao ở sài gòn, đi đâu cũng đc miễn vé rẻ",
+      "Vé máy bay rẻ nhất"
+    ]
+  },
+  {
+    "id": "R08",
+    "persona": "Ngày đi ngoài cửa sổ mở bán, cần nút (M09)",
+    "turns": [
+      "đi phú quốc 3 ngày từ 20/11, 2 người lớn, từ hà nội, 10 triệu"
+    ]
+  }
+]

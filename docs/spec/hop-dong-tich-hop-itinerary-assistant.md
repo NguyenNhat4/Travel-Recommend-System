@@ -348,9 +348,15 @@ Accept: text/event-stream
 
 Request giống `POST /assistant/itineraries`. Stream phát lần lượt `run.started`, `graph.topology`, các `node.completed`, rồi `run.completed` hoặc `run.failed`. Event chỉ chứa ID node, thứ tự, trạng thái, thời lượng và response công khai; không chứa raw graph state, prompt, token hoặc credential. Vì HTTP status đã được gửi khi mở SSE, lỗi phát sinh sau đó nằm trong payload `run.failed.httpStatus`.
 
+**Tiến trình 1.27.0 (AC-AGT-09, chốt Phần A/C 13/10/2026).** Stream bổ sung `node.activity` ngay khi node bắt đầu hoặc đang tìm/tra vé/kiểm giá; `node.completed.progress` có loại lượt, bước hoàn thành, thông tin đã hiểu, nhóm tìm kiếm và thông báo bằng mã. Nhóm cập nhật thay toàn bộ theo `groupId`; số là cộng dồn do code đếm tại nơi lọc. Thông báo thay theo `(code, groupId, date)`, không cộng; nhóm `superseded` bị ẩn cùng thông báo. Không đếm được đúng phạm vi (ví dụ câu vé kèm ngày/giờ và thẻ ngày lân cận) thì bỏ số đó, không dùng tổng nguồn để ước lượng. `run.preview` sau compose chỉ có tối đa 6 sản phẩm của lịch đã kiểm nguồn; Web đợi 5 giây từ lúc gửi rồi mới hiện, chỉ để xem. Hoàn tất/dừng/lỗi thì gỡ preview. Chẩn đoán mức 1 chỉ dùng stream công khai; không có chi tiết tool/LLM theo khoá (Phần B chưa chốt). Tiến trình không được lưu vào hội thoại. Collector theo request, không đổi response JSON, payload LLM, tham số tool hoặc state lưu; `application` nhận bộ đếm/callback tuỳ chọn và không import `agents`.
+
 `GET /api/v1/assistant/status` trả readiness, graph version, data mode (`fixture` | `inprocess` | `http` | `disabled`) và số sản phẩm nếu adapter biết (`fixture`: 50; `inprocess`: số search unit trong index RecSys đang phục vụ, `null` khi RecSys chưa nạp). `fixture` chỉ được bật mặc định ở development/test; ngoài development/test mặc định là `disabled`, nên staging/production phải đặt `ITINERARY_DATA_MODE` tường minh (`inprocess` khi chạy dữ liệu thật).
 
 #### API lịch sử hội thoại
+
+Tiến trình 1.28.0: scope công khai có thêm `scopeMode`, `excludedDestinations`, `requestedCount` trong nhóm tìm
+và công việc đã hiểu, để Web giải thích thay phạm vi và mục tiêu số lượng. Không gửi `query` hay suy luận thô.
+`requestedCount` là số lượng người dùng yêu cầu đã hiểu; số tìm thấy/giới thiệu chỉ lấy từ `counts`.
 
 - `GET /api/v1/assistant/conversations?page=1&pageSize=20`: danh sách hội thoại mới nhất trước.
 - `GET /api/v1/assistant/conversations/{conversationId}`: transcript đầy đủ và response có cấu trúc đã lưu.
@@ -474,11 +480,12 @@ Backend đếm `clarification_rounds` theo hội thoại (0, 1, 2…), chỉ tă
   ```
 
   `clarificationForm.fields` liệt kê mọi trường bắt buộc của chuyến đi (không chỉ trường còn thiếu), để người dùng sửa lại cả
-  những gì đã nói nếu muốn. `defaults` ưu tiên giá trị người dùng đã cung cấp; trường còn lại dùng gợi ý: `days` = 1,
-  `startDate` = hôm nay theo giờ Việt Nam (không được sớm hơn `startDateMin`), `party` = 2 người lớn, `budget` = `null`
-  (không giới hạn), `destination` = điểm đến đầu tiên trong `supported_destinations` nếu hội thoại đã từng gọi tool.
+  những gì đã nói nếu muốn. `defaults` ưu tiên giá trị người dùng đã cung cấp; trường còn lại: `days` = 1, `party` = 2
+  người lớn (stepper luôn hiện một số và form gửi đúng số đang hiện), `budget` = `null` (không giới hạn); `startDate` và
+  `destination` người dùng chưa nói thì để `null`, không tự điền hôm nay hay một điểm của catalog (cập nhật 2026-10-12,
+  review UX: form hiện sẵn ngày hôm nay làm người dùng tưởng đã chọn). Ngày đã qua cũng để `null`.
   Frontend tự nạp danh sách điểm đến cho ô chọn (`GET /destinations`, chỉ hiện vài điểm đến tiêu biểu, không đổ hết catalog)
-  và chặn tại chỗ: số ngày trong 1–7, `startDate ≥ startDateMin`. Bấm xác nhận dựng một câu yêu cầu hoàn chỉnh và **gửi
+  và chặn tại chỗ: số ngày trong 1–7, `startDate ≥ startDateMin`, chưa chọn điểm đến hoặc ngày đi thì chưa xác nhận được. Bấm xác nhận dựng một câu yêu cầu hoàn chỉnh và **gửi
   ngay** như một lượt chat bình thường (không dùng `intentOverride`). `suggestedValues` giữ nguyên hành vi cũ, không đổi.
 
 **Giá trị không hợp lệ thì hỏi lại (đề xuất `docs/prd/update-archive/2026-09-30-bao-loi-dau-vao-khong-hop-le.md`, đã áp dụng; thay `2026-09-30-hoi-lai-khi-ngay-di-da-qua.md`).**
@@ -502,7 +509,7 @@ trước. Ngày đi quá xa (ngoài cửa sổ mở bán) không thuộc nhóm n
 - **Gợi ý theo trường:** ngày đi → "chọn từ hôm nay (dd/mm/yyyy) trở đi"; điểm đến → danh sách điểm đến hỗ trợ (kèm
   `suggestedValues.destination`); số ngày → khoảng 1–7 (kèm `suggestedValues.days`); số người/ngân sách → giá trị tối thiểu hợp lệ.
 - **Còn thiếu điểm đến/số ngày:** câu vẫn nêu giá trị sai (ví dụ "di ngay 28 thang9" khi hôm nay là 30/9); `clarification_rounds`
-  vẫn tăng và từ vòng 2 vẫn kèm `clarificationForm` (điền sẵn hôm nay, không dùng ngày đã qua).
+  vẫn tăng và từ vòng 2 vẫn kèm `clarificationForm` (ô ngày đi để trống, không dùng ngày đã qua).
 - Số người lớn rất lớn hay ngân sách rất cao vẫn hợp lệ theo contract và vẫn lập lịch.
 - Ngày năm cũ LLM trích (ví dụ "20/9" thành 2023-09-20) vẫn sửa về năm nay trước khi kiểm, nên "20/9" nói vào ngày 30/9 là ngày
   đã qua và bị hỏi lại, không tự đẩy sang năm sau.
@@ -540,16 +547,17 @@ câu**, các dòng sau là phần chi tiết. Không có field mới: tiêu đ�
 - Backend cắt dòng tiêu đề khỏi tin nhắn trợ lý cũ khi đưa lịch sử lại cho LLM (`llm_context`), để mô hình không bắt chước hay trả
   lời tiêu đề; bản lưu và `final_answer` giữ nguyên tiêu đề.
 
-**Giọng văn.** Mọi câu LLM viết ở `clarify` và `converse` ấm áp, 2–4 câu (từ chối và trò chuyện 1–3 câu): nói ngắn vì sao cần
+**Giọng văn.** Mọi câu LLM viết (orchestrator, `clarify`) ấm áp, 2–4 câu (từ chối và trò chuyện 1–3 câu): nói ngắn vì sao cần
 thông tin, cho ví dụ cách trả lời khi cần, không nêu tên sản phẩm. `ConversationalAnswer.message` tối đa 1.000 ký tự. Câu của
 `compose` (COMPLETED/NO_RESULTS/FALLBACK) không đổi; lời diễn giải của `COMPLETED` do `narrate` viết (xem §4.2), giọng ấm áp như một người lập kế hoạch du lịch, mỗi lựa chọn có lý do cụ thể.
 
 **Lượt trò chuyện và khám phá (contract 1.24.0, FR-AGT-06, chốt 2026-10-10).** Trước khi người dùng đồng ý lập lịch, trợ lý
 không hỏi thông tin chuyến và không gửi `clarificationForm`:
 
-- Câu hỏi về một nơi ("Hà Nội có gì?", "khách sạn nào có hồ bơi?") trả `NEEDS_CLARIFICATION` có `searchResults`: tối đa 4 sản
-  phẩm thật từ Search của lượt đó (hỏi chung thì 2 điểm tham quan và 2 khách sạn, hỏi riêng chỗ ở thì 4 khách sạn), mỗi thẻ
-  một lý do đúng trên toàn bộ kết quả (nhiều đánh giá nhất, điểm cao nhất, giá thấp nhất, tham quan tự do). `question` nhắc từng
+- Câu hỏi về một nơi ("Hà Nội có gì?", "khách sạn nào có hồ bơi?") trả `NEEDS_CLARIFICATION` có `searchResults`: sản phẩm
+  thật từ tool của lượt đó; khi không nêu số lượng, tối đa 3 điểm tham quan/tour và 2 khách sạn khi hỏi chung, 4 khi hỏi riêng chỗ ở (đoạn
+  "Orchestrator" dưới đây), mỗi thẻ một lý do đúng trên toàn bộ kết quả (nhiều đánh giá nhất, điểm cao nhất, giá thấp nhất,
+  tham quan tự do). `question` nhắc từng
   sản phẩm bằng `[Tên](product:<productId>)`; client đặt thẻ ngay sau dòng đầu tiên nhắc nó. Số trong câu do backend điền.
   Lần đầu khám phá một điểm đến, câu cuối hỏi "Bạn có muốn mình lên lịch … không?".
 - Lượt trò chuyện, khám phá và việc ngoài phạm vi có `suggestions` (tối đa 3 nút, khác mẫu câu, không lặp lượt trước, luôn có
@@ -558,9 +566,10 @@ không hỏi thông tin chuyến và không gửi `clarificationForm`:
 - Đồng ý lập lịch: câu xin lập lịch, nút lập lịch, sửa form/chip, "ok" sau lời mời, hoặc câu có thông tin chuyến ngoài điểm
   đến ("Hà Nội 3 ngày"). Sau đó đi luồng hỏi gộp và form như trên. Đổi sang nơi khác ngay sau lời mời ("Thôi, Hà Nội thì
   sao?") không phải đồng ý: trợ lý khám phá nơi mới.
-- Form có ô `interests` (sở thích khách sạn, chọn nhiều, không bắt buộc) với lựa chọn trong `clarificationForm.interestOptions`;
-  Web ghép lựa chọn vào câu xác nhận "ưu tiên khách sạn có …". Sở thích là ưu tiên khi tìm khách sạn, không loại khách sạn
-  thiếu dữ liệu tiện ích.
+- Form có ô `interests` (không bắt buộc; contract 1.26.0, AC-AGT-01 chốt 12/10): 5 lựa chọn cố định trong
+  `clarificationForm.interestOptions` (chọn nhiều) và một ô tự nhập tối đa 150 ký tự; không có nút AI. Web ghép lựa chọn
+  vào câu xác nhận "ưu tiên khách sạn có …", phần tự nhập đi sau đó. Sở thích là ưu tiên khi tìm khách sạn, không loại
+  khách sạn thiếu dữ liệu tiện ích.
 - Nơi người dùng chê ("chán, Đà Nẵng đi rồi") không được gợi ý lại trong hội thoại, kể cả trong `suggestions`.
 - Người dùng không muốn đi hay lên lịch nữa ("ko đi nữa", "thôi huỷ lịch trình"; AC-AGT-01, chốt 2026-10-12), ở cả trước và
   sau khi đồng ý lập lịch: `NEEDS_CLARIFICATION` chỉ có `question` cảm ơn, hẹn gặp lại (không tiêu đề, không `missingFields`,
@@ -570,6 +579,48 @@ không hỏi thông tin chuyến và không gửi `clarificationForm`:
   `suggestions` "Lấy phương án N: …" (gửi lại câu này là đổi ngay như `selectStayOption`). "Đổi chuyến bay" thì liệt kê chuyến
   khác cùng ngày của từng chặng, mỗi chuyến một nút ("Về chuyến VJ167 lúc 21:45"); gửi nút đó, hoặc "chuyến về muộn hơn/sớm
   hơn/rẻ hơn", thì trả `COMPLETED` với chuyến đã chọn. Không còn chuyến nào khác trong ngày thì gợi ý đổi ngày.
+
+**Orchestrator (chốt 2026-10-12, luồng duy nhất từ 2026-10-13; FR-AGT-01/06/07, AC-AGT-05/06/07/08, NFR-REL-01).**
+Schema nội bộ OrchestratorTurn, Job; không đổi OpenAPI hay field công khai. Luật trước LLM nằm ở `precheck`; tin bị chặn
+nhận câu cố định từ `converse`, không gọi LLM. Một LLM quyết answer/ask/plan/execute; explore là nhóm tool code chạy,
+không LLM riêng, nhánh lập lịch và narrate giữ nguyên. Không nêu số lượng: tối đa 3 thẻ tham quan/tour, 2 khách sạn khi hỏi chung
+hoặc 4 khi chỉ hỏi chỗ ở. Contract 1.28.0/AC-AGT-06 (chốt 13/10): nêu số lượng thì dùng `Job.requested_count`, code
+áp trần tổng 20, trả một phần và nói rõ khi thiếu dữ liệu/ngân sách. `NEEDS_CLARIFICATION.searchResults` dùng schema
+`ExplorationSearchResults`, tối đa 20 mỗi nhóm (flight vẫn 4); backend kiểm tổng 20 trước finalize. Không nới số
+hoạt động của lịch trình. More loại thẻ đã hiện cả hội thoại theo điểm đến + taxonomy, chỉ kế thừa điều kiện chung
+trong via; null destination là tìm không giới hạn thành phố. `scope_mode=replace` bỏ kế thừa khi tin mới đổi phạm vi,
+`excluded_destinations` chỉ áp cho việc đó và lượt tìm thêm kế thừa, không đánh dấu chê nơi cho cả hội thoại.
+About_shown chỉ tra lại đúng mã được hỏi. So rẻ/đắt hơn tra lại mốc giá cùng đơn vị, giữ các điều kiện chưa đổi.
+Tin nhiều việc gộp trong question/searchResults; code chèn khối vé nguyên văn. Một câu hỏi; các việc vé asked khác chờ
+đúng một lượt sau. Chỉ thay asked khi việc sau khai replaces và chỉ điền đúng trường thiếu; giữ các yêu cầu độc lập.
+Thẻ/link/số chỉ từ dữ liệu tra và đưa vào bản rút gọn của lượt; LLM dùng #n và placeholder; so mốc ghi job. Không tra chỉ
+nhắc tên đã gợi ý lúc trước. Code có phanh 3 việc/vòng, 3 vòng execute, 10 tool và thời gian, nêu việc chưa làm.
+Từ chối/dừng xoá pending_offer ngay lượt; chỉ câu mời được chèn tạo lời mời, nút không tạo. Đồng ý kiểm trước extract,
+trip_details kiểm thông tin trích được trước clarify/tool. Finalize kiểm lại bản trước điền số và ghi shown từ response
+cuối; cap 40 dòng facts mỗi nơi không xoá bộ nhớ ID/mã/phạm vi của thẻ từng hiện. Model riêng cấu hình trong Backend README.
+
+**Tư vấn vé máy bay (contract 1.25.0, FR-AGT-07, chốt 2026-10-11).** Câu hỏi vé máy bay trả `NEEDS_CLARIFICATION`, không lập
+lịch (kể cả khi đã có lịch):
+
+- `question` gọn, chỉ nêu chuyến trả lời câu hỏi (rẻ nhất/đắt nhất cả đợt mở bán, đúng ngày hỏi, trong khung giờ hỏi, đợt mở
+  bán và các ngày chưa có chuyến, hoặc "tại sao đắt"); chuyến đó là link `[Hãng Số hiệu](product:<productId>)`.
+- `searchResults.flight`: tối đa 4 chuyến một chiều thật của tuyến được hỏi, lấy từ danh sách chuyến của tuyến trong catalog
+  (`GET /products?parentProductId=<tuyến>`), chuyến `question` nêu đứng đầu. Web gom các chuyến này thành một hàng thẻ
+  ngày–giá đặt ở dòng đầu tiên nhắc chuyến; mỗi thẻ ghi thứ, ngày, giá/khách, giờ cất cánh, hãng và mở
+  `/flights?origin=<nơi đi>&destination=<nơi đến>&checkIn=<ngày bay>`. So nhiều tuyến ("đi đâu cũng được") thì thẻ ghi
+  thêm nơi đến.
+- "Tại sao đắt": catalog không có hạng vé, hành lý hay số ghế còn lại, nên câu nói rõ không khẳng định được lý do, chỉ nêu số
+  liệu (gấp bao nhiêu lần vé rẻ nhất, so với giá phổ biến của tuyến, khác hãng, bay sát ngày) và kèm thẻ của chính vé đó.
+- Câu chỉ nói "vé" (không rõ máy bay, khách sạn hay tham quan) thì hỏi lại kèm 3 nút; `suggestions` của câu trả lời vé
+  ("Từ TP. Hồ Chí Minh", "Đắt nhất thì sao?", "Ngày nào còn vé?") gửi lại nguyên văn là đi thẳng nhánh vé.
+
+**Các nút khác (1.25.0).**
+
+- `COMPLETED` có thể có `suggestions` (tối đa 3). Lịch tham khảo khi ngày đi chưa mở bán có nút "Đi <nơi> <n> ngày từ ngày
+  <ngày gần nhất còn bán>"; gửi lại câu này là lập lại lịch đặt được ngay.
+- "Đổi sang chỗ khác" chưa nêu nơi mới: `NEEDS_CLARIFICATION` hỏi đổi sang đâu, không có `clarificationForm`, `suggestions` là
+  3 nút "Đổi sang <nơi>" (điểm đến khác của catalog).
+- Người dùng xin form ("cho mình cái form"): lượt đó luôn có `clarificationForm` điền sẵn.
 
 ### 4.4. Response không có kết quả
 
@@ -708,7 +759,7 @@ Lỗi thực sự không nằm trong `ItineraryResponse` và không dùng `statu
 
 - Mỗi conversation lưu trip intent đã chuẩn hóa gần nhất và lịch sử chat user/assistant gần đây.
 - Lịch sử chat chỉ nhận role `user`/`assistant`, tối đa 20 message, 1.000 ký tự/message và 8.000 ký tự tổng; khi vượt giới hạn thì bỏ message cũ nhất trước.
-- **Mọi** lượt gọi LLM (`classify`, `extract`, chọn tên điểm đến và lập tool plan ở `tool`, `converse`, `clarify`) nhận cùng ngữ cảnh hội thoại: lịch sử chat trong giới hạn trên, chuyến đi đã chốt (intent, ràng buộc), sản phẩm đã cho xem và câu hỏi gần nhất của trợ lý. Nhờ phần tóm tắt, thông tin của lượt cũ vẫn còn khi message cũ bị cắt. Ngữ cảnh là dữ liệu không tin cậy, không phải instruction, và message mới nhất vẫn có quyền cao hơn. Ngữ cảnh được diễn giải sẵn: chuyến đi đã chốt là một dòng tóm tắt, tin trợ lý cũ là ghi chú ngắn theo nghĩa ("gửi lịch trình Hà Nội 3 ngày: …") thay vì cả bài kèm giá; câu hỏi gần nhất giữ nguyên văn khi ngắn (`docs/spec/agent/langgraph-nodes.md`, mục "Ngữ cảnh cho LLM").
+- **Mọi** lượt gọi LLM (`orchestrate`, `extract`, chọn tên điểm đến và lập tool plan ở `tool`, `clarify`, `filter`, `narrate`) nhận cùng ngữ cảnh hội thoại: lịch sử chat trong giới hạn trên, chuyến đi đã chốt (intent, ràng buộc), sản phẩm đã cho xem trong cả hội thoại (mỗi sản phẩm một mã `#n` và một dòng thông tin, kèm lịch gần nhất tóm theo mã; tối đa 2.000 ký tự) và câu hỏi gần nhất của trợ lý. Nhờ phần tóm tắt, thông tin của lượt cũ vẫn còn khi message cũ bị cắt. Ngữ cảnh là dữ liệu không tin cậy, không phải instruction, và message mới nhất vẫn có quyền cao hơn. Ngữ cảnh được diễn giải sẵn: chuyến đi đã chốt là một dòng tóm tắt, tin trợ lý cũ là ghi chú ngắn theo nghĩa ("gửi lịch trình Hà Nội 3 ngày: …") thay vì cả bài kèm giá; câu hỏi gần nhất giữ nguyên văn khi ngắn (`docs/spec/agent/langgraph-nodes.md`, mục "Ngữ cảnh cho LLM").
 - Hội thoại lưu thêm giai đoạn trò chuyện/khám phá (FR-AGT-06): đã đồng ý lập lịch chưa, lời mời đang chờ, điểm đến đã mời,
   số lần "không biết" liên tiếp và nút gợi ý lượt trước (`docs/spec/agent/state-fields.md`). Hội thoại lưu trước 2026-10-10
   đã hỏi gộp hoặc đã có lịch thì coi như đã đồng ý.
@@ -716,6 +767,7 @@ Lỗi thực sự không nằm trong `ItineraryResponse` và không dùng `statu
 - “Đổi thành Đà Nẵng” chỉ thay `destination`.
 - “Tăng ngân sách lên 20 triệu” chỉ thay `budget`.
 - Thực hiện tìm kiếm lại khi điểm đến, ngày, ngân sách, số người hoặc sở thích thay đổi.
+- Mọi lượt lưu thêm `shown`: sản phẩm response vừa hiện (thẻ khám phá, thẻ vé, sản phẩm của lịch), mỗi cái một mã `#n` giữ suốt hội thoại, tối đa 40 mục mỗi điểm đến hoặc tuyến bay (`docs/spec/agent/state-fields.md`). Chỉ để nhớ, loại, so; không phải nguồn sản phẩm hay giá của response.
 - Lượt `COMPLETED` lưu thêm `previous_selection` (`productId`, `name`, `taxonomy` của sản phẩm đã hiển thị). Lượt sau dùng danh sách này làm danh sách cho phép khi loại sản phẩm người dùng muốn đổi và khi chọn sản phẩm gốc cho Similar (§2.5).
 - Không dùng trạng thái hội thoại làm nguồn chính thức cho giá và availability.
 - Working memory trong Redis hết hạn sau 24 giờ; archive Postgres của user đăng nhập không tự xoá.

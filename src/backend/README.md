@@ -23,6 +23,17 @@ Mọi adapter Postgres mở kết nối qua `infrastructure/persistence/db_conne
 
 RecSys embed bằng `intfloat/multilingual-e5-small` (384 chiều) chạy local trong tiến trình (`infrastructure/embeddings/local_e5_embedder.py`, `transformers` + `torch` CPU, revision ghim `EMBED_MODEL_REVISION`; PRD FR-SRC-02, chốt 06/10/2026). Job index thêm tiền tố `passage: `; request tìm kiếm thêm `query: `. Lần đầu chạy tải model (~470 MB) về cache Hugging Face; image Docker đã tải sẵn và chạy `HF_HUB_OFFLINE=1`. `WEAVIATE_URL`, `VECTOR_COLLECTION` (mặc định `ProductE5Small`; biến cũ `WEAVIATE_COLLECTION` không còn được đọc) và `SEARCH_CUTOFF` (mặc định `0.84`) được đọc qua `core/config.py`; không dùng dịch vụ embedding ngoài (Cohere đã bỏ 06/10/2026). Job index (`python -m src.backend.jobs.embed_products`) **từ chối** ghi vào collection đang chứa vector của model khác (không trộn hai không gian vector). Job embed tuần tự theo lô 96 (torch tự dùng nhiều luồng CPU). Chỉ luồng chính ghi Weaviate, lô nào xong ghi ngay, lỗi giữa chừng vẫn giữ phần đã ghi. `--force` nhúng lại toàn bộ (chỉ để đo). Search lúc chạy API không bị giới hạn này. Weaviate chỉ giữ vector + `productId`/`modelVersion`/`textHash`; tên, giá, ảnh và availability luôn hydrate từ PostgreSQL. Metadata nạp lúc khởi động rồi nạp lại mỗi `CATALOG_REFRESH_SECONDS` (mặc định 900 giây); lần nạp lại chỉ kéo lại catalog khi mã băm phía Postgres đổi, còn kiểm vector và độ phổ biến vẫn chạy mỗi chu kỳ; lần nạp lại lỗi thì giữ bản đang phục vụ. Search unit chưa có vector (job index chưa chạy xong) vẫn có giá mới nhưng chưa tìm được qua vector. Vector **truy vấn** được cache trong tiến trình (`application/search/query_cache.py`, LRU `SEARCH_EMBED_CACHE_SIZE`, khoá = câu sau chuẩn hoá; `diagnostics.embedCache` hit/miss, contract 1.12.0) và nạp sẵn ở nền sau lần nạp catalog đầu (`SEARCH_PREWARM`, file `data/search_prewarm_queries.txt` + head query `app.search_logs`); `python -m src.backend.jobs.prewarm_query_cache --base-url URL` làm nóng một backend đang chạy qua HTTP. Job index có `--lexical-only`: chỉ ghi property BM25 còn thiếu và từ chối khi catalog lệch index (không embed, không xoá). Chưa nạp được lần nào — thiếu PostgreSQL, Weaviate, model embedding, hoặc dưới một nửa search unit có vector đúng model — thì RecSys tắt và thử lại sau 30 giây, các route còn lại vẫn chạy.
 
+`/recommendations` (chốt 2026-10-12, `docs/plan/2026-10-12-goi-y-trang-chu-cache-redis-va-ke-pho-bien.md`):
+
+- **Gọi song song:** các lượt Weaviate độc lập chạy trên pool `recsys-io` (`RECOMMEND_IO_WORKERS`, 0 = tuần tự).
+- **Vector theo id trong RAM:** nạp ở nền sau mỗi lần nạp catalog (`RECOMMEND_PRELOAD_VECTORS`). ANN vẫn qua Weaviate.
+- **Đọc tối đa 500 event** mỗi khách.
+- **Cache kết quả trên Redis** (`RECOMMEND_CACHE_REDIS_URL`, DB index riêng, `RECOMMEND_CACHE_TTL_SECONDS` mặc định 900; trống = tắt):
+  - Khoá chứa dấu vân tay toàn bộ event vừa đọc từ CDP, nên event mới luôn tính lại.
+  - Redis lỗi hoặc chậm quá 100 ms thì tính trực tiếp.
+- **Làm ấm sau đăng nhập:** khi cache bật, `/auth/login` và `/auth/session` thành công thì tính trước đúng request của trang chủ (`k=4`, không destination). Việc chạy trên pool riêng 2 thread, không làm chậm đăng nhập.
+- **Log:** `recsys.recommend` có `stage_ms`, `cache`, `events_read`; làm ấm ghi `recsys.cache.warm`.
+
 Endpoint hiện có (prefix `/api/v1`): `GET /search/suggestions` (`q`, `limit` ≤ 10; gợi ý tức thì khi gõ, khớp chữ trên catalog trong bộ nhớ, không embed, không ghi event; FR-SRC-05) · `GET|POST /search` (`q`/`query`, `taxonomy`, `destination`, `limit`, `offset`;
 ở `ITINERARY_DATA_MODE=http`, adapter đổi tham số tool `query` thành `q`) · `GET /similar/{productId}?k=` · `GET /recommendations?k=&destination=`
 (JWT tùy chọn, `cdp_user_id` lấy từ token; token hỏng → 401, không hạ thành khách) · `GET /destinations` ·
@@ -149,6 +160,21 @@ ITINERARY_LLM_TEMPERATURE=0     # riêng của agent, không dùng chung LLM_TEM
 ITINERARY_LLM_REASONING_EFFORT= # chỉ OpenAI; model reasoning cần "none" để dùng tool calling; bỏ trống = không gửi
 ITINERARY_REDIS_URL=redis://:devpass@localhost:6379/2  # working memory 24h; bắt buộc production
 ```
+
+Orchestrator là luồng duy nhất của trợ lý (FR-AGT-06/07; chốt 12/10, luồng phân loại cũ và cờ bật/tắt gỡ 13/10):
+
+```env
+ITINERARY_ORCHESTRATOR_MODEL=gpt-6.1-sol
+ITINERARY_ORCHESTRATOR_PROVIDER=openai
+ITINERARY_ORCHESTRATOR_REASONING_EFFORT=low  # số khởi đầu, chọn lại theo số đo
+```
+
+Bỏ trống model thì dùng chung client của agent; chọn model phải khai provider và có khoá tương ứng. Thiếu khoá/dựng lỗi
+thì startup cảnh báo `startup.itinerary_orchestrator.fallback` và dùng model chung. Client riêng chỉ gọi JSON schema;
+GPT-6.1 Sol không gửi temperature và không dùng `none`/`minimal` reasoning. Các bước lập lịch giữ model chung.
+`precheck` (luật trước LLM) → `orchestrate` → `run_jobs` → `gatekeep`: tối đa 3 việc/vòng, 3 vòng execute, 10 lời gọi tool
+và ngân sách `ITINERARY_REQUEST_TIMEOUT_SECONDS` (chừa thời gian cho finalize). Dừng sớm có mã nguyên nhân
+(`agents/steps/limits.py`) trong log `itinerary.turn_limit`.
 
 User đăng nhập được ghi thêm transcript vào `app.conversations`/`app.conversation_messages`; lỗi archive
 không làm hỏng lượt chat. Khách không được lưu lâu dài. Web đọc lại lịch sử qua hai endpoint

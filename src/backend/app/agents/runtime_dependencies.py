@@ -7,6 +7,12 @@ from src.backend.app.application.ports.itinerary_tools import ConversationStoreP
 from src.backend.app.application.ports.conversation_archive import ConversationArchivePort
 from src.backend.app.application.ports.llm import ChatModelPort
 from .graph import build_graph
+from .steps.progress import collecting
+
+
+def orchestrator_budget(request_timeout_seconds: float) -> float:
+    """Ngân sách thời gian của orchestrator trong một lượt: chừa một phần nhỏ của hạn request cho gatekeep/finalize/store."""
+    return max(0.1, request_timeout_seconds - min(1.0, request_timeout_seconds / 10))
 
 
 class LangGraphItineraryPlanner:
@@ -18,8 +24,10 @@ class LangGraphItineraryPlanner:
     async def ainvoke(self, inputs: dict[str, Any], config: dict[str, Any] | None = None) -> dict[str, Any]:
         return await self._graph.ainvoke(inputs, config=config)
 
-    def astream(self, inputs: dict[str, Any], config: dict[str, Any] | None = None) -> AsyncIterator[dict[str, Any]]:
-        return self._graph.astream(inputs, stream_mode="values", config=config)
+    async def astream(self, inputs: dict[str, Any], config: dict[str, Any] | None = None) -> AsyncIterator[tuple[str, dict[str, Any]]]:
+        with collecting():
+            async for mode, payload in self._graph.astream(inputs, stream_mode=['values', 'custom'], config=config):
+                yield ('state' if mode == 'values' else 'event', payload)
 
     def topology(self) -> dict[str, Any]:
         drawing = self._graph.get_graph()
@@ -37,7 +45,10 @@ class RuntimeAgentDependencies:
                  llm: ChatModelPort | None = None, authorization: str | None = None,
                  *, owner: str | None = None, archive: ConversationArchivePort | None = None,
                  tool_timeout_seconds: float = 1.0,
-                 llm_timeout_seconds: float = 2.0):
+                 llm_timeout_seconds: float = 2.0,
+                 orchestrator_llm: ChatModelPort | None = None, orchestrator_budget_seconds: float = 10.0):
+        self.orchestrator_llm = orchestrator_llm
+        self.orchestrator_budget_seconds = orchestrator_budget_seconds
         self.tools = tools
         self.store = store
         self.llm = llm
@@ -59,7 +70,9 @@ class RuntimeAgentDependencies:
                            archive=self.archive, cdp_user_id=self.cdp_user_id,
                            require_recommendations=self.require_recommendations,
                            tool_timeout_seconds=self.tool_timeout_seconds,
-                           llm_timeout_seconds=self.llm_timeout_seconds)
+                           llm_timeout_seconds=self.llm_timeout_seconds,
+                           orchestrator_llm=self.orchestrator_llm,
+                           orchestrator_budget_seconds=self.orchestrator_budget_seconds)
 
     def planner(self) -> LangGraphItineraryPlanner:
         return LangGraphItineraryPlanner(self.graph())

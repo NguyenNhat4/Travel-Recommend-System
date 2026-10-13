@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Travel Recommendation Product API
-  version: 1.24.0
+  version: 1.28.0
   description: 'Contract chung cho frontend Next.js và backend Python/FastAPI. Nguồn mô tả nghiệp vụ:
     docs/spec/hop-dong-tich-hop-backend.md (Auth, Catalog, Search, Recommendation, Booking) và docs/spec/hop-dong-tich-hop-frontend.md
     (góc nhìn Web, đề xuất ItineraryResponse hợp nhất). Khi tài liệu và file này mâu thuẫn, file này thắng.'
@@ -390,6 +390,8 @@ components:
       $ref: ./schemas/itinerary-agent.yaml#/ItineraryPlan
     SearchResultsByTaxonomy:
       $ref: ./schemas/itinerary-agent.yaml#/SearchResultsByTaxonomy
+    ExplorationSearchResults:
+      $ref: ./schemas/itinerary-agent.yaml#/ExplorationSearchResults
     ItineraryWarning:
       $ref: ./schemas/itinerary-agent.yaml#/ItineraryWarning
     ItineraryMetadata:
@@ -420,3 +422,21 @@ components:
       $ref: ./schemas/itinerary-agent.yaml#/AssistantStreamEvent
     TrackEventRequest:
       $ref: ./schemas/events.yaml#/TrackEventRequest
+    AssistantProgressCounts:
+      $ref: ./schemas/itinerary-agent.yaml#/AssistantProgressCounts
+    AssistantSearchGroup:
+      $ref: ./schemas/itinerary-agent.yaml#/AssistantSearchGroup
+    AssistantProgressNotice:
+      $ref: ./schemas/itinerary-agent.yaml#/AssistantProgressNotice
+    AssistantUnderstood:
+      $ref: ./schemas/itinerary-agent.yaml#/AssistantUnderstood
+    AssistantArrangeSummary:
+      $ref: ./schemas/itinerary-agent.yaml#/AssistantArrangeSummary
+    AssistantProgressUpdate:
+      $ref: ./schemas/itinerary-agent.yaml#/AssistantProgressUpdate
+    AssistantNodeCompletedData:
+      $ref: ./schemas/itinerary-agent.yaml#/AssistantNodeCompletedData
+    AssistantNodeActivity:
+      $ref: ./schemas/itinerary-agent.yaml#/AssistantNodeActivity
+    AssistantRunPreview:
+      $ref: ./schemas/itinerary-agent.yaml#/AssistantRunPreview

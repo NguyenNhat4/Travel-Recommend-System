@@ -168,11 +168,14 @@ export function useFloatingWidget() {
         id: item.id,
         sender: item.sender,
         text: item.text,
+        progress: item.progress,
         plan,
         products,
         stayOptions,
         clarificationForm: item.response?.status === 'NEEDS_CLARIFICATION' ? item.response.clarificationForm : undefined,
+        // COMPLETED có nút gợi ý từ contract 1.25.0 (ví dụ lập lại lịch từ ngày còn mở bán), cùng cách hiện như hỏi lại.
         suggestions: item.response?.status === 'NO_RESULTS' || item.response?.status === 'NEEDS_CLARIFICATION'
+          || item.response?.status === 'COMPLETED'
           ? item.response.suggestions
           : undefined,
       };

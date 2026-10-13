@@ -10,7 +10,7 @@ from src.backend.app.domain.itinerary.normalization import fold
 from src.backend.app.domain.itinerary.planning import empty_intent
 
 from ..models import ConversationalAnswer
-from . import exploration, messages
+from . import messages, replies
 from .classification import TRIP_DETAILS, vietnam_today
 from .explanations import constraint_question
 from .history import llm_context, prompt_yaml
@@ -26,26 +26,25 @@ DEFAULT_FORM_PARTY = {"type": None, "adults": 2, "children": 0}
 
 
 def clarification_form(state: dict) -> dict:
-    """Form đã điền sẵn gợi ý, gửi kèm khi hỏi bằng câu chữ một lượt vẫn chưa đủ thông tin.
+    """Form đã điền sẵn thông tin đã biết, gửi kèm khi hỏi bằng câu chữ một lượt vẫn chưa đủ thông tin.
 
-    Giá trị người dùng đã nói luôn thắng giá trị gợi ý. `destination` để `None` khi hội thoại chưa từng
-    gọi tool (chưa có danh sách catalog); frontend tự nạp danh sách điểm đến cho ô chọn.
+    Giá trị người dùng đã nói luôn thắng giá trị gợi ý. Số ngày và số người có giá trị gợi ý vì stepper luôn hiện một số
+    và form gửi đúng số đang hiện. Điểm đến và ngày đi người dùng chưa nói thì để `None`: không chọn sẵn một điểm của
+    catalog hay ngày hôm nay mà người dùng chưa chọn (review UX 12/10); ngày đã qua cũng để trống. Frontend tự nạp danh
+    sách điểm đến cho ô chọn và chỉ cho xác nhận khi đã chọn đủ hai ô này.
     """
     today = vietnam_today().isoformat()
     known = {key: value for key, value in (state.get("intent") or {}).items() if value is not None}
     defaults = {**empty_intent(), **deepcopy(known)}
     if defaults.get("days") is None:
         defaults["days"] = DEFAULT_FORM_DAYS
-    if not defaults.get("startDate") or defaults["startDate"] < today:
-        defaults["startDate"] = today
+    if defaults.get("startDate") and defaults["startDate"] < today:
+        defaults["startDate"] = None
     if defaults.get("party") is None:
         defaults["party"] = deepcopy(DEFAULT_FORM_PARTY)
-    if defaults.get("destination") is None:
-        supported = state.get("supported_destinations") or []
-        defaults["destination"] = supported[0] if supported else None
     defaults["interests"] = _form_interests(defaults)
     return {"fields": [*FORM_FIELDS, "interests"], "defaults": defaults, "startDateMin": today,
-            "interestOptions": preferences.labels()}
+            "interestOptions": preferences.labels(), "autoOpen": bool(state.get("form_request"))}
 
 
 def _form_interests(intent: dict) -> list[str]:
@@ -79,11 +78,14 @@ def _form_shown(state: dict) -> bool:
     Không kèm khi đang hỏi chọn điểm đến theo loại ("đi biển"): form điền sẵn điểm đến đầu catalog, có thể không hợp loại.
     """
     reason = state.get("clarification_reason")
-    if reason == "destination_kind":
+    if reason in ("destination_kind", "change_without_value"):
         return False
+    if state.get("form_request"):
+        # Người dùng xin form ("cho mình cái form"): đưa form điền sẵn ngay lượt này.
+        return True
     if reason == "suggest_form":
         return True
-    return state.get("clarification_rounds", 0) >= 2 and bool({"destination", "days"} & set(state.get("missing_fields") or []))
+    return bool({"destination", "days", "startDate", "party"} & set(state.get("missing_fields") or []))
 
 
 def invalid_title(state: dict) -> str:
@@ -138,7 +140,7 @@ def conversation_input(state: dict) -> list:
                "plan_consent": bool(state.get("plan_consent")),
                "pending_offer": state.get("pending_offer"),
                "dont_know_level": int(state.get("dont_know_count", 0) or 0),
-               "catalog_destinations": (state.get("supported_destinations") or [])[:exploration.CATALOG_HINT],
+               "catalog_destinations": (state.get("supported_destinations") or [])[:replies.CATALOG_HINT],
                "previous_suggestions": state.get("last_suggestions", []),
                "rejected_destinations": state.get("rejected_destinations", [])}
     if state.get("clarification_reason") == "invalid_input":
@@ -151,8 +153,22 @@ def conversation_input(state: dict) -> list:
     elif state.get("clarification_reason") == "change_without_value":
         # Để LLM đoán năm khi hỏi xác nhận một câu trả lời chưa đọc được ("1410" → "14/10/2026?").
         payload["today"] = display_date(vietnam_today().isoformat())
+        if destination_choices(state):
+            payload["destination_choices"] = destination_choices(state)
     return [("system", CONVERSATION_PROMPT + f"\nReply in {language}."),
             ("human", prompt_yaml(payload))]
+
+
+def destination_choices(state: dict) -> list[str]:
+    """"Đổi sang chỗ khác" chưa nêu nơi mới: ba điểm đến khác của catalog (nhiều sản phẩm trước) làm nút và làm ví dụ
+    trong câu hỏi, để chữ và nút nêu cùng các nơi (chat thử 11/10). Người dùng vẫn gõ được nơi bất kỳ."""
+    if state.get("clarification_reason") != "change_without_value" or "destination" not in (
+            state.get("missing_fields") or []):
+        return []
+    current = fold((state.get("intent") or {}).get("destination"))
+    rejected = {fold(name) for name in state.get("rejected_destinations") or []}
+    return [name for name in state.get("supported_destinations") or []
+            if fold(name) != current and fold(name) not in rejected][:3]
 
 
 def _question_response(state: dict, question: str) -> dict:
@@ -168,6 +184,9 @@ def _question_response(state: dict, question: str) -> dict:
         suggested["days"] = list(range(1, 8))
     if suggested:
         response["suggestedValues"] = suggested
+    choices = destination_choices(state)
+    if choices:
+        response["suggestions"] = [message(state, "chip_change_destination", destination=name) for name in choices]
     # Lượt hỏi đầu dùng câu chữ; hỏi rồi mà vẫn thiếu điểm đến/số ngày thì đưa form thay vì hỏi lại y hệt.
     if _form_shown(state):
         response["clarificationForm"] = clarification_form(state)
@@ -191,8 +210,8 @@ def with_suggestions(state: dict, update: dict, proposed: list[str] | None = Non
     if not state.get("offer_suggestions") or response.get("status") != "NEEDS_CLARIFICATION":
         return update
     supported = state.get("supported_destinations") or []
-    suggestions = exploration.checked_suggestions(proposed or [], state.get("last_suggestions", []),
-                                                  exploration.conversation_templates(state, supported),
+    suggestions = replies.checked_suggestions(proposed or [], state.get("last_suggestions", []),
+                                                  replies.conversation_templates(state, supported),
                                                   destinations=supported, avoid=state.get("rejected_destinations"))
     if not suggestions:
         return update
@@ -203,13 +222,6 @@ def conversational_update(state: dict, result: ConversationalAnswer) -> dict:
     """Câu LLM viết ra. Yêu cầu ngoài phạm vi (đặt vé hộ, chuyện ngoài du lịch) là câu trả lời thường 200 kèm nút, không
     còn là lỗi 400 (FR-AGT-06, chốt 2026-10-10); chỉ đầu vào bị guardrail chặn mới bị từ chối bằng lỗi."""
     answer = ConversationalAnswer.model_validate(result)
-    if state.get("explore_place") and state.get("explore_focus") != "hotels" and not state.get("blocked_by_guardrail") \
-            and not state.get("refusal"):
-        # Hỏi về một nơi cụ thể mà không tra ra nơi đó trong catalog: `converse` không có dữ liệu nơi đó, câu LLM viết
-        # có thể tự nói giờ, giá ("Văn Miếu không mở buổi tối" — sai, chat thử M03). Thay bằng câu cố định, giữ nút.
-        answer = answer.model_copy(update={"title": message(state, "title_unverified_fact"),
-                                           "message": message(state, "unverified_fact",
-                                                              place=state["explore_place"])})
     fallback_title = reply_title(state)
     # Dòng đầu in đậm do backend ghép, để mọi câu trả lời có cùng một dạng; chào hỏi, cảm ơn thì không có tiêu đề.
     text = titled(answer.title or fallback_title, answer.message.strip()) if fallback_title else answer.message.strip()

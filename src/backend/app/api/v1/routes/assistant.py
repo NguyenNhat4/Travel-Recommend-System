@@ -168,11 +168,20 @@ async def stream_itinerary(payload: ItineraryRequestModel, request: Request,
         final_state: dict[str, Any] | None = None
         try:
             async with asyncio.timeout(use_case.request_timeout_seconds):
-                async for state in planner.astream(
+                async for chunk in planner.astream(
                     use_case.inputs(payload.model_dump(), request_id),
                     config=use_case.trace_config(_trace_label(payload), request_id, conversation,
                                                  transport="sse", run_id=run_id),
                 ):
+                    # Transitional fake planners may still yield bare states.
+                    mode, state = chunk if isinstance(chunk, tuple) else ('state', chunk)
+                    if mode == 'event':
+                        event_name, data = state.get('event'), dict(state.get('data') or {})
+                        if event_name in ('node.activity', 'run.preview'):
+                            if event_name == 'run.preview':
+                                data['runId'] = run_id
+                            yield _sse(event_name, data)
+                        continue
                     final_state = state
                     new_events = state.get("events", [])[emitted:]
                     if not new_events:
@@ -187,6 +196,7 @@ async def stream_itinerary(payload: ItineraryRequestModel, request: Request,
                             "sequence": emitted + 1, "nodeId": item.get("node", "unknown"),
                             "outcome": item.get("event_type", "completed"),
                             "message": item.get("message", ""), "durationMs": duration_ms,
+                            **({"progress": item["progress"]} if item.get("progress") else {}),
                         })
                         emitted += 1
                     last_node_at = perf_counter()

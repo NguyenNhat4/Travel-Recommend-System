@@ -1,3 +1,5 @@
+import { emptyProgress, mergeProgress, type ProgressModel, type ProgressActivity, type ProgressUpdate } from '../features/itinerary/widget/progressModel';
+import { progressView, type ProgressView } from '../features/itinerary/widget/widgetProgressView';
 import type { components } from '../types/api.gen';
 import type { AssistantRequest, AssistantResponse } from '../services/assistantStream';
 import type { AssistantConversationDetail } from '../services/assistantHistory';
@@ -23,6 +25,7 @@ export interface AssistantProgress {
   outcome?: string;
   message?: string;
   durationMs?: number;
+  progress?: ProgressUpdate;
 }
 
 export interface AssistantError {
@@ -39,6 +42,7 @@ export interface AssistantTranscriptItem {
   text: string;
   response?: AssistantResponse;
   createdAt: number;
+  progress?: ProgressView;
 }
 
 export interface AssistantState {
@@ -48,6 +52,13 @@ export interface AssistantState {
   response: AssistantResponse | null;
   topology: Record<string, unknown> | null;
   progress: AssistantProgress[];
+  progressModel: ProgressModel;
+  run: { runId: string; requestId: string; startedAt: number } | null;
+  activities: (ProgressActivity & { at: number })[];
+  preview: components['schemas']['AssistantRunPreview'] | null;
+  previewVisible: boolean;
+  previewAt: number | null;
+  completedAt: number | null;
   error: AssistantError | null;
   conversationId: string | null;
   lastRequest: AssistantRequestSnapshot | null;
@@ -61,6 +72,10 @@ type Action =
   | { type: 'hydrate-conversation'; conversationId: string | null }
   | { type: 'request-started'; request: AssistantRequestSnapshot; userText: string; appendUser: boolean }
   | { type: 'stream-started' }
+  | { type: 'run-started'; runId: string; requestId: string }
+  | { type: 'node-activity'; activity: ProgressActivity }
+  | { type: 'run-preview'; preview: components['schemas']['AssistantRunPreview'] }
+  | { type: 'preview-visible' }
   | { type: 'topology-received'; topology: Record<string, unknown> }
   | { type: 'node-completed'; progress: AssistantProgress }
   | { type: 'response-received'; response: AssistantResponse }
@@ -87,6 +102,7 @@ export function createInitialAssistantState(conversationId: string | null = null
     response: null,
     topology: null,
     progress: [],
+    progressModel: emptyProgress(), run: null, activities: [], preview: null, previewVisible: false, previewAt: null, completedAt: null,
     error: null,
     conversationId,
     lastRequest: null,
@@ -133,21 +149,31 @@ export function assistantReducer(state: AssistantState, action: Action): Assista
         response: null,
         topology: null,
         progress: [],
+    progressModel: emptyProgress(), run: null, activities: [], preview: null, previewVisible: false, previewAt: null, completedAt: null,
         error: null,
         lastRequest: action.request,
         isSlow: false,
       };
     }
+    case 'run-started':
+      return {...state, phase:'streaming', run:{runId:action.runId,requestId:action.requestId,startedAt:state.run?.startedAt ?? Date.now()}};
+    case 'node-activity':
+      return {...state,phase:'streaming',activities:[...state.activities,{...action.activity,at:Date.now()}],isSlow:false};
+    case 'run-preview':
+      return {...state,preview:action.preview,previewAt:Date.now()};
+    case 'preview-visible':
+      return ['connecting','streaming'].includes(state.phase) ? {...state,previewVisible:true} : state;
     case 'stream-started':
       return { ...state, phase: 'streaming' };
     case 'topology-received':
       return { ...state, phase: 'streaming', topology: action.topology };
     case 'node-completed':
-      return { ...state, phase: 'streaming', progress: [...state.progress, action.progress], isSlow: false };
+      return { ...state, phase: 'streaming', progress: [...state.progress, action.progress], progressModel: mergeProgress(state.progressModel,action.progress.progress), isSlow: false };
     case 'response-received':
       return {
         ...state,
         phase: responsePhase(action.response),
+        preview: null, previewVisible:false, completedAt:Date.now(),
         response: action.response,
         conversationId: action.response.conversationId,
         transcript: [...state.transcript, {
@@ -155,6 +181,7 @@ export function assistantReducer(state: AssistantState, action: Action): Assista
           sender: 'assistant',
           text: responseText(action.response),
           response: action.response,
+          progress: progressView(state.progressModel,undefined,true),
           createdAt: Date.now(),
         }],
         error: null,
@@ -176,7 +203,7 @@ export function assistantReducer(state: AssistantState, action: Action): Assista
         : action.error.code === 'UNSUPPORTED_DESTINATION' && typeof details?.conversationId === 'string'
           ? details.conversationId
           : state.conversationId;
-      return { ...state, phase: 'failed', conversationId, error: action.error, isSlow: false };
+      return { ...state, phase: 'failed', conversationId, error: action.error, isSlow: false, preview:null,previewVisible:false };
     }
     case 'request-refused':
       // Backend từ chối yêu cầu ngoài phạm vi (run.failed VALIDATION_ERROR): đó là lời đáp của trợ lý, không phải
@@ -184,6 +211,7 @@ export function assistantReducer(state: AssistantState, action: Action): Assista
       return {
         ...state,
         phase: 'idle',
+        preview:null,previewVisible:false,
         error: null,
         isSlow: false,
         transcript: [...state.transcript, {
@@ -222,13 +250,14 @@ export function assistantReducer(state: AssistantState, action: Action): Assista
         conversationId: action.detail.conversation.conversationId,
         topology: null,
         progress: [],
+    progressModel: emptyProgress(), run: null, activities: [], preview: null, previewVisible: false, previewAt: null, completedAt: null,
         error: null,
         lastRequest: null,
         isSlow: false,
       };
     }
     case 'request-aborted':
-      return { ...state, phase: 'aborted', error: null, isSlow: false };
+      return { ...state, phase: 'aborted', error: null, isSlow: false,preview:null,previewVisible:false };
     case 'slow-state':
       return { ...state, isSlow: action.isSlow };
     case 'reset':

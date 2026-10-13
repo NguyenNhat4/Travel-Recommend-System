@@ -29,6 +29,7 @@ export interface WidgetChatMessage {
   id: string;
   sender: 'user' | 'assistant';
   text: string;
+  progress?: import('./widgetProgressView').ProgressView;
   plan?: WidgetPlan;
   /** Sản phẩm của response `COMPLETED` (`narrationProducts`) để dựng thẻ trong lời diễn giải. */
   products?: Record<string, Product>;

@@ -76,9 +76,10 @@ class HaTelemetry(unittest.TestCase):
     def test_helper_container_exit_is_not_counted_as_a_service_stop(self):
         watcher = (MON_DIR / "vota-docker-event-watcher.py").read_text()
         self.assertIn('return "helper"', watcher)
-        main = (MON_DIR / "main.tf").read_text()
-        stop = re.search(r'resource "google_logging_metric" "staging_container_stop" \{(.*?)\n\}\n', main, re.S).group(1)
-        self.assertIn('container_class=\\"service\\"', stop)   # chỉ container service dừng mới báo động
+        # Metric/alert "container stop" (chỉ đếm container_class="service") thuộc Terraform giám sát cũ, đã gỡ khỏi repo
+        # 2026-10-13 nhưng tài nguyên còn trên GCP. Ở đây kiểm panel log của dashboard staging-ha cũng bỏ helper.
+        dashboard = (ROOT / "dashboard.tf").read_text()
+        self.assertIn('NOT jsonPayload.container_class=\\"helper\\"', dashboard)
 
     def test_failed_ops_agent_restart_restores_previous_config(self):
         block = startup_block()

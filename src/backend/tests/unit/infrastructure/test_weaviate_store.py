@@ -109,6 +109,63 @@ def test_weaviate_store_returns_metadata_index_without_downloading_vectors():
     assert store.sync == {"searchUnits": 1, "missing": 0, "staleText": 0}
 
 
+def test_vectors_with_metadata_reads_vector_and_hashes_over_grpc():
+    collection = _Collection()
+    got = _search(collection).vectors_with_metadata(["P1", "P1"])
+    vector, meta = got["P1"]
+    assert vector.dtype == np.float32 and vector.tolist() == [1.0, 0.0]
+    assert (meta.model_version, meta.text_hash) == ("v", _hash(_text("P1")))
+    (name, kwargs), = collection.calls
+    assert name == "fetch_objects" and kwargs["include_vector"] is True and kwargs["limit"] == 1
+    assert kwargs["return_properties"] == ["productId", "modelVersion", "textHash"]
+
+
+class _Expecting:
+    """Search giả có `expect` (như PreloadedVectorSearch): ghi lại tập vector cần có của mỗi lần nạp."""
+
+    def __init__(self, inner):
+        self.inner, self.expected = inner, []
+
+    def metadata(self, ids):
+        return self.inner.metadata(ids)
+
+    def expect(self, desired_ids, stored):
+        self.expected.append((sorted(desired_ids), {pid: (m.model_version, m.text_hash) for pid, m in stored.items()}))
+
+
+def test_load_tells_a_preloading_search_what_to_expect_only_after_validation():
+    ok = WeaviateVectorStore("unused", _Expecting(_search(_Collection())), expected_model_version="v")
+    ok.reader = _Reader(("P1", "P2"))
+    ok.load()
+    assert ok.search.expected == [(["P1", "P2"], {"P1": ("v", _hash(_text("P1")))})]
+
+    rejected = WeaviateVectorStore("unused", _Expecting(_search(_Collection(stored={}))), expected_model_version="v")
+    rejected.reader = _Reader()
+    with pytest.raises(RuntimeError):
+        rejected.load()
+    assert rejected.search.expected == []   # lần nạp lỗi không đổi bảng vector đang phục vụ
+
+
+class _FingerprintReader(_Reader):
+    def __init__(self, ids=("P1",), fingerprint="fp-1"):
+        super().__init__(ids)
+        self.fingerprint = fingerprint
+
+
+def test_version_combines_catalog_fingerprint_and_vector_metadata():
+    def version(fingerprint="fp-1", text_hash=None):
+        store = WeaviateVectorStore("unused", _search(_Collection(stored={"P1": _Obj("P1", text_hash=text_hash)})),
+                                    expected_model_version="v")
+        store.reader = _FingerprintReader(fingerprint=fingerprint)
+        store.load()
+        return store.version
+
+    assert version() == version() is not None                      # cùng dữ liệu → cùng phiên bản ở mọi tiến trình
+    assert version(fingerprint="fp-2") != version()                 # catalog đổi
+    assert version(text_hash="reindexed") != version()              # job index ghi lại object
+    assert version(fingerprint=None) is None                        # không hỏi được mã băm → không cache
+
+
 def test_weaviate_store_rejects_collection_without_current_vectors():
     with pytest.raises(RuntimeError, match="chỉ có 0/1 search unit"):
         _store(_Collection(stored={})).load()

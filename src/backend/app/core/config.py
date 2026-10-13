@@ -16,7 +16,8 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 # Chỉ các trường thực sự Optional: trường `str` thường (cdp_service_token, openai_api_key) coi ""
 # là "chưa cấu hình" và vẫn hợp lệ, không được đổi thành None.
 _OPTIONAL_BLANK_IS_NONE = ("itinerary_service_base_url", "itinerary_data_mode", "itinerary_llm_reasoning_effort",
-                           "search_no_diacritics_cutoff")
+                           "search_no_diacritics_cutoff", "itinerary_orchestrator_model", "itinerary_orchestrator_provider",
+                           "itinerary_orchestrator_reasoning_effort")
 
 
 class Settings(BaseSettings):
@@ -54,6 +55,9 @@ class Settings(BaseSettings):
     # Chỉ áp cho OpenAI. Model reasoning (vd gpt-6-luna) từ chối function tools trên chat completions khi
     # reasoning bật mặc định (400); đặt "none" để tool calling chạy được. Bỏ trống thì không gửi tham số.
     itinerary_llm_reasoning_effort: Literal["none", "minimal", "low", "medium", "high"] | None = None
+    itinerary_orchestrator_model: str | None = None
+    itinerary_orchestrator_provider: Literal["gemini", "openai", "anthropic"] | None = None
+    itinerary_orchestrator_reasoning_effort: Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"] | None = None
     itinerary_service_base_url: str | None = Field(default=None, pattern=r"^https?://")
     itinerary_data_mode: Literal["fixture", "inprocess", "http", "disabled"] | None = None
     itinerary_tool_timeout_seconds: float = Field(default=10.0, gt=0)
@@ -134,6 +138,16 @@ class Settings(BaseSettings):
     # cần redeploy: RECOMMEND_NEXT_TRIP_SCORING=false (công thức 0,7 / 0,15 / 0,15), RECOMMEND_MAX_PER_DESTINATION=0 (tắt cap).
     recommend_next_trip_scoring: bool = True
     recommend_max_per_destination: int = Field(default=2, ge=0)
+    # Các lượt Weaviate độc lập của /recommendations chạy song song trên pool riêng `recsys-io` mỗi tiến trình (2026-10-12).
+    # Output y hệt tuần tự; 0 = tuần tự, rollback không cần redeploy.
+    recommend_io_workers: int = Field(default=16, ge=0, le=64)
+    # Nạp sẵn vector sản phẩm vào RAM ở nền sau mỗi lần nạp catalog (2026-10-12): tra vector theo id lấy từ RAM, ANN vẫn qua
+    # Weaviate. False = mọi lần tra vector hỏi Weaviate như trước (rollback không cần redeploy).
+    recommend_preload_vectors: bool = True
+    # Cache kết quả gợi ý trên Redis dùng chung (PRD architecture §4, deployment-plan §2; chốt 2026-10-12): DB index riêng,
+    # mọi khoá có TTL (noeviction). Trống = tắt cache (dev/test). Không bắt buộc ở REQUIRE_SHARED_BACKENDS: thiếu thì chỉ chậm.
+    recommend_cache_redis_url: str = ""
+    recommend_cache_ttl_seconds: int = Field(default=900, ge=60, le=86400)
     # Hybrid /search (HYBRID_CANDIDATE_SCORE, spec §2.4): BM25 trên nameAscii/searchTextAscii + RRF ở app.
     search_hybrid: bool = True  # False → dense-only ANN_CANDIDATE_SCORE như trước 25/09
     search_normalize: bool = True  # bước chuẩn hoá truy vấn (viết tắt, chính tả tên riêng, điểm đến, kiểu đi); False → nguyên câu

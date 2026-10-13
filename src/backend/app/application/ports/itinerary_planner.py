@@ -14,8 +14,8 @@ class ItineraryPlanner(Protocol):
         """Chạy trọn graph, trả state cuối (có `response`, `http_status`). `config`: nhãn trace của run."""
         ...
 
-    def astream(self, inputs: dict[str, Any], config: dict[str, Any] | None = None) -> AsyncIterator[dict[str, Any]]:
-        """Phát state sau mỗi node, state cuối có `response`."""
+    def astream(self, inputs: dict[str, Any], config: dict[str, Any] | None = None) -> AsyncIterator[tuple[str, dict[str, Any]]]:
+        """Phát (`state`, state) sau node hoặc (`event`, payload) cho activity/preview."""
         ...
 
     def topology(self) -> dict[str, Any]:

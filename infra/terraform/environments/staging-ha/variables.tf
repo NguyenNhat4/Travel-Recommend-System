@@ -92,7 +92,7 @@ variable "max_replicas" {
 variable "cpu_target" {
   description = "Autoscaler target CPU utilization (0-1). Với min_replicas = 1 không còn đảm bảo sống sót khi mất VM; ràng buộc (N-1)/N đã gỡ theo quy tắc chốt 2026-10-08."
   type        = number
-  default     = 0.55
+  default     = 0.9
 
   validation {
     condition     = var.cpu_target > 0 && var.cpu_target <= 1
@@ -103,7 +103,7 @@ variable "cpu_target" {
 variable "memory_target_percent" {
   description = "Autoscaler target memory percent_used (needs Ops Agent on the VM). 0 disables the memory signal."
   type        = number
-  default     = 60
+  default     = 90
 
   validation {
     condition     = var.memory_target_percent >= 0 && var.memory_target_percent <= 100
@@ -219,6 +219,12 @@ variable "require_secret_versions" {
   default     = false
 }
 
+variable "ci_runner_instance_name" {
+  description = "VM chạy GitHub Actions runner tự host (mọi CI/CD chạy trên nó). Alert khi VM không gửi metric uptime."
+  type        = string
+  default     = "vota-ci-runner"
+}
+
 variable "alert_emails" {
   description = "Emails that receive HA alerts. Empty = alert policies exist but notify nobody (see notification_channel_ids)."
   type        = list(string)
@@ -240,6 +246,18 @@ variable "alert_5xx_ratio" {
   description = "Fraction of LB requests answered 5xx (over 5 minutes) that raises an alert."
   type        = number
   default     = 0.02
+}
+
+variable "alert_memory_percent" {
+  description = "Memory used (percent) on any one app VM above this for 5 minutes raises an alert. Must stay above memory_target_percent: the autoscaler keeps memory near that target, so a threshold at or below it would fire during normal scaling."
+  type        = number
+  default     = 95
+}
+
+variable "alert_disk_percent" {
+  description = "Disk used (percent, per device) on any one app VM above this for 5 minutes raises an alert."
+  type        = number
+  default     = 90
 }
 
 # --- Tầng DB tự failover (Patroni) -------------------------------------------------------------------------------

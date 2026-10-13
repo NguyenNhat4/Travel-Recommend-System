@@ -357,7 +357,7 @@ sequenceDiagram
   RS-->>FE: cross_vertical, hotel removed, flights and attractions in Da Nang
 ```
 
-- The engine has no user vector cache. Each request reads the events again. Because of this, the next request shows the change immediately.
+- Each request reads the events again. The engine keeps the results in a Redis cache (from 2026-10-12), but the cache key has a fingerprint of these events. The new purchase changes the key, so the next request calculates again and shows the change immediately. Nothing must delete the cache.
 - If the CDP write fails, the webhook gives HTTP 500. Stripe sends the webhook again.
 
 ## 8. Errors and fallback
@@ -436,8 +436,8 @@ The spec `docs/spec/hop-dong-tich-hop-search-recommendation.md` §4 does not agr
 | Dormant rule | §4.8: half-life × 3, prefer `lastDestination` | Not in the code |
 | All categories removed | §4.5: remove the exclusion, set `exclusionRelaxed: true` | Not in the code. The engine removes only the destination limit, then uses the cold start path. |
 | Cold start by home city | §4.8 step 2: `profile.homeCity` | Not in the code |
-| User vector cache | §5, §7.1: cache, `userVectorCacheHit`, `userVectorNorm` | No cache. These diagnostics fields are not in the response. |
-| Event limit | §4.2: max 500 newest events | `events_for_user` reads all events, with a statement timeout |
+| User vector cache | §5, §7.1: cache, `userVectorCacheHit`, `userVectorNorm` | Closed on 2026-10-12. The spec now has a cache of the results in Redis. The key has a fingerprint of the events (§5). `userVectorCacheHit` is in the response when the cache is on. `userVectorNorm` is not in the response. |
+| Event limit | §4.2: max 500 newest events | Closed on 2026-10-12. `events_for_user` reads max 500 newest events. |
 
 To close one item, write a proposal or change the code. Then run the offline evaluation again.
 

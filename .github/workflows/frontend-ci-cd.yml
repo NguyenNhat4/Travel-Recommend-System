@@ -1,12 +1,14 @@
 name: Frontend CI
 
+# CI frontend. Chạy trên mọi PR, và được staging-ha-app-cd.yml gọi lại (workflow_call) làm cổng trước khi build và deploy
+# commit đã merge. Không chạy riêng khi push.
+
 on:
   pull_request:
     types:
       - opened
       - synchronize
       - reopened
-      - closed
     branches:
       - main
       - release-mvp-v1
@@ -14,34 +16,22 @@ on:
       - release-mvp-v3
     paths:
       - '.github/workflows/frontend-ci-cd.yml'
-      - '.github/actions/sync-env-from-secret-manager/**'
-      - 'ops/docker-compose.backend-vm.yml'
-      - 'scripts/deploy-frontend-vm.sh'
-      - 'src/frontend/Dockerfile.web'
+      - '.github/workflows/staging-ha-image-build.yml'
+      - '.dockerignore'
+      - 'scripts/ci/**'
       - 'src/frontend/**'
       - 'src/shared/contracts/**'
-  push:
-    branches:
-      - main
-      - release-mvp-v1
-      - release-mvp-v2
-      - release-mvp-v3
-    paths:
-      - '.github/workflows/frontend-ci-cd.yml'
-      - '.github/actions/sync-env-from-secret-manager/**'
-      - 'ops/docker-compose.backend-vm.yml'
-      - 'scripts/deploy-frontend-vm.sh'
-      - 'src/frontend/Dockerfile.web'
-      - 'src/frontend/**'
-      - 'src/shared/contracts/**'
+      - 'src/shared/mocks/**'
+  workflow_call:
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: frontend-ci-${{ github.event_name == 'pull_request' && github.ref || 'staging' }}
-  cancel-in-progress: false
+  # PR: push mới huỷ run cũ cùng PR. Khi staging-ha-app-cd.yml gọi: nhóm riêng theo run, không huỷ.
+  group: ${{ github.event_name == 'pull_request' && format('frontend-ci-{0}', github.ref) || format('frontend-ci-run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   NODE_VERSION: '22'
@@ -49,7 +39,6 @@ env:
 jobs:
   quality:
     name: Frontend quality checks
-    if: ${{ github.event_name == 'push' || github.event.action == 'opened' || github.event.action == 'synchronize' || github.event.action == 'reopened' || (github.event.action == 'closed' && github.event.pull_request.merged == true) || (github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3')) }}
     runs-on: [self-hosted, vota-staging-ha]
     timeout-minutes: 20
     steps:
@@ -68,7 +57,9 @@ jobs:
         run: npm ci
 
       - name: Install contract validator dependency
-        run: python3 -m pip install --disable-pip-version-check pyyaml
+        run: |
+          printf 'PyYAML>=6,<7\n' > "$RUNNER_TEMP/validator-requirements.txt"
+          echo "PYTHONPATH=$(bash scripts/ci/py-deps.sh contract-validator "$RUNNER_TEMP/validator-requirements.txt")" >> "$GITHUB_ENV"
 
       - name: Validate OpenAPI contract
         run: PYTHONDONTWRITEBYTECODE=1 python3 src/shared/contracts/tests/validate_contract.py
@@ -98,26 +89,26 @@ jobs:
 
   docker_test:
     name: Frontend Docker build test
-    # Chỉ kiểm Dockerfile.web trên PR. Trên push, image được build một lần ở staging-ha-frontend-build.yml (CD); job này
-    # không build lại. Chạy song song với quality, không đợi lint/test.
-    if: ${{ github.event_name == 'pull_request' && github.event.action != 'closed' }}
+    # Chỉ trên PR: kiểm Dockerfile.web và làm nóng cache của builder cố định. Sau merge, staging-ha-app-cd.yml build
+    # (gần như toàn bộ từ cache) hoặc tái dùng image theo content key. Chạy song song với quality.
+    if: ${{ github.event_name == 'pull_request' }}
     runs-on: [self-hosted, vota-staging-ha]
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Buildx for Docker build test
-        uses: docker/setup-buildx-action@v3
+      - name: Persistent BuildKit builder
+        id: builder
+        run: bash scripts/ci/buildx-builder.sh
 
       - name: Build Docker image (test phase in CI)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./src/frontend/Dockerfile.web
+          builder: ${{ steps.builder.outputs.name }}
           push: false
-          load: false
-          cache-from: type=gha,scope=frontend-vm
           tags: vota-frontend-ci:${{ github.sha }}-test
 
   e2e:
@@ -154,211 +145,10 @@ jobs:
         env:
           CI: 'true'
           PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/ms-playwright
-        run: npm run test:e2e
-
-  build_vm:
-    name: Build Frontend VM image
-    # Tắt: build trùng. Image frontend staging-ha do staging-ha-frontend-build.yml build một lần mỗi push.
-    if: ${{ false }}
-    needs: [e2e, docker_test]
-    runs-on: [self-hosted, vota-staging-ha]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build Frontend image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./src/frontend/Dockerfile.web
-          push: false
-          tags: vota-frontend-ci:${{ github.sha }}
-          cache-from: type=gha,scope=frontend-vm
-          cache-to: type=gha,mode=max,scope=frontend-vm
-
-  publish_vm:
-    name: Publish Frontend SHA image
-    # Tắt: VM staging cũ đã ngừng nhận deploy; job này build lại và chỉ phục vụ VM cũ. Không đẩy tag latest. Giữ job vì
-    # scripts/tests/test-backend-vm-cd-sync.sh kiểm needs.publish_vm.outputs.frontend_digest trong file này.
-    if: ${{ false }}
-    needs: build_vm
-    runs-on: [self-hosted, vota-staging-ha]
-    environment: staging
-    permissions:
-      contents: read
-      id-token: write
-    outputs:
-      frontend_image: ${{ steps.image.outputs.ref }}
-      frontend_digest: ${{ steps.publish.outputs.digest }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Derive Frontend image from Backend registry configuration
-        id: image
-        env:
-          BACKEND_IMAGE: ${{ secrets.GAR_BACKEND_IMAGE }}
-          GCP_WIF_PROVIDER: ${{ secrets.GCP_WIF_PROVIDER }}
-          GCP_CI_SERVICE_ACCOUNT: ${{ secrets.GCP_CI_SERVICE_ACCOUNT }}
+        # Mọi runner chung một VM: cổng cố định 3100 đụng nhau khi hai job E2E chạy cùng lúc ("127.0.0.1:3100 is already
+        # used", run 38340468294, 2026-10-13). Mỗi job lấy một cổng trống.
         run: |
-          for name in BACKEND_IMAGE GCP_WIF_PROVIDER GCP_CI_SERVICE_ACCOUNT; do
-            if [ -z "${!name:-}" ]; then
-              echo "Missing staging configuration: $name" >&2
-              exit 1
-            fi
-          done
-          if [[ ! "$BACKEND_IMAGE" =~ ^asia-southeast1-docker\.pkg\.dev/[a-z0-9][a-z0-9._/-]*/vota-backend$ ]]; then
-            echo 'GAR_BACKEND_IMAGE must end with /vota-backend in Artifact Registry.' >&2
-            exit 1
-          fi
-          frontend_image="${BACKEND_IMAGE%/vota-backend}/vota-frontend"
-          echo "ref=$frontend_image" >> "$GITHUB_OUTPUT"
-
-      - name: Authenticate to Google Cloud
-        id: auth
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
-          service_account: ${{ secrets.GCP_CI_SERVICE_ACCOUNT }}
-          token_format: access_token
-
-      - name: Log in to Artifact Registry
-        uses: docker/login-action@v3
-        with:
-          registry: asia-southeast1-docker.pkg.dev
-          username: oauth2accesstoken
-          password: ${{ steps.auth.outputs.access_token }}
-
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Publish Frontend image
-        id: publish
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./src/frontend/Dockerfile.web
-          push: true
-          tags: ${{ steps.image.outputs.ref }}:${{ github.sha }}
-          cache-from: type=gha,scope=frontend-vm-publish
-          cache-to: type=gha,mode=max,scope=frontend-vm-publish
-
-  deploy_vm:
-    name: Deploy Frontend to Backend VM
-    # Tắt: VM staging cũ không nhận deploy nữa. Triển khai lên staging-ha qua
-    # staging-ha-backend-cd.yml, staging-ha-frontend-cd.yml, staging-ha-crawler-cd.yml.
-    if: ${{ false }}
-    needs: publish_vm
-    runs-on: [self-hosted, vota-staging-ha]
-    timeout-minutes: 20
-    concurrency:
-      group: vota-application-vm-deploy
-      cancel-in-progress: false
-    environment: staging
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Validate VM configuration
-        env:
-          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-          GCE_INSTANCE: ${{ secrets.GCE_INSTANCE }}
-          GCE_ZONE: ${{ secrets.GCE_ZONE }}
-          GCE_COMPOSE_FILE: ${{ vars.GCE_COMPOSE_FILE }}
-          FRONTEND_IMAGE: ${{ needs.publish_vm.outputs.frontend_image }}
-          FRONTEND_DIGEST: ${{ needs.publish_vm.outputs.frontend_digest }}
-          GCP_WIF_PROVIDER: ${{ secrets.GCP_WIF_PROVIDER }}
-          GCP_CI_SERVICE_ACCOUNT: ${{ secrets.GCP_CI_SERVICE_ACCOUNT }}
-        run: |
-          for name in GCP_PROJECT_ID GCE_INSTANCE GCE_ZONE GCE_COMPOSE_FILE FRONTEND_IMAGE FRONTEND_DIGEST GCP_WIF_PROVIDER GCP_CI_SERVICE_ACCOUNT; do
-            if [ -z "${!name:-}" ]; then
-              echo "Missing staging configuration: $name" >&2
-              exit 1
-            fi
-          done
-          if [[ ! "$GCE_COMPOSE_FILE" =~ ^/[a-zA-Z0-9._/-]+$ ]]; then
-            echo 'GCE_COMPOSE_FILE must be an absolute path without shell metacharacters.' >&2
-            exit 1
-          fi
-          if [[ ! "$FRONTEND_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]; then
-            echo 'Publish did not return a valid Frontend digest.' >&2
-            exit 1
-          fi
-
-      - name: Authenticate to Google Cloud
-        id: auth
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
-          service_account: ${{ secrets.GCP_CI_SERVICE_ACCOUNT }}
-          token_format: access_token
-
-      - name: Set up gcloud
-        uses: google-github-actions/setup-gcloud@v2
-
-      - name: Authenticate VM Docker to Artifact Registry
-        env:
-          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-          GCE_INSTANCE: ${{ secrets.GCE_INSTANCE }}
-          GCE_ZONE: ${{ secrets.GCE_ZONE }}
-          ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
-        run: |
-          printf '%s' "$ACCESS_TOKEN" \
-            | gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" \
-                --tunnel-through-iap --quiet \
-                --command 'docker login --username oauth2accesstoken --password-stdin https://asia-southeast1-docker.pkg.dev'
-
-      - name: Initialize non-interactive SSH access
-        env:
-          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-          GCE_INSTANCE: ${{ secrets.GCE_INSTANCE }}
-          GCE_ZONE: ${{ secrets.GCE_ZONE }}
-        run: |
-          gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" \
-            --tunnel-through-iap --quiet --command true
-
-      - name: Copy Frontend deploy files to application VM
-        env:
-          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-          GCE_INSTANCE: ${{ secrets.GCE_INSTANCE }}
-          GCE_ZONE: ${{ secrets.GCE_ZONE }}
-          GCE_COMPOSE_FILE: ${{ vars.GCE_COMPOSE_FILE }}
-        run: |
-          remote_dir="/tmp/vota-frontend-cd-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          tar -czf - \
-            -C "$GITHUB_WORKSPACE/scripts" deploy-frontend-vm.sh \
-            -C "$GITHUB_WORKSPACE/ops" docker-compose.backend-vm.yml \
-            | gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet \
-                --command "umask 077; mkdir -m 700 '$remote_dir' && tar -xzf - -C '$remote_dir' && chmod 0755 '$remote_dir/deploy-frontend-vm.sh' && sudo -n install -D -m 0644 '$remote_dir/docker-compose.backend-vm.yml' '$GCE_COMPOSE_FILE' && sudo -n docker compose -f '$GCE_COMPOSE_FILE' config >/dev/null"
-
-      # Frontend đọc AUTH_SERVICE_TOKEN/AUTH_REDIS_URL từ /etc/vota/backend.env (deploy-frontend-vm.sh), nên đồng bộ
-      # cùng secret với Backend để lần deploy chỉ-frontend cũng dùng giá trị mới nhất. Không khởi động lại backend.
-      # Chưa đặt vars.GCE_BACKEND_ENV_SECRET thì bỏ qua, giữ file đặt tay.
-      - name: Sync backend env from Secret Manager
-        uses: ./.github/actions/sync-env-from-secret-manager
-        with:
-          secret: ${{ vars.GCE_BACKEND_ENV_SECRET }}
-          remote-file: /etc/vota/backend.env
-          required-keys: AUTH_SERVICE_TOKEN AUTH_REDIS_URL
-          project: ${{ secrets.GCP_PROJECT_ID }}
-          instance: ${{ secrets.GCE_INSTANCE }}
-          zone: ${{ secrets.GCE_ZONE }}
-
-      - name: Deploy Frontend image and verify health
-        env:
-          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-          GCE_INSTANCE: ${{ secrets.GCE_INSTANCE }}
-          GCE_ZONE: ${{ secrets.GCE_ZONE }}
-          GCE_COMPOSE_FILE: ${{ vars.GCE_COMPOSE_FILE }}
-          FRONTEND_IMAGE: ${{ needs.publish_vm.outputs.frontend_image }}
-          FRONTEND_DIGEST: ${{ needs.publish_vm.outputs.frontend_digest }}
-        run: |
-          remote_dir="/tmp/vota-frontend-cd-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          remote_command="'$remote_dir/deploy-frontend-vm.sh' --frontend-image '$FRONTEND_IMAGE@$FRONTEND_DIGEST' --compose-file '$GCE_COMPOSE_FILE'"
-          gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet --command "$remote_command"
+          PLAYWRIGHT_PORT="$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')"
+          export PLAYWRIGHT_PORT
+          echo "Playwright dùng cổng $PLAYWRIGHT_PORT"
+          npm run test:e2e

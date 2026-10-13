@@ -44,9 +44,13 @@ const text = (value: unknown): string => (typeof value === 'string' ? value.trim
  * Thiếu điểm đi hoặc điểm đến thì trả null để nơi gọi dùng link mặc định.
  */
 export function flightProductHref(
-  product: { destination?: string; attributes?: Record<string, unknown> },
+  product: { id?: string; productId?: string; destination?: string; attributes?: Record<string, unknown> },
   tripQuery = '',
 ): string | null {
+  const withFare = (href: string) => {
+    const id = product.productId ?? product.id;
+    return id ? `${href}&fare=${encodeURIComponent(id)}` : href;
+  };
   const a = product.attributes ?? {};
   const origin = text(a.originCity);
   const destination = text(a.destinationCity) || text(product.destination);
@@ -56,7 +60,7 @@ export function flightProductHref(
   if (!trip.checkIn && departure && !Number.isNaN(Date.parse(departure))) {
     const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' })
       .format(new Date(departure));
-    if (day >= todayVN()) return buildFlightResultsHref({ origin, destination, trip: { ...trip, checkIn: day } });
+    if (day >= todayVN()) return withFare(buildFlightResultsHref({ origin, destination, trip: { ...trip, checkIn: day } }));
   }
-  return buildFlightResultsHref({ origin, destination, trip });
+  return withFare(buildFlightResultsHref({ origin, destination, trip }));
 }

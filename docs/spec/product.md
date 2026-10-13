@@ -147,8 +147,8 @@ Mọi màn hình dưới đây đều tham chiếu tới các component này. Đ
 
 | Component | Dữ liệu | Quy tắc |
 |---|---|---|
-| **`ProductCard`** (biến thể `grid` / `row` / `compact`) | `imageUrl`, `name`, `taxonomy`, `destination`, `attributes.starRating`, `unitPrice` hoặc `priceString`, `available` | `grid` cho carousel/lưới, `row` cho danh sách kết quả desktop, `compact` cho chat và giỏ. Cả thẻ là một link tới `/product/:id`. Nút phụ (nếu có) không được làm thẻ mất khả năng bấm. `available: false` thì ảnh xám, nhãn "Tạm hết chỗ", ẩn nút đặt |
-| **`TaxonomyBadge`** | `taxonomy` | `hotel` "Khách sạn" · `flight` "Vé máy bay" · `attraction` "Vé tham quan" · `combo` "Combo" · `golf` "Golf". Mỗi loại có icon + màu riêng, chỉ dùng ở giỏ hàng và checkout (nơi trộn nhiều loại); thẻ sản phẩm và trang chi tiết không hiện vì đã có danh mục/tab theo loại |
+| **`ProductCard`** (biến thể `grid` / `row` / `compact` / `tile`) | `imageUrl`, `name`, `taxonomy`, `destination`, `attributes.starRating`, `unitPrice` hoặc `priceString`, `available` | `grid` cho carousel/lưới, `row` cho danh sách kết quả desktop, `compact` cho chat và giỏ, `tile` cho carousel ở Home và trang danh mục. Cả thẻ là một link tới `/product/:id`. Nút phụ (nếu có) không được làm thẻ mất khả năng bấm. `available: false` thì ảnh xám, nhãn "Tạm hết chỗ", ẩn nút đặt |
+| **`TaxonomyBadge`** | `taxonomy` | `hotel` "Khách sạn" · `flight` "Vé máy bay" · `attraction` "Vé tham quan" · `combo` "Combo" · `golf` "Golf". Mỗi loại có icon + màu riêng, chỉ dùng nơi trộn nhiều loại mà không có tab theo loại: giỏ hàng, checkout và khối ④ tab Tất cả ở Home (thẻ `tile`, góc trên trái ảnh; chốt 2026-10-12). Thẻ sản phẩm ở nơi khác và trang chi tiết không hiện vì đã có danh mục/tab theo loại (quyết định 2026-10-01) |
 | **`PriceTag`** | `unitPrice`, `currency` | Định dạng `vi-VN`: "1.890.000 ₫". Tiền tố "Từ" khi giá phụ thuộc lựa chọn. Hậu tố đơn vị: "/ đêm" (hotel), "/ khách" (flight, attraction), "/ gói" (combo). Pattern hậu tố + ghi chú thuế: `[R31]` Klook web ("incl. taxes per night") |
 | **`BecauseLine`** | `because[0]` | Một dòng dưới tên sản phẩm, xem §5.2 |
 | **`WhyPopover`** | toàn bộ `because[]`, `strategy`, `destination` | Nút "Vì sao?" mở popover (desktop) hoặc bottom sheet (mobile), xem §5.4 |
@@ -188,6 +188,7 @@ Mọi màn hình dưới đây đều tham chiếu tới các component này. Đ
 ├─────────────────────────────────────────────────────────────────────────────────┤
 │ ④ Phổ biến tại các điểm đến Việt Nam  (catalog công khai — luôn có)               │
 │   Tabs danh mục: Tất cả · Khách sạn · Vé máy bay · Vé tham quan · Combo           │
+│   Tất cả trộn loại theo nhóm, thẻ có nhãn loại; Vé tham quan gồm sân golf         │
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -196,10 +197,10 @@ Mọi màn hình dưới đây đều tham chiếu tới các component này. Đ
 | Khu vực | Nội dung | Nguồn dữ liệu | Pattern tham chiếu |
 |---|---|---|---|
 | Lời chào + tìm kiếm | "Chào {tên}", ô tìm kiếm có placeholder ví dụ bằng ngôn ngữ tự nhiên, 4 chip gợi ý truy vấn | tên từ phiên đăng nhập, chip là danh sách tĩnh | `[R16]` Nike iOS ("Good Morning, Alex" trên "Top Picks for You"); `[R35]` Booking.com iOS AI search ("Try these out:" + thẻ câu mẫu) |
-| **① Section cá nhân hóa chính** | Tiêu đề và phụ đề sinh theo `strategy` (bảng §5.3). Checklist danh mục của chuyến. 3–5 `ProductCard` kèm `BecauseLine`. Nút "Vì sao?" ở cấp section | `GET /recommendations?k=5` → `strategy`, `nextVertical`, `destination`, `recommendations[]`, `diagnostics.excludedVerticals` (danh mục đã có ✓) | Cross-sell theo chuyến: `[R09]` Booking.com iOS ("Getting to your stay" / "Add more to your trip"), `[R10]` Agoda iOS ("Missing anything for your trip?"), `[R11]` Qantas iOS ("Consider for your trip: Book a hotel / Hire a car"). Checklist tiến độ: `[R12]` Trip.com iOS ("Plan Your Entire Trip to Ho Chi Minh City — Book 1/6") |
+| **① Section cá nhân hóa chính** | Tiêu đề và phụ đề sinh theo `strategy` (bảng §5.3). Checklist danh mục của chuyến. 3–4 `ProductCard` kèm `BecauseLine`. Nút "Vì sao?" ở cấp section | `GET /recommendations?k=4` → `strategy`, `nextVertical`, `destination`, `recommendations[]`, `diagnostics.excludedVerticals` (danh mục đã có ✓) | Cross-sell theo chuyến: `[R09]` Booking.com iOS ("Getting to your stay" / "Add more to your trip"), `[R10]` Agoda iOS ("Missing anything for your trip?"), `[R11]` Qantas iOS ("Consider for your trip: Book a hotel / Hire a car"). Checklist tiến độ: `[R12]` Trip.com iOS ("Plan Your Entire Trip to Ho Chi Minh City — Book 1/6") |
 | ② Tiếp tục khám phá | Tối đa 6 sản phẩm đã xem gần nhất | **Phụ thuộc:** chưa có endpoint. Nếu không có thì bỏ section | `[R08]` Airbnb iOS ("Continue searching for experiences in Miami" + "Recently viewed homes"); `[R02]` KAYAK web ("Your recent searches") |
 | ③ Thẻ Trợ lý | "Cần lên lịch trình {destination}?" + nút "Lên kế hoạch cùng trợ lý". Bấm vào mở `/assistant` với prompt điền sẵn | `destination` từ `/recommendations`. Khi không có thì dùng "Lên kế hoạch chuyến đi tiếp theo" | `[R14]` Booking.com iOS ("Need help planning your next trip? — Build me an itinerary"); `[R05]` Mindtrip web (trang chủ lấy chat làm trung tâm) |
-| ④ Phổ biến | Carousel theo danh mục (tab). **Luôn render**, kể cả khi ① lỗi, để trang không bao giờ trống | **Phụ thuộc:** endpoint phổ biến / baseline most-popular (có sẵn ở Evaluation) | `[R01]` Klook web ("Best on Klook" chia 3 cột xếp hạng 1-2-3); `[R04]` Kiwi.com web ("Our top deals for tonight" + chip lọc thành phố); `[R06]` Airbnb web (các hàng "Popular homes in Paris") |
+| ④ Phổ biến | Carousel theo danh mục (tab Tất cả · Khách sạn · Vé máy bay · Vé tham quan · Combo; Vé tham quan gồm sân golf, không có tab Golf riêng). **Luôn render**, kể cả khi ① lỗi, để trang không bao giờ trống. Tab Tất cả trộn loại theo nhóm (khách sạn → vé tham quan và golf → combo → vé máy bay, 2 ô mỗi nhóm trong 8 ô khi đủ hàng) và là nơi duy nhất thẻ có nhãn loại | `GET /products?sort=popular&availableOnly=true&limit=8`; tab Tất cả thêm `diversify=taxonomy`, tab Vé tham quan `taxonomy=attraction,golf`, tab khác `taxonomy=<loại>` (contract 1.27.0; `hop-dong-tich-hop-backend.md` §4.1) | `[R01]` Klook web ("Best on Klook" chia 3 cột xếp hạng 1-2-3); `[R04]` Kiwi.com web ("Our top deals for tonight" + chip lọc thành phố); `[R06]` Airbnb web (các hàng "Popular homes in Paris") |
 
 #### 4.1.3 Biến thể theo persona / trạng thái
 
@@ -749,20 +750,22 @@ Handbook §7: `because` là "ranh giới giữa một cuộc tranh cãi và mộ
 
 > **Luồng trong code:** `AssistantView` gọi status và stream itinerary qua OpenAPI client; widget nổi gọi operation tạo itinerary. `ResponseView` render các status và dữ liệu trả về theo schema. Next.js proxy chuyển tiếp `/api/v1/*` tới `BACKEND_BASE_URL`. Runtime/config chưa được xác minh; pipeline bên dưới là UX mục tiêu.
 
-### 6.1 Ánh xạ pipeline handbook §9 sang trải nghiệm
+### 6.1 Tiến trình theo công việc thật (AC-AGT-09)
 
-| Bước pipeline (handbook §9) | Người dùng thấy gì | Pattern |
-|---|---|---|
-| Tin nhắn của khách hàng | Bong bóng tin nhắn, ô nhập bị khóa, nút gửi đổi thành "Dừng" | `[R110]` Structured iOS ("Fine-tuning your itinerary…" + nút Stop) |
-| LLM trích xuất ý định → `{destination, days, party, interests}` | Bước 1 "Đang hiểu yêu cầu…" chuyển thành ✓ → **chip ý định** hiện ngay trong panel kế hoạch (6.2) | `[R100]` Bard web (hộp "…check the following flight details: Round trip · SIN → TPE · Jan 22–28 · 1 adult" nhắc lại tham số đã hiểu); `[R89]` Mindtrip web (thanh chip "Where · When · 2 travelers · Budget" ở đầu cuộc chat) |
-| Service chạy vài lượt tìm kiếm (lưu trú, tham quan, ăn uống) | Bước 2 "Đang tìm chỗ ở, vé tham quan, ăn uống ở {destination}…" | `[R109]` Wabi iOS (thẻ tiến độ nhiều bước: "Creating plan → Developing logic → Designing screens → Final touches") |
-| Trộn `/recommendations` nếu đã đăng nhập | Bước 2 có thêm dòng phụ "…và ưu tiên những gì hợp với bạn" (chỉ khi đã đăng nhập) | — |
-| LLM sắp xếp kết quả thật thành kế hoạch theo ngày | Bước 3 "Đang sắp xếp lịch trình…" → skeleton khung ngày trong panel | `[R111]` Instacart iOS ("Generating your shoppable recipe…" + skeleton) |
-| Render kèm giá thật + link đặt | Panel kế hoạch đầy đủ (6.3) + thẻ tóm tắt trong chat | `[R96]` Agoda iOS; `[R95]` Tripadvisor iOS |
+- Lập lịch: hiểu yêu cầu → tìm sản phẩm → xếp lịch → viết lời tư vấn.
+- Khám phá: hiểu → tìm → viết câu trả lời; hỏi vé: hiểu → tra vé.
+- Trò chuyện và hỏi lại: chỉ hiểu; lượt bị chặn không đánh ✓. Trước khi server xác định loại lượt chỉ có dòng đang hiểu, chưa có bước tương lai.
+- `node.activity` hiện việc đang làm. `node.completed.progress` nhắc dữ kiện đã hiểu, số tìm thấy/chọn và lý do loại tại nơi lọc. Không dùng `sourceTotal` làm số tìm thấy, không hiện chữ debug, tên node/tool, query hay dữ liệu thô.
+- Nhóm thay theo `groupId` với số cộng dồn từ server; thông báo thay theo `(code, groupId, date)`, không cộng. Nhóm `superseded` ẩn cả dòng và thông báo. Khi đổi loại lượt giữ các bước đã hoàn thành.
+- Sau `compose`, preview tối đa 6 sản phẩm đã kiểm nguồn hiện từ giây 5, chỉ xem chi tiết. Xong, lỗi hoặc dừng thì gỡ preview. Khi xong, lượt lập lịch/khám phá/vé thu gọn thành dòng tóm tắt ở đầu câu trả lời; mở để xem lại, không có spinner. Lịch sử tải lại không chứa tiến trình.
+- Mục hiểu yêu cầu ở lượt khám phá/vé chỉ diễn giải công việc của lượt hiện tại (phạm vi, tìm thêm, so giá, tra lại thẻ); không lặp thông tin chuyến đã lưu. Các lý do loại giải thích mục đích tránh lặp gợi ý hoặc gộp các mục trùng nơi, từ quyết định có cấu trúc và số đếm thật. Lượt lập lịch/hỏi lại chuyến mới nhắc thông tin chuyến.
+- Chẩn đoán mức 1 trong Shift+D chỉ dùng stream công khai, gồm request, thời gian, activity và số đếm. Không có chi tiết gọi tool/LLM của Phần B chưa chốt.
+- Contract 1.28.0: quyết định đổi phạm vi (`scopeMode=replace`), nơi không xét trong việc (`excludedDestinations`)
+  và số lượng yêu cầu (`requestedCount`) được diễn giải ở bước hiểu: bỏ phạm vi thành phố cũ để tìm nhiều điểm đến,
+  không xét nơi nào trong lượt này, mục tiêu bao nhiêu lựa chọn. Yêu cầu vượt 20 ghi rõ trần 20. Đây là tóm tắt
+  quyết định tìm kiếm từ dữ liệu có cấu trúc; số tìm thấy/giới thiệu vẫn lấy từ bộ đếm, không từ số lượng yêu cầu.
 
-**Phụ thuộc: tiến độ thật hay giả lập.** Nếu chat backend trả một response duy nhất (không stream), UI **không được** tự đánh ✓ từng bước theo đồng hồ như thể đó là tiến độ thật. Khi đó hiển thị cả 3 bước dạng danh sách "Trợ lý sẽ: hiểu yêu cầu → tìm sản phẩm → sắp xếp lịch trình" với một spinner chung. Nếu Backend stream sự kiện theo bước (SSE) thì đánh ✓ theo sự kiện thật. Đề xuất Backend stream, vì mục tiêu p95 < 5 giây (handbook §12) vẫn đủ lâu để người dùng cần thấy tiến độ.
-
-**Hiện trạng code:** client đọc stream SSE. Widget trợ lý đánh ✓ 3 bước theo `node.completed` thật (`features/itinerary/widget/widgetProgress.ts`); bước đang chạy hiện việc con khi có (thử lại, viết lời tư vấn).
+Nhãn do Web sở hữu; ✓ chỉ sau sự kiện hoàn thành thật, không theo đồng hồ. Triển khai: `widget/progressModel.ts`, `widgetProgressView.ts`, `WidgetProgress.tsx`, `WidgetProgressSummary.tsx`, `WidgetProgressPreview.tsx`.
 
 ### 6.2 Chip ý định: cho phép sửa mà không phải gõ lại
 
@@ -887,8 +890,8 @@ Nếu cắt về single-turn (handbook §2, mục 6) thì thẻ này là cách *
 | Trạng thái | Hiển thị | Pattern |
 |---|---|---|
 | **Rỗng** | Lời chào có tên (nếu đã đăng nhập) + 3–4 câu mẫu dạng thẻ + dòng phạm vi. Khách vãng lai có thêm dòng "Đăng nhập để kế hoạch ưu tiên những gì hợp với bạn" | `[R87]` Booking.com iOS; `[R89]` Mindtrip web |
-| **Đang xử lý** | Thẻ tiến độ 3 bước trong chat + skeleton panel. Nút "Dừng" hủy request và khôi phục ô nhập kèm nội dung vừa gửi | `[R109]` Wabi iOS; `[R110]` Structured iOS |
-| **Chậm** (> 12 giây không có bước nào xong — thời gian dồn vào các node gọi LLM nên đo theo từng node, không theo cả lượt) | Thêm dòng "Đang lâu hơn thường lệ. Bạn có thể đợi thêm hoặc dừng." + link "Xem kết quả tìm kiếm trước" (mở fallback song song) | — |
+| **Đang xử lý** | Khung tiến trình theo loại lượt (6.1), dữ kiện thật; preview sau compose từ giây 5. Nút "Dừng" hủy request và khôi phục ô nhập kèm nội dung vừa gửi | `[R109]` Wabi iOS; `[R110]` Structured iOS |
+| **Chậm** (> 12 giây không có `node.completed` hoặc `node.activity` — thời gian dồn vào các node gọi LLM nên đo theo từng node, không theo cả lượt) | Thêm dòng "Đang lâu hơn thường lệ. Bạn có thể đợi thêm hoặc dừng."; activity hoặc node xong đặt lại đồng hồ | — |
 | **Có kế hoạch** | 6.3 | — |
 | **Kế hoạch một phần** | Khung giờ không có sản phẩm hợp lệ thì hiện `ActivityNote` do LLM viết. Nếu cả một ngày không có sản phẩm nào thì hiện "Chưa tìm thấy dịch vụ phù hợp cho ngày này · [Tìm ở {destination}]" | — |
 | **Ngoài phạm vi** (hỏi thời tiết, visa, chuyện chung) | Tin nhắn: "Mình chỉ giúp lên lịch trình và gợi ý dịch vụ du lịch trên V-OTA. Thử: …" + 2 câu mẫu | `[R101]` Wanderlog iOS (giới hạn phạm vi được nói rõ) |

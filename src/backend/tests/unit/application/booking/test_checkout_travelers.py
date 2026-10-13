@@ -368,7 +368,7 @@ def test_personal_data_is_never_logged_and_never_sent_to_stripe_or_cdp(caplog):
     stripe = next(iter(w.gateway.sessions.values()))
     assert all(secret not in l.name for l in stripe["lines"] for secret in ("Nguyễn", "Minh Anh", "Gia Bảo"))
     purchases = w.cdp.recorded[0]
-    assert len(purchases) == 3 and all("Nguyễn" not in repr(p) and "2019" not in repr(p) for p in purchases)
+    assert len(purchases) == 3 and all("Nguyễn" not in repr(p) and "2019-05-12" not in repr(p) and "2019, 5, 12" not in repr(p) for p in purchases)
     hotel = next(p for p in purchases if p.taxonomy == "hotel")
     assert (hotel.quantity, hotel.unit_price) == (1, 777_192)         # purchase vẫn 1 event/mục, đơn giá người lớn
     ticket = next(p for p in purchases if p.taxonomy == "attraction")

@@ -105,12 +105,13 @@ Agent là phần dài nhất và dễ lạc nhất. Đọc theo thứ tự:
    LangGraph.
 3. `main.py` → `_itinerary_runtime()` / `_itinerary_planner()` — mỗi request dựng một planner với tool, store,
    LLM và `Authorization` của chính request đó.
-4. `app/agents/graph.py` — topology 10 node: `intake → classify → {converse | tool | clarify | dead_letter}`,
-   `tool → evaluate → {compose | retry | clarify | dead_letter}`, mọi nhánh kết thúc ở `finalize`.
+4. `app/agents/graph.py` — topology: `intake → precheck → orchestrate ⇄ run_jobs → gatekeep`; khi người dùng đồng ý
+   lập lịch thì `orchestrate → extract → {clarify | tool}`, `tool → evaluate → {filter → compose → narrate | retry |
+   clarify | dead_letter}`. Mọi nhánh kết thúc ở `finalize`. Sơ đồ đầy đủ: `docs/spec/agent/nghiep-vu/vong-doi-mot-luot.md`.
 5. `app/agents/routing.py` — điều kiện rẽ nhánh (ngắn, đọc hết).
 6. `app/agents/state.py` — state đi qua các node.
 7. `app/agents/nodes.py` — mỗi node mỏng; luật thật nằm ở `agents/steps/` (`classification`, `tool_planning`,
-   `validation`, `composition`...).
+   `orchestration`, `jobs`, `validation`, `composition`...).
 8. `app/agents/tools/itinerary_gateway.py` — tool gọi Search/Recommendation/Catalog và **validate response
    theo contract**; đây là nơi giữ grounding 100%.
 

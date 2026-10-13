@@ -44,7 +44,7 @@
     - assistant
     operationId: streamItinerary
     summary: Tạo hoặc tiếp tục lịch trình và stream tiến trình graph
-    description: SSE chỉ phát topology, sự kiện node an toàn và kết quả cuối; không phát raw state, prompt hoặc token.
+    description: SSE phát topology, node.activity, node.completed với progress tuỳ chọn, run.preview sau compose và kết quả cuối. Progress cập nhật theo groupId; số cộng dồn do backend tính. Preview tối đa 6 sản phẩm đã kiểm nguồn. Không phát raw state, prompt hoặc token.
     security:
     - {}
     - bearerAuth: []

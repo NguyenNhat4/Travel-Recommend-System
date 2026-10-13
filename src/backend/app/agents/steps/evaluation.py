@@ -9,7 +9,7 @@ from src.backend.app.application.itinerary.tool_contracts import SIMILAR_PRODUCT
 from src.backend.app.domain.itinerary import preferences
 from src.backend.app.domain.itinerary.planning import SCHEDULABLE_TAXONOMIES, SLOT_TAXONOMIES, STAY_TAXONOMY
 
-from . import messages
+from . import messages, progress
 from .classification import vietnam_today
 from .messages import display_date
 
@@ -118,7 +118,11 @@ def _preferred_stays(state: dict, candidates: dict, sources: dict) -> tuple[dict
     kept = {product["productId"] for product in preferences.preferred(hotels, wanted)}
     if len(kept) == len(hotels):
         return candidates, sources
-    dropped = {product["productId"] for product in hotels} - kept
+    dropped = {product['productId'] for product in hotels} - kept
+    row = progress.group('plan:hotel', 'hotel', state.get('intent'))
+    if row:
+        for pid in dropped:
+            row['counter'].record(pid, 'PREFERENCE')
     return ({pid: product for pid, product in candidates.items() if pid not in dropped},
             {pid: source for pid, source in sources.items() if pid not in dropped})
 
@@ -130,12 +134,25 @@ def evaluate_retrieval(state: dict) -> dict:
         decision = "failed" if any(not e["retryable"] for e in errors) else "needs_retry" if errors else "compose"
         return {"decision": decision}
     constraints = _relaxed_constraints(state)
+    def counts(kind):
+        row = progress.group(f'plan:{kind}', kind, state.get('intent'))
+        return row['counter'] if row else None
     candidates, sources, dropped = collect(state.get("tool_results", []), state.get("details", {}),
-                                           state["intent"], constraints)
+                                           state["intent"], constraints, counts=counts)
     candidates = reference_only(candidates, dropped)
     sources = {pid: source for pid, source in sources.items() if pid in candidates}
     candidates, sources = _preferred_stays(state, candidates, sources)
     products = _retrieved(state)
+    if progress.active():
+        for pid, reason in dropped.items():
+            row = progress.group(f"plan:{products.get(pid, {}).get('taxonomy')}", products.get(pid, {}).get('taxonomy'), state.get('intent'))
+            if row:
+                row['counter'].record(pid, reason, outside=reason in ('PRODUCT_DROPPED_DESTINATION','PRODUCT_DROPPED_EXCLUDED','PRODUCT_DROPPED_TAXONOMY'))
+        for result in state.get('tool_results') or []:
+            kind = (result.get('arguments') or {}).get('taxonomy')
+            row = progress.group(f'plan:{kind}',kind,state.get('intent'))
+            if row:
+                row['status'] = 'failed' if result.get('error') else ('ok' if row['counter'].snapshot()['eligible'] else 'empty')
     warnings = [{"code": reason, "message": _dropped_message(state, reason, products.get(pid, {})), "productId": pid}
                 for pid, reason in dropped.items()]
     decision = _decision(errors, candidates, constraints)

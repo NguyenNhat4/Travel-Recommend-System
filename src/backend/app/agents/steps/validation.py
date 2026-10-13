@@ -15,6 +15,9 @@ def response_issues(state: dict, response: dict, http_status: int) -> list:
     if not valid("ItineraryResponse" if http_status == 200 else "ErrorResponse", response):
         return ["schema"]
     issues = []
+    if response.get("status") == "NEEDS_CLARIFICATION" \
+            and sum(len(items) for items in (response.get("searchResults") or {}).values()) > 20:
+        issues.append("card_limit")
     try:
         if response.get("status") == "COMPLETED":
             issues = validate_plan(response["itinerary"], state["candidates"], state["sources"],
@@ -49,7 +52,8 @@ def _explore_issues(state: dict, response: dict) -> list[str]:
         if any(p != summary(state.get("candidates", {}).get(p["productId"], {})) for p in products):
             issues.append("explore_grounding")
             break
-    if any(match.group(2) not in shown for match in PRODUCT_LINK.finditer(response.get("question", ""))):
+    allowed_links = shown | set(state.get("orchestrator_fare_ids") or [])
+    if any(match.group(2) not in allowed_links for match in PRODUCT_LINK.finditer(response.get("question", ""))):
         issues.append("message_grounding")
     return issues
 

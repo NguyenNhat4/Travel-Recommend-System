@@ -40,13 +40,23 @@ for (const width of [1024, 1440]) {
     await expect(viewProduct).toHaveAttribute('href', `/product/${product.productId}`);
     await expect(viewProduct).toBeInViewport();
 
-    const mainImage = detail.getByRole('img', { name: product.name, exact: true });
+    const mainImage = detail.getByRole('button', { name: /^Phóng to ảnh / }).getByRole('img');
     const galleryBefore = await mainImage.boundingBox();
     await detail.getByRole('button', { name: `Xem ảnh 2 của ${product.name}` }).click();
+    const lightbox = detail.getByRole('dialog', { name: `Ảnh của ${product.name}` });
+    await expect(lightbox).toBeVisible();
+    await expect(lightbox.getByRole('img')).not.toHaveAttribute('src', product.imageUrl);
+    await lightbox.press('Escape');
+    await expect(lightbox).not.toBeVisible();
+    await expect(detail).toBeVisible();
     await expect(mainImage).not.toHaveAttribute('src', product.imageUrl);
     const galleryAfter = await mainImage.boundingBox();
     expect(galleryAfter?.height).toBe(galleryBefore?.height);
     await detail.getByRole('button', { name: `Xem ảnh 1 của ${product.name}` }).click();
+    await expect(lightbox).toBeVisible();
+    await expect(lightbox.getByRole('img')).toHaveAttribute('src', product.imageUrl);
+    await lightbox.getByRole('button', { name: 'Đóng ảnh phóng to' }).click();
+    await expect(lightbox).not.toBeVisible();
     await expect(mainImage).toHaveAttribute('src', product.imageUrl);
 
     await detail.getByRole('button', { name: 'Xem thêm', exact: true }).click();

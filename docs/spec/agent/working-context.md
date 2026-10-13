@@ -28,7 +28,8 @@ Chỉ đọc hàng khớp với task hiện tại. Không cần nạp các nhán
 |---|---|---|
 | Hiểu hoặc đổi luật nghiệp vụ (hỏi lại, lọc, vé, xếp lịch, tiền, diễn giải) | đúng một file trong `nghiep-vu/` theo mục lục [nghiep-vu/README.md](nghiep-vu/README.md) | file ở mục "Code liên quan" của file đó |
 | Hiểu hoặc đổi topology/routing | `langgraph-nodes.md` | `agents/graph.py`, `agents/routing.py`, `agents/state.py` |
-| Tune classify/clarify/converse hoặc prompt | `langgraph-nodes.md`, phần hội thoại trong spec Itinerary | `agents/steps/prompts.py`, `agents/steps/classification.py`, `agents/steps/conversation.py`, `infrastructure/llm/` |
+| Tune orchestrator (hiểu câu, chọn việc, chọn thẻ, hỏi lại, câu vé) | `docs/prd/architecture.md` §3 (đoạn orchestrator) | `agents/steps/orchestration.py`, `agents/steps/jobs.py`, `agents/steps/fares.py`, `domain/itinerary/gatekeeper.py`, `ORCHESTRATOR_PROMPT` trong `agents/steps/prompts.py` |
+| Tune `extract`, `clarify` hoặc prompt nhánh lập lịch | `langgraph-nodes.md`, phần hội thoại trong spec Itinerary | `agents/steps/prompts.py`, `agents/steps/classification.py` (`extract`), `agents/steps/conversation.py` (`clarify`), `infrastructure/llm/` |
 | Tune tool planning, Search/Recommendation/Similar | spec Itinerary §2 (Similar: §2.5), `src/backend/README.md` | `agents/steps/tool_planning.py`, `agents/tools/itinerary_gateway.py`, `application/itinerary/tool_contracts.py`, `application/itinerary/engine_tools.py` |
 | Tune lọc candidate/grounding | `langgraph-nodes.md` §5, spec Itinerary §5 | `application/itinerary/retrieval.py`, `domain/itinerary/planning.py` |
 | Tune Search ranking | handbook §12 và spec Backend mục Search | `application/search/use_cases.py`, `domain/search/`, `infrastructure/vectors/` |
@@ -41,6 +42,9 @@ Chỉ đọc hàng khớp với task hiện tại. Không cần nạp các nhán
 
 ## 3. Bản đồ runtime hiện hành
 
+Orchestrator là luồng duy nhất (chốt 13/10/2026, `docs/prd/architecture.md` §3); luồng phân loại cũ và cờ
+`ITINERARY_ORCHESTRATOR` đã gỡ.
+
 ```text
 POST /api/v1/assistant/itineraries hoặc /stream
   -> api/v1/routes/assistant.py        nhận request, validate, gọi use case qua Depends
@@ -50,15 +54,22 @@ POST /api/v1/assistant/itineraries hoặc /stream
                                       port; main.py nối agents/runtime_dependencies.py vào theo request
   -> agents/graph.py                   topology LangGraph và dependency injection
   -> agents/nodes.py                   hàm của từng node (luật chi tiết ở agents/steps/)
-       intake -> classify
-         |- thiếu dữ liệu -> clarify -> finalize
-         |- hội thoại/không muốn đi nữa/refusal -> converse -> finalize
-         `- đủ dữ liệu -> tool -> evaluate
-                              |- candidate hợp lệ -> filter -> compose -> narrate -> finalize
-                              |     (filter: luật cùng tên + LLM chỉ ra cặp điểm tham quan trùng)
-                              |- lỗi tạm thời -> retry -> tool
-                              |- cần hỏi điều kiện -> clarify -> finalize
-                              `- lỗi vĩnh viễn -> dead_letter -> finalize
+       intake -> precheck (luật trước LLM, không gọi LLM)
+         |- guardrail/tin rác -> converse (câu cố định) -> finalize
+         |- nút vé do code tạo -> run_jobs
+         |- chọn phương án, đổi vé/khách sạn bằng luật, đồng ý lập lịch có sẵn -> extract | tool | clarify
+         `- còn lại -> orchestrate (LLM, steps/orchestration.py)
+              |- answer/ask -> gatekeep -> finalize
+              |- execute -> run_jobs (steps/jobs.py) -> orchestrate | gatekeep
+              `- plan (đồng ý đã kiểm) -> extract
+                   |- chưa đồng ý -> gatekeep (lời mời lập lịch)
+                   |- thiếu dữ liệu -> clarify -> finalize
+                   `- đủ dữ liệu -> tool -> evaluate
+                        |- candidate hợp lệ -> filter -> compose -> narrate -> finalize
+                        |     (filter: luật cùng tên + LLM chỉ ra cặp điểm tham quan trùng)
+                        |- lỗi tạm thời -> retry -> tool
+                        |- cần hỏi điều kiện -> clarify -> finalize
+                        `- lỗi vĩnh viễn -> dead_letter -> finalize
   -> agents/tools/itinerary_gateway.py allowlist, validate và dispatch tool
   -> application/ports/itinerary_tools.py
                                       interface Agent phụ thuộc
@@ -76,6 +87,16 @@ POST /api/v1/assistant/itineraries hoặc /stream
 
 Kết quả tool quay lại `retrieval.py` để gộp, hậu kiểm và ghi nguồn; `planning.py` xếp lịch tất định;
 `finalize` kiểm OpenAPI, grounding và lưu conversation trước khi trả response.
+
+Orchestrator (chốt 12/10, luồng duy nhất từ 13/10): `precheck` giữ luật đầu vào (không LLM phân loại), chuyển hội thoại tới
+`steps/orchestration.py` (`orchestrate` → `run_jobs` → `gatekeep`). `steps/jobs.py` thực thi qua port, domain
+`gatekeeper.py` kiểm nguồn/phạm vi/số/thẻ; `steps/shown.py` ghi trí nhớ từ response ở finalize. Model riêng nằm tại
+`app.state.itinerary_orchestrator_llm`, không vào state. Nhánh lập lịch và narrate giữ nguyên.
+Phanh của lượt có mã nguyên nhân (`steps/limits.py`: hết giờ, trần vòng, trần tool, model hoặc tool quá hạn), ghi ở
+metadata event, `turn_limit_reason` và log `itinerary.turn_limit`. B11 (bộ đo so sánh) bỏ; B12 (chuyển mặc định) đã thay
+bằng việc gỡ luồng cũ; B13 (gỡ regex) chưa làm.
+
+Tiến trình 1.27.0 (AC-AGT-09): `LangGraphItineraryPlanner.astream` phát state/custom; `graph.timed` phát activity, gắn progress vào event và preview sau compose. Collector `steps/progress.py` chỉ sống trong stream của request, số đếm từ `application/itinerary/progress_counts.py` tại các bộ lọc. Không vào working memory hay payload LLM. Route chuyển thành `node.activity`, `node.completed.progress`, `run.preview`; Web gộp theo nhóm và viết nhãn, chẩn đoán mức 1 tại Shift+D. Snapshot vẫn dùng `ainvoke`, không ghi lại cho thay đổi tiến trình.
 
 ## 4. Trách nhiệm các lớp — dùng để tránh sửa sai chỗ
 
@@ -98,6 +119,26 @@ Kết quả tool quay lại `retrieval.py` để gộp, hậu kiểm và ghi ngu
 
 Bằng chứng tối thiểu: state trước/sau node, node path, tool name/arguments, final status. Không dùng chất
 lượng ranking để kết luận prompt tốt hoặc xấu.
+
+**Snapshot hành vi** (`tests/unit/agents/test_behavior_snapshot.py`, chạy cùng unit test agent). Phát lại mọi hội thoại
+của `behavior_snapshot/scenarios.json` (63 ngày 13/10, gồm `demo-K1`…`demo-K6`) với tool ghi từ chế độ `inprocess` (dữ
+liệu thật) và LLM ghi sẵn, rồi so từng lượt (response, node path, mã `ROUND_LIMIT`/`TOOL_LIMIT`, state lưu, payload gửi
+LLM, tham số gọi tool). Đồng hồ đứng yên (`agents/clock.now`), nên phát lại không phụ thuộc tốc độ máy. Phát lại không cần
+DB hay mạng. Refactor phải giữ nó xanh. Đổi prompt hoặc hành vi **có chủ ý** thì test fail. Khi đó ghi lại bằng
+`inprocess` và LLM thật (cần Postgres, Weaviate local), chỉ những kịch bản bị ảnh hưởng, rồi đọc diff của `snapshot.json`
+trước khi commit:
+
+```bash
+HF_HUB_OFFLINE=1 .venv/bin/python -m src.backend.tests.unit.agents.behavior_snapshot.record --only X01-plan-doi,v5-SC-A
+```
+
+- Không `--fresh`: lời gọi LLM có payload không đổi được phát lại từ cassette, chỉ payload mới gọi model thật. `--fresh`
+  ghi lại toàn bộ hai cassette; chỉ dùng khi đổi kiến trúc hay model.
+- Lượt hết giờ hoặc model/tool thật quá hạn, lỗi (`TIME_LIMIT`, `MODEL_TIMEOUT`, `MODEL_ERROR`, `TOOL_TIMEOUT`) không
+  phát lại được: `record` ghi lại kịch bản đó tối đa 3 lần rồi dừng và báo, không lưu.
+- Baseline hiện hành và bảng so với luồng cũ: `src/evaluation/reports/eval-2026-10-13-d3-snapshot-orchestrator.md`.
+
+Chi tiết: `src/backend/tests/unit/agents/behavior_snapshot/harness.py`, plan `docs/plan/2026-10-11-refactor-agent-giu-hanh-vi.md`.
 
 ### B. Tune retrieval/recommendation
 

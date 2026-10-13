@@ -17,7 +17,7 @@ resource "google_logging_metric" "patroni_probe_heartbeat" {
 resource "google_logging_metric" "patroni_no_replica" {
   count       = var.create_patroni ? 1 : 0
   name        = "${var.name_prefix}_patroni_no_replica"
-  description = "Cụm có leader nhưng không còn replica streaming: hệ thống là một DB đơn lẻ."
+  description = "Cụm có node chính (leader) nhưng không còn replica đang đồng bộ (streaming): hệ thống là một DB đơn lẻ."
   filter      = "resource.type=\"gce_instance\" AND jsonPayload.event=\"patroni_cluster\" AND jsonPayload.status=\"no_replica\""
 
   metric_descriptor {
@@ -30,7 +30,7 @@ resource "google_logging_metric" "patroni_no_replica" {
 resource "google_logging_metric" "patroni_no_leader" {
   count       = var.create_patroni ? 1 : 0
   name        = "${var.name_prefix}_patroni_no_leader"
-  description = "Cụm không có leader, hoặc node không hỏi được Patroni."
+  description = "Cụm không có node chính (leader), hoặc node không hỏi được Patroni."
   filter      = "resource.type=\"gce_instance\" AND jsonPayload.event=\"patroni_cluster\" AND (jsonPayload.status=\"no_leader\" OR jsonPayload.status=\"broken\")"
 
   metric_descriptor {
@@ -49,7 +49,7 @@ resource "google_monitoring_alert_policy" "patroni_no_replica" {
   notification_channels = local.alert_channels
 
   conditions {
-    display_name = "Cụm Patroni chỉ còn leader trong 5 phút"
+    display_name = "Cụm Patroni chỉ còn node chính (leader) trong 5 phút"
     condition_threshold {
       filter          = "resource.type=\"gce_instance\" metric.type=\"logging.googleapis.com/user/${google_logging_metric.patroni_no_replica[0].name}\""
       comparison      = "COMPARISON_GT"
@@ -68,19 +68,19 @@ resource "google_monitoring_alert_policy" "patroni_no_replica" {
   }
 
   documentation {
-    content   = "Cụm DB chỉ còn một node ghi được, không có replica nào: mất tiếp node này là mất dữ liệu đã thanh toán. Làm theo docs/guide/van-hanh-db-patroni.md §5 (dựng lại replica): thay VM node lỗi, đĩa dữ liệu mới, Patroni tự basebackup từ leader."
+    content   = "Cụm DB chỉ còn một node ghi được, không có replica nào: mất tiếp node này là mất dữ liệu đã thanh toán. Làm theo docs/guide/van-hanh-db-patroni.md §5 (dựng lại replica): thay VM node lỗi, đĩa dữ liệu mới, Patroni tự sao chép (basebackup) từ node chính."
     mime_type = "text/markdown"
   }
 }
 
 resource "google_monitoring_alert_policy" "patroni_no_leader" {
   count                 = var.create_patroni ? 1 : 0
-  display_name          = "${var.name_prefix} DB: KHÔNG CÓ LEADER"
+  display_name          = "${var.name_prefix} DB: KHÔNG CÓ NODE CHÍNH"
   combiner              = "OR"
   notification_channels = local.alert_channels
 
   conditions {
-    display_name = "Cụm Patroni không có leader trong 2 phút"
+    display_name = "Cụm Patroni không có node chính (leader) trong 2 phút"
     condition_threshold {
       filter          = "resource.type=\"gce_instance\" metric.type=\"logging.googleapis.com/user/${google_logging_metric.patroni_no_leader[0].name}\""
       comparison      = "COMPARISON_GT"
@@ -99,14 +99,14 @@ resource "google_monitoring_alert_policy" "patroni_no_leader" {
   }
 
   documentation {
-    content   = "Không có leader Postgres hơn 2 phút (bình thường failover mất dưới 1 phút). Kiểm etcd (cần 2/3 thành viên), docker logs vota-patroni trên cả hai node, docs/guide/van-hanh-db-patroni.md §6."
+    content   = "Không có node chính (leader) Postgres hơn 2 phút (bình thường failover mất dưới 1 phút). Kiểm etcd (cần 2/3 thành viên), docker logs vota-patroni trên cả hai node, docs/guide/van-hanh-db-patroni.md §6."
     mime_type = "text/markdown"
   }
 }
 
 resource "google_monitoring_alert_policy" "patroni_probe_absent" {
   count                 = var.create_patroni ? 1 : 0
-  display_name          = "${var.name_prefix} DB: probe Patroni im lặng"
+  display_name          = "${var.name_prefix} DB: probe Patroni không gửi dữ liệu"
   combiner              = "OR"
   notification_channels = local.alert_channels
 
@@ -128,7 +128,7 @@ resource "google_monitoring_alert_policy" "patroni_probe_absent" {
   }
 
   documentation {
-    content   = "Cả hai node DB không gửi dòng probe: kiểm cron, Ops Agent và VM. Các cảnh báo 'không còn replica' và 'không có leader' sẽ KHÔNG kêu khi probe im lặng."
+    content   = "Cả hai node DB không gửi dòng probe: kiểm cron, Ops Agent và VM. Các cảnh báo 'không còn replica' và 'không có node chính' sẽ KHÔNG kêu khi probe không gửi dữ liệu."
     mime_type = "text/markdown"
   }
 }

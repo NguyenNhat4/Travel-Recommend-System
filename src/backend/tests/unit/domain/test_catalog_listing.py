@@ -1,6 +1,17 @@
+from collections import Counter
+
 import pytest
 
-from src.backend.app.domain.catalog import ListingItem, Product, filter_items, sort_items, summarize_variants
+from src.backend.app.domain.catalog import (
+    DIVERSIFY_GROUPS,
+    TAXONOMIES,
+    ListingItem,
+    Product,
+    filter_items,
+    interleave_by_taxonomy,
+    sort_items,
+    summarize_variants,
+)
 
 
 def product(pid, price=100_000, *, taxonomy="attraction", destination="Nha Trang", available=True, **attrs):
@@ -88,3 +99,53 @@ def test_variants_have_no_popularity_so_popular_means_cheapest_first():
 def test_unknown_sort_is_rejected():
     with pytest.raises(ValueError):
         sort_items([], "newest")
+
+
+# --- diversify=taxonomy (contract 1.27.0) ----------------------------------------------------
+
+TAX = {"h": "hotel", "a": "attraction", "g": "golf", "c": "combo", "f": "flight", "x": "cruise"}
+
+
+def items_of(*pids):
+    """`h1` là khách sạn, `a1` vé tham quan, `g1` golf, `c1` combo, `f1` tuyến bay; `x1` là loại ngoài bảng nhóm."""
+    return [ListingItem(product(pid, taxonomy=TAX[pid[0]])) for pid in pids]
+
+
+def test_filter_accepts_several_taxonomies():
+    items = items_of("h1", "a1", "g1", "c1")
+    assert ids(filter_items(items, taxonomy={"attraction", "golf"})) == ["a1", "g1"]
+    assert ids(filter_items(items, taxonomy=["golf"])) == ["g1"]
+
+
+def test_diversify_groups_cover_every_taxonomy_once():
+    members = [t for _, group in DIVERSIFY_GROUPS for t in group]
+    assert sorted(members) == sorted(TAXONOMIES) and len(members) == len(set(members))
+    assert [name for name, _ in DIVERSIFY_GROUPS] == ["hotel", "experience", "combo", "flight"]
+
+
+def test_interleave_round_robins_groups_in_fixed_order():
+    # Đầu vào đã xếp popular: vé bay đứng đầu như kệ Phổ biến trên prod.
+    ordered = items_of("f1", "f2", "f3", "c1", "g1", "h1", "a1", "h2", "c2", "f4")
+    assert ids(interleave_by_taxonomy(ordered)) == ["h1", "g1", "c1", "f1", "h2", "a1", "c2", "f2", "f3", "f4"]
+
+
+def test_interleave_puts_golf_in_the_attraction_group():
+    assert ids(interleave_by_taxonomy(items_of("g1", "g2", "a1", "c1", "c2"))) == ["g1", "c1", "g2", "c2", "a1"]
+
+
+def test_interleave_is_a_permutation_keeping_order_inside_groups():
+    ordered = items_of("f1", "h1", "a1", "f2", "g1", "c1", "h2", "a2", "c2", "f3", "h3")
+    mixed = interleave_by_taxonomy(ordered)
+    assert Counter(ids(mixed)) == Counter(ids(ordered))
+    for _, group in DIVERSIFY_GROUPS:
+        inside = lambda xs: [i for i in ids(xs) if TAX[i[0]] in group]  # noqa: E731
+        assert inside(mixed) == inside(ordered)
+
+
+def test_interleave_of_one_group_is_identity():
+    ordered = items_of("a2", "g1", "a1", "g2")
+    assert ids(interleave_by_taxonomy(ordered)) == ids(ordered)
+
+
+def test_interleave_keeps_unknown_taxonomy_last():
+    assert ids(interleave_by_taxonomy(items_of("x1", "h1", "x2", "f1"))) == ["h1", "f1", "x1", "x2"]

@@ -1,3 +1,4 @@
+import { AssistantProgressDiagnostics } from '../../features/itinerary/widget/AssistantProgressDiagnostics';
 import React, { useEffect, useState } from 'react';
 import { useTravel } from '../../context/TravelContext';
 import { Bug, X, ChevronUp, ChevronDown } from 'lucide-react';
@@ -84,6 +85,7 @@ export const DebugPanel: React.FC = () => {
             </div>
           </div>
 
+          <AssistantProgressDiagnostics />
           <div className="text-[10px] text-slate-400 flex items-center justify-between pt-1 border-t border-slate-800">
             <span>Nhấn Shift + D để ẩn</span>
             <button

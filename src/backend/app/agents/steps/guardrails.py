@@ -1,9 +1,8 @@
 """Guardrail tất định: chặn chèn lệnh và tin nhắn rác ở đầu vào, chặn lộ secret/tuyên bố đặt chỗ ở đầu ra.
 
-Không gọi LLM — regex mẫu hẹp. Lớp phân luồng bằng LLM (`classification.route_result`) đã gắn
-`out_of_scope` cho chèn lệnh, đòi secret, đặt chỗ (`prompts.CLASSIFY_PROMPT`); module này là lưới an
-toàn tất định phía trước và phía sau, không thay thế lớp đó. Mẫu cố ý hẹp để không chặn nhầm câu du
-lịch hợp lệ (vd. "bỏ qua khách sạn"); mở rộng mẫu thì thêm test âm tính đi kèm.
+Không gọi LLM — regex mẫu hẹp. `precheck` chạy module này trước orchestrator; orchestrator vẫn tự từ chối yêu cầu
+ngoài phạm vi (đặt chỗ, thanh toán) bằng prompt. Module này là lưới an toàn tất định phía trước và phía sau. Mẫu cố ý
+hẹp để không chặn nhầm câu du lịch hợp lệ (vd. "bỏ qua khách sạn"); mở rộng mẫu thì thêm test âm tính đi kèm.
 
 `input_quality` là tầng 1 lọc rác (NFR-SEC-04, spec `docs/spec/agent/langgraph-nodes.md` mục "Guardrail tầng 1"):
 rỗng/chỉ ký hiệu, một ký tự lặp, tỉ lệ chữ thấp, gõ bậy và tục tĩu thuần.
