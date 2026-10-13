@@ -125,6 +125,14 @@ class PlanGazetteers:
     # 1.28.0: unigram/bigram của tên + mô tả catalog (`explain.Grams`) — cần cho cờ `unexplained`; None → luật không chạy.
     vocab: Grams | None = None
 
+    def entity_spans(self, text: str) -> tuple[tuple[int, int], ...]:
+        """Span ký tự của mọi alias entity trong câu (1.28.0: phần "đã hiểu" khi giải thích residual)."""
+        if not self.entities:
+            return ()
+        toks = spans(text)
+        return tuple((toks[i][0], toks[i + n - 1][1]) for i, n, _ in find_phrases(toks, self.entities.__contains__,
+                                                                                    MAX_ALIAS_TOKENS))
+
     def entity_keys(self, text: str, excluded: Iterable[tuple[int, int]] = ()) -> tuple[str, ...]:
         """Khoá entity trong câu: khớp dài nhất trên token đã fold, thứ tự xuất hiện, không lặp; bỏ cụm nằm trong `excluded`
         (span phủ định — "không lấy VinWonders, vé Safari" → chỉ safari)."""
@@ -632,13 +640,16 @@ def build_query_plan(nq: NormalizedQuery | None, raw_query: str, params: PlanPar
     filter_only = False
     if (flags.unexplained or flags.embed_residual) and nq is not None:
         # phần "điều kiện" của câu: số / số khách / thời lượng / phủ định / tuyến bay / điểm đến / địa danh / mọi cue loại
-        cond: list[tuple[int, int]] = [*numeric.spans, *party.spans, *duration.spans, *negation.spans,
+        # Span "đã hiểu" tính cả khi cờ lọc của họ đó tắt (bench 14/10: "combo 3N2Đ" khi F7 tắt, "ks gần hồ gươm" khi POI tắt
+        # từng bị coi là chữ lạ → rỗng nhầm): thời lượng, địa danh gazetteer, entity luôn được parse ở đây để giải thích câu.
+        duration_spans = duration.spans or parse_duration(text, protected=(*numeric.spans, *party.spans)).spans
+        cond: list[tuple[int, int]] = [*numeric.spans, *party.spans, *duration_spans, *negation.spans,
                                        *((a, b) for a, b, _ in nq.destination_spans),
                                        *(sp for _, sp in vertical_cue_spans(text))]
         if roles is not None:
             cond.extend(roles.spans)
-        if flags.poi:
-            cond.extend((s, e) for s, e, _ in gaz.place_hits(text, nq.destination_spans, excluded=tuple(negation.spans)))
+        cond.extend((s, e) for s, e, _ in gaz.place_hits(text, nq.destination_spans, excluded=tuple(negation.spans)))
+        cond.extend(gaz.entity_spans(text))
         unparsed_spans: tuple[tuple[int, int], ...] = ()
         if flags.unexplained and gaz.vocab is not None:
             # "có điều kiện" = có filter đang áp hoặc câu nêu điểm đến catalog (kể cả khi F1 tắt); cue loại một mình không tính

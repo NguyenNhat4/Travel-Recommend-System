@@ -49,7 +49,7 @@ from src.backend.app.domain.search import (
     soft_star_order,
     tokens,
 )
-from src.backend.app.domain.search.explain import Grams, content as evidence_tokens, name_evidence, phrase_hit
+from src.backend.app.domain.search.explain import Grams, content as evidence_tokens, name_evidence, token_hit
 from src.backend.app.domain.search.explain import toks as evidence_toks
 from src.backend.app.domain.search.fuzzy import FuzzyIndex
 from src.backend.app.domain.search.query_plan import EMPTY_UNEXPLAINED
@@ -593,11 +593,12 @@ class SearchProducts:
             if stages is not None:
                 stages.lap("fuzzy")
         if cfg.evidence_gate and self._name_grams:
-            # plan 2026-10-13 §2.1–2.2: cụm liền nhau, đúng thứ tự, giữ dấu — vớt cần bằng chứng TÊN, cộng RRF cần bằng chứng
-            # trong tên hoặc mô tả ("Trần Thị Mai" không khớp "Thị trấn …"; "gần biển" vẫn khớp mô tả)
+            # plan 2026-10-13 §2.1–2.2: vớt cần bằng chứng TÊN theo cụm liền nhau, đúng thứ tự, giữ dấu ("Trần Thị Mai" không
+            # khớp "Thị trấn …"); cộng RRF chỉ cần một âm tiết giữ dấu có trong tên hoặc mô tả (bench 14/10: đòi cặp âm tiết ở
+            # đây làm tụt câu mô tả — "combo trải nghiệm tại Phú Quốc" −0,84 nDCG)
             ev = evidence_tokens(evidence_toks(q), drop_tokens)
             admissible = lambda u: name_evidence(ev, self._name_grams[u], cfg.min_coverage)  # noqa: E731
-            rrf_admissible = lambda u: phrase_hit(ev, self._name_grams[u]) or phrase_hit(ev, self._unit_text_grams(u))  # noqa: E731
+            rrf_admissible = lambda u: token_hit(ev, self._name_grams[u]) or token_hit(ev, self._unit_text_grams(u))  # noqa: E731
         else:
             q_tokens = query_tokens(q)
             if drop_tokens:

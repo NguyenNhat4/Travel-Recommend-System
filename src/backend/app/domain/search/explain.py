@@ -132,6 +132,11 @@ def phrase_hit(q: Sequence[Tok], grams: Grams) -> bool:
     return any(grams.has_bi(a, b) for a, b in zip(q, q[1:]))
 
 
+def token_hit(q: Sequence[Tok], grams: Grams) -> bool:
+    """Ít nhất một token nội dung có trong `grams` (giữ dấu khi câu có dấu) — mức bằng chứng của phần cộng RRF."""
+    return any(grams.has_uni(t) for t in q)
+
+
 def name_evidence(q: Sequence[Tok], name: Grams, min_coverage: float) -> bool:
     """Bằng chứng TÊN (vớt unit chỉ có ở BM25): khớp cụm trong tên và tên phủ ≥ `min_coverage` token của câu (giữ dấu)."""
     if not q:
