@@ -35,7 +35,7 @@ resource "google_monitoring_alert_policy" "group_below_min" {
   notification_channels = local.alert_channels
 
   conditions {
-    display_name = "Số VM của MIG < min_replicas trong 5 phút"
+    display_name = "Số VM của nhóm nhỏ hơn mức tối thiểu (min_replicas) trong 5 phút"
     condition_threshold {
       filter          = local.group_size_filter
       comparison      = "COMPARISON_LT"
@@ -52,7 +52,7 @@ resource "google_monitoring_alert_policy" "group_below_min" {
 
   # Metric số VM của MIG biến mất (nhóm bị xoá hẳn) thì ngưỡng "nhỏ hơn" không bao giờ kích hoạt: dùng điều kiện vắng mặt.
   conditions {
-    display_name = "Metric số VM của MIG vắng mặt trong 5 phút"
+    display_name = "Không có dữ liệu số VM của nhóm trong 5 phút"
     condition_absent {
       filter   = local.group_size_filter
       duration = "300s"
@@ -79,12 +79,12 @@ resource "google_monitoring_alert_policy" "group_below_min" {
 #    Chỉ đếm VM thì báo cả khi 2 VM đang nhàn rỗi, vì scale-in chậm (600 s). CPU trung bình nhóm vượt cpu_target
 #    nghĩa là autoscaler đã muốn scale-out nhưng không còn chỗ.
 resource "google_monitoring_alert_policy" "group_at_max" {
-  display_name          = "${var.name_prefix} HA: autoscaler chạm max_replicas và CPU vẫn cao"
+  display_name          = "${var.name_prefix} HA: autoscaler đã đạt tối đa và CPU vẫn cao"
   combiner              = "AND"
   notification_channels = local.alert_channels
 
   conditions {
-    display_name = "Số VM của MIG bằng max_replicas trong 15 phút"
+    display_name = "Số VM của nhóm đã đạt tối đa (max_replicas) trong 15 phút"
     condition_threshold {
       filter = local.group_size_filter
       # Cloud Monitoring chỉ nhận COMPARISON_GT / COMPARISON_LT. Số VM là số nguyên nên "> max-0,5" tương đương ">= max".
@@ -101,7 +101,7 @@ resource "google_monitoring_alert_policy" "group_at_max" {
   }
 
   conditions {
-    display_name = "CPU trung bình nhóm > cpu_target trong 15 phút"
+    display_name = "CPU trung bình nhóm vượt mục tiêu autoscaler (cpu_target) trong 15 phút"
     condition_threshold {
       filter          = local.group_vm_filter
       comparison      = "COMPARISON_GT"
@@ -151,7 +151,7 @@ resource "google_monitoring_alert_policy" "group_memory_high" {
   }
 
   conditions {
-    display_name = "Không VM nào gửi memory trong 5 phút"
+    display_name = "Không VM nào gửi dữ liệu bộ nhớ trong 5 phút"
     condition_absent {
       filter   = local.group_memory_filter
       duration = "300s"
@@ -198,7 +198,7 @@ resource "google_monitoring_alert_policy" "group_disk_high" {
   }
 
   conditions {
-    display_name = "Không VM nào gửi đĩa trong 5 phút"
+    display_name = "Không VM nào gửi dữ liệu đĩa trong 5 phút"
     condition_absent {
       filter   = local.group_disk_filter
       duration = "300s"
@@ -228,7 +228,7 @@ resource "google_monitoring_alert_policy" "lb_5xx_ratio" {
   notification_channels = local.alert_channels
 
   conditions {
-    display_name = "5xx / tổng request > ngưỡng trong 5 phút"
+    display_name = "Tỷ lệ 5xx / tổng request vượt ngưỡng trong 5 phút"
     condition_threshold {
       filter             = "${local.lb_rule_filter_prefix} metric.labels.response_code_class=500"
       denominator_filter = local.lb_rule_filter_prefix
@@ -267,7 +267,7 @@ resource "google_monitoring_alert_policy" "lb_latency" {
   notification_channels = local.alert_channels
 
   conditions {
-    display_name = "p95 backend_latencies > ngưỡng trong 10 phút"
+    display_name = "p95 độ trễ backend vượt ngưỡng trong 10 phút"
     condition_threshold {
       filter          = "resource.type=\"https_lb_rule\" metric.type=\"loadbalancing.googleapis.com/https/backend_latencies\""
       comparison      = "COMPARISON_GT"
@@ -294,7 +294,7 @@ resource "google_monitoring_alert_policy" "lb_latency" {
 
 # 5. Probe từ ngoài vào load balancer: không có VM nào sẵn sàng, hoặc cả LB ngừng phục vụ.
 resource "google_monitoring_uptime_check_config" "lb_ready" {
-  display_name = "${var.name_prefix} HA readiness qua LB"
+  display_name = "${var.name_prefix} HA sẵn sàng qua LB"
   timeout      = "10s"
   period       = "60s"
 
@@ -381,12 +381,12 @@ resource "google_monitoring_alert_policy" "redis_memory" {
 # CI/CD chỉ có một VM runner tự host. VM tắt thì mọi run nằm ở hàng đợi mà GitHub không báo gì
 # (2026-10-12 17:44 đến 2026-10-13 02:00 UTC: 15 run kẹt `queued`). Metric uptime ngừng khi VM không chạy.
 resource "google_monitoring_alert_policy" "ci_runner_down" {
-  display_name          = "${var.name_prefix} CI: runner tự host không chạy"
+  display_name          = "${var.name_prefix} CI: máy chạy CI tự host không hoạt động"
   combiner              = "OR"
   notification_channels = local.alert_channels
 
   conditions {
-    display_name = "VM ${var.ci_runner_instance_name} không gửi uptime trong 10 phút"
+    display_name = "VM ${var.ci_runner_instance_name} không gửi dữ liệu uptime trong 10 phút"
     condition_absent {
       filter   = "resource.type=\"gce_instance\" metric.type=\"compute.googleapis.com/instance/uptime\" metric.labels.instance_name=\"${var.ci_runner_instance_name}\""
       duration = "600s"
@@ -403,7 +403,7 @@ resource "google_monitoring_alert_policy" "ci_runner_down" {
   }
 
   documentation {
-    content   = "VM runner GitHub Actions không chạy: mọi CI/CD đứng ở hàng đợi. Bật lại VM (`gcloud compute instances start ${var.ci_runner_instance_name}`) rồi kiểm `systemctl status 'actions.runner.*'` trên VM."
+    content   = "VM chạy CI (GitHub Actions) không hoạt động: mọi CI/CD đứng ở hàng đợi. Bật lại VM (`gcloud compute instances start ${var.ci_runner_instance_name}`) rồi kiểm `systemctl status 'actions.runner.*'` trên VM."
     mime_type = "text/markdown"
   }
 }

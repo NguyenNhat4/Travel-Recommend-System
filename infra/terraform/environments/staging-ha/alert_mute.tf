@@ -105,12 +105,12 @@ resource "google_logging_metric" "ha_alert_mute_job_failed" {
 }
 
 resource "google_monitoring_alert_policy" "mute_job_failed" {
-  display_name          = "${var.name_prefix} HA: job bật/tắt mute cảnh báo lỗi"
+  display_name          = "${var.name_prefix} HA: job bật/tắt kênh cảnh báo bị lỗi"
   combiner              = "OR"
   notification_channels = concat([for c in google_monitoring_notification_channel.email_always : c.id], var.notification_channel_ids)
 
   conditions {
-    display_name = "Lượt bật/tắt mute lỗi (sau retry)"
+    display_name = "Lượt bật/tắt kênh cảnh báo lỗi (sau khi thử lại)"
     condition_threshold {
       filter          = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.ha_alert_mute_job_failed.name}\" resource.type=\"cloud_scheduler_job\""
       comparison      = "COMPARISON_GT"

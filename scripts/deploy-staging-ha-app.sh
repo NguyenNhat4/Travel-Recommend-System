@@ -64,6 +64,18 @@ google_monitoring_alert_policy.crawler_silent[0]|update
 # Cảnh báo bộ nhớ và đĩa của từng VM app (2026-10-13): policy mới, không thay đổi policy nào khác.
 google_monitoring_alert_policy.group_memory_high|create
 google_monitoring_alert_policy.group_disk_high|create
+# Đổi tên hiển thị sang tiếng Việt (2026-10-13): chỉ đổi display_name, title, description, content; filter, ngưỡng và metric không đổi.
+google_monitoring_alert_policy.mute_job_failed|update
+google_monitoring_alert_policy.group_below_min|update
+google_monitoring_alert_policy.group_at_max|update
+google_monitoring_alert_policy.lb_5xx_ratio|update
+google_monitoring_alert_policy.lb_latency|update
+google_monitoring_uptime_check_config.lb_ready|update
+google_monitoring_alert_policy.patroni_no_replica[0]|update
+google_monitoring_alert_policy.patroni_no_leader[0]|update
+google_monitoring_alert_policy.patroni_probe_absent[0]|update
+google_logging_metric.patroni_no_replica[0]|update
+google_logging_metric.patroni_no_leader[0]|update
 # Patroni và dashboard (2026-10-12): startup-script có metrics_filter (f664124c), pg-a/pg-b đã ghi trực tiếp qua SSH.
 # Plan đã kiểm: chỉ metadata và dashboard_json đổi, không đổi machine_type/scheduling/status (không dừng VM DB).
 google_compute_instance.patroni["a"]|update
