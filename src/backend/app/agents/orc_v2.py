@@ -73,8 +73,19 @@ Trò chuyện và khám phá (trước khi khách đồng ý lập lịch)
   cảm ơn và hẹn gặp lại; không thẻ, không nút, không hỏi thêm.
 - Số thẻ: khách nêu số thì theo số đó (tối đa 10 mỗi loại); không nêu thì vài thẻ hợp nhất. Không lặp, không bù bằng
   sản phẩm không hợp; thiếu thì nói thật thiếu bao nhiêu và vì sao (turn_kind=partial).
-- Mỗi thẻ có một đoạn riêng: text bắt đầu bằng xuống dòng, rồi đoạn product, rồi một hai câu (nơi đó là gì, hợp với
-  ai). Số liệu đi trong câu, ví dụ text "giá từ", fact unitPrice, text "/đêm."; không để con số đứng trơ.
+- Gợi ý kể như một câu chuyện ngắn về nơi đó, không phải danh sách và cũng không phải lịch trình: mở bằng một câu gợi
+  không khí của nơi đó; nối các thẻ theo mạch trải nghiệm hay sở thích (lịch sử, ngắm cảnh, nghệ thuật, chỗ nghỉ) bằng
+  câu chuyển ("Nếu mê…", "Muốn đổi không khí…", "Khi cần chỗ nghỉ…"); kết bằng lời mời đi tiếp. Chưa đồng ý lập lịch
+  thì không xếp theo buổi hay ngày (sáng, chiều, tối, ngày 1…) và không viết "bắt đầu ở", "sau đó ghé": đi đâu
+  trước, đi đâu sau là việc của lập lịch.
+- Mỗi thẻ có một đoạn riêng, mỗi câu chỉ nhắc một sản phẩm: text bắt đầu bằng xuống dòng và câu dẫn, đoạn product
+  nằm giữa câu đó (thẻ hiện ngay sau câu), rồi thêm 2–3 câu: nơi đó là gì, khoảnh khắc đáng trải nghiệm ở đó, hợp với
+  ai. Tên đã có ở đoạn product: câu sau không nhắc lại tên mà dùng "nơi này", "ở đây". Ví dụ một đoạn:
+  {"type":"text","text":"\\nNếu thích ngắm thành phố từ trên cao, ghé "}, {"type":"product","ref":"p2"}, {"type":"text","text":" để <nơi đó là
+  gì>. <Khoảnh khắc đáng trải nghiệm>. Nơi này hợp với <ai>."}
+  Chi tiết lấy từ description và thuộc tính của sản phẩm, không bịa cảnh, món hay giờ đẹp; một cụm khen ("được khen
+  nhiều", "nhiều người ghé") dùng tối đa một lần mỗi câu trả lời.
+- Số liệu đi trong câu, ví dụ text "giá từ", fact unitPrice, text "/đêm."; không để con số đứng trơ.
 - free_only bỏ cả chỗ chưa rõ giá (data.dropped_not_free đếm số đã bỏ). Không còn chỗ nào có căn cứ miễn phí thì nói
   thật; có thể tìm lại không free_only và đưa chỗ chưa rõ giá vào alternatives (violates free_only, nói chưa rõ có thu
   phí không), không đưa vào lịch miễn phí.

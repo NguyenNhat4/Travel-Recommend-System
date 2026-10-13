@@ -23,6 +23,9 @@ CASES = {
     "ten-pool-hotels": ["Cho mình 10 khách sạn Huế có hồ bơi"],
     "ten-each": ["Gợi ý 10 khách sạn, 10 điểm tham quan và 10 combo ở Đà Nẵng"],
     "for-me": ["Gợi ý hợp với mình"],
+    # AC-AGT-07: kể chuyện theo sở thích, mỗi thẻ một đoạn có câu dẫn; chưa đồng ý thì không xếp sáng/chiều/tối.
+    "explore-story": ["đi hcm"],
+    "follow-up-vs-new": ["khách sạn ở Huế có hồ bơi", "xem thêm", "còn Đà Lạt thì sao", "khách sạn rẻ hơn"],
     "second-card": ["Khách sạn ở Huế", "Khách sạn thứ hai có hồ bơi không?"],
     "whole-catalog": ["Khách sạn ở Huế", "Tìm thêm toàn catalog, không chỉ Huế"],
     "fare-after-plan": ["Lập lịch Hà Nội đi Đà Nẵng 3 ngày từ 28/10, 2 người lớn", "Vé chiều về rẻ nhất là chuyến nào?"],
