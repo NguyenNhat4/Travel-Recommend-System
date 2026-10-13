@@ -219,6 +219,12 @@ variable "require_secret_versions" {
   default     = false
 }
 
+variable "ci_runner_instance_name" {
+  description = "VM chạy GitHub Actions runner tự host (mọi CI/CD chạy trên nó). Alert khi VM không gửi metric uptime."
+  type        = string
+  default     = "vota-ci-runner"
+}
+
 variable "alert_emails" {
   description = "Emails that receive HA alerts. Empty = alert policies exist but notify nobody (see notification_channel_ids)."
   type        = list(string)

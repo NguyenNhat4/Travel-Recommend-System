@@ -1,60 +1,38 @@
-# Staging Managed Monitoring
+# Agent giám sát trên VM
 
-This root configures only the staging monitoring environment. It does not contain live-environment resources or a live state path.
+Thư mục này chỉ còn các file chạy **trên VM**. `infra/terraform/environments/staging-ha/main.tf` đọc chúng bằng `file()` và đưa vào metadata của template app. `startup.sh.tftpl` tải về rồi cài khi VM khởi động. `scripts/deploy-staging-ha-crawler.sh` chép riêng `ops-agent-crawler.yaml` lên VM crawler. Dashboard, alert và log-based metric của staging-ha nằm trong Terraform root `infra/terraform/environments/staging-ha`.
 
-## Resources
+Terraform giám sát của staging cũ (state `monitoring/staging`) đã gỡ khỏi repo ngày 2026-10-13 (`docs/prd/update-archive/2026-10-13-ngung-ci-cd-staging-cu.md`). Tài nguyên GCP của nó vẫn còn. **Không destroy state `monitoring/staging` hay `infra/staging`.** Hai state này còn giữ những tài nguyên staging-ha đang dùng nhưng không quản lý:
 
-- Cloud Monitoring dashboard (`dashboard.tf`, 12-column mosaic) read top to bottom: Overview (readiness + SLO gauges), Backend API, one block per VM (App, DB, DB replica when it exists) with CPU/memory/fullest-disk scorecards and CPU, memory-by-state, disk-by-device, network charts, per-container CPU/RAM/disk for the App VM, container and crawler events, logs. Nothing is averaged across VMs or containers.
-- Per-container CPU and RAM: `vota-container-stats-collector` runs `docker stats --no-stream` every 60 s and writes custom metrics `custom.googleapis.com/vota/container/{cpu_percent,memory_bytes,memory_percent}` (declared in `container_metrics.tf`; CPU 100% = one vCPU). The `container metrics collector silent` alert fires if the samples stop.
-- Dashboard log panels for backend, frontend, crawler, Redis and Weaviate containers, filtered by container name where the emitted log entry provides it.
-- Per-container disk usage: `vota-container-disk-collector` samples every 5 minutes (writable layer, json-file logs incl. rotations, named volumes) into `/var/log/vota/container-disk.jsonl`; a log-based distribution metric feeds a dashboard chart and the `container disk usage high` alert (`container_disk_alert_gib`, default 5 GiB), and a logs panel shows the exact byte values.
-- Alert policies for uptime, CPU, memory, disk, per-container disk and error-level VM logs.
-- Cloud Monitoring HTTPS uptime check for the staging readiness endpoint.
-- Cloud Logging user metric for error-level Compute Engine logs.
-- Docker lifecycle event watcher and crawler log metrics for container stop, OOM, partial crawler runs and watcher heartbeat absence.
-- Daily log rotation for watcher, crawler and daily-job logs: 14 compressed rotations with a 100 MB per-file cap.
-- Optional email notification channel, supplied as a sensitive variable.
+- Alert và log-metric áp cho toàn project (không gắn VM cũ): `vota-staging_container_stop_by_name`, `_container_oom`, `_container_disk_bytes`, `_crawler_failure`, `_crawler_warning`, `_error_logs`, `_docker_watcher_heartbeat`, cùng các alert policy tương ứng và `log ingestion spike`. Cảnh báo crawler của staging-ha (`crawler_monitoring.tf`) chỉ bổ sung cho `crawler failure`, không thay thế nó.
+- Metric descriptor `custom.googleapis.com/vota/container/{cpu_percent,memory_bytes,memory_percent}`, mà dashboard staging-ha vẽ.
+- Retention của bucket log `_Default` và exclusion `vota-staging-debug-and-health-ok`.
+- IP tĩnh `34.142.132.251` (`google_compute_address.app_public` trong state `infra/staging`), mà bastion staging-ha đang dùng.
 
-Container disk numbers exclude shared image layers and bind mounts; a named volume mounted by several containers is counted in each. The chart reads percentiles of 10%-wide buckets (about ±5%) and shows containers under 1 MiB as 0; use the logs panel or `tail /var/log/vota/container-disk.jsonl` for exact bytes. Collection failures are logged as `event=container_disk_error`.
+Muốn đổi các tài nguyên trên thì import chúng vào root staging-ha trước (task riêng). Lấy Terraform cũ từ một commit trước 2026-10-13 nếu cần tra cứu.
 
-The crawler monitor UI is not part of this package. This package monitors the crawler and container lifecycle only.
+## File
 
-The named container log panels depend on `jsonPayload.container_name` being present in the Cloud Logging entry. Docker `json-file` logs are parsed by the Ops Agent but are not automatically enriched with a Compose service name; verify the live entry shape in Logs Explorer before treating an empty named panel as an ingestion failure.
+- `ops-agent-staging.yaml`: cấu hình Ops Agent của VM app, đọc log container (docker json-file) và các file JSONL bên dưới.
+- `ops-agent-crawler.yaml`: cấu hình Ops Agent của VM crawler, đọc log các lượt cào.
+- `vota-docker-event-watcher.py|.service`: ghi event vòng đời container vào `/var/log/vota/docker-events.jsonl`.
+- `vota-container-disk-collector.py|.service`: lấy mẫu dung lượng đĩa theo container mỗi 5 phút, ghi vào `/var/log/vota/container-disk.jsonl`.
+- `vota-container-stats-collector.py|.service`: chạy `docker stats` mỗi 60 giây và ghi metric `custom.googleapis.com/vota/container/*`.
+- `vota-monitoring-logrotate.conf`: xoay log hằng ngày.
+- `install-vota-docker-event-watcher.sh`: cài các systemd unit và logrotate ở trên rồi bật ba service.
 
-## Local validation
+Sửa một file ở đây chỉ có hiệu lực cho VM được tạo từ template mới, vì Terraform đọc file khi plan. Áp dụng qua `staging-ha-infra-cd.yml`.
+
+## Kiểm tra cục bộ
 
 ```bash
-bash infra/monitoring/tests/test_staging_layout.sh
-terraform -chdir=infra/monitoring fmt -check -recursive
-terraform -chdir=infra/monitoring init -backend=false
-terraform -chdir=infra/monitoring validate
+python3 -m pytest -q infra/monitoring/tests
+python3 infra/terraform/environments/staging-ha/tests/test_ha_telemetry.py
 ```
 
-## Staging plan/apply
-
-Create the state bucket and configure credentials outside the repository. Then either use the GitHub Actions staging environment or run:
+Trên một VM đang chạy:
 
 ```bash
-terraform -chdir=infra/monitoring init \
-  -backend-config=backend.staging.hcl
-
-terraform -chdir=infra/monitoring plan \
-  -var-file=staging.tfvars
-
-terraform -chdir=infra/monitoring apply \
-  -var-file=staging.tfvars
-```
-
-Never commit `backend.staging.hcl`, `staging.tfvars`, state files or generated plans.
-
-Install the VM-side Docker event watcher separately after reviewing the staging plan:
-
-```bash
-sudo bash infra/monitoring/install-vota-docker-event-watcher.sh
-sudo systemctl is-active vota-docker-event-watcher.service
+sudo systemctl is-active vota-docker-event-watcher.service vota-container-disk-collector.service vota-container-stats-collector.service
 sudo tail -n 20 /var/log/vota/docker-events.jsonl
-sudo systemctl is-active vota-container-disk-collector.service
-sudo tail -n 5 /var/log/vota/container-disk.jsonl
-sudo systemctl is-active vota-container-stats-collector.service
-sudo journalctl -u vota-container-stats-collector -n 20 --no-pager
 ```

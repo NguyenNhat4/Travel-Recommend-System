@@ -279,3 +279,33 @@ resource "google_monitoring_alert_policy" "redis_memory" {
     mime_type = "text/markdown"
   }
 }
+
+# CI/CD chỉ có một VM runner tự host. VM tắt thì mọi run nằm ở hàng đợi mà GitHub không báo gì
+# (2026-10-12 17:44 đến 2026-10-13 02:00 UTC: 15 run kẹt `queued`). Metric uptime ngừng khi VM không chạy.
+resource "google_monitoring_alert_policy" "ci_runner_down" {
+  display_name          = "${var.name_prefix} CI: runner tự host không chạy"
+  combiner              = "OR"
+  notification_channels = local.alert_channels
+
+  conditions {
+    display_name = "VM ${var.ci_runner_instance_name} không gửi uptime trong 10 phút"
+    condition_absent {
+      filter   = "resource.type=\"gce_instance\" metric.type=\"compute.googleapis.com/instance/uptime\" metric.labels.instance_name=\"${var.ci_runner_instance_name}\""
+      duration = "600s"
+
+      aggregations {
+        alignment_period   = "60s"
+        per_series_aligner = "ALIGN_RATE"
+      }
+    }
+  }
+
+  alert_strategy {
+    auto_close = "1800s"
+  }
+
+  documentation {
+    content   = "VM runner GitHub Actions không chạy: mọi CI/CD đứng ở hàng đợi. Bật lại VM (`gcloud compute instances start ${var.ci_runner_instance_name}`) rồi kiểm `systemctl status 'actions.runner.*'` trên VM."
+    mime_type = "text/markdown"
+  }
+}

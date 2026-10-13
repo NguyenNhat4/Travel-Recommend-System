@@ -53,9 +53,11 @@ class RollingUpdate(unittest.TestCase):
 
     def test_cd_waits_for_lb_healthy_before_last_good(self):
         # Không có min_ready_sec thì MIG báo stable trước khi LB thấy VM HEALTHY; Verify phải chờ, nếu không sẽ rollback nhầm.
-        for wf in ("staging-ha-backend-cd.yml", "staging-ha-frontend-cd.yml"):
+        verify = (D.parents[3] / "scripts" / "verify-staging-ha-app.sh").read_text()
+        self.assertIn('[ "$healthy" = "$target_size" ] && break', verify)
+        for wf in ("staging-ha-app-cd.yml", "staging-ha-infra-cd.yml"):
             text = (D.parents[3] / ".github" / "workflows" / wf).read_text()
-            self.assertIn('[ "$healthy" = "$target_size" ] && break', text, wf)
+            self.assertIn("scripts/verify-staging-ha-app.sh", text, wf)
 
     def test_autohealing_initial_delay_covers_boot(self):
         mig = block(MAIN, "google_compute_region_instance_group_manager", "app")

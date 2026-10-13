@@ -25,7 +25,7 @@ Hệ thống được thiết kế để vận hành trên ba cấp môi trườ
 
 ### 1.1. Tầng DB HA riêng cho `staging-ha`
 
-`staging-ha` là Terraform root và state riêng (`infra/staging-ha`), tách khỏi root/state `infra/staging`. Vì hai root có state khác nhau, thay đổi Patroni không làm thay đổi tài nguyên do workflow `infra-terraform-staging.yml` quản lý; các workflow CI/CD ứng dụng và crawler cũng không bị sửa trong phạm vi này.
+`staging-ha` là môi trường staging duy nhất, có Terraform root và state riêng (`infra/staging-ha`). Staging cũ (root `infra/staging` và `infra/monitoring`) đã ngừng ngày 2026-10-13: repo không còn Terraform hay workflow CI/CD của nó. Tài nguyên GCP cũ và hai state `infra/staging`, `monitoring/staging` vẫn còn. **Không destroy hai state này:** chúng còn giữ những tài nguyên staging-ha đang dùng, gồm alert và log-metric áp cho toàn project (container stop/OOM/disk, crawler failure, error logs, log ingestion), metric descriptor `custom.googleapis.com/vota/container/*` mà dashboard staging-ha vẽ, cấu hình retention/exclusion log, và IP tĩnh `34.142.132.251` của bastion. Các tài nguyên này phải được chuyển (import) vào root staging-ha trước khi dọn staging cũ. Thư mục `infra/monitoring/` chỉ còn agent và collector mà startup script của staging-ha cài lên VM. *(Theo `update-archive/2026-10-13-ngung-ci-cd-staging-cu.md`.)*
 
 Khi được bật có chủ đích bằng `create_patroni = true`, staging-ha tạo hai node PostgreSQL + Patroni ở hai zone, một witness etcd ở zone thứ ba và một ILB private. ILB chỉ gửi kết nối ghi tới node trả HTTP `200` ở `/primary`; Patroni tự bầu leader khi mất node. `create_patroni = false` vẫn là mặc định, nên việc merge mã không tự dựng cụm.
 
@@ -154,12 +154,21 @@ Hệ thống cung cấp các endpoint kiểm tra trạng thái sức khỏe đ�
 
 ### 6.1. Quy trình phát hành phiên bản mới (Release Process)
 ```
-[Code Push] ──> [CI: Lint & Tests] ──> [DB Migration] ──> [Deploy Backend] ──> [Deploy Frontend] ──> [Smoke Test]
+[PR: CI] ──> [Merge] ──> [CD: CI gate] ──> [Build (nếu key đổi)] ──> [DB Migration] ──> [Prepare mọi VM] ──> [Switch: canary → còn lại] ──> [Verify + Smoke]
 ```
-1. Xác nhận toàn bộ automated tests và contract validation đều PASS trên CI.
-2. Thực thi migration cơ sở dữ liệu bằng `db/migrations/run.py`.
-3. Triển khai phiên bản Backend mới. Staging-HA cập nhật image không gián đoạn: trên mỗi VM chạy bản mới (slot blue/green) song song bản cũ, đợi `/health/ready` của bản mới, đổi proxy cục bộ (cổng 3000) sang bản mới rồi rút bản cũ sau khi drain; bản mới không sẵn sàng thì bản cũ vẫn phục vụ. Terraform chỉ đổi template (MIG `OPPORTUNISTIC`, không thay VM). Mỗi lần chỉ một deploy chạy (khoá concurrency `staging-ha-app` và `flock` trên VM). Cổng sẵn sàng là LB báo đủ VM HEALTHY và `/health/ready` qua public endpoint đạt 6 lần liên tiếp. Quyết định này áp dụng cho staging-HA; production chưa có quyết định riêng. *(Thay quyết định 2026-10-09 "chấp nhận downtime" của `update-archive/2026-10-09-rut-ngan-cd-chap-nhan-downtime.md`; cập nhật 2026-10-12 theo chỉ đạo trực tiếp, chi tiết vận hành ở `docs/guide/van-hanh-cd-staging-ha.md`.)*
-4. Triển khai phiên bản Frontend mới tương ứng.
+1. CI chạy trên mọi PR. Sau khi merge, CD gọi lại đúng CI đó (`workflow_call`) làm cổng: CI đỏ thì không build và không deploy.
+2. Thực thi migration cơ sở dữ liệu bằng `db/migrations/run.py`. Migration phải tương thích ngược với bản đang chạy (expand trước, contract ở lần phát hành sau), vì bản cũ và bản mới cùng chạy trong lúc roll.
+3. Triển khai backend và frontend trong **một** luồng CD (`staging-ha-app-cd.yml`):
+   - CD so *content key* của từng thành phần (hash các thư mục đầu vào của image) với bản đang chạy (last-good). Chỉ thành phần đổi mới qua CI và build. Image có key đã tồn tại thì không build lại.
+   - Run mới nhất luôn chứa trọn mọi thay đổi chưa deploy, nên run đang chờ bị thay thế mà không mất thay đổi nào. Khoá `concurrency: staging-ha-app` đặt ở mức workflow và giữ `flock` trên VM.
+   - Image mong muốn được ghi vào *all-instances config* của MIG (metadata `vota-backend-image`, `vota-frontend-image`), để VM do autoscaler hoặc autohealing tạo khởi động đúng bản. Deploy ứng dụng **không chạy Terraform**; Terraform chỉ chạy ở `staging-ha-infra-cd.yml`.
+   - Roll theo hai pha. Pha `prepare` chạy song song trên mọi VM: dựng slot mới, đợi `/health/ready`, chép `/_next/static` vào kho tĩnh của proxy. Pha `switch`: đổi proxy trên VM đầu trước (canary), rồi các VM còn lại song song.
+   - Kho tĩnh giữ asset của các phiên bản gần đây, để trình duyệt đang chạy bản cũ không bị 404 chunk.
+   - Cổng sẵn sàng: mọi VM chạy đúng image đích, LB báo đủ VM HEALTHY, và `/health/ready` qua public endpoint đạt 3 lần liên tiếp (cách 5 s).
+   - Lỗi hoặc run bị huỷ thì đưa image mong muốn và các VM về last-good.
+
+   Quyết định này áp dụng cho staging-HA; production chưa có quyết định riêng. *(Theo `update-archive/2026-10-13-cd-staging-ha-mot-luong-hai-pha.md`, thay mô tả ngày 2026-10-12; chi tiết vận hành ở `docs/guide/van-hanh-cd-staging-ha.md`.)*
+4. Frontend đi cùng luồng ở bước 3; không còn CD frontend riêng.
 5. Thực hiện kịch bản Smoke Test trên Staging/Production để xác nhận luồng tìm kiếm và đặt hàng hoạt động bình thường.
 
 ### 6.2. Kế hoạch hoàn tác khi phát sinh sự cố (Rollback Strategy)
@@ -183,4 +192,4 @@ gcloud dns record-sets update db.vota.internal. \
   --rrdatas=<old-primary-private-ip>
 ```
 
-Không chạy `terraform apply` của root `infra/terraform/environments/staging` để rollback Patroni; hai state có ranh giới riêng.
+Không dùng state `infra/staging` của staging cũ (đã gỡ khỏi repo) để rollback Patroni; hai state có ranh giới riêng.

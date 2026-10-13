@@ -80,5 +80,15 @@ BACKEND_STOP_GRACE='${stop_grace_seconds}'
 SLOTENV
 chmod 0644 /etc/vota/slot.env
 
+# Image mong muốn: CD ghi vào all-instances config của MIG (scripts/set-staging-ha-desired-images.sh), nên VM do autoscaler
+# hoặc autohealing tạo chạy đúng bản đang triển khai. Thiếu hoặc sai dạng thì dùng image trong template.
+desired_image() {
+  local v
+  v="$(curl -fsS -m 5 -H 'Metadata-Flavor: Google' "http://metadata.google.internal/computeMetadata/v1/instance/attributes/$1" 2>/dev/null || true)"
+  if [[ "$v" =~ ^[a-z0-9][a-z0-9._/-]*@sha256:[a-f0-9]{64}$ ]]; then echo "$v"; else echo "$2"; fi
+}
+boot_backend="$(desired_image vota-backend-image '${backend_image}')"
+boot_frontend="$(desired_image vota-frontend-image '${frontend_image}')"
+
 # Boot: lấy env từ Secret Manager, kéo image, dựng pgbouncer, proxy và slot blue (hoặc giữ slot đang chạy khi chỉ khởi động lại).
-BACKEND_IMAGE='${backend_image}' FRONTEND_IMAGE='${frontend_image}' /usr/local/sbin/vota-slot-deploy.sh boot
+BACKEND_IMAGE="$boot_backend" FRONTEND_IMAGE="$boot_frontend" /usr/local/sbin/vota-slot-deploy.sh boot

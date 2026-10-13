@@ -4,8 +4,11 @@
 # bản cũ không bị đụng tới.
 #
 # Dùng ở hai nơi:
-#   - startup.sh.tftpl (mode `boot`): VM mới hoặc khởi động lại dựng infra, proxy và một slot theo image trong template.
-#   - scripts/roll-staging-ha-app-slots.sh (mode `deploy`, qua IAP SSH): đổi image trên VM đang chạy.
+#   - startup.sh.tftpl (mode `boot`): VM mới hoặc khởi động lại dựng infra, proxy và một slot theo image mong muốn
+#     (metadata all-instances config của MIG; thiếu thì image trong template).
+#   - scripts/roll-staging-ha-app-slots.sh (qua IAP SSH): `prepare` dựng slot mới và đợi ready trên mọi VM song song,
+#     rồi `switch` đổi proxy (VM đầu trước, các VM còn lại song song). `abort` bỏ slot chờ khi VM khác chuẩn bị lỗi.
+#     `deploy` = prepare + switch trên một VM. `report` in image đang phục vụ.
 #
 # Bố cục trên VM (network_mode: host cho mọi container):
 #   vota-proxy (nginx) :3000  ->  frontend của slot đang hoạt động  ->  backend cùng slot
@@ -14,7 +17,7 @@
 #   và được chuyển sang slot ở lần deploy đầu tiên (xem migrate_from_legacy).
 #
 # Biến môi trường:
-#   BACKEND_IMAGE, FRONTEND_IMAGE  image@sha256:... (bắt buộc ở mode boot và deploy)
+#   BACKEND_IMAGE, FRONTEND_IMAGE  image@sha256:... (bắt buộc ở mode boot, prepare, switch, deploy)
 #   DRAIN_SECONDS (110) READY_TIMEOUT (600) READY_STREAK (3) MIN_AVAILABLE_MB (2200) PROXY_IMAGE
 # /etc/vota/slot.env (chỉ có trên VM dựng từ template mới) cung cấp BACKEND_ENV_SECRET và tham số uvicorn.
 set -euo pipefail
@@ -28,6 +31,11 @@ DRAIN_SECONDS="${DRAIN_SECONDS:-110}"
 READY_TIMEOUT="${READY_TIMEOUT:-600}"
 READY_STREAK="${READY_STREAK:-3}"
 MIN_AVAILABLE_MB="${MIN_AVAILABLE_MB:-2200}"
+# Kho asset tĩnh của Next.js (/_next/static) dùng chung mọi phiên bản: trình duyệt đang chạy bản cũ (hoặc đã nhận HTML
+# từ VM khác) vẫn lấy được chunk của bản đó. Nằm trong PROXY_DIR vì proxy đã mount thư mục này (không phải tạo lại proxy).
+STATIC_STORE="${STATIC_STORE:-$PROXY_DIR/static-store}"
+STATIC_KEEP_DAYS="${STATIC_KEEP_DAYS:-14}"
+PENDING="$ETC/pending-slot"
 
 log() { printf '[slot] %s\n' "$*" >&2; }
 die() { log "LỖI: $*"; exit 1; }
@@ -181,6 +189,21 @@ http {
   server {
     listen 3000 default_server;
 
+    # Asset có hash trong tên file: lấy từ kho chung trước (gồm cả bản cũ), thiếu thì hỏi frontend đang hoạt động.
+    location /_next/static/ {
+      root /etc/vota/proxy/static-store;
+      try_files $uri @frontend;
+      add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+
+    location @frontend {
+      proxy_pass http://vota_frontend;
+      proxy_http_version 1.1;
+      proxy_set_header Connection $connection_upgrade;
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Host $http_host;
+    }
+
     location / {
       proxy_pass http://vota_frontend;
       proxy_http_version 1.1;
@@ -220,6 +243,24 @@ pull_images() {
   docker pull "$BACKEND_IMAGE" >/dev/null
   docker pull "$FRONTEND_IMAGE" >/dev/null
   docker pull "$PROXY_IMAGE" >/dev/null
+}
+
+# Chép /_next/static của image frontend vào kho chung. Tên file có hash nên các phiên bản không đè nhau; cp ghi đè làm
+# mới mtime của file thuộc bản hiện tại, nên chỉ asset không còn bản nào dùng trong STATIC_KEEP_DAYS ngày bị xoá.
+stash_static() {
+  local cid tmp
+  mkdir -p "$STATIC_STORE/_next/static"
+  tmp="$(mktemp -d)"
+  cid="$(docker create "$FRONTEND_IMAGE")"
+  if docker cp "$cid:/app/.next/static" "$tmp/static" >/dev/null 2>&1; then
+    cp -r "$tmp/static/." "$STATIC_STORE/_next/static/"
+  else
+    log "cảnh báo: image frontend không có /app/.next/static; kho tĩnh không đổi"
+  fi
+  docker rm -f "$cid" >/dev/null 2>&1 || true
+  rm -rf "$tmp"
+  find "$STATIC_STORE" -type f -mtime +"$STATIC_KEEP_DAYS" -delete 2>/dev/null || true
+  chmod -R a+rX "$STATIC_STORE"
 }
 
 # Làm mới env từ Secret Manager. Chỉ chạy trên VM dựng từ template mới (có slot.env); VM kiểu cũ giữ nguyên env hiện có.
@@ -388,6 +429,7 @@ mode_boot() {
   refresh_config
   write_files
   pull_images
+  stash_static
   ensure_infra
   local active
   active="$(detect_active)"
@@ -411,22 +453,28 @@ mode_boot() {
   esac
 }
 
-mode_deploy() {
-  acquire_lock
-  require_images
-  local avail active new
+check_ram() {
+  local avail
   avail="$(awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo)"
   [ "$avail" -ge "$MIN_AVAILABLE_MB" ] || die "chỉ còn ${avail} MB RAM trống (< $MIN_AVAILABLE_MB): không chạy hai bản song song để tránh OOM"
+}
 
+# Pha 1 (chạy song song trên mọi VM): dựng slot mới bên cạnh slot đang phục vụ và đợi ready. Không đổi traffic.
+mode_prepare() {
+  acquire_lock
+  require_images
+  check_ram
   refresh_config
   write_files
+  local active new
   active="$(detect_active)"
   log "slot đang hoạt động: $active"
+  rm -f "$PENDING"
 
   if [ "$active" = blue ] || [ "$active" = green ]; then
     if [ "$(slot_images "$active")" = "$BACKEND_IMAGE $FRONTEND_IMAGE" ]; then
-      log "image đã đúng, không đổi"
-      report "$active"
+      log "image đã đúng, không cần slot mới"
+      echo "SLOT_PREPARED host=$(hostname) slot=$active noop=1"
       return 0
     fi
     new="$(other_slot "$active")"
@@ -435,6 +483,7 @@ mode_deploy() {
   fi
 
   pull_images
+  stash_static
   ensure_infra
   stop_slot "$new"   # dọn dấu vết của lần thử trước (nếu có)
   start_slot "$new"
@@ -447,6 +496,33 @@ mode_deploy() {
     stop_slot "$new"
     die "slot $new không ready; $active vẫn phục vụ"
   fi
+  echo "$new" > "$PENDING"
+  echo "SLOT_PREPARED host=$(hostname) slot=$new"
+}
+
+# Pha 2: đổi proxy sang slot đã chuẩn bị (vài giây). Lỗi thì đưa proxy về slot cũ.
+mode_switch() {
+  acquire_lock
+  require_images
+  local active new
+  active="$(detect_active)"
+  new="$(cat "$PENDING" 2>/dev/null || true)"
+  # Slot đang phục vụ đã đúng image đích (prepare noop, hoặc một deploy khác vừa làm xong): không đổi gì, dọn slot chờ thừa.
+  if { [ "$active" = blue ] || [ "$active" = green ]; } && [ "$(slot_images "$active")" = "$BACKEND_IMAGE $FRONTEND_IMAGE" ]; then
+    if [ -n "$new" ] && [ "$new" != "$active" ]; then
+      log "slot $active đã chạy image đích: bỏ slot chờ $new"
+      stop_slot "$new"
+    fi
+    rm -f "$PENDING"
+    log "slot $active đã chạy image đích"
+    report "$active"
+    return 0
+  fi
+  [ -n "$new" ] && [ "$new" != "$active" ] || die "không có slot chờ đổi và slot $active chạy image khác đích"
+  running "vota-frontend-$new" || die "slot chờ $new không chạy"
+  [ "$(slot_images "$new")" = "$BACKEND_IMAGE $FRONTEND_IMAGE" ] || die "slot chờ $new chạy image khác đích: $(slot_images "$new")"
+  write_files   # nginx.conf mới nhất (kể cả location kho tĩnh) được nạp ở lần reload dưới
+  slot_ports "$new"
 
   if [ "$active" = legacy ]; then
     migrate_from_legacy "$new"
@@ -457,6 +533,7 @@ mode_deploy() {
       slot_ports "$active"
       write_upstream "$FRONTEND_PORT"
       stop_slot "$new"
+      rm -f "$PENDING"
       die "không đổi được proxy sang $new; $active vẫn phục vụ"
     fi
   else
@@ -472,11 +549,13 @@ mode_deploy() {
       write_upstream "$FRONTEND_PORT"
       reload_proxy || log "cảnh báo: reload proxy về $active cũng lỗi"
       stop_slot "$new"
+      rm -f "$PENDING"
       die "proxy không ready sau khi đổi sang $new; đã đổi lại $active"
     fi
     die "proxy không ready sau khi chuyển từ legacy sang $new"
   fi
 
+  rm -f "$PENDING"
   echo "$new" > "$ETC/active-slot"
   if [ "$active" != none ]; then
     drain_and_remove_old "$active"
@@ -484,9 +563,32 @@ mode_deploy() {
   report "$new"
 }
 
+# Huỷ pha 1 (một VM khác chuẩn bị lỗi): bỏ slot chờ, slot đang phục vụ không bị đụng.
+mode_abort() {
+  acquire_lock
+  local active new
+  active="$(detect_active)"
+  new="$(cat "$PENDING" 2>/dev/null || true)"
+  if [ -n "$new" ] && [ "$new" != "$active" ]; then
+    log "huỷ slot chờ $new, giữ $active"
+    stop_slot "$new"
+  fi
+  rm -f "$PENDING"
+  report "$active"
+}
+
+mode_deploy() {
+  mode_prepare
+  mode_switch
+}
+
 case "$MODE" in
   boot) mode_boot ;;
+  prepare) mode_prepare ;;
+  switch) mode_switch ;;
+  abort) mode_abort ;;
   deploy) mode_deploy ;;
+  report) report "$(detect_active)" ;;
   status) detect_active ;;
-  *) die "dùng: $0 boot|deploy|status" ;;
+  *) die "dùng: $0 boot|prepare|switch|abort|deploy|report|status" ;;
 esac
