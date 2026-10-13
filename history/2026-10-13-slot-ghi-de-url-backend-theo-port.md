@@ -38,11 +38,12 @@ Chỉ đọc tên khoá và host:port của URL, không in giá trị khác:
 
 - `bash -n infra/terraform/environments/staging-ha/slot-deploy.sh`: OK.
 - `python3 -m pytest infra/terraform/environments/staging-ha/tests`: 114 passed (gồm test mới).
+- Sau khi merge `release-mvp-v2` (a10dd0a4): 125 passed, 2 failed. Hai test `RollVisitsEveryVm` (`test_every_running_vm_is_prepared_switched_and_checked`, `test_failed_prepare_aborts_everywhere_and_switches_nothing`) cũng lỗi trên chính `release-mvp-v2`, không do thay đổi này.
 - `docker compose config` trên compose đã tách ra từ heredoc, với `backend.env` giả chứa `:8000` (không đụng VM): service `backend` của blue ra `ITINERARY_SERVICE_BASE_URL=http://127.0.0.1:8001` và `ASSISTANT_API_BASE_URL=http://127.0.0.1:8001/api/v1`; của green ra `8002`. Lệnh `--port` của uvicorn cũng khớp port slot.
 
 ## Còn lại / rủi ro
 
-- Chưa deploy lên VM. `roll-staging-ha-app-slots.sh` đẩy script mới lên mỗi VM ở mỗi lần deploy, nhưng `mode_deploy` thoát sớm khi image không đổi, nên slot đang chạy chỉ nhận env mới ở lần đổi image kế tiếp.
+- Chưa deploy lên VM. Sau merge, `roll-staging-ha-app-slots.sh` đẩy script mới lên mỗi VM và chạy `prepare`/`switch`. `prepare` trả noop khi image không đổi, nên slot đang chạy chỉ nhận env mới ở lần đổi image kế tiếp (khi `prepare` dựng slot chờ).
 - Secret `vota-ha-backend-env` vẫn giữ `:8000`. Không đổi cho tới khi người chốt quyết định. Nếu muốn xoá hai khoá để tránh nhầm, đó là một version mới của secret và cần xác nhận trước.
 - `APP_PORT=8000` trong secret không thấy code nào đọc (`src/backend/app/core/config.py` chỉ khai báo). Không đổi.
 - Chưa có kiểm thử trên VM thật: cần một lần roll (hoặc deploy app) để xác nhận `/health/ready` và env của slot mới.

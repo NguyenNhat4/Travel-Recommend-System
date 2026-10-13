@@ -1,12 +1,14 @@
 name: Frontend CI
 
+# CI frontend. Chạy trên mọi PR, và được staging-ha-app-cd.yml gọi lại (workflow_call) làm cổng trước khi build và deploy
+# commit đã merge. Không chạy riêng khi push.
+
 on:
   pull_request:
     types:
       - opened
       - synchronize
       - reopened
-      - closed
     branches:
       - main
       - release-mvp-v1
@@ -14,34 +16,21 @@ on:
       - release-mvp-v3
     paths:
       - '.github/workflows/frontend-ci-cd.yml'
-      - '.github/actions/sync-env-from-secret-manager/**'
-      - 'ops/docker-compose.backend-vm.yml'
-      - 'scripts/deploy-frontend-vm.sh'
-      - 'src/frontend/Dockerfile.web'
+      - '.github/workflows/staging-ha-image-build.yml'
+      - '.dockerignore'
+      - 'scripts/ci/**'
       - 'src/frontend/**'
       - 'src/shared/contracts/**'
-  push:
-    branches:
-      - main
-      - release-mvp-v1
-      - release-mvp-v2
-      - release-mvp-v3
-    paths:
-      - '.github/workflows/frontend-ci-cd.yml'
-      - '.github/actions/sync-env-from-secret-manager/**'
-      - 'ops/docker-compose.backend-vm.yml'
-      - 'scripts/deploy-frontend-vm.sh'
-      - 'src/frontend/Dockerfile.web'
-      - 'src/frontend/**'
-      - 'src/shared/contracts/**'
+      - 'src/shared/mocks/**'
+  workflow_call:
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: frontend-ci-${{ github.event_name == 'pull_request' && github.ref || 'staging' }}
-  # PR: push mới huỷ run cũ cùng nhánh. Push lên nhánh deploy vẫn xếp hàng, không huỷ.
+  # PR: push mới huỷ run cũ cùng PR. Khi staging-ha-app-cd.yml gọi: nhóm riêng theo run, không huỷ.
+  group: ${{ github.event_name == 'pull_request' && format('frontend-ci-{0}', github.ref) || format('frontend-ci-run-{0}', github.run_id) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -50,7 +39,6 @@ env:
 jobs:
   quality:
     name: Frontend quality checks
-    if: ${{ github.event_name == 'push' || github.event.action == 'opened' || github.event.action == 'synchronize' || github.event.action == 'reopened' || (github.event.action == 'closed' && github.event.pull_request.merged == true) || (github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3')) }}
     runs-on: [self-hosted, vota-staging-ha]
     timeout-minutes: 20
     steps:
@@ -69,7 +57,9 @@ jobs:
         run: npm ci
 
       - name: Install contract validator dependency
-        run: python3 -m pip install --disable-pip-version-check pyyaml
+        run: |
+          printf 'PyYAML>=6,<7\n' > "$RUNNER_TEMP/validator-requirements.txt"
+          echo "PYTHONPATH=$(bash scripts/ci/py-deps.sh contract-validator "$RUNNER_TEMP/validator-requirements.txt")" >> "$GITHUB_ENV"
 
       - name: Validate OpenAPI contract
         run: PYTHONDONTWRITEBYTECODE=1 python3 src/shared/contracts/tests/validate_contract.py
@@ -99,26 +89,26 @@ jobs:
 
   docker_test:
     name: Frontend Docker build test
-    # Chỉ kiểm Dockerfile.web trên PR. Trên push, image được build một lần ở staging-ha-frontend-build.yml (CD); job này
-    # không build lại. Chạy song song với quality, không đợi lint/test.
-    if: ${{ github.event_name == 'pull_request' && github.event.action != 'closed' }}
+    # Chỉ trên PR: kiểm Dockerfile.web và làm nóng cache của builder cố định. Sau merge, staging-ha-app-cd.yml build
+    # (gần như toàn bộ từ cache) hoặc tái dùng image theo content key. Chạy song song với quality.
+    if: ${{ github.event_name == 'pull_request' }}
     runs-on: [self-hosted, vota-staging-ha]
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Buildx for Docker build test
-        uses: docker/setup-buildx-action@v3
+      - name: Persistent BuildKit builder
+        id: builder
+        run: bash scripts/ci/buildx-builder.sh
 
       - name: Build Docker image (test phase in CI)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./src/frontend/Dockerfile.web
+          builder: ${{ steps.builder.outputs.name }}
           push: false
-          load: false
-          cache-from: type=gha,scope=frontend-vm
           tags: vota-frontend-ci:${{ github.sha }}-test
 
   e2e:

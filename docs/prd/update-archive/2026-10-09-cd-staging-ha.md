@@ -2,8 +2,8 @@
 
 - Ngày: 2026-10-09
 - Người đề xuất: người dùng / Claude (agent)
-- Trạng thái: chờ chốt
-- Chốt bởi / ngày: (chưa chốt)
+- Trạng thái: từ chối
+- Chốt bởi / ngày: hp09.com@gmail.com, 2026-10-13 — bị thay thế bởi `update-archive/2026-10-13-ngung-ci-cd-staging-cu.md` (CD staging-ha đã làm theo hướng khác; CD staging cũ bị gỡ, không giữ song song)
 - PRD bị ảnh hưởng: `docs/prd/deployment-plan.md` §1.1 (câu "các workflow CI/CD ứng dụng và crawler cũng không bị sửa trong phạm vi này"), §6.1 (quy trình phát hành chỉ mô tả một VM)
 - Mã FR/NFR: NFR-REL-02 (kế thừa), NFR-PERF-01; mới — cần cấp mã nếu muốn ghi quy trình phát hành HA vào `requirements.md`
 

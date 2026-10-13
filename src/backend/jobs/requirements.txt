@@ -3,5 +3,6 @@ numpy>=1.26,<3
 pydantic-settings>=2,<3
 psycopg[binary]>=3.1,<4
 # job index embed bằng e5-small local (PRD FR-SRC-02); image cài torch bản CPU trước file này
-transformers>=4.44,<5
-torch>=2.3
+# Ghim giống backend (requirements.txt, requirements-embed.txt): query và tài liệu phải embed bằng cùng thư viện.
+transformers==5.18.0
+torch==2.14.1
