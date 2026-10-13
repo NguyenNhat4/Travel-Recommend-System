@@ -6,6 +6,7 @@ Chỉ kiểm cấu trúc script và cách nối với Terraform/CD; hành vi th�
 import pathlib
 import re
 import subprocess
+import tempfile
 import unittest
 
 D = pathlib.Path(__file__).resolve().parents[1]
@@ -396,6 +397,81 @@ class ImageContentKey(unittest.TestCase):
             self.assertIn(dockerfile.split("/")[-1] if component != "frontend" else "src/frontend", " ".join(paths), component)
             for src in self._copy_sources(dockerfile):
                 self.assertTrue(any(src == p or src.startswith(p.rstrip("/") + "/") for p in paths), f"{component}: {src} không nằm trong key")
+
+
+class StripeWebhookRoute(unittest.TestCase):
+    """Webhook Stripe đi thẳng tới backend của slot đang hoạt động, không qua Next.js (docs/prd/architecture.md §5 điểm 6)."""
+
+    WEBHOOK = "location = /api/v1/payments/stripe/webhook {"
+
+    def test_webhook_location_matches_the_exact_path_and_accepts_post_only(self):
+        block = body(SCRIPT, self.WEBHOOK, "    location / {")
+        self.assertIn("limit_except POST { deny all; }", block)
+        self.assertIn("proxy_pass http://vota_backend;", block)
+        self.assertNotIn("vota_frontend", block)
+
+    def test_webhook_forwards_the_body_and_signature_untouched(self):
+        # Backend kiểm Stripe-Signature trên body gốc: nginx không được tắt việc chuyển body hay header.
+        block = body(SCRIPT, self.WEBHOOK, "    location / {")
+        self.assertNotIn("proxy_pass_request_body off", block)
+        self.assertNotIn("proxy_pass_request_headers off", block)
+        self.assertNotIn("proxy_set_header Cookie", block)
+        self.assertNotIn("proxy_set_header Authorization", block)
+
+    def test_backend_upstream_is_included_from_the_proxy_dir(self):
+        self.assertIn("upstream vota_backend {", SCRIPT)
+        self.assertIn("include /etc/vota/proxy/backend-upstream.conf;", SCRIPT)
+        self.assertIn('BACKEND_UPSTREAM="$PROXY_DIR/backend-upstream.conf"', SCRIPT)
+
+    def test_every_upstream_write_names_the_backend_port_of_the_same_slot(self):
+        calls = re.findall(r'write_upstream "\$FRONTEND_PORT".*', SCRIPT)
+        self.assertGreaterEqual(len(calls), 6)
+        for call in calls:
+            self.assertIn('"$BACKEND_PORT"', call, call)
+
+    def test_nginx_config_is_written_with_a_backend_upstream_seed(self):
+        # VM chạy bản trước: nginx.conf mới include backend-upstream.conf, file đó phải có trước khi proxy khởi động lại.
+        write_files = body(SCRIPT, "write_files() {", "# ----")
+        self.assertLess(write_files.rindex("NGINXCONF\n"), write_files.index("seed_backend_upstream"))
+
+
+class BackendUpstreamFiles(unittest.TestCase):
+    """Chạy thật hai hàm ghi upstream trên thư mục tạm: ETC đổi sang tmp, bỏ đoạn lệnh chính ở cuối script."""
+
+    def _run(self, tmp, command):
+        head = SCRIPT[:SCRIPT.index('\ncase "$MODE" in')]
+        functions = tmp / "slot-functions.sh"
+        functions.write_text(head.replace("ETC=/etc/vota", f"ETC={tmp}", 1))
+        return subprocess.run(["bash", "-c", f'source "{functions}"; {command}'], capture_output=True, text=True)
+
+    def test_write_upstream_points_the_frontend_and_backend_of_one_slot(self):
+        with tempfile.TemporaryDirectory() as d:
+            tmp = pathlib.Path(d)
+            result = self._run(tmp, "write_upstream 3002 8002")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual((tmp / "proxy" / "upstream.conf").read_text(), "server 127.0.0.1:3002;\n")
+            self.assertEqual((tmp / "proxy" / "backend-upstream.conf").read_text(), "server 127.0.0.1:8002;\n")
+
+    def test_seed_follows_the_slot_that_serves_traffic(self):
+        cases = ((("server 127.0.0.1:3001;\n"), "8001"), (("server 127.0.0.1:3002;\n"), "8002"), (None, "8000"))
+        for upstream, port in cases:
+            with tempfile.TemporaryDirectory() as d:
+                tmp = pathlib.Path(d)
+                (tmp / "proxy").mkdir()
+                if upstream:
+                    (tmp / "proxy" / "upstream.conf").write_text(upstream)
+                result = self._run(tmp, "seed_backend_upstream")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual((tmp / "proxy" / "backend-upstream.conf").read_text(), f"server 127.0.0.1:{port};\n")
+
+    def test_seed_never_overwrites_an_existing_backend_upstream(self):
+        with tempfile.TemporaryDirectory() as d:
+            tmp = pathlib.Path(d)
+            (tmp / "proxy").mkdir()
+            (tmp / "proxy" / "upstream.conf").write_text("server 127.0.0.1:3001;\n")
+            (tmp / "proxy" / "backend-upstream.conf").write_text("server 127.0.0.1:8002;\n")
+            self.assertEqual(self._run(tmp, "seed_backend_upstream").returncode, 0)
+            self.assertEqual((tmp / "proxy" / "backend-upstream.conf").read_text(), "server 127.0.0.1:8002;\n")
 
 
 if __name__ == "__main__":

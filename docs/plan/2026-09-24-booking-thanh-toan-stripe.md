@@ -226,6 +226,7 @@ Kịch bản 2–15 cũng có bản unit/application test chạy với fake gate
 ## Rủi ro và câu hỏi mở
 
 1. **Webhook cần URL công khai trên staging.** Hiện Web đi qua BFF; chưa rõ FastAPI staging có mở ra Internet không. Cần chốt cách mở riêng đường `/api/v1/payments/stripe/webhook` (reverse proxy) hoặc chọn phương án Q7 đi qua Next.js.
+   - **Đã chốt 2026-10-13:** nginx đưa thẳng `/api/v1/payments/stripe/webhook` tới backend của slot đang hoạt động, không qua Next.js (phương án C). Chi tiết: `history/2026-10-13-stripe-webhook-nginx-truc-tiep.md`.
 2. **Tài khoản Stripe của nhóm.** Cần một tài khoản test chung (đăng ký với quốc gia Stripe hỗ trợ, chỉ dùng test mode), chia khoá test qua kênh bí mật. Mỗi dev chạy `stripe listen` nhận `whsec_` riêng.
 3. **Mức tiền tối thiểu của Stripe** tính theo tiền tệ thanh toán về tài khoản (ví dụ 0,50 USD). Đơn VND trong catalog đều vượt xa mức này; chỉ cần lưu ý nếu có sản phẩm giá 0.
 4. **`eventGroupId` đang lệch sẵn giữa contract và DDL:** contract cho mỗi nhóm điểm đến một `eventGroupId` (`BookingGroup.eventGroupId`), DDL để một `event_group_id` UNIQUE mỗi booking. Không thuộc phạm vi plan này nhưng ảnh hưởng cách ghi `purchase`; cần quyết định trước bước 5.
