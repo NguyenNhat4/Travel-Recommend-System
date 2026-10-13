@@ -61,6 +61,8 @@ export interface SearchResponse {
   /** Cosine cao nhất trong toàn bộ kết quả; null khi rỗng. */
   topScore: number | null;
   isWeakMatch: boolean;
+  /** Cụm khiến câu không có đáp án (`diagnostics.queryPlan.unexplained`, contract 1.28.0); [] khi không có. */
+  unexplained: string[];
 }
 
 const TAXONOMY_TAG: Record<Taxonomy, string> = {
@@ -122,20 +124,37 @@ export async function searchProductsApi(
   }
 
   const topScore = typeof data.topScore === 'number' ? data.topScore : null;
+  const backgroundScore = typeof data.backgroundScore === 'number' ? data.backgroundScore : null;
+  const diagnostics = data.diagnostics ?? {};
+  const filteredCount = typeof diagnostics.filteredCount === 'number' ? diagnostics.filteredCount : 0;
+  const unexplained = Array.isArray(diagnostics.queryPlan?.unexplained) ? diagnostics.queryPlan.unexplained : [];
   return {
     query: cleanQ,
     total: data.total ?? results.length,
     results,
     topScore,
-    isWeakMatch: isWeakTopScore(topScore),
+    isWeakMatch: isWeakMatch(topScore, backgroundScore, filteredCount, diagnostics.filterOnly === true),
+    unexplained,
   };
 }
 
 export const WEAK_RESULT_TOP_SCORE = 0.35;
+/** Quy tắc margin (spec tích hợp §3.4; plan 2026-10-13 §2.7) — giá trị tạm, chốt lại trên split dev của gold. */
+export const WEAK_RESULT_MARGIN = 0.058;
+export const WEAK_TOP_CEILING = 0.88;
+export const WEAK_MIN_FILTERED = 20;
 
-/** frontend §6.4: băng "kết quả yếu" khi topScore < 0.35; null (không có kết quả) thì không hiện. */
-function isWeakTopScore(topScore: number | null): boolean {
-  return topScore !== null && topScore < WEAK_RESULT_TOP_SCORE;
+/**
+ * frontend §6.4: băng "kết quả gần nhất". Không có kết quả → không hiện. Backend phát `backgroundScore` (cờ
+ * SEARCH_EMIT_BACKGROUND) → yếu khi top chỉ nhỉnh hơn nền (margin nhỏ) VÀ top dưới trần, và chỉ khi tập đã lọc đủ lớn (điểm
+ * đến nhỏ thì nền ≈ top, margin vô nghĩa); chế độ chỉ-filter không gắn nhãn. Không có `backgroundScore` → luật cũ topScore < 0.35.
+ */
+export function isWeakMatch(topScore: number | null, backgroundScore: number | null = null, filteredCount = 0,
+                            filterOnly = false): boolean {
+  if (topScore === null || filterOnly) return false;
+  if (topScore < WEAK_RESULT_TOP_SCORE) return true;
+  if (backgroundScore === null || filteredCount < WEAK_MIN_FILTERED) return false;
+  return topScore - backgroundScore < WEAK_RESULT_MARGIN && topScore < WEAK_TOP_CEILING;
 }
 
 /**
@@ -173,6 +192,10 @@ export interface GroupPage {
   hasMore: boolean;
   /** `topScore` cao nhất của các request trong nhóm; null khi cả nhóm rỗng. */
   topScore: number | null;
+  /** Request có `topScore` cao nhất của nhóm bị coi là yếu (`isWeakMatch`). */
+  isWeakMatch: boolean;
+  /** Cụm khiến câu không có đáp án (gộp các request của nhóm). */
+  unexplained: string[];
 }
 
 /** Bộ lọc thanh bên của tab Lưu trú: gửi lên API nên `total` và "Xem thêm" đếm theo đúng bộ lọc. */
@@ -208,7 +231,15 @@ export async function searchGroupApi(
     total: responses.reduce((sum, r) => sum + r.total, 0),
     hasMore: responses.some((r) => r.total > offset + limit),
     topScore: maxScore(responses.map((r) => r.topScore)),
+    isWeakMatch: strongest(responses)?.isWeakMatch ?? false,
+    unexplained: [...new Set(responses.flatMap((r) => r.unexplained))],
   };
+}
+
+/** Request có topScore cao nhất (null khi mọi request rỗng). */
+function strongest<T extends { topScore: number | null }>(pages: T[]): T | null {
+  return pages.reduce<T | null>((best, p) => (p.topScore !== null && (best === null || best.topScore === null
+    || p.topScore > best.topScore) ? p : best), null);
 }
 
 function maxScore(scores: Array<number | null>): number | null {
@@ -230,6 +261,8 @@ export interface SearchOverview {
   /** Tổng ba nhóm, không tính vé máy bay. */
   total: number;
   isWeakMatch: boolean;
+  /** Cụm khiến câu không có đáp án (contract 1.28.0); [] khi không có. */
+  unexplained: string[];
 }
 
 /** Tải qua bộ đệm theo khóa (`hooks/useLazySection` `loadSection`). */
@@ -256,7 +289,8 @@ export async function searchOverviewApi(
   return {
     counts,
     total: pages.reduce((sum, page) => sum + page.total, 0),
-    isWeakMatch: isWeakTopScore(maxScore(pages.map((page) => page.topScore))),
+    isWeakMatch: strongest(pages)?.isWeakMatch ?? false,
+    unexplained: [...new Set(pages.flatMap((page) => page.unexplained ?? []))],
   };
 }
 

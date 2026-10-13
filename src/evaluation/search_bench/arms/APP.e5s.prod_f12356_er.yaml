@@ -1,0 +1,33 @@
+# 13/10 (contract 1.28.0; plan docs/plan/2026-10-13-search-evidence-gate-no-answer.md): mốc production 06/10 + embed residual + chỉ-filter (duration_filter + duration_mask + embed_residual).
+# Cờ 1.28.0 là khoá TUỲ CHỌN của khối app (vắng ≡ false) — arm cha không đổi hash. Mặc định tắt ở production.
+id: APP.e5s.prod_f12356_er
+stage: APP
+parent: APP.e5s.prod_f12356
+description: "production 06/10 + embed residual + chỉ-filter (duration_filter + duration_mask + embed_residual) (1.28.0)"
+composite: true
+engine: app
+app: {cutoff: 0.84, candidate_k: 200, hybrid: true, normalize: true, rrf_k: 60, lexical_k: 10, lexical_cutoff: 0.50, min_coverage: 0.6, lexical_candidate_k: 50,
+      dest_filter: true, dest_filter_fallback: true, no_diacritics_mode: "relax",
+      negation_filter: true, taxonomy_filter: false, route_filter: true, numeric_filter: true,
+      tone_normalize: false, taxonomy_strong_only: false, party_filter: false,
+      duration_filter: true, poi_resolve: false, entity_filter: false,
+      duration_mask: true, embed_residual: true,
+      fuzzy_k: 0, fuzzy_candidate_k: 50, fuzzy_min_sim: 0.75, dense_weight: 1.0, lexical_weight: 1.0, fuzzy_weight: 1.0, retrieval_mode: "hybrid",
+      no_diacritics: {lexical_k: 20, lexical_cutoff: 0.0, min_coverage: 0.4, cutoff: 0.80, min_tokens: 3}}
+text_variant: T3+R
+model: e5-small
+embedding_types: float
+query_input_type: query
+retrieval: hybrid
+query_vec: null
+fusion: null
+bm25: {tokenization: word, k1: 1.2, b: 0.75}
+filters: {qu: true, amenity_must: none}
+boost: {amenity_nice_w: 0.0, amenity_must_w: 0.0}
+dedupe_parent: false
+query_preproc: {alias: true, symspell: true}
+cutoff: {max_vector_distance: null}
+csls: null
+rerank: null
+fallback_bm25_only: false
+phase: 1

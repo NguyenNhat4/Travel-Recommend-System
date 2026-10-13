@@ -19,6 +19,10 @@
 #   applied: [..., date, duration, entity]; emptyReason: [..., date, ..., entity, duration]; queryPlan có đủ date / duration / location / entity.
 # 1.22.0 (2026-10-09): gộp release-mvp-v2 (1.20.0: search 1.18.0 + filter ngày 1.19.0) với feat/agent (1.20.0–1.21.0 của Itinerary Agent,
 #   xem schemas/itinerary-agent.yaml); không thêm field mới ở search. Số 1.20.0 của hai nhánh là hai thay đổi khác nhau, đã gộp lên 1.22.0.
+# 1.28.0 (2026-10-13, additive; FR-SRC-03/04 chốt 13/10, plan docs/plan/2026-10-13-search-evidence-gate-no-answer.md):
+#   queryPlan.duration.role (gate | stay), queryPlan.denseText / unexplained / unparsed; "unexplained" trong emptyReason
+#   (emptyReason "duration" bắt đầu phát khi gate thời lượng làm F rỗng); diagnostics.evidenceGate / filterOnly / saturated /
+#   accentRestored; backgroundScore bắt đầu được phát (SEARCH_EMIT_BACKGROUND). Mọi cờ tắt → response y như 1.27.0.
 
 # [Q1] Ngữ cảnh chuyến đi. KHÔNG phải xác nhận availability nếu
 # availabilityMode là CATALOG_ONLY.
@@ -542,9 +546,10 @@ EngineDiagnostics:
           additionalProperties: false
           description: >-
             (1.18.0) Thời lượng chuyến nêu trong câu: "N ngày M đêm", "M đêm N ngày", "3N2Đ", "N ngày", "M đêm", "N days M nights"
-            — chữ số 1–30, không nhận số viết bằng chữ; "/đêm" của giá, "3 tiếng", "chợ đêm", "qua đêm" không tính. P0 chỉ khai và
-            bỏ cụm khỏi lexicalText (cờ SEARCH_DURATION_FILTER); KHÔNG lọc, không xếp hạng vì catalog chưa có trường thời lượng
-            (P1). Chỉ khai khi cờ bật.
+            — chữ số 1–30, không nhận số viết bằng chữ; "/đêm" của giá, "3 tiếng", "chợ đêm", "qua đêm" không tính. Khai và
+            bỏ cụm khỏi lexicalText (cờ SEARCH_DURATION_FILTER). Từ 1.28.0 (cờ SEARCH_DURATION_MASK) có `role`: gate → chỉ giữ
+            vé tham quan / combo có số ngày (đêm) suy từ tên hoặc thời lượng gợi ý khớp; stay (câu có cue lưu trú) → chỉ khai,
+            không lọc. Chỉ khai khi cờ bật.
           properties:
             days:
               type: [integer, 'null']
@@ -555,6 +560,10 @@ EngineDiagnostics:
             source:
               type: string
               enum: [query]
+            role:
+              type: string
+              enum: [gate, stay]
+              description: (1.28.0) Chỉ khi SEARCH_DURATION_MASK bật.
         entity:
           type: object
           additionalProperties: false
@@ -614,7 +623,30 @@ EngineDiagnostics:
           type: string
           description: >-
             Câu đưa vào nhánh BM25 và độ phủ vớt sau khi bỏ các cụm đã thành filter (phủ định, giá/sao, cue loại, địa danh
-            tuyến; từ 1.18.0 thêm thời lượng). Vector dense vẫn dùng câu chuẩn hoá đầy đủ (khoá cache embed không đổi).
+            tuyến; từ 1.18.0 thêm thời lượng; từ 1.28.0 thêm cụm `unparsed`). Vector dense dùng câu chuẩn hoá đầy đủ, trừ khi
+            có `denseText` (1.28.0).
+        denseText:
+          type: string
+          description: >-
+            (1.28.0, cờ SEARCH_EMBED_RESIDUAL) Câu thật sự đem embed khi khác câu chuẩn hoá đầy đủ: đã bỏ thời lượng, giá/sao,
+            số khách, phủ định đang áp và cụm `unparsed`; giữ điểm đến, entity và cue loại. Không khai khi giống câu đầy đủ.
+        unexplained:
+          type: array
+          minItems: 1
+          description: >-
+            (1.28.0, cờ SEARCH_UNEXPLAINED_EMPTY) Cụm khiến câu không có đáp án: phần câu còn lại sau khi tách điều kiện toàn
+            bộ là cụm dạng tên riêng catalog không có, hoặc cả câu không có chữ nào catalog hiểu. Đi cùng emptyReason
+            `unexplained`, total 0 (FR-SRC-04).
+          items:
+            type: string
+        unparsed:
+          type: array
+          minItems: 1
+          description: >-
+            (1.28.0, cờ SEARCH_UNEXPLAINED_EMPTY) Cụm lạ (không có trong catalog) đã bị bỏ khỏi câu BM25 và câu embed; phần
+            còn lại vẫn được tìm.
+          items:
+            type: string
         applied:
           type: array
           description: >-
@@ -632,7 +664,7 @@ EngineDiagnostics:
             (giá, số khách, ngày) trên cùng một con nên không còn trường hợp đó.
         emptyReason:
           type: string
-          enum: [taxonomy, route, mustNot, price, star, party, date, destination, param, entity, duration]
+          enum: [taxonomy, route, mustNot, price, star, party, date, destination, param, entity, duration, unexplained]
           description: >-
             F rỗng do họ filter nào (họ đầu tiên làm F rỗng theo thứ tự áp). Filter suy từ câu KHÔNG được nới ngầm (kiến trúc
             Phase A §6); chỉ điểm đến suy ra có fallback (diagnostics.destinationFilter.fallback, FR-SRC-04). Từ 1.16.0 khai
@@ -641,7 +673,9 @@ EngineDiagnostics:
             entity trong tập attraction / combo — kể cả khi request taxonomy ∉ {attraction, combo}); duration khai cho đủ họ,
             1.18.0 không bao giờ phát (duration không vào F).
             (mọi unit còn lại có sức chứa đã biết nhỏ hơn số khách). Từ 1.19.0 khai thêm date (mọi unit còn lại không dùng được
-            vào khoảng ngày checkIn / checkOut).
+            vào khoảng ngày checkIn / checkOut). Từ 1.28.0: duration phát khi gate thời lượng làm F rỗng (không vé / combo đúng
+            số ngày); unexplained = câu không có đáp án theo `queryPlan.unexplained` (F có thể không rỗng — filteredCount vẫn
+            là |F|, total 0).
         ignored:
           type: array
           description: Tham số request bị bỏ qua vì sai ngữ cảnh (ví dụ origin cho câu không phải vé máy bay).
@@ -793,6 +827,9 @@ SearchResponse:
         Client tính margin = topScore - backgroundScore và báo "kết quả yếu" khi
         topScore < WEAK_RESULT_TOP_SCORE HOẶC margin < WEAK_RESULT_MARGIN.
         null khi results rỗng.
+
+        (1.28.0) Backend chỉ phát khi SEARCH_EMIT_BACKGROUND bật, và tính trên top-K dense trong F
+        (candidateK) — xấp xỉ khi |F| > candidateK. Vắng khoá = backend không phát.
     cutoff:
       type: number
       minimum: 0

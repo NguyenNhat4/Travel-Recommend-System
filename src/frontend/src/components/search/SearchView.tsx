@@ -123,7 +123,7 @@ export const SearchView: React.FC = () => {
 
       {overview.data?.isWeakMatch && (
         <div className="p-3 bg-amber-50 text-amber-900 border border-amber-200 rounded-xl text-xs flex items-center justify-between">
-          <span>Chưa tìm thấy kết quả khớp tuyệt đối với &ldquo;{queryParam}&rdquo;. Đây là những lựa chọn gần nghĩa nhất.</span>
+          <span>Kết quả gần nhất: chưa tìm thấy kết quả khớp tuyệt đối với &ldquo;{queryParam}&rdquo;. Đây là những lựa chọn gần nghĩa nhất.</span>
           <button onClick={askAssistant} className="font-bold underline text-amber-950 ml-2 shrink-0">Hỏi Trợ lý AI →</button>
         </div>
       )}
@@ -145,7 +145,14 @@ export const SearchView: React.FC = () => {
           </div>
           <div>
             <h3 className="text-base font-bold text-slate-800">Chưa tìm thấy dịch vụ nào cho &ldquo;{queryParam}&rdquo;</h3>
-            <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">Hãy thử thay đổi từ khóa hoặc nhờ Trợ lý AI gợi ý lịch trình.</p>
+            {overview.data && overview.data.unexplained.length > 0 ? (
+              <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
+                Không có sản phẩm nào khớp &ldquo;{overview.data.unexplained.join(', ')}&rdquo;. Thử tên khác, hoặc mô tả nhu cầu
+                (điểm đến, loại dịch vụ, tiện ích).
+              </p>
+            ) : (
+              <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">Hãy thử thay đổi từ khóa hoặc nhờ Trợ lý AI gợi ý lịch trình.</p>
+            )}
           </div>
           <button onClick={askAssistant} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-lg transition-colors">
             Nhờ Trợ lý AI gợi ý

@@ -22,6 +22,7 @@ from dataclasses import dataclass, field, replace
 from ..catalog.stay_dates import StayDates
 from .constraints import (
     AMBIGUOUS,
+    HOTEL,
     POI_BRAND_CUES,
     SKIPPED_MULTI,
     STRONG,
@@ -39,8 +40,10 @@ from .constraints import (
     parse_party,
     parse_vertical,
     remove_spans,
+    vertical_cue_spans,
 )
 from .destination import SOURCE_PARAM, SOURCE_QUERY, DestinationDecision, decide_destination, is_flight_query
+from .explain import Grams, explain_residual, has_content
 from .gazetteer import ENTITY_TAXONOMIES, MAX_ALIAS_TOKENS, Place, entity_table, place_table
 from .lexical import fold, tokens
 from .normalize import DESTINATION_ALIASES, NormalizedQuery, find_phrases, spans
@@ -54,6 +57,8 @@ APPLIED_PARTY = "party"
 APPLIED_DURATION, APPLIED_ENTITY = "duration", "entity"
 #: Vai trò entity (`queryPlan.entity.role`): gate = lọc chỉ còn attraction/combo có tên chứa entity; location = chỉ định vị.
 ROLE_GATE, ROLE_LOCATION = "gate", "location"
+ROLE_STAY = "stay"                     # thời lượng của câu lưu trú: chỉ khai, không lọc (plan 2026-10-13 §2.3)
+EMPTY_UNEXPLAINED = "unexplained"      # residual chỉ là tên lạ / câu vô nghĩa (FR-SRC-04 chốt 13/10)
 APPLIED_DATE = "date"          # travelContext.checkIn/checkOut — chỉ từ tham số request, không suy từ câu
 EMPTY_DESTINATION, EMPTY_PARAM = "destination", "param"
 SKIPPED_NOT_FLIGHT = "not_flight"
@@ -97,6 +102,10 @@ class PlanFlags:
     duration: bool = False               # F7 "3 ngày 2 đêm" → bỏ cụm khỏi lexical_text, khai queryPlan.duration
     poi: bool = False                    # địa danh gazetteer ("Hồ Hoàn Kiếm") → điểm đến catalog vào F1
     entity: bool = False                 # điểm vui chơi (VinWonders…) → gate cứng attraction/combo có tên chứa entity
+    # 1.28.0 (plan 2026-10-13) — tắt thì không có đường code mới chạy.
+    duration_mask: bool = False          # thời lượng (cần `duration`) → vai trò gate lọc vé/combo; câu lưu trú → stay, không lọc
+    embed_residual: bool = False         # dense embed câu đã bỏ span điều kiện; residual rỗng + gate thời lượng → chỉ-filter
+    unexplained: bool = False            # residual chỉ là tên lạ / vô nghĩa → rỗng; cụm lạ khác → bỏ khỏi truy vấn
 
 
 @dataclass(frozen=True)
@@ -113,6 +122,8 @@ class PlanGazetteers:
     # mặt trong `UnitAttributes.entities` (entity không có sản phẩm không bao giờ gate).
     entities: Mapping[str, str] = field(default_factory=entity_table)
     places: Mapping[str, Place] = field(default_factory=place_table)
+    # 1.28.0: unigram/bigram của tên + mô tả catalog (`explain.Grams`) — cần cho cờ `unexplained`; None → luật không chạy.
+    vocab: Grams | None = None
 
     def entity_keys(self, text: str, excluded: Iterable[tuple[int, int]] = ()) -> tuple[str, ...]:
         """Khoá entity trong câu: khớp dài nhất trên token đã fold, thứ tự xuất hiện, không lặp; bỏ cụm nằm trong `excluded`
@@ -207,6 +218,12 @@ class QueryPlan:
     entity_role: str | None = None               # gate | location | None
     location: Place | None = None                # địa danh gazetteer đầu tiên trong câu
     poi_destinations: tuple[str, ...] = ()       # điểm đến suy từ địa danh gazetteer (không phải tên thành phố trong câu)
+    # 1.28.0 — chỉ có giá trị khi cờ tương ứng bật
+    duration_role: str | None = None             # gate | stay | None (cờ duration_mask)
+    dense_text: str | None = None                # câu đem embed khi khác câu đầy đủ (cờ embed_residual)
+    filter_only: bool = False                    # residual rỗng + gate thời lượng → R = F, không cutoff
+    unexplained: tuple[str, ...] = ()            # cụm khiến câu không có đáp án (emptyReason `unexplained`)
+    unparsed: tuple[str, ...] = ()               # cụm lạ đã bỏ khỏi truy vấn
 
     @property
     def destination_via_poi(self) -> bool:
@@ -268,6 +285,8 @@ class QueryPlan:
             kw.update(self._must_not_kwargs())
         if APPLIED_ENTITY in self.applied:
             kw["require_entities"] = self.entity_keys
+        if self.duration_role == ROLE_GATE:
+            kw["duration_days"], kw["duration_nights"] = self.duration_days, self.duration_nights
         return kw
 
     def families_in_order(self) -> tuple[tuple[str, dict], ...]:
@@ -280,6 +299,8 @@ class QueryPlan:
             steps.append((APPLIED_TAXONOMY, {"taxonomy": self.mask_taxonomy}))
         if APPLIED_ENTITY in self.applied:
             steps.append((APPLIED_ENTITY, {"require_entities": self.entity_keys}))
+        if self.duration_role == ROLE_GATE:
+            steps.append((APPLIED_DURATION, {"duration_days": self.duration_days, "duration_nights": self.duration_nights}))
         if self.mask_origin:
             steps.append((APPLIED_ROUTE, {"origin_city": self.mask_origin}))
         if self.price_active:
@@ -339,6 +360,8 @@ class QueryPlan:
         # 1.18.0: ba khối chỉ có giá trị khi cờ bật (tắt không parse) → có là khai, không cần `extended`
         if self.duration_source:
             out["duration"] = {"days": self.duration_days, "nights": self.duration_nights, "source": self.duration_source}
+            if self.duration_role:
+                out["duration"]["role"] = self.duration_role
         if self.entity_keys:
             out["entity"] = {"keys": list(self.entity_keys), "role": self.entity_role}
         if self.location is not None:
@@ -351,6 +374,12 @@ class QueryPlan:
         if self.applied:
             out["lexicalText"] = self.lexical_text
             out["applied"] = list(self.applied)
+        if self.dense_text is not None:
+            out["denseText"] = self.dense_text
+        if self.unexplained:
+            out["unexplained"] = list(self.unexplained)
+        if self.unparsed:
+            out["unparsed"] = list(self.unparsed)
         if revalidated_drops:
             out["revalidatedDrops"] = revalidated_drops
         if empty_reason:
@@ -591,6 +620,44 @@ def build_query_plan(nq: NormalizedQuery | None, raw_query: str, params: PlanPar
     if (decision.source is None and route_destination and APPLIED_ROUTE in applied):
         decision = DestinationDecision(route_destination, SOURCE_QUERY, None, decision.candidates)
 
+    # 1.28.0 — vai trò thời lượng: câu có cue lưu trú ("khách sạn Đà Lạt 2 ngày 1 đêm") → stay (không lọc, khách sạn không có
+    # thời lượng cố định); còn lại → gate (chỉ vé / combo đúng số ngày).
+    duration_role = None
+    if flags.duration_mask and duration_source:
+        duration_role = ROLE_STAY if HOTEL in vertical.verticals else ROLE_GATE
+
+    unexplained: tuple[str, ...] = ()
+    unparsed: tuple[str, ...] = ()
+    dense_text: str | None = None
+    filter_only = False
+    if (flags.unexplained or flags.embed_residual) and nq is not None:
+        # phần "điều kiện" của câu: số / số khách / thời lượng / phủ định / tuyến bay / điểm đến / địa danh / mọi cue loại
+        cond: list[tuple[int, int]] = [*numeric.spans, *party.spans, *duration.spans, *negation.spans,
+                                       *((a, b) for a, b, _ in nq.destination_spans),
+                                       *(sp for _, sp in vertical_cue_spans(text))]
+        if roles is not None:
+            cond.extend(roles.spans)
+        if flags.poi:
+            cond.extend((s, e) for s, e, _ in gaz.place_hits(text, nq.destination_spans, excluded=tuple(negation.spans)))
+        unparsed_spans: tuple[tuple[int, int], ...] = ()
+        if flags.unexplained and gaz.vocab is not None:
+            # "có điều kiện" = có filter đang áp hoặc câu nêu điểm đến catalog (kể cả khi F1 tắt); cue loại một mình không tính
+            # ("combo du lịch Cà Mau": Cà Mau không có trong catalog → câu không có đáp án)
+            residual = explain_residual(text, cond, gaz.vocab,
+                                        has_filters=bool(applied) or decision.value is not None or bool(nq.destinations))
+            unexplained, unparsed, unparsed_spans = residual.unexplained, residual.unparsed, residual.unparsed_spans
+            consumed.extend(unparsed_spans)
+        if flags.embed_residual and not unexplained:
+            if not has_content(text, (*cond, *unparsed_spans)):
+                filter_only = duration_role == ROLE_GATE
+            else:
+                dense_spans = [*duration.spans, *unparsed_spans,
+                               *(numeric.spans if (APPLIED_PRICE in applied or APPLIED_STAR in applied) else ()),
+                               *(party.spans if APPLIED_PARTY in applied else ()),
+                               *(negation.spans if flags.negation else ())]
+                candidate = remove_spans(text, dense_spans) if dense_spans else text
+                dense_text = candidate if candidate and candidate != text else None
+
     lexical_text = remove_spans(text, consumed) if consumed else text
     drop = frozenset(tokens(decision.value)) if decision.source == SOURCE_QUERY else frozenset()
     reasons = _fallback_reasons(text, nq, params, numeric, negation, vertical, must_not_conflict=must_not_conflict,
@@ -616,4 +683,6 @@ def build_query_plan(nq: NormalizedQuery | None, raw_query: str, params: PlanPar
         duration_days=duration.days, duration_nights=duration.nights, duration_source=duration_source,
         entity_keys=entity_keys, entity_role=entity_role, location=location, poi_destinations=poi_destinations,
         stay=params.stay,
+        duration_role=duration_role, dense_text=dense_text, filter_only=filter_only,
+        unexplained=unexplained, unparsed=unparsed,
     )

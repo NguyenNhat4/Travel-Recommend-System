@@ -141,4 +141,41 @@ def test_contract_declares_every_domain_constant():
     assert combo_flags == set(qp["mustNot"]["properties"]["flags"]["items"]["enum"])
     scored = DOC["components"]["schemas"]["ScoredProduct"]["allOf"][1]["properties"]
     assert scored["matchedChildren"]["maxItems"] == 5
-    assert DOC["info"]["version"] == app.version == "1.27.0"
+    assert DOC["info"]["version"] == app.version == "1.28.0"
+
+
+# --- 1.28.0 (plan docs/plan/2026-10-13-search-evidence-gate-no-answer.md): mọi cờ mới bật --------------------------------
+V128_CASES = ("Nguyễn Khắc Tiệp", "khách sạn Nguyễn Khắc Tiệp", "xkcd qwzt plorb", "2 ngày 1 đêm", "khách sạn Đà Lạt 2 ngày 1 đêm",
+              "Nguyễn Khắc Tiệp gần biển", "khách sạn Đà Lạt rẻ bèo", "Trần Thị Mai", "cho dem da lat", "đảo gần biển 2 ngày")
+
+
+@pytest.fixture(scope="module")
+def v128_catalog(tmp_path_factory):
+    from src.backend.tests.unit.application.test_search_v128_evidence_gate import V128_ROWS
+    d = tmp_path_factory.mktemp("v128_contract")
+    (d / "products.jsonl").write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in V128_ROWS), encoding="utf-8")
+    return InMemoryVectorStore(str(d / "products.jsonl"), FakeEmbedder(), str(d / ".emb")).load()
+
+
+def test_v128_responses_with_new_flags_match_contract(v128_catalog):
+    index, vectors = v128_catalog
+    schema = Draft202012Validator(contracts()["search_products"]["response"])
+    new = dict(duration_mask=True, embed_residual=True, unexplained_empty=True, emit_background=True, no_diacritics_restore=True)
+    seen: set[str] = set()
+    for hybrid in (HybridConfig(lexical_cutoff=0.0, evidence_gate=True), None):
+        engine = SearchProducts(index, vectors, FakeEmbedder(), cutoff=0.0, lexical=vectors if hybrid else None, hybrid=hybrid,
+                                **ALL_ON, **new)
+        for q in V128_CASES:
+            for kw in ({}, {"taxonomy": "hotel"}):
+                r = engine(q, limit=5, **kw)
+                r["diagnostics"]["latencyMs"] = 0
+                errors = [e.message for e in schema.iter_errors(r)]
+                assert errors == [], (q, kw, errors)
+                qp = r["diagnostics"].get("queryPlan", {})
+                seen |= set(qp) & {"denseText", "unexplained", "unparsed"}
+                seen |= {f"emptyReason.{qp['emptyReason']}"} if "emptyReason" in qp else set()
+                seen |= {"duration.role"} if "role" in qp.get("duration", {}) else set()
+                seen |= set(r["diagnostics"]) & {"evidenceGate", "filterOnly", "saturated", "accentRestored"}
+                seen |= {"backgroundScore"} if "backgroundScore" in r else set()
+    assert {"denseText", "unexplained", "unparsed", "emptyReason.unexplained", "emptyReason.duration", "duration.role",
+            "evidenceGate", "filterOnly", "saturated", "accentRestored", "backgroundScore"} <= seen, seen

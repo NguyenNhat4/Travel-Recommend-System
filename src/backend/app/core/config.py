@@ -166,7 +166,7 @@ class Settings(BaseSettings):
     search_dest_filter_fallback: bool = True
     # Câu gõ không dấu (slice no_diacritics; contract 1.14.0 `diagnostics.queryProfile`): `relax` nới cổng vớt BM25 và (tuỳ chọn)
     # cutoff dense cho riêng câu phát hiện không dấu (≥ min_tokens token); `off` = như cũ. Giá trị nới là tạm, chưa qua dev/test.
-    search_no_diacritics_mode: Literal["off", "relax"] = "relax"
+    search_no_diacritics_mode: Literal["off", "relax", "restore"] = "relax"   # restore: phục hồi dấu, không nới (13/10)
     search_no_diacritics_lexical_k: int = Field(default=20, ge=0)
     search_no_diacritics_lexical_cutoff: float = 0.0
     search_no_diacritics_min_coverage: float = Field(default=0.4, ge=0, le=1)
@@ -190,6 +190,13 @@ class Settings(BaseSettings):
     # queryPlan. Bật ở production chỉ sau khi bench WIN/TIE + Forbidden@10 = 0 (plan §Bước 9).
     search_duration_filter: bool = False       # F7: "3 ngày 2 đêm" / "3N2Đ" → queryPlan.duration; bỏ cụm khỏi câu BM25 (không lọc)
     search_poi_resolve: bool = False           # địa danh gazetteer repo ("Hồ Hoàn Kiếm" → Hà Nội) vào F1; hard.destinationSource = poi
+    # 13/10 (contract 1.28.0; plan docs/plan/2026-10-13-search-evidence-gate-no-answer.md; PRD FR-SRC-03/04 chốt 13/10):
+    # mặc định tắt → response như 1.27.0. Bật từng cờ chỉ sau khi bench đạt cổng ở plan §4.
+    search_evidence_gate: bool = False         # BM25 chỉ vớt / cộng RRF khi khớp cụm liền nhau, đúng thứ tự, giữ dấu
+    search_duration_mask: bool = False         # thời lượng vai trò gate → chỉ vé/combo đúng số ngày; câu lưu trú → stay (không lọc)
+    search_embed_residual: bool = False        # dense embed câu đã bỏ span điều kiện; residual rỗng + gate thời lượng → chỉ-filter
+    search_unexplained_empty: bool = False     # residual chỉ là tên lạ / vô nghĩa → rỗng (emptyReason: unexplained)
+    search_emit_background: bool = False       # phát backgroundScore (trung vị cosine top-K trong F) + diagnostics.saturated
     search_entity_filter: bool = False         # entity gate CỨNG: câu nêu điểm vui chơi (VinWonders…) → chỉ attraction/combo có tên
     #                                            chứa entity; đổi số đếm tab của Web khi bật — cần Web xác nhận (như F4)
     # Kênh fuzzy tên gần đúng (trigram cửa sổ, domain/search/fuzzy.py): 0 = tắt. Bật thì unit có rank fuzzy ≤ K, độ giống

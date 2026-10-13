@@ -368,10 +368,15 @@ RETRIEVAL_MODES = ("hybrid", "dense", "lexical")
 #: Vắng trong YAML ≡ False (tiền lệ khối `app.llm`): KHÔNG vào `APP_DEFAULTS` để 55 arm cũ, `config_hash` của chúng và
 #: `regression/baseline_v1.json` giữ nguyên; vẫn đi qua `supported_kwargs` nên bật trên backend thiếu field thì lỗi.
 V118_FLAG_KEYS = ("duration_filter", "poi_resolve", "entity_filter")
+#: 13/10 (contract 1.28.0, plan docs/plan/2026-10-13-search-evidence-gate-no-answer.md): bốn cờ TUỲ CHỌN của `SearchProducts` +
+#: `evidence_gate` (field HybridConfig). Vắng ≡ False như V118 → arm cũ giữ nguyên hash. `no_diacritics_mode` nhận thêm `restore`.
+V128_FLAG_KEYS = ("duration_mask", "embed_residual", "unexplained_empty", "emit_background")
 #: giá trị "không đổi hành vi" của từng núm mới — backend chưa có field mà arm để giá trị này thì bỏ qua, khác thì lỗi
 NEUTRAL = {"tone_normalize": False, "taxonomy_strong_only": False, "party_filter": False,
            "fuzzy_k": 0, "dense_weight": 1.0, "lexical_weight": 1.0, "fuzzy_weight": 1.0,
-           "duration_filter": False, "poi_resolve": False, "entity_filter": False}
+           "duration_filter": False, "poi_resolve": False, "entity_filter": False,
+           "duration_mask": False, "embed_residual": False, "unexplained_empty": False, "emit_background": False,
+           "evidence_gate": False}
 
 
 def app_params(arm_app: dict | None) -> dict:
@@ -383,8 +388,8 @@ def app_params(arm_app: dict | None) -> dict:
     nd = p.get("no_diacritics")
     if not isinstance(nd, dict) or any(k not in nd for k in NO_DIACRITICS_KEYS):
         raise AppAdapterError(f"arm APP: app.no_diacritics phải có đủ {NO_DIACRITICS_KEYS}")
-    if p["no_diacritics_mode"] not in ("off", "relax"):
-        raise AppAdapterError(f"arm APP: app.no_diacritics_mode = {p['no_diacritics_mode']!r} (off | relax)")
+    if p["no_diacritics_mode"] not in ("off", "relax", "restore"):
+        raise AppAdapterError(f"arm APP: app.no_diacritics_mode = {p['no_diacritics_mode']!r} (off | relax | restore)")
     mode = p["retrieval_mode"]
     if mode not in RETRIEVAL_MODES:
         raise AppAdapterError(f"arm APP: app.retrieval_mode = {mode!r} ({' | '.join(RETRIEVAL_MODES)})")
@@ -401,7 +406,7 @@ def app_params(arm_app: dict | None) -> dict:
     if mode == "lexical" and float(p["lexical_weight"]) <= 0:
         raise AppAdapterError("arm APP: retrieval_mode lexical cần lexical_weight > 0 (BM25 là danh sách xếp hạng duy nhất)")
     # 07/10 (contract 1.18.0): cờ tuỳ chọn — vắng = False; có thì phải là bool thật (YAML `true`/`false`, không phải 1/"on")
-    for k in V118_FLAG_KEYS:
+    for k in (*V118_FLAG_KEYS, *V128_FLAG_KEYS, "evidence_gate"):
         p.setdefault(k, False)
         if not isinstance(p[k], bool):
             raise AppAdapterError(f"arm APP: app.{k} phải là true/false (đang {p[k]!r})")
@@ -530,6 +535,8 @@ class AppContext:
         # 06/10: kênh fuzzy + trọng số RRF theo nhánh → field HybridConfig; dùng cho CẢ bộ ngưỡng chung lẫn bộ câu không dấu
         # (đây là núm của kênh, không phải ngưỡng vớt: câu không dấu / gõ sai là nơi fuzzy có ích nhất).
         channel = supported_kwargs(HybridConfig, "HybridConfig", p, HYBRID_CHANNEL_KEYS, _cast_channel) if p["hybrid"] else {}
+        if p["hybrid"]:   # 13/10: cổng bằng chứng theo cụm (vắng ≡ False)
+            channel.update(supported_kwargs(HybridConfig, "HybridConfig", p, ("evidence_gate",), lambda _k, v: bool(v)))
         hybrid = HybridConfig(rrf_k=int(p["rrf_k"]), lexical_k=int(p["lexical_k"]),
                               lexical_cutoff=min(float(p["lexical_cutoff"]), float(p["cutoff"])),   # như build_recsys
                               min_coverage=float(p["min_coverage"]), **channel) if p["hybrid"] else None
@@ -545,6 +552,10 @@ class AppContext:
         flags = supported_kwargs(SearchProducts, "SearchProducts", p, ENGINE_FLAG_KEYS, lambda _k, v: bool(v))
         # 07/10 (contract 1.18.0): F7 duration / POI → F1 / entity gate — tuỳ chọn, vắng = False (app_params đã setdefault)
         flags.update(supported_kwargs(SearchProducts, "SearchProducts", p, V118_FLAG_KEYS, lambda _k, v: bool(v)))
+        # 13/10 (contract 1.28.0): bốn cờ mới + phục hồi dấu (`no_diacritics_mode: restore`) — vắng = False
+        flags.update(supported_kwargs(SearchProducts, "SearchProducts", p, V128_FLAG_KEYS, lambda _k, v: bool(v)))
+        if p["no_diacritics_mode"] == "restore":
+            flags["no_diacritics_restore"] = True
         # lexical: nhánh dense rỗng (near_vector limit 0 → []), BM25 là danh sách xếp hạng duy nhất; cosine của hit BM25 vẫn
         # tính từ vector kho → cutoff / vớt / mask / kiểm lại filter y như hybrid (use_cases._hybrid).
         candidate_k = 0 if p["retrieval_mode"] == "lexical" else int(p["candidate_k"])
