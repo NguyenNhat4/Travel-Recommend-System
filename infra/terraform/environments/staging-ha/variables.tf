@@ -242,6 +242,18 @@ variable "alert_5xx_ratio" {
   default     = 0.02
 }
 
+variable "alert_memory_percent" {
+  description = "Memory used (percent) on any one app VM above this for 5 minutes raises an alert. Autoscaler scales on memory_target_percent well below it."
+  type        = number
+  default     = 90
+}
+
+variable "alert_disk_percent" {
+  description = "Disk used (percent, per device) on any one app VM above this for 5 minutes raises an alert."
+  type        = number
+  default     = 90
+}
+
 # --- Tầng DB tự failover (Patroni) -------------------------------------------------------------------------------
 variable "create_patroni" {
   description = "Tạo cụm DB Patroni 2 node ở 2 zone + witness etcd ở zone thứ ba + load balancer nội bộ. Mặc định tắt: bật khi đã có image Patroni và secret."

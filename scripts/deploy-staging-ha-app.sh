@@ -60,6 +60,9 @@ google_logging_metric.crawler_catalog_late[0]|create
 google_monitoring_alert_policy.crawler_catalog_late[0]|create
 google_monitoring_alert_policy.crawler_run_failed[0]|update
 google_monitoring_alert_policy.crawler_silent[0]|update
+# Cảnh báo bộ nhớ và đĩa của từng VM app (2026-10-13): policy mới, không thay đổi policy nào khác.
+google_monitoring_alert_policy.group_memory_high|create
+google_monitoring_alert_policy.group_disk_high|create
 # Patroni và dashboard (2026-10-12): startup-script có metrics_filter (f664124c), pg-a/pg-b đã ghi trực tiếp qua SSH.
 # Plan đã kiểm: chỉ metadata và dashboard_json đổi, không đổi machine_type/scheduling/status (không dừng VM DB).
 google_compute_instance.patroni["a"]|update
