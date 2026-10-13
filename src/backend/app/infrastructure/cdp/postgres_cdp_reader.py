@@ -23,7 +23,7 @@ from __future__ import annotations
 import math
 from datetime import datetime, timedelta, timezone
 
-from src.backend.app.application.ports.cdp_client import CdpUnavailableError
+from src.backend.app.application.ports.cdp_client import HISTORY_MAX_EVENTS, CdpUnavailableError
 
 #: `timestamp` là từ khoá SQL nên phải để trong ngoặc kép ở mọi câu lệnh.
 _COLUMNS = """
@@ -85,9 +85,10 @@ def _redact(text: str, dsn: str) -> str:
 class PostgresCdpReader:
     """Chỉ đọc. Mọi thao tác ghi đi qua `local_cdp_client.LocalCdpClient`."""
 
-    def __init__(self, cdp_database_url: str, *, timeout_seconds: float = 2.0):
+    def __init__(self, cdp_database_url: str, *, timeout_seconds: float = 2.0, history_limit: int = HISTORY_MAX_EVENTS):
         self._cdp_database_url = cdp_database_url
         self._timeout_seconds = timeout_seconds  # CDP_TIMEOUT_SECONDS (hop-dong-tich-hop-cdp.md §7)
+        self._history_limit = history_limit      # tối đa 500 event mỗi lần tính (hop-dong-tich-hop-cdp.md §6)
 
     def _query(self, sql: str, params: tuple, *, statement_timeout: bool = False, mapper=_to_cdp) -> list[dict]:
         import psycopg
@@ -110,10 +111,13 @@ class PostgresCdpReader:
             raise CdpUnavailableError(f"CDP history read failed: {type(exc).__name__}: {detail}") from exc
 
     def events_for_user(self, cdp_user_id: str) -> list[dict]:
-        """Lịch sử của một khách, mới nhất trước — `profile.py` dựng hồ sơ từ đây."""
+        """Lịch sử của một khách, mới nhất trước — `profile.py` dựng hồ sơ từ đây. Tối đa `history_limit` event.
+
+        Cùng thời điểm thì `event_id` tăng dần: khớp thứ tự harness bench dựng lại (`all_events` theo `event_id` tăng dần rồi
+        `parity.events_desc` sort ổn định giảm dần theo thời điểm), kể cả ở mốc cắt 500."""
         return self._query(
-            f'SELECT {_COLUMNS} FROM cdp.events WHERE cdp_user_id = %s ORDER BY "timestamp" DESC',
-            (cdp_user_id,),
+            f'SELECT {_COLUMNS} FROM cdp.events WHERE cdp_user_id = %s ORDER BY "timestamp" DESC, event_id ASC LIMIT %s',
+            (cdp_user_id, self._history_limit),
             statement_timeout=True,
         )
 

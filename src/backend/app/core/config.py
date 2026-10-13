@@ -139,6 +139,16 @@ class Settings(BaseSettings):
     # cần redeploy: RECOMMEND_NEXT_TRIP_SCORING=false (công thức 0,7 / 0,15 / 0,15), RECOMMEND_MAX_PER_DESTINATION=0 (tắt cap).
     recommend_next_trip_scoring: bool = True
     recommend_max_per_destination: int = Field(default=2, ge=0)
+    # Các lượt Weaviate độc lập của /recommendations chạy song song trên pool riêng `recsys-io` mỗi tiến trình (2026-10-12).
+    # Output y hệt tuần tự; 0 = tuần tự, rollback không cần redeploy.
+    recommend_io_workers: int = Field(default=16, ge=0, le=64)
+    # Nạp sẵn vector sản phẩm vào RAM ở nền sau mỗi lần nạp catalog (2026-10-12): tra vector theo id lấy từ RAM, ANN vẫn qua
+    # Weaviate. False = mọi lần tra vector hỏi Weaviate như trước (rollback không cần redeploy).
+    recommend_preload_vectors: bool = True
+    # Cache kết quả gợi ý trên Redis dùng chung (PRD architecture §4, deployment-plan §2; chốt 2026-10-12): DB index riêng,
+    # mọi khoá có TTL (noeviction). Trống = tắt cache (dev/test). Không bắt buộc ở REQUIRE_SHARED_BACKENDS: thiếu thì chỉ chậm.
+    recommend_cache_redis_url: str = ""
+    recommend_cache_ttl_seconds: int = Field(default=900, ge=60, le=86400)
     # Hybrid /search (HYBRID_CANDIDATE_SCORE, spec §2.4): BM25 trên nameAscii/searchTextAscii + RRF ở app.
     search_hybrid: bool = True  # False → dense-only ANN_CANDIDATE_SCORE như trước 25/09
     search_normalize: bool = True  # bước chuẩn hoá truy vấn (viết tắt, chính tả tên riêng, điểm đến, kiểu đi); False → nguyên câu

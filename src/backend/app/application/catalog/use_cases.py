@@ -17,11 +17,13 @@ from src.backend.app.application.catalog.views import product_detail, product_su
 from src.backend.app.application.ports.product_query import ProductQuery
 from src.backend.app.application.search.use_cases import SimilarProducts
 from src.backend.app.domain.catalog import (
+    DIVERSIFY_MODES,
     PRODUCT_SORTS,
     TAXONOMIES,
     ListingItem,
     fare_classes_by_product,
     filter_items,
+    interleave_by_taxonomy,
     is_fare_variant,
     sort_items,
     summarize_variants,
@@ -66,14 +68,22 @@ class ListProducts:
     popularity: Mapping[str, float] = field(default_factory=dict)
     max_limit: int = 50
 
-    async def __call__(self, *, destination: str | None = None, taxonomy: str | None = None,
+    async def __call__(self, *, destination: str | None = None, taxonomy: str | Sequence[str] | None = None,
                        available_only: bool = False, sort: str = "popular", limit: int = 20, offset: int = 0,
-                       parent_product_id: str | None = None) -> dict:
+                       parent_product_id: str | None = None, diversify: str | None = None) -> dict:
+        """`taxonomy`: một loại hoặc nhiều loại (route tách `taxonomy=a,b`), giá trị trùng bỏ qua.
+
+        `diversify="taxonomy"` (contract 1.27.0): trộn theo nhóm loại sau khi sắp xếp, trước khi cắt trang; chỉ với
+        `sort=popular` và không có `parent_product_id`.
+        """
+        taxonomies = [taxonomy] if isinstance(taxonomy, str) else (None if taxonomy is None else list(taxonomy))
         invalid = [name for name, bad in (
             ("sort", sort not in PRODUCT_SORTS),
-            ("taxonomy", taxonomy is not None and taxonomy not in TAXONOMIES),
+            ("taxonomy", taxonomies is not None and (not taxonomies or not set(taxonomies) <= set(TAXONOMIES))),
             ("limit", not 1 <= limit <= self.max_limit),
             ("offset", offset < 0),
+            ("diversify", diversify is not None and (diversify not in DIVERSIFY_MODES or sort != "popular"
+                                                     or bool(parent_product_id))),
         ) if bad]
         if invalid:
             raise InvalidCatalogRequest("tham số không hợp lệ", {"fields": invalid})
@@ -85,8 +95,11 @@ class ListProducts:
         else:
             items = self.units if self.units is not None else await self.products.search_units()
         ordered = sort_items(
-            filter_items(items, destination=destination, taxonomy=taxonomy, available_only=available_only),
+            filter_items(items, destination=destination, taxonomy=None if taxonomies is None else set(taxonomies),
+                         available_only=available_only),
             sort, self.popularity, variants=bool(parent_product_id))
+        if diversify == "taxonomy":  # trộn trước khi cắt trang: hoán vị, `total` và các trang nối tiếp không đổi
+            ordered = interleave_by_taxonomy(ordered)
         return {
             "results": [product_summary(i.product, fares.get(i.product.product_id))
                         for i in ordered[offset: offset + limit]],

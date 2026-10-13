@@ -3,6 +3,7 @@ import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import popularFixture from '../../../shared/mocks/catalog/listProducts.200-popular.json';
+import diversifiedFixture from '../../../shared/mocks/catalog/listProducts.200-diversified.json';
 
 const api = vi.hoisted(() => ({ listProducts: vi.fn(), listDestinations: vi.fn(), fetchRecommendations: vi.fn(), fetchSuggestions: vi.fn() }));
 const travel = vi.hoisted(() => ({
@@ -46,11 +47,36 @@ describe('HomeView', () => {
     vi.unstubAllGlobals();
   });
 
-  it('guest: does not call /recommendations and loads the popular shelf exactly once (all categories)', async () => {
+  it('guest: does not call /recommendations and loads the popular shelf exactly once (all categories, mixed by type)', async () => {
     render(<HomeView />);
     await waitFor(() => expect(api.listProducts).toHaveBeenCalledTimes(1));
-    expect(api.listProducts.mock.calls[0][0]).toEqual({ sort: 'popular', availableOnly: true, limit: 8 });
+    expect(api.listProducts.mock.calls[0][0]).toEqual({ diversify: 'taxonomy', sort: 'popular', availableOnly: true, limit: 8 });
     expect(api.fetchRecommendations).not.toHaveBeenCalled();
+  });
+
+  it('the "Vé tham quan" tab includes golf', async () => {
+    render(<HomeView />);
+    await waitFor(() => expect(api.listProducts).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('tab', { name: 'Vé tham quan' }));
+    await waitFor(() => expect(api.listProducts).toHaveBeenCalledTimes(2));
+    expect(api.listProducts.mock.calls[1][0]).toEqual({ taxonomy: ['attraction', 'golf'], sort: 'popular', availableOnly: true, limit: 8 });
+  });
+
+  it('only the "Tất cả" shelf labels each card with its type', async () => {
+    api.listProducts.mockResolvedValue(diversifiedFixture);
+    render(<HomeView />);
+    const shelf = () => screen.getByRole('region', { name: 'Phổ biến tại các điểm đến Việt Nam' });
+    await waitFor(() => expect(within(shelf()).getAllByRole('link')).toHaveLength(8));
+    expect(within(shelf()).getAllByText('Khách sạn')).toHaveLength(2);
+    expect(within(shelf()).getAllByText('Vé tham quan')).toHaveLength(1);
+    expect(within(shelf()).getAllByText('Golf')).toHaveLength(1);
+    expect(within(shelf()).getAllByText('Combo')).toHaveLength(2);
+    expect(within(shelf()).getAllByText('Vé máy bay')).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Khách sạn' }));
+    await waitFor(() => expect(api.listProducts).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(within(shelf()).getAllByRole('link')).toHaveLength(8));
+    expect(within(shelf()).queryAllByText('Khách sạn')).toHaveLength(0);
   });
 
   it('logged in: calls /recommendations once', async () => {
@@ -88,6 +114,7 @@ describe('HomeView', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Vé máy bay' }));
     await waitFor(() => expect(api.listProducts).toHaveBeenCalledTimes(2));
     expect(api.listProducts.mock.calls[1][0]).toMatchObject({ taxonomy: 'flight', sort: 'popular' });
+    expect(api.listProducts.mock.calls[1][0]).not.toHaveProperty('diversify');
     expect(screen.getByRole('tab', { name: 'Vé máy bay' }).getAttribute('aria-selected')).toBe('true');
   });
 

@@ -181,6 +181,79 @@ def test_close_releases_the_shared_clients():
     assert refresher.services["recsys_embedder"].closed and refresher.services["recsys_vectors"].closed
 
 
+class _Preloading(_Closable):
+    """Kho vector có `preload` (như PreloadedVectorSearch). `gate` giữ lượt nạp đang chạy cho tới khi test mở."""
+
+    def __init__(self, *, fail=False, gate: threading.Event | None = None):
+        super().__init__()
+        self.calls, self.fail, self.gate, self.started = 0, fail, gate, threading.Event()
+
+    def preload(self, stop):
+        self.calls += 1
+        self.started.set()
+        if self.gate is not None:
+            self.gate.wait(5)
+        if self.fail:
+            raise RuntimeError("weaviate down")
+        return {"outcome": "done", "vectors": 3, "fetched": 3, "complete": True, "seconds": 0.01}
+
+
+def _with_vectors(units, vectors):
+    return {**_services(units), "recsys_vectors": vectors}
+
+
+def test_preload_runs_in_background_after_each_publish_and_shutdown_waits_for_it(caplog):
+    import logging
+    caplog.set_level(logging.INFO, logger="uvicorn.error")
+    vectors = _Preloading()
+
+    async def scenario():
+        refresher = RecsysRefresher(_app(), _settings(), build=_Build(_with_vectors(3, vectors), _with_vectors(4, vectors)))
+        assert await refresher.reload() is True
+        await refresher._preload_task
+        assert await refresher.reload() is True     # mỗi lần nạp lại lấy phần vector còn thiếu / đã đổi
+        refresher.stop()
+        await refresher.wait_prewarm(5.0)
+        assert refresher._preload_task.done()
+        refresher.close()
+    asyncio.run(scenario())
+    assert vectors.calls == 2
+    events = [r for r in caplog.records if getattr(r, "event", None) == "recsys.vectors.preload"]
+    assert events and events[0].fields["outcome"] == "done" and events[0].fields["vectors"] == 3
+
+
+def test_preload_is_not_started_twice_while_one_is_running():
+    gate = threading.Event()
+    vectors = _Preloading(gate=gate)
+
+    async def scenario():
+        refresher = RecsysRefresher(_app(), _settings(), build=_Build(_with_vectors(3, vectors), _with_vectors(4, vectors)))
+        await refresher.reload()
+        assert await asyncio.to_thread(vectors.started.wait, 5)
+        running = refresher._preload_task
+        await refresher.reload()                      # lượt nạp trước chưa xong: không mở lượt thứ hai
+        assert refresher._preload_task is running
+        gate.set()
+        await running
+    asyncio.run(scenario())
+    assert vectors.calls == 1
+
+
+def test_preload_failure_is_logged_and_serving_continues(caplog):
+    import logging
+    caplog.set_level(logging.INFO, logger="uvicorn.error")
+    app, vectors = _app(), _Preloading(fail=True)
+
+    async def scenario():
+        refresher = RecsysRefresher(app, _settings(), build=_Build(_with_vectors(3, vectors)))
+        assert await refresher.reload() is True
+        await refresher._preload_task
+    asyncio.run(scenario())
+    assert app.state.search == "search-3"
+    events = [r for r in caplog.records if getattr(r, "event", None) == "recsys.vectors.preload"]
+    assert events[0].levelno == logging.WARNING and events[0].fields == {"outcome": "failed", "error_kind": "RuntimeError"}
+
+
 def test_real_settings_carry_the_refresh_interval():
     # Các test trên dùng SimpleNamespace; test này giữ Settings thật không mất trường mà run() đọc.
     assert Settings(catalog_refresh_seconds=60).catalog_refresh_seconds == 60

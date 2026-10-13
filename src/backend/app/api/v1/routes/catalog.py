@@ -19,14 +19,18 @@ def destinations(index: Any = Depends(get_index)):
     return destination_list(index.destination)
 
 
-# Giới hạn limit/offset/sort/taxonomy do use case kiểm để trả 400 VALIDATION_ERROR đúng contract.
+# Giới hạn limit/offset/sort/taxonomy/diversify do use case kiểm để trả 400 VALIDATION_ERROR đúng contract (kiểu str ở
+# đây, không Literal: FastAPI sẽ trả 422, contract không khai). `taxonomy` nhiều giá trị cách nhau bằng dấu phẩy
+# (style form, explode false; contract 1.27.0).
 # Header chỉ gắn sau khi use case thành công, nên response lỗi (400, 404, 409, 503) không bị cache.
 @router.get("/products")
 async def list_products(response: Response, destination: str | None = None, taxonomy: str | None = None,
                         availableOnly: bool = False, sort: str = "popular", limit: int = 20, offset: int = 0,
-                        parentProductId: str | None = None, use_case=Depends(get_use_case("list_products"))):
-    result = await use_case(destination=destination, taxonomy=taxonomy, available_only=availableOnly, sort=sort,
-                            limit=limit, offset=offset, parent_product_id=parentProductId)
+                        parentProductId: str | None = None, diversify: str | None = None,
+                        use_case=Depends(get_use_case("list_products"))):
+    taxonomies = taxonomy.split(",") if taxonomy is not None else None
+    result = await use_case(destination=destination, taxonomy=taxonomies, available_only=availableOnly, sort=sort,
+                            limit=limit, offset=offset, parent_product_id=parentProductId, diversify=diversify)
     response.headers["Cache-Control"] = PUBLIC_CATALOG_CACHE
     return {**result, "requestId": current_request_id() or "catalog"}
 
