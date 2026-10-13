@@ -28,6 +28,7 @@ from typing import Any
 import numpy as np
 
 from src.backend.app.application.ports import UnitIndex
+from src.backend.app.application.ports.cdp_client import HISTORY_MAX_EVENTS
 
 from .engine import OfflineEngine
 from .events import PERSONA_IDS, parse_ts
@@ -119,10 +120,12 @@ def events_desc(events: list[dict]) -> list[dict]:
 def compare_user(user: str, http_response: dict, engine: OfflineEngine, user_events: list[dict], *, k: int,
                  http_status: int | None = 200, client_ms: float = 0.0, popularity_now: datetime | None = None) -> ParityRow:
     """`popularity_now`: mốc backend dựng bảng phổ biến (lúc khởi động / nạp lại) — truyền để trung hoà cửa sổ 90 / 30 ngày và
-    tháng mùa vụ của đường cold start; None = dùng `generatedAt` (đúng khi backend vừa khởi động)."""
+    tháng mùa vụ của đường cold start; None = dùng `generatedAt` (đúng khi backend vừa khởi động).
+
+    Lịch sử cắt ở `HISTORY_MAX_EVENTS` (500) event mới nhất như đường đọc CDP của production (cdp §6, 12/10/2026)."""
     as_of = parse_ts(http_response["generatedAt"])
-    offline = engine.recommend(user, as_of, k, events_desc([e for e in user_events if parse_ts(e["timestamp"]) < as_of]),
-                               popularity_as_of=popularity_now)
+    history = events_desc([e for e in user_events if parse_ts(e["timestamp"]) < as_of])[:HISTORY_MAX_EVENTS]
+    offline = engine.recommend(user, as_of, k, history, popularity_as_of=popularity_now)
     return ParityRow(user, http_status, [r["productId"] for r in http_response.get("recommendations") or []],
                      [r["productId"] for r in offline.get("recommendations") or []], _fields(http_response), _fields(offline),
                      (http_response.get("diagnostics") or {}).get("latencyMs"), round(client_ms, 1))

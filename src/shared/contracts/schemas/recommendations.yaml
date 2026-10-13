@@ -1,7 +1,7 @@
 # recommendations.yaml — GET /api/v1/recommendations
 #
-# Đã áp dụng: C1 (priceUnit bắt buộc) · C4 (EngineDiagnostics)
-# [CHỜ DUYỆT: U1] because với sản phẩm INACTIVE · [CHỜ DUYỆT: P3] user vector cache
+# Đã áp dụng: C1 (priceUnit bắt buộc) · C4 (EngineDiagnostics) · P3 (cache kết quả gợi ý trên Redis, 1.27.0)
+# [CHỜ DUYỆT: U1] because với sản phẩm INACTIVE
 
 BecauseItem:
   type: object
@@ -151,13 +151,11 @@ RecommendationDiagnostics:
     userVectorCacheHit:
       type: boolean
       description: >-
-        [CHỜ DUYỆT: P3] false nghĩa là phải dựng lại user vector tại chỗ — đọc
-        tối đa 500 event qua HTTP từ CDP clone. Đây là đường chậm; tỉ lệ false
-        cao nghĩa là quy tắc vô hiệu hóa cache đang sai.
+        true khi kết quả lấy từ cache gợi ý.
     userVectorNorm:
       type: number
       description: >-
-        [CHỜ DUYỆT: P3] Phải xấp xỉ 1.0. Lệch xa là dấu hiệu quên L2-normalize
+        Phải xấp xỉ 1.0. Lệch xa là dấu hiệu quên L2-normalize
         hoặc sai đơn vị thời gian trong decay — hai lỗi cho ra kết quả trông
         hoàn toàn hợp lý.
     engine:

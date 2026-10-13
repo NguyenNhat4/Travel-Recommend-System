@@ -1,7 +1,9 @@
 """Port truy vấn vector theo từng request: top-K gần nhất và lấy vector theo id.
 
-Engine không giữ ma trận vector trong RAM; mỗi request hỏi kho vector (Weaviate) đúng phần nó cần
-(docs/spec/hop-dong-tich-hop-search-recommendation.md §2.2, `ANN_CANDIDATE_SCORE`).
+Truy vấn tương đồng luôn đi qua index ANN của kho vector (Weaviate; NFR-PERF-03), mỗi request hỏi đúng phần nó cần
+(docs/spec/hop-dong-tich-hop-search-recommendation.md §2.2, `ANN_CANDIDATE_SCORE`). Adapter được phép giữ bảng vector
+theo id trong RAM để trả `vectors()` và vector đính kèm hit (`PreloadedVectorSearch`, 2026-10-12); engine không giữ ma trận
+nào và không quét tuần tự.
 """
 from __future__ import annotations
 

@@ -34,6 +34,8 @@ class AuthWorld:
         self.limiter = InMemoryRateLimiter()
         self.issuer = jwt_issuer()
         self.recommend_calls: list = []
+        self.warm_calls: list = []
+        self.warm_error: Exception | None = None
         self.revoked_jti: set[str] = set()
 
     async def is_revoked(self, token_id):
@@ -44,6 +46,12 @@ class AuthWorld:
         return {"strategy": "personal" if cdp_user_id else "popular", "destination": kwargs.get("destination"),
                 "nextVertical": None, "recommendations": [],
                 "diagnostics": {"eventsUsed": 0, "coldStart": cdp_user_id is None, "excludedVerticals": []}}
+
+    def warm(self, cdp_user_id):
+        """Thay `WarmRecommendations`: ghi người dùng được làm ấm cache gợi ý sau đăng nhập; `warm_error` để giả lập lỗi."""
+        self.warm_calls.append(cdp_user_id)
+        if self.warm_error is not None:
+            raise self.warm_error
 
     def state(self) -> dict:
         common = dict(users=self.users, hasher=self.hasher)
@@ -60,6 +68,7 @@ class AuthWorld:
             "get_current_user": GetCurrentUser(users=self.users),
             "update_profile": UpdateProfile(users=self.users),
             "recommend": self.recommend,
+            "warm_recommendations": self.warm,
         }
 
 
