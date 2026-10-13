@@ -468,6 +468,37 @@ class QualityTests(unittest.TestCase):
         self.assertEqual(set(names) & set(excluded), set())
         self.assertNotIn("trip:attraction:133828272", names)  # Đảo chè Thanh Chương: toạ độ sai, chờ mục 4
 
+    def test_ha_long_bay_caves_listed_under_hai_phong_move_to_ha_long(self):
+        """Mục 4 rà soát 13/10: trip.com xếp hang trong vịnh Hạ Long dưới slug haiphong (như Ti Tốp, trip:attraction:95477)."""
+        overrides = n.load_destination_overrides()
+        for ref in ("trip:attraction:152155369", "trip:attraction:137221038", "trip:attraction:95477"):  # Hang Luồn, Đầu Gỗ, Ti Tốp
+            self.assertEqual(overrides[ref][0], "Hạ Long")
+        products = [{"sourceRef": "trip:attraction:152155369", "destination": "Hải Phòng", "attributes": {}}]
+        self.assertEqual(n.apply_destination_overrides(products, overrides), 1)
+        self.assertEqual((products[0]["destination"], products[0]["attributes"]["originalDestination"]), ("Hạ Long", "Hải Phòng"))
+
+    def test_review_of_13_10_destinations_generic_names_and_duplicates(self):
+        """Mục 4 + dữ liệu của bàn giao "chùa ở HCM" (13/10/2026): 12 sản phẩm đảo Cát Bà rời Hải Phòng, Chùa Cầu và Chợ đêm Hội An
+        rời Đà Nẵng; điểm mang tên thành phố, bản trùng vé Bà Nà / Hoàng Thành Huế, Đảo chè (toạ độ sai) bị ẩn; bản giữ không bị ẩn."""
+        overrides, excluded = n.load_destination_overrides(), n.load_excluded_products()
+        cat_ba = [ref for ref, (dest, evidence) in overrides.items() if dest == "Cát Bà" and "người dùng duyệt mục 4 13/10/2026" in evidence]
+        self.assertEqual(len(cat_ba), 12)
+        self.assertIn("trip:attraction:98748", cat_ba)  # Vườn Quốc gia Cát Bà
+        self.assertIn("booking:hotel:17022357", cat_ba)  # khách sạn: hạng phòng nhận điểm đến khi gộp cụm (merge_hotel_cluster)
+        for ref in ("trip:attraction:84672", "trip:attraction:142962582"):  # Chùa Cầu, Chợ đêm Hội An
+            self.assertEqual(overrides[ref][0], "Hội An")
+        for ref in ("trip:attraction:78970", "trip:attraction:150083736", "trip:attraction:153189460", "trip:attraction:146237431",
+                    "trip:attraction:142564460", "trip:attraction:61186357", "trip:attraction:18700019",  # tên chỉ là tên điểm đến
+                    "booking:attraction:pr77o1c6wg7p", "trip:attraction:142420045", "trip:attraction:23029651",
+                    "trip:attraction:136817447", "trip:attraction:133828272"):
+            self.assertIn(ref, excluded)
+        for kept in ("trip:attraction:10523367", "trip:attraction:81459", "trip:attraction:18700028"):  # Sun World Bà Nà, Kinh thành Huế, Cát Cát
+            self.assertNotIn(kept, excluded)
+        # override điểm đến của đợt này không trỏ vào dòng bị ẩn (override cũ của Côn Đảo, Hacoconut thì vô hại: loại chạy sau)
+        reviewed = [ref for ref, (_, evidence) in overrides.items() if "13/10/2026" in evidence]
+        self.assertEqual(len(reviewed), 16)  # 2 hang vịnh Hạ Long + 12 Cát Bà + 2 Hội An
+        self.assertEqual(set(reviewed) & set(excluded), set())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -58,7 +58,8 @@ Việc còn lại của mục 1:
    chính `~/code/Travel-Recommendation-Product`): mặc định **chỉ đọc** (transaction read-only) in đúng các dòng sẽ đổi; `--apply` chỉ chạy
    khi người dùng đồng ý **trong chat**.
    - Script đọc thẳng `collectors/name_overrides.csv` và `excluded_products.csv` qua các hàm của `normalise` (không liệt kê ref trong
-     script), nên phủ cả mục 1 và mục 2 (bản xem trước 61 dòng ở trên).
+     script), nên phủ cả mục 1, 2 và 4 (bản xem trước gộp ở §4: 115 dòng + nạp 41 điểm Tuyên Quang); đọc thêm
+     `destination_overrides.csv` (chỉ dòng có "13/10/2026" trong bằng chứng) để đổi `destination` của khách sạn/điểm và hạng phòng con.
    - Đổi tên: `name` + đầu `description` nếu bắt đầu bằng tên cũ + ".".
    - Ẩn (`available = false`) 7 ref (6 ref trên + `trip:attraction:141833025`) + hạng phòng con của chúng (đếm lúc rà: Cubicity Trip 2 phòng, Gia An 2, Mango House 6 —
      kiểm lại bằng `catalog.product_meta.parent_product_id`).
@@ -84,14 +85,38 @@ chữ tiếng Việt (121 điểm tham quan + 6 sân golf), đối chiếu đi�
   TP Vinh (cạnh Bảo tàng Quân khu IV), lệch ~40 km; người dùng chưa chọn ẩn hay sửa toạ độ. `trip:attraction:152155369` (Hang
   Luồn): mô tả nói đảo Bồ Hòn (vịnh Hạ Long) nhưng điểm đến ghi Hải Phòng.
 
-## 4. Mục 4 — chưa làm (điều tra rồi báo, chưa ghi gì)
+## 4. Mục 4 — job xong 13/10 (người dùng đã duyệt), CHƯA sửa production
 
-- Toạ độ tâm điểm đến: 586 tour Booking — dữ liệu Booking có `meetingPoints` cho 144/586 (kiểm lại trong interim/raw);
-  còn lại cân nhắc giữ precision `destination`.
-- Thiếu toạ độ: 84 khách sạn Trip → trang chi tiết khách sạn Trip (qua crawler của repo, tôn trọng robots); 3 combo Vinpearl →
-  `venues` / `collectors/location_overrides.csv`.
-- Tuyên Quang chỉ 3 điểm: mở rộng BFS trên vn.trip.com theo `docs/plan/2026-10-12-ban-giao-lam-giau-diem-tham-quan.md`.
-- Chỉ cào bằng crawler của repo, không vượt chặn (403/429), không dùng dữ liệu do LLM bịa.
+Xem `history/2026-10-13-sua-diem-den-toa-do-va-mo-rong-tuyen-quang.md`. Đọc production read-only, kết quả:
+- **Tour Booking ở tâm điểm đến (587):** giữ nguyên. `meetingPoints` chỉ là chuỗi địa chỉ (216/587), geocode không đáng tin ("112 Trần
+  Hưng Đạo, TP.HCM" ra hai phường khác nhau); backend lịch trình đã bỏ toạ độ tâm khi tính khoảng cách (`domain/itinerary/geo.py`).
+- **84 khách sạn Trip không toạ độ:** Cubicity bản Trip đã loại (mục 1); 83 còn lại để trống. `vn.trip.com/robots.txt` cấm
+  `/hotels/detail/?hotelId=*` và `/hotels/list` cho mọi user-agent (đọc 13/10) — **chính hai trang collector `trip_hotels` đang cào
+  hằng ngày**: báo người dùng/team, chưa sửa job. OSM Nominatim chỉ khớp chắc 3/83 → không thêm nguồn mới (người dùng có thể đổi ý).
+- **3 tour Haven Sunset (Vinpearl, Phú Quốc):** nhà cung cấp "THE HAVEN SUNSET SHOW" không có trong `venues.csv`, không có nguồn → để trống.
+- **Đảo chè Thanh Chương** (`trip:attraction:133828272`): toạ độ nguồn ở TP Vinh (~40 km), OSM/Wikipedia không có → **ẩn** (người dùng chốt).
+- **Điểm đến** (`collectors/destination_overrides.csv`, +16): Hang Luồn, Hang Đầu Gỗ → Hạ Long (Trip xếp vịnh Hạ Long dưới slug
+  haiphong, như Ti Tốp); 12 sản phẩm đảo Cát Bà (6 khách sạn + 26 hạng phòng con, 6 điểm) Hải Phòng → Cát Bà; Chùa Cầu, Chợ đêm Hội An
+  Đà Nẵng → Hội An. Hạng phòng nhận điểm đến của khách sạn khi gộp cụm (`normalise.py` `merge_hotel_cluster`).
+- **Gộp dữ liệu của bàn giao "chùa ở HCM"** (`docs/plan/2026-10-13-ban-giao-dieu-tra-agent-search-chua-hcm.md` §8, §11.2 — repo chính,
+  nhánh `bench_search_recomSys`, chưa commit), người dùng chốt: ẩn 7 điểm tên chỉ là tên điểm đến (Sa Pa, Phú Quốc, Hội An, Ninh bình,
+  Mai Châu, Mộc Châu, Côn Đảo) + tour Booking "Hue City"; ẩn "Núi Bà Nà", "Cáp treo Bà Nà" (cùng vé 1.000.000 ₫ với Sun World Bà Nà Hills,
+  giữ) và "Hoàng Thành Huế" (giữ Kinh thành Huế có giá). Chưa làm các mục khác của bàn giao đó (tên viết hoa toàn bộ, tên dính chữ, lỗi
+  "Thành phố TP. Hồ Chí Minh" trong mô tả, làm giàu mô tả, bổ sung chùa TP.HCM).
+- **Tuyên Quang:** cào BFS `/travel-guide/attraction/` (robots cho phép) 227 trang, 0 lần bị chặn, dữ liệu ở
+  `~/code/Travel-Recommendation-Product/src/data_collection/data/attractions-fill-20261012/trip_bfs_tq/`. Đợt `4tq`
+  (`trip_poi_wave4tq/`, `trip_poi_load4tq/`): 110 dòng → duyệt tay → **41 điểm mới** (Tuyên Quang 40, Hà Giang 1: Cổng Trời Quản Bạ).
+  Bỏ 60 điểm ngoài tỉnh (Đền Hùng/Việt Trì bị gán Tam Đảo; TP Yên Bái, Đoan Hùng, ATK Định Hóa bị gán Tuyên Quang theo tâm gần nhất),
+  6 rác (thêm vào `tools/drop_reviewed.txt`), 3 trùng (`trip_poi_wave4tq/review_4tq.json`, `drop_4tq.txt`). `tools/build_wave.py` thêm
+  biến `HOTELS_SEEDS` (danh sách điểm đến có khách sạn khác; mặc định như cũ) vì `trip_bfs/seeds.json` không có Tuyên Quang.
+  **0/41 có mô tả thật** (mô tả tự sinh — đúng loại text mỏng của §8 bàn giao "chùa ở HCM"); người dùng chốt vẫn nạp cùng đợt.
+  Xem trước `load_attractions.py` (read-only): `{'new': 41}`, demo_data `changed=0`.
+
+**Đợt sửa production gộp mục 1 + 2 + 4** (xem trước read-only 13/10, `normalise` của worktree trên dữ liệu production): đổi tên 35, ẩn 38
+(28 ref + 10 hạng phòng con; PANAMA là hạng phòng), đổi điểm đến 16 + 26 hạng phòng con → **115 dòng**, cộng nạp 41 điểm Tuyên Quang
+(`cd <data>/attractions-fill-20261012/trip_poi_load4tq && python load_attractions.py --code-root <worktree>/src [--apply]`). Không thành
+phần combo, không dòng đơn hàng nào trỏ vào dòng sắp ẩn. Đổi điểm đến trên production phải sửa cả hạng phòng con (job giữ `destination`
+của dòng không phải vé máy bay).
 
 ## 5. Việc người dùng chưa quyết
 
