@@ -233,6 +233,13 @@ class WiringWithTerraformAndCd(unittest.TestCase):
         self.assertIn("SLOT_RESULT", ROLL)
         self.assertIn('backend=$BACKEND_REF', ROLL)
 
+    def test_roll_never_uploads_the_script_through_the_iap_tunnel(self):
+        # Đo 2026-10-13: ~27 KB qua IAP tunnel trong CI mất 240 s mỗi lần SSH, có lần Broken pipe.
+        self.assertIn("--metadata-from-file vota-slot-deploy=", ROLL)
+        self.assertIn("instance/attributes/vota-slot-deploy", ROLL)
+        self.assertIn('--command "$remote" < /dev/null', ROLL)
+        self.assertNotIn("$script_b64", ROLL)
+
     def test_roll_does_not_pin_ssh_host_keys(self):
         # Lỗi thật 2026-10-12: MIG tạo lại fn9m (autohealing) -> khoá host mới -> "Host key verification failed" trên runner.
         self.assertIn("--strict-host-key-checking=no", ROLL)
@@ -289,10 +296,13 @@ class RollVisitsEveryVm(unittest.TestCase):
             """#!/usr/bin/env bash
 case "$*" in
   *list-instances*) cat "$STUB_DIR/vms.json" ;;
+  *"add-metadata"*)
+    echo "metadata $4" >> "$STUB_DIR/visited"
+    case "$*" in *"vota-slot-deploy="*) ;; *) echo "thiếu script trong metadata" >&2; exit 1 ;; esac ;;
   *"compute ssh"*)
     name="$3"
-    sum=$(sha256sum | cut -c1-64)   # ssh thật đọc stdin: script slot đến qua stdin
-    case "$*" in *"$sum"*) ;; *) echo "checksum lệch" >&2; exit 1 ;; esac
+    cat > /dev/null    # ssh thật đọc stdin
+    case "$*" in *"$SCRIPT_SUM"*) ;; *) echo "checksum lệch" >&2; exit 1 ;; esac
     last="${@: -1}"; mode="${last##* }"   # --command là tham số cuối, mode là từ cuối của nó
     echo "$mode $name" >> "$STUB_DIR/visited"
     if [ "$mode" = prepare ] && [ "$name" = "${FAIL_PREPARE:-}" ]; then exit 1; fi
@@ -303,7 +313,8 @@ esac
         )
         stub.chmod(stub.stat().st_mode | stat.S_IEXEC)
         env = dict(os.environ, PATH=f"{stub.parent}:{os.environ['PATH']}", STUB_DIR=str(tmp),
-                   BACKEND_REF=backend, FRONTEND_REF=frontend, GCP_PROJECT_ID="p", **extra)
+                   BACKEND_REF=backend, FRONTEND_REF=frontend, GCP_PROJECT_ID="p", **extra,
+                   SCRIPT_SUM=__import__("hashlib").sha256((D / "slot-deploy.sh").read_bytes()).hexdigest())
         result = subprocess.run(["bash", str(ROOT / "scripts" / "roll-staging-ha-app-slots.sh")], env=env, capture_output=True, text=True)
         visited = (tmp / "visited").read_text().splitlines() if (tmp / "visited").exists() else []
         return result, [tuple(line.split()) for line in visited]
@@ -320,6 +331,9 @@ esac
             self.assertEqual(sorted(self._visits(visited, mode)), ["vm-a", "vm-b", "vm-c"], (mode, visited))
         # mọi VM chuẩn bị xong trước khi VM nào đổi traffic; VM đầu là canary
         modes = [m for m, _ in visited]
+        # script slot vào metadata của mọi VM trước lần SSH đầu tiên (không gửi qua IAP)
+        self.assertEqual(sorted(self._visits(visited, "metadata")), ["vm-a", "vm-b", "vm-c"])
+        self.assertLess(max(i for i, m in enumerate(modes) if m == "metadata"), modes.index("prepare"))
         self.assertLess(max(i for i, m in enumerate(modes) if m == "prepare"), modes.index("switch"))
         self.assertEqual(self._visits(visited, "switch")[0], "vm-a")
         self.assertNotIn("abort", modes)
