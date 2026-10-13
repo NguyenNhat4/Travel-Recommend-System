@@ -103,6 +103,11 @@ class StaticAssetStore(unittest.TestCase):
         self.assertIn("try_files $uri @frontend;", SCRIPT)
         self.assertIn('STATIC_STORE="${STATIC_STORE:-$PROXY_DIR/static-store}"', SCRIPT)   # proxy đã mount PROXY_DIR
 
+    def test_static_assets_get_their_real_content_type(self):
+        # 2026-10-13: thiếu mime.types, chunk .js/.css từ kho ra text/plain.
+        self.assertIn("include /etc/nginx/mime.types;", SCRIPT)
+        self.assertLess(SCRIPT.index("include /etc/nginx/mime.types;"), SCRIPT.index("location /_next/static/ {"))
+
     def test_assets_are_stashed_before_any_vm_switches(self):
         prepare = body(SCRIPT, "mode_prepare() {", "mode_switch() {")
         self.assertIn("stash_static", prepare)

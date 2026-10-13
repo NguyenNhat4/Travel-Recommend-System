@@ -177,6 +177,10 @@ events {
 }
 
 http {
+  # Kho /_next/static do nginx phục vụ trực tiếp: thiếu mime.types thì .js/.css ra text/plain và trình duyệt từ chối CSS
+  # (lỗi thật 2026-10-13 sau deploy đầu tiên có kho tĩnh). File này có sẵn trong image nginx chính thức.
+  include /etc/nginx/mime.types;
+  default_type application/octet-stream;
   access_log off;
   client_max_body_size 50m;
 
