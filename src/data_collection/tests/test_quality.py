@@ -403,6 +403,51 @@ class QualityTests(unittest.TestCase):
         self.assertEqual(own_price["attributes"]["fieldSources"]["unitPrice"], "trip.com")
         self.assertIsNone(attraction["unitPrice"])
 
+    def test_excluding_a_hotel_also_excludes_its_rooms(self):
+        """Còn hạng phòng đặt được thì job bật lại khách sạn đã ẩn (FR-CAT-02): loại khách sạn phải loại cả phòng."""
+        excluded = {"agoda:hotel:mango-house:ha-tien-kien-giang": "ngoài mọi điểm đến"}
+        self.assertEqual(n.excluded_reason("agoda:hotel:mango-house:ha-tien-kien-giang", excluded), "ngoài mọi điểm đến")
+        self.assertIn("ngoài mọi điểm đến", n.excluded_reason("agoda:hotel:mango-house:ha-tien-kien-giang:room:77", excluded))
+        self.assertIsNone(n.excluded_reason("agoda:hotel:mango-house-2:ha-tien-kien-giang:room:77", excluded))
+        self.assertIsNone(n.excluded_reason("trip:attraction:1", excluded))
+        room_only = {"trip:hotel:118233319:room:482483850": "giá đặt cho có"}
+        self.assertIsNone(n.excluded_reason("trip:hotel:118233319", room_only))  # loại một phòng không loại khách sạn
+        self.assertIsNone(n.excluded_reason("trip:hotel:118233319:room:1", room_only))
+
+    def test_name_override_renames_and_fixes_a_description_built_from_the_old_name(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "name_overrides.csv"
+            with open(path, "w", encoding="utf-8", newline="") as f:
+                w = csv.writer(f)
+                w.writerow(["sourceRef", "name", "evidence"])
+                w.writerow(["trip:attraction:1", "Phố đi bộ Nguyễn Huệ", "nameEn Nguyen Hue Street"])
+                w.writerow(["trip:attraction:2", "Động Trung Trang", "nameEn Trung Trang Cave"])
+                w.writerow(["trip:attraction:3", "Không bằng chứng", ""])
+            overrides = n.load_name_overrides(path)
+        self.assertEqual(set(overrides), {"trip:attraction:1", "trip:attraction:2"})
+        derived = {"sourceRef": "trip:attraction:1", "name": "Nguyễn Huệ", "attributes": {},
+                   "description": "Nguyễn Huệ. Loại hình: Cảnh đêm. Địa chỉ: Sài Gòn."}
+        prose = {"sourceRef": "trip:attraction:2", "name": "Halong Bay Cruises", "attributes": {},
+                 "description": "Hang động đẹp trên đảo Cát Bà."}
+        other = {"sourceRef": "trip:attraction:9", "name": "Nguyễn Huệ", "attributes": {}, "description": "Nguyễn Huệ."}
+        self.assertEqual(n.apply_name_overrides([derived, prose, other], overrides), 2)
+        self.assertEqual((derived["name"], derived["description"]),
+                         ("Phố đi bộ Nguyễn Huệ", "Phố đi bộ Nguyễn Huệ. Loại hình: Cảnh đêm. Địa chỉ: Sài Gòn."))
+        self.assertEqual(derived["attributes"]["originalName"], "Nguyễn Huệ")
+        self.assertEqual((prose["name"], prose["description"]), ("Động Trung Trang", "Hang động đẹp trên đảo Cát Bà."))
+        self.assertEqual(other["name"], "Nguyễn Huệ")
+        self.assertEqual(n.apply_name_overrides([derived], overrides), 0)  # chạy lại: không đổi gì thêm
+
+    def test_reviewed_names_and_exclusions_of_13_10_are_listed(self):
+        names = n.load_name_overrides()
+        self.assertEqual(names["trip:attraction:30633439"][0], "Phố đi bộ Nguyễn Huệ")
+        self.assertEqual(names["trip:attraction:55838986"][0], "Động Trung Trang")
+        excluded = n.load_excluded_products()
+        for ref in ("trip:hotel:118233319:room:482483850", "trip:route:cah-han", "vinpearl:tour:VW00469", "trip:hotel:135398727",
+                    "agoda:hotel:nha-nghi-gia-an:ha-tien-kien-giang", "agoda:hotel:mango-house:ha-tien-kien-giang"):
+            self.assertIn(ref, excluded)
+        self.assertNotIn("vinpearl:tour:VW00613", excluded)  # bản giữ lại của cặp vé trùng
+
 
 if __name__ == "__main__":
     unittest.main()
