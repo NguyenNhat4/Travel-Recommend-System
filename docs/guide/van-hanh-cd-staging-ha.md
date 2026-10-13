@@ -19,6 +19,7 @@ Phục vụ `docs/prd/deployment-plan.md` §6.1. Nguồn sự thật là mã: `i
 ### Trên VM (`slot-deploy.sh`)
 
 - Mỗi VM app chạy **hai slot**: blue (backend `:8001`, frontend `:3001`) và green (`:8002`, `:3002`). Proxy nginx giữ cổng `3000`, là cổng LB và health check dùng. Mỗi lúc chỉ một slot nhận traffic.
+- URL gọi ngược chính backend (`ITINERARY_SERVICE_BASE_URL`, `ASSISTANT_API_BASE_URL`) được ghi đè theo port của slot trong `compose.slot.yml` (service `backend`). Secret `vota-ha-backend-env` vẫn giữ `:8000` của kiểu cũ và không cần đổi, vì blue và green dùng hai port khác nhau. URL loopback mới của backend khai báo ở cùng chỗ đó.
 - `prepare`, chạy song song trên mọi VM: dựng slot còn lại, chép `/_next/static` của image frontend vào kho `/etc/vota/proxy/static-store`, rồi đợi `/health/ready`. Slot đó được ghi vào `/etc/vota/pending-slot`. Prepare lỗi trên một VM thì `abort` trên mọi VM; slot đang phục vụ không bị đụng.
 - `switch`, chạy trên VM đầu (canary) rồi các VM còn lại song song: đổi upstream nginx (`nginx -c … -s reload`), kiểm qua `:3000`, rút slot cũ sau 110 s (chạy nền). Lỗi thì đổi lại slot cũ.
 - Kho tĩnh: nginx trả `/_next/static/*` từ kho trước, thiếu mới hỏi frontend. Asset của mọi phiên bản trong 14 ngày (`STATIC_KEEP_DAYS`) đều còn, nên trình duyệt đang chạy bản cũ không bị 404 chunk.

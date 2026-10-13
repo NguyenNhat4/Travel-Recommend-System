@@ -47,6 +47,13 @@ class SlotLayout(unittest.TestCase):
         self.assertIn("PORT: ${FRONTEND_PORT}", SCRIPT)
         self.assertIn('"--port", "${BACKEND_PORT}"', SCRIPT)
 
+    def test_backend_service_urls_follow_the_slot_port(self):
+        # Secret giữ port 8000 của kiểu cũ; URL gọi ngược backend phải ghi đè trong khối backend (environment thắng env_file).
+        backend = SCRIPT[SCRIPT.index("  backend:\n"):SCRIPT.index("  frontend:\n")]
+        self.assertIn("ITINERARY_SERVICE_BASE_URL: http://127.0.0.1:${BACKEND_PORT}", backend)
+        self.assertIn("ASSISTANT_API_BASE_URL: http://127.0.0.1:${BACKEND_PORT}/api/v1", backend)
+        self.assertNotIn("127.0.0.1:8000", SCRIPT)
+
     def test_container_names_are_per_slot(self):
         self.assertIn("container_name: vota-backend-${SLOT}", SCRIPT)
         self.assertIn("container_name: vota-frontend-${SLOT}", SCRIPT)

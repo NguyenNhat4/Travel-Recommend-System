@@ -123,6 +123,10 @@ services:
       UVICORN_WORKERS: ${UVICORN_WORKERS:-2}
       # Chờ SSE (90s) xong khi bị rút khỏi LB: bằng LB draining (100s), nhỏ hơn stop_grace_period bên dưới.
       UVICORN_TIMEOUT_GRACEFUL_SHUTDOWN: ${UVICORN_GRACEFUL_SECONDS:-100}
+      # URL gọi ngược chính backend phải theo port của slot (blue 8001, green 8002). Secret giữ port 8000 của kiểu cũ,
+      # nên ghi đè ở đây: environment thắng env_file. Thêm URL loopback mới của backend thì khai báo ở đây, không sửa secret.
+      ITINERARY_SERVICE_BASE_URL: http://127.0.0.1:${BACKEND_PORT}
+      ASSISTANT_API_BASE_URL: http://127.0.0.1:${BACKEND_PORT}/api/v1
       # Nhiều bản sao sau LB: chỉ nhận traffic khi RecSys đã nạp, và từ chối Weaviate/Redis loopback.
       READY_REQUIRES_RECSYS: "true"
       REQUIRE_SHARED_BACKENDS: "true"
