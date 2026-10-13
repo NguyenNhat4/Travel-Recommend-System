@@ -18,6 +18,17 @@ export function fold(text: string): string {
     .trim();
 }
 
+/**
+ * Khớp theo đầu từ, không phân biệt dấu và hoa thường (FR-SRC-05): "ha" thấy "Hà Nội" và "Hạ Long". Bỏ dấu thì "Đảo" là
+ * "dao", nên "da" cũng thấy "Côn Đảo"; gợi ý sắp xếp mục bắt đầu bằng chữ gõ lên trước (xem airportOptions).
+ */
+export function startsAWord(text: string, query: string): boolean {
+  const wanted = fold(query).replace(/\s+/g, ' ').trim();
+  if (!wanted) return true;
+  const words = fold(text).replace(/[.,()\-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return ` ${words} `.includes(` ${wanted}`);
+}
+
 type Named = { destination: string };
 
 /** Nhãn điểm đến khớp đúng với văn bản người dùng gõ (không phân biệt dấu, hoa thường); không khớp thì null. */

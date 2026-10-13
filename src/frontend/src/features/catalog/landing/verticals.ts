@@ -22,8 +22,12 @@ export interface VerticalTab {
 }
 
 export interface SheetConfig {
-  location: { label: string; placeholder: string };
-  /** Chỉ vé máy bay. */
+  /**
+   * `destinations`: điểm đến phổ biến (tour, golf). `famous-hotels`: khách sạn nổi tiếng khi bấm ô (`/hotels`, `/combos`).
+   * `airports`: sân bay hiện hành của catalog, chỉ nhận sân bay thật (`/flights`, spec ui-dia-diem-san-bay-va-khach-san-noi-tieng).
+   */
+  location: { label: string; placeholder: string; suggest: 'destinations' | 'famous-hotels' | 'airports' };
+  /** Chỉ vé máy bay: ô điểm đi, chọn sân bay hiện hành như ô điểm đến. */
   origin?: { label: string; placeholder: string };
   dates: {
     mode: 'range' | 'single' | 'single-or-return';
@@ -61,7 +65,7 @@ export const VERTICALS: Record<VerticalId, VerticalConfig> = {
       popularTitle: 'Khách sạn và resort phổ biến', cheapTitle: 'Khách sạn giá tốt nhất',
     }],
     sheet: {
-      location: { label: 'Địa điểm', placeholder: 'Nhập điểm đến' },
+      location: { label: 'Địa điểm', placeholder: 'Nhập điểm đến', suggest: 'famous-hotels' },
       dates: { mode: 'range', startLabel: 'Ngày đi', endLabel: 'Ngày về' },
       guestsLabel: 'Số lượng',
       rooms: true,
@@ -82,8 +86,8 @@ export const VERTICALS: Record<VerticalId, VerticalConfig> = {
       popularTitle: 'Chặng bay phổ biến', cheapTitle: 'Vé giá tốt nhất',
     }],
     sheet: {
-      origin: { label: 'Điểm đi', placeholder: 'Nhập nơi khởi hành' },
-      location: { label: 'Điểm đến', placeholder: 'Nhập điểm đến' },
+      origin: { label: 'Điểm đi', placeholder: 'Chọn sân bay đi' },
+      location: { label: 'Điểm đến', placeholder: 'Chọn sân bay đến', suggest: 'airports' },
       dates: { mode: 'single-or-return', startLabel: 'Ngày đi', endLabel: 'Ngày về' },
       guestsLabel: 'Hành khách',
       rooms: false,
@@ -110,7 +114,7 @@ export const VERTICALS: Record<VerticalId, VerticalConfig> = {
       },
     ],
     sheet: {
-      location: { label: 'Điểm đến', placeholder: 'Nhập điểm đến' },
+      location: { label: 'Điểm đến', placeholder: 'Nhập điểm đến', suggest: 'destinations' },
       dates: { mode: 'single', startLabel: 'Ngày sử dụng' },
       guestsLabel: 'Số khách',
       rooms: false,
@@ -131,7 +135,7 @@ export const VERTICALS: Record<VerticalId, VerticalConfig> = {
       popularTitle: 'Combo được chọn nhiều', cheapTitle: 'Combo giá tốt nhất',
     }],
     sheet: {
-      location: { label: 'Điểm đến', placeholder: 'Nhập điểm đến' },
+      location: { label: 'Điểm đến', placeholder: 'Nhập điểm đến', suggest: 'famous-hotels' },
       dates: { mode: 'single', startLabel: 'Ngày bắt đầu' },
       guestsLabel: 'Số khách',
       rooms: false,

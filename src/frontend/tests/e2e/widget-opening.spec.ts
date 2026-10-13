@@ -123,6 +123,9 @@ test('keyboard submission switches to chat, preserves context, and resets to the
   await expect(dialog.getByPlaceholder(openingPlaceholder)).toHaveValue('');
   await expect(dialog.getByRole('heading', { name: 'Bạn muốn đi đâu tiếp theo?' })).toBeVisible();
   await expect(dialog.getByRole('textbox')).toBeFocused();
+  // useWidgetFocus đưa focus về textarea bằng requestAnimationFrame sau khi đóng lịch sử; chờ khung đó xong trước khi Shift+Tab,
+  // nếu không khung trễ sẽ kéo focus về textarea sau khi phím đã chuyển sang nút Đóng.
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
   await page.keyboard.press('Shift+Tab');
   await expect(dialog.getByRole('button', { name: 'Đóng', exact: true })).toBeFocused();
   await page.keyboard.press('Escape');

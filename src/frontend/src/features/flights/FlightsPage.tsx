@@ -8,19 +8,26 @@ import { VERTICALS, resolveTab } from '../catalog/landing/verticals';
 import { FlightResultsView } from './results/FlightResultsView';
 import { buildFlightResultsHref, type FlightSearch, type FlightSearchInput } from './results/flightHref';
 
-/** Câu nói còn thiếu gì; null khi đủ điểm đi và điểm đến chuẩn. */
+/**
+ * Câu nói còn thiếu gì; null khi đủ sân bay đi và sân bay đến. Ô chỉ có sân bay thật khi đã khớp danh sách của catalog
+ * (spec ui-dia-diem-san-bay-va-khach-san-noi-tieng §4.4); chữ chưa khớp được báo đúng tên ô.
+ */
 export function missingFlightInput(input: FlightSearchInput): string | null {
-  const noOrigin = !input.origin.trim();
-  if (noOrigin && !input.destination) {
-    return input.location.trim()
-      ? `Nhập điểm đi và chọn điểm đến “${input.location.trim()}” trong danh sách gợi ý để xem chuyến bay.`
-      : 'Nhập điểm đi và chọn điểm đến để xem chuyến bay.';
+  if (input.airportsReady === false) return 'Chưa tải được danh sách sân bay. Thử lại sau giây lát.';
+  const originText = input.originText?.trim() ?? '';
+  const destinationText = input.location.trim();
+  if (!input.origin && !input.destination && !originText && !destinationText) {
+    return 'Chọn sân bay đi và sân bay đến để xem chuyến bay.';
   }
-  if (noOrigin) return 'Bạn chưa nhập điểm đi.';
+  if (!input.origin) {
+    return originText
+      ? `Chưa nhận ra sân bay đi “${originText}”. Chọn một sân bay trong danh sách gợi ý.`
+      : 'Bạn chưa chọn sân bay đi.';
+  }
   if (!input.destination) {
-    return input.location.trim()
-      ? `Chưa nhận ra điểm đến “${input.location.trim()}”. Hãy chọn một điểm đến trong danh sách gợi ý.`
-      : 'Bạn chưa chọn điểm đến.';
+    return destinationText
+      ? `Chưa nhận ra sân bay đến “${destinationText}”. Chọn một sân bay trong danh sách gợi ý.`
+      : 'Bạn chưa chọn sân bay đến.';
   }
   return null;
 }
@@ -32,7 +39,7 @@ export const FlightSearchPrompt: React.FC<{ notice: string | null }> = ({ notice
       <span className="grid h-12 w-12 place-items-center rounded-full bg-brand-100 text-brand-700"><PlaneTakeoff className="h-6 w-6" aria-hidden="true" /></span>
       <h2 className="font-display text-xl text-slate-900">Nhập chuyến đi để xem chuyến bay</h2>
       <p className="max-w-lg text-sm text-slate-600">
-        Điền điểm đi, điểm đến và ngày bay ở ô tìm kiếm phía trên rồi bấm Tìm kiếm. Chuyến bay còn mở bán sẽ hiện ngay tại đây.
+        Chọn sân bay đi, sân bay đến và ngày bay ở ô tìm kiếm phía trên rồi bấm Tìm kiếm. Chuyến bay còn mở bán sẽ hiện ngay tại đây.
       </p>
       {notice && <p role="alert" className="rounded-xl bg-amber-50 px-4 py-2.5 text-sm font-medium text-amber-900">{notice}</p>}
     </div>
