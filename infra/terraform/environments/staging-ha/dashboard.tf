@@ -336,6 +336,27 @@ resource "google_monitoring_dashboard" "ha" {
             }
           }
         },
+        # RAM tách theo state của từng VM (used, cached, buffered...). Đường theo cặp (VM, state), không xếp chồng
+        # các VM lên nhau; VM đã xoá thì đường của nó dừng lại. Dùng instance_id vì metric Ops Agent không có instance_name.
+        {
+          xPos = 0, yPos = 36, width = 12, height = 5
+          widget = {
+            title = "RAM theo trạng thái từng VM (mã instance, %)"
+            xyChart = {
+              dataSets = [{
+                plotType       = "LINE"
+                legendTemplate = "$${resource.labels.instance_id} · $${metric.labels.state}"
+                timeSeriesQuery = {
+                  timeSeriesFilter = {
+                    filter      = "resource.type=\"gce_instance\" metric.type=\"agent.googleapis.com/memory/percent_used\" metric.labels.state!=\"free\""
+                    aggregation = { alignmentPeriod = "60s", perSeriesAligner = "ALIGN_MEAN", crossSeriesReducer = "REDUCE_MEAN", groupByFields = ["resource.labels.instance_id", "metric.labels.state"] }
+                  }
+                }
+              }]
+              yAxis = { scale = "LINEAR" }
+            }
+          }
+        },
       ]
     }
   })
