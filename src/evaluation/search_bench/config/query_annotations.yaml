@@ -731,3 +731,271 @@ queries:
   c0756:  # [poi_resolution] khách sạn gần Hồ Gươm hoặc Cầu Rồng
     allowed_variants: [hotel_property]
     expected_parse: {taxonomy: "hotel", destination: null, origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null, duration_days: null, duration_nights: null, entity: [], entity_role: null, location_entity: "ho_hoan_kiem"}
+
+
+  # --- gold_v7 new slices (13/10/2026) ---
+  c0757:
+    allowed_variants: ["hotel_property"]
+    expected_parse: {"taxonomy": "hotel", "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0758:
+    allowed_variants: ["hotel_property"]
+    expected_parse: {"taxonomy": "hotel", "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0759:
+    allowed_variants: ["hotel_property"]
+    expected_parse: {"taxonomy": "hotel", "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0760:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0761:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0762:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0763:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0764:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0765:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0766:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0767:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0768:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0769:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0770:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0771:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0772:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0773:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0774:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0775:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0776:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0777:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0778:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0779:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0780:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0781:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0782:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0783:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0784:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0785:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0786:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0787:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0788:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0789:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0790:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0791:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0792:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0793:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0794:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0795:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0796:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0797:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0798:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0799:
+    allowed_variants: []
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0800:
+    allowed_variants: []
+    forbidden: ["4ed33d30-3074-5738-8683-97c11413ce87"]
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0801:
+    allowed_variants: []
+    forbidden: ["1ee98350-fc23-5793-bc31-aba198800130", "59442c34-612e-57f6-87c1-f4c084e5c72c"]
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0802:
+    allowed_variants: []
+    forbidden: ["1ee98350-fc23-5793-bc31-aba198800130"]
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0803:
+    allowed_variants: []
+    forbidden: ["4ed33d30-3074-5738-8683-97c11413ce87"]
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0804:
+    allowed_variants: []
+    forbidden: ["1ee98350-fc23-5793-bc31-aba198800130"]
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0805:
+    allowed_variants: []
+    forbidden: ["59442c34-612e-57f6-87c1-f4c084e5c72c"]
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0806:
+    allowed_variants: []
+    forbidden: ["4ed33d30-3074-5738-8683-97c11413ce87", "1ee98350-fc23-5793-bc31-aba198800130"]
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0807:
+    allowed_variants: []
+    forbidden: ["1ee98350-fc23-5793-bc31-aba198800130"]
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0808:
+    allowed_variants: []
+    forbidden: ["1ee98350-fc23-5793-bc31-aba198800130"]
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0809:
+    allowed_variants: []
+    forbidden: ["59442c34-612e-57f6-87c1-f4c084e5c72c"]
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0810:
+    allowed_variants: []
+    forbidden: ["1ee98350-fc23-5793-bc31-aba198800130"]
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0811:
+    allowed_variants: []
+    forbidden: ["4ed33d30-3074-5738-8683-97c11413ce87"]
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0812:
+    allowed_variants: ["combo", "attraction"]
+    forbidden: ["db16d558-6213-5896-9269-e2052fd72b20"]
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": 2, "duration_nights": 1, "entity": [], "entity_role": "gate", "location_entity": null}
+  c0813:
+    allowed_variants: ["combo", "attraction"]
+    forbidden: ["db16d558-6213-5896-9269-e2052fd72b20"]
+    expected_parse: {"taxonomy": "attraction", "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": 2, "duration_nights": 1, "entity": [], "entity_role": "gate", "location_entity": null}
+  c0814:
+    allowed_variants: ["combo", "attraction"]
+    forbidden: ["db16d558-6213-5896-9269-e2052fd72b20"]
+    expected_parse: {"taxonomy": "combo", "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": 2, "duration_nights": 1, "entity": [], "entity_role": "gate", "location_entity": null}
+  c0815:
+    allowed_variants: ["combo", "attraction"]
+    forbidden: ["db16d558-6213-5896-9269-e2052fd72b20"]
+    expected_parse: {"taxonomy": null, "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": 3, "duration_nights": 2, "entity": [], "entity_role": "gate", "location_entity": null}
+  c0816:
+    allowed_variants: ["combo", "attraction"]
+    forbidden: ["db16d558-6213-5896-9269-e2052fd72b20"]
+    expected_parse: {"taxonomy": "attraction", "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": 3, "duration_nights": 2, "entity": [], "entity_role": "gate", "location_entity": null}
+  c0817:
+    allowed_variants: ["combo", "attraction"]
+    forbidden: ["db16d558-6213-5896-9269-e2052fd72b20"]
+    expected_parse: {"taxonomy": "combo", "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": 3, "duration_nights": 2, "entity": [], "entity_role": "gate", "location_entity": null}
+  c0818:
+    allowed_variants: ["combo", "attraction"]
+    forbidden: ["db16d558-6213-5896-9269-e2052fd72b20"]
+    expected_parse: {"taxonomy": "attraction", "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": 1, "duration_nights": null, "entity": [], "entity_role": "gate", "location_entity": null}
+  c0819:
+    allowed_variants: ["combo", "attraction"]
+    forbidden: ["db16d558-6213-5896-9269-e2052fd72b20"]
+    expected_parse: {"taxonomy": "combo", "destination": null, "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": 1, "duration_nights": null, "entity": [], "entity_role": "gate", "location_entity": null}
+  c0820:
+    allowed_variants: ["hotel_property"]
+    forbidden_filter: {"not": {"eq": ["destination", "Đà Lạt"]}}
+    expected_parse: {"taxonomy": "hotel", "destination": "Đà Lạt", "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": 2, "duration_nights": 1, "entity": [], "entity_role": "stay", "location_entity": null}
+  c0821:
+    allowed_variants: ["hotel_property"]
+    forbidden_filter: {"not": {"eq": ["destination", "Phú Quốc"]}}
+    expected_parse: {"taxonomy": "hotel", "destination": "Phú Quốc", "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": 3, "duration_nights": 2, "entity": [], "entity_role": "stay", "location_entity": null}
+  c0822:
+    allowed_variants: ["hotel_property"]
+    forbidden_filter: {"not": {"eq": ["destination", "Nha Trang"]}}
+    expected_parse: {"taxonomy": "hotel", "destination": "Nha Trang", "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": 2, "duration_nights": 1, "entity": [], "entity_role": "stay", "location_entity": null}
+  c0823:
+    allowed_variants: ["hotel_property"]
+    forbidden_filter: {"not": {"eq": ["destination", "Đà Lạt"]}}
+    expected_parse: {"taxonomy": "hotel", "destination": "Đà Lạt", "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": 3, "duration_nights": 2, "entity": [], "entity_role": "stay", "location_entity": null}
+  c0824:
+    allowed_variants: ["hotel_property"]
+    forbidden_filter: {"not": {"eq": ["destination", "Hà Nội"]}}
+    expected_parse: {"taxonomy": "hotel", "destination": "Hà Nội", "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": 2, "duration_nights": 1, "entity": [], "entity_role": "stay", "location_entity": null}
+  c0825:
+    allowed_variants: ["hotel_property"]
+    forbidden_filter: {"not": {"eq": ["destination", "Đà Nẵng"]}}
+    expected_parse: {"taxonomy": "hotel", "destination": "Đà Nẵng", "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": 3, "duration_nights": 2, "entity": [], "entity_role": "stay", "location_entity": null}
+  c0826:
+    allowed_variants: ["hotel_property"]
+    forbidden_filter: {"not": {"eq": ["destination", "Đà Lạt"]}}
+    expected_parse: {"taxonomy": "hotel", "destination": "Đà Lạt", "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0827:
+    allowed_variants: ["hotel_property"]
+    forbidden_filter: {"not": {"eq": ["destination", "Đà Lạt"]}}
+    expected_parse: {"taxonomy": "hotel", "destination": "Đà Lạt", "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0828:
+    allowed_variants: ["hotel_property"]
+    forbidden_filter: {"not": {"eq": ["destination", "Phú Quốc"]}}
+    expected_parse: {"taxonomy": "hotel", "destination": "Phú Quốc", "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0829:
+    allowed_variants: ["hotel_property"]
+    forbidden_filter: {"not": {"eq": ["destination", "Nha Trang"]}}
+    expected_parse: {"taxonomy": "hotel", "destination": "Nha Trang", "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0830:
+    allowed_variants: ["combo"]
+    forbidden_filter: {"not": {"eq": ["destination", "Phú Quốc"]}}
+    expected_parse: {"taxonomy": "combo", "destination": "Phú Quốc", "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0831:
+    allowed_variants: ["attraction"]
+    forbidden_filter: {"not": {"eq": ["destination", "Đà Nẵng"]}}
+    expected_parse: {"taxonomy": "attraction", "destination": "Đà Nẵng", "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0832:
+    allowed_variants: ["hotel_property"]
+    forbidden_filter: {"not": {"eq": ["destination", "Hạ Long"]}}
+    expected_parse: {"taxonomy": "hotel", "destination": "Hạ Long", "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}
+  c0833:
+    allowed_variants: ["hotel_property"]
+    forbidden_filter: {"not": {"eq": ["destination", "Sa Pa"]}}
+    expected_parse: {"taxonomy": "hotel", "destination": "Sa Pa", "origin": null, "destination_city": null, "must_not": [], "must_not_brands": [], "must_not_taxonomies": [], "price_max": null, "price_min": null, "star_min": null, "party_total": null, "duration_days": null, "duration_nights": null, "entity": [], "entity_role": null, "location_entity": null}

@@ -62,9 +62,21 @@ SLICES: tuple[str, ...] = (
     # poi_resolution: địa danh gazetteer (Hồ Hoàn Kiếm, Cầu Rồng, Nội Bài…) phải quy về đúng điểm đến catalog.
     "duration_false_positive",
     "poi_resolution",
+    # gold_v7 (13/10, plan docs/plan/2026-10-13-search-evidence-gate-no-answer.md):
+    # no_answer: tên người, tên lạ, vô nghĩa, POI không có -> rỗng;
+    # name_collision: trùng âm tiết rời rạc (Trần Thị Mai, Phạm Văn Đồng...);
+    # duration_only: câu chỉ có thời lượng (2 ngày 1 đêm, 3N2Đ...);
+    # duration_stay: lưu trú có thời lượng (khách sạn Đà Lạt 2 ngày 1 đêm...);
+    # slang_residual: từ lóng bổ nghĩa (khách sạn Đà Lạt rẻ bèo...).
+    "no_answer",
+    "name_collision",
+    "duration_only",
+    "duration_stay",
+    "slang_residual",
 )
 PARENT_CHILD_SLICE = "parent_child"
 OUT_OF_CATALOG_SLICE = "out_of_catalog"
+NO_RESULT_SLICES: tuple[str, ...] = ("out_of_catalog", "no_answer")
 
 # Điều kiện trên các field này được kiểm ở cấp room / flight (child_filter),
 # không ở cấp parent. `sb gold pool` tách filter của drafts theo danh sách này.

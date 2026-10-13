@@ -69,8 +69,8 @@ doctor:                           # (đề xuất) Part 0
   min_weaviate_version: "1.37"
 
 gold:                             # Part 5
-  target: 232                     # mục tiêu tham khảo (= tổng slices); 05/10: +taxonomy_collision 5, +flight_direction 6 (gold_v4); 07/10: +duration_false_positive 9, +poi_resolution 12 (gold_v6) — 28/09: KHÔNG bắt buộc đủ, lấy mọi câu người soát chọn
-  minimum: 51                     # 07/10: 17 slice × min_per_slice (05/10: 15 × 3 = 45; 28/09: 13 × 3 = 39; trước: 150)
+  target: 306                     # mục tiêu tham khảo (= tổng slices); 05/10: +taxonomy_collision 5, +flight_direction 6 (gold_v4); 07/10: +duration_false_positive 9, +poi_resolution 12 (gold_v6); 13/10: +no_answer 40, +name_collision 12, +duration_only 8, +duration_stay 6, +slang_residual 8 (gold_v7)
+  minimum: 66                     # 13/10: 22 slice × min_per_slice (07/10: 17 slice × 3 = 51)
   pool_depth: 15
   overlap_queries: 25
   kappa_min: 0.6
@@ -95,6 +95,11 @@ gold:                             # Part 5
     flight_direction: 6            # 05/10 (D3): gold_v4 — vé máy bay có chiều / chỉ điểm đi hoặc đến
     duration_false_positive: 9     # 07/10: gold_v6 — "3 ngày 2 đêm" / "chợ đêm" / "2 triệu/đêm" (F7 không vớt nhầm hotel "Chợ Đêm")
     poi_resolution: 12             # 07/10: gold_v6 — địa danh gazetteer (Hồ Hoàn Kiếm, Cầu Rồng…) → điểm đến catalog
+    no_answer: 40                  # 13/10: gold_v7 — câu tên người lạ, hư cấu, POI sai, gibberish (trả rỗng)
+    name_collision: 12             # 13/10: gold_v7 — tên người trùng âm tiết với POI/unit catalog (không vớt rác)
+    duration_only: 8               # 13/10: gold_v7 — câu chỉ hỏi thời lượng (combo/tour có duration, cấm Chợ Đêm)
+    duration_stay: 6               # 13/10: gold_v7 — câu lưu trú kèm thời lượng (vai trò stay, không lọc rỗng khách sạn)
+    slang_residual: 8              # 13/10: gold_v7 — câu chứa từ lóng du lịch (rẻ bèo, chanh sả, sống ảo...)
 
 synth:                            # Part 7
   per_unit: 8
