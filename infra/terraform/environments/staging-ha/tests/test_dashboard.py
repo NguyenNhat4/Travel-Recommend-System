@@ -45,6 +45,13 @@ class Dashboard(unittest.TestCase):
         self.assertIn('groupByFields = ["resource.labels.instance_id"]', DASH)
         self.assertNotIn("metric.labels.instance_name", DASH.split("RAM đã dùng")[1])
 
+    def test_ram_by_state_chart_splits_each_vm_by_state(self):
+        # Use case: RAM của từng VM tách theo nhãn state (used/cached/buffered); VM đã xoá thì đường của nó dừng lại.
+        self.assertEqual(DASH.count("RAM theo trạng thái từng VM"), 1)
+        block = DASH.split("RAM theo trạng thái từng VM")[1]
+        self.assertIn(r'metric.labels.state!=\"free\"', block)
+        self.assertIn('groupByFields = ["resource.labels.instance_id", "metric.labels.state"]', block)
+
     def test_p99_is_shown_for_lb_and_per_vm_and_route(self):
         self.assertIn("ALIGN_PERCENTILE_99", DASH)
         self.assertEqual(DASH.count('"ALIGN_PERCENTILE_99"'), 2)   # p99 của LB và p99 theo VM; route chỉ có p95
