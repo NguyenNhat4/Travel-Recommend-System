@@ -450,6 +450,24 @@ class QualityTests(unittest.TestCase):
         self.assertNotIn("vinpearl:tour:VW00613", excluded)  # bản giữ lại của cặp vé trùng
         self.assertNotIn("booking:hotel:8466578", excluded)  # căn hộ TMS thật: người dùng giữ hết (13/10/2026)
 
+    def test_english_only_names_of_13_10_are_renamed_or_dropped_as_duplicates(self):
+        """Mục 2 rà soát 13/10: 33 điểm trip.com tên chỉ có tiếng Anh nhận tên tiếng Việt; 9 điểm trùng bản tiếng Việt bị loại,
+        bản tiếng Việt giữ lại. Một ref không được vừa đổi tên vừa bị loại."""
+        names, excluded = n.load_name_overrides(), n.load_excluded_products()
+        self.assertEqual(names["trip:attraction:56080997"][0], "Động Tiên Sơn")
+        self.assertEqual(names["trip:attraction:55894440"][0], "Bãi Kỳ Co")
+        self.assertEqual(names["trip:attraction:148936843"][0], "Làng hương Quảng Phú Cầu")
+        self.assertEqual(sum("người dùng duyệt 13/10/2026" in evidence for _, evidence in names.values()), 33)
+        dropped_for_kept = {"137220354": "142270484", "142677977": "138841792", "142701301": "146597815",
+                            "137912295": "140139148", "150930088": "150792617", "153186120": "153196176",
+                            "136719903": "144437227", "142290987": "32862148", "134100373": "137069524"}
+        for dropped, kept in dropped_for_kept.items():
+            self.assertIn(f"trip:attraction:{dropped}", excluded)
+            self.assertIn(f"trip:attraction:{kept}", excluded[f"trip:attraction:{dropped}"])  # lý do trỏ tới bản giữ
+            self.assertNotIn(f"trip:attraction:{kept}", excluded)
+        self.assertEqual(set(names) & set(excluded), set())
+        self.assertNotIn("trip:attraction:133828272", names)  # Đảo chè Thanh Chương: toạ độ sai, chờ mục 4
+
 
 if __name__ == "__main__":
     unittest.main()

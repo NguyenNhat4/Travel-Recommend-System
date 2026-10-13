@@ -45,7 +45,9 @@ Cập nhật 13/10 chiều (xem `history/2026-10-13-kiem-lai-ra-soat-va-loai-tms
 - Người dùng chốt: **chỉ sửa production sau khi `test/newcrawl` được merge vào `release-mvp-v2` và CD crawler đã deploy**. VM chạy code
   cũ (daily 13/10 08:45 trên #188) không có 7 ref này trong danh sách loại → ẩn trước deploy có thể bị lượt daily bật lại.
 - Bản xem trước (đọc production 13/10, read-only): 7 ref đang bán + 10 phòng con đang bán (Mango House 6, Gia An 2, Cubicity Trip 2)
-  → **ẩn 17 dòng**; đổi tên 2 dòng → tổng 19 dòng. Không dòng nào mang `windowClosed`; tuyến `cah-han` 0 chuyến. Bản giữ
+  → **ẩn 17 dòng**; đổi tên 2 dòng → tổng 19 dòng. **Gộp mục 2 (13/10 chiều): ẩn 26 dòng (16 ref + 10 phòng con), đổi tên 35 dòng
+  (34 dòng đổi luôn đầu mô tả) → tổng 61 dòng**, dựng bằng chính `normalise.load_name_overrides` / `apply_name_overrides` /
+  `excluded_reason` trên dữ liệu production. Không dòng nào mang `windowClosed`; tuyến `cah-han` 0 chuyến. Bản giữ
   (`VW00613`, `booking:hotel:16986224`) đang bán bình thường.
 - Đổi tên trên production: ghi cả `attributes.originalName`, `nameSource`, `nameEvidence` như `apply_name_overrides`.
 
@@ -55,7 +57,9 @@ Việc còn lại của mục 1:
 2. Viết script sửa production `src/data_collection/data/vm-repair-20261013/fix_names_and_hide.py` (thư mục `data/` bị ignore, ở repo
    chính `~/code/Travel-Recommendation-Product`): mặc định **chỉ đọc** (transaction read-only) in đúng các dòng sẽ đổi; `--apply` chỉ chạy
    khi người dùng đồng ý **trong chat**.
-   - Đổi tên 2 dòng: `name` + đầu `description` nếu bắt đầu bằng tên cũ + ".".
+   - Script đọc thẳng `collectors/name_overrides.csv` và `excluded_products.csv` qua các hàm của `normalise` (không liệt kê ref trong
+     script), nên phủ cả mục 1 và mục 2 (bản xem trước 61 dòng ở trên).
+   - Đổi tên: `name` + đầu `description` nếu bắt đầu bằng tên cũ + ".".
    - Ẩn (`available = false`) 7 ref (6 ref trên + `trip:attraction:141833025`) + hạng phòng con của chúng (đếm lúc rà: Cubicity Trip 2 phòng, Gia An 2, Mango House 6 —
      kiểm lại bằng `catalog.product_meta.parent_product_id`).
    - Trước khi ghi: đọc `fresh_catalog_db.py` để chắc dòng **vắng khỏi catalog** không bị lượt sau bật lại (quy tắc FR-CAT-02 chỉ bật
@@ -64,12 +68,21 @@ Việc còn lại của mục 1:
 4. **Hỏi người dùng** các trùng lặp chưa rõ: ~~L'azur 29 tin condotel + TMS ×2~~ (đã chốt giữ hết, 13/10); 2 cặp tour Booking cùng
    tên (giữ cả hai?); Thác Bạc ×2 (khả năng là hai thác khác nhau → giữ).
 
-## 3. Mục 2 — chưa làm
+## 3. Mục 2 — job xong 13/10 (người dùng đã duyệt), CHƯA sửa production
 
-Lập danh sách 121 điểm tham quan Trip có tên không chứa chữ tiếng Việt (search unit đang bán, `source_ref` bắt đầu `trip:attraction:`;
-regex chữ có dấu như `audit 4a` ở §6), kèm `attributes.nameEn`, slug, địa chỉ. Đề xuất tên tiếng Việt **chỉ khi chắc chắn** (giữ
-thương hiệu: "Sun World…", "VinWonders…"); không chắc thì để trống. Gửi người dùng duyệt → thêm vào `collectors/name_overrides.csv`
-(cột `evidence` bắt buộc) → test → sửa production như mục 1 (hỏi trước khi ghi).
+Xem `history/2026-10-13-ten-tieng-viet-cho-diem-ten-tieng-anh.md`. Rà 127 search unit `trip:attraction:*` đang bán có tên không chứa
+chữ tiếng Việt (121 điểm tham quan + 6 sân golf), đối chiếu điểm có tên tiếng Việt trong 400 m. Người dùng duyệt 13/10:
+- **33 tên tiếng Việt** → `collectors/name_overrides.csv` (tổng 35 dòng, evidence ghi tên nguồn, URL, địa chỉ).
+- **9 bản trùng** bản tiếng Việt ngay cạnh → `collectors/excluded_products.csv` (tổng 54 dòng; lý do trỏ tới bản giữ): Mui Nai Beach,
+  Battle of Ap Bac War Memorial, Bao Ninh Beach, Dark Cave, Tien Trang Beach, Tam Thang Square, Tay Ninh Black Virgin Temple,
+  Halong Park (Dragon Park), Hacoconut Coconut Basket Boat.
+- Giữ nguyên 70 (thương hiệu, du thuyền, sân golf, "Sa Pa"). Để trống 14 (không chắc tên tiếng Việt): Keo Yen Panorama, Hau de
+  waterfall, Buffalo Cave, Hang Mua Big Pagoda, Thung Ui, Red Canyon Mui Ne, Red Sand Dunes Beach (địa chỉ Bắc Bình), Commander Cave,
+  Mine Action Visitor Center, Trung Vuong Garden, Phu Thom, Chinatown Saigon, Sunset Viewpoint, Sun World Ba Den Mountain (nameEn
+  "Rocky Mountain Lake" mâu thuẫn).
+- **Chuyển sang mục 4:** `trip:attraction:133828272` "Dao Che Thanh Chuong" — tên đúng "Đảo chè Thanh Chương" nhưng toạ độ nằm ở
+  TP Vinh (cạnh Bảo tàng Quân khu IV), lệch ~40 km; người dùng chưa chọn ẩn hay sửa toạ độ. `trip:attraction:152155369` (Hang
+  Luồn): mô tả nói đảo Bồ Hòn (vịnh Hạ Long) nhưng điểm đến ghi Hải Phòng.
 
 ## 4. Mục 4 — chưa làm (điều tra rồi báo, chưa ghi gì)
 
