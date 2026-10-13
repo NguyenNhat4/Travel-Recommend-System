@@ -5,6 +5,7 @@ import { Baby, Ban, Bed, BedDouble, ChevronDown, Loader2, Images, Maximize2, Shi
 import { placeholderImage } from '../../services/catalog';
 import type { Product } from '../../types/travel';
 import { formatVnd } from '../confirmation/bookingLabels';
+import { SkeletonBlock } from '../common/Skeleton';
 import { AmenityList, amenityList } from './AmenityList';
 import { amenityIcon, pickHighlights } from './amenityIcons';
 import { imagesOf } from './ProductGallery';
@@ -46,6 +47,31 @@ function roomFacts(room: Product): Fact[] {
   if (a.familyFriendly === true) facts.push({ icon: Baby, text: 'Phù hợp gia đình' });
   return facts;
 }
+
+/** Khung thẻ hạng phòng trong lúc tải danh sách (product.md §4.3.4): ảnh trái, tên, thông số, tiện ích, giá và nút Đặt ngay. */
+export const RoomCardSkeleton: React.FC = () => (
+  <div aria-hidden="true" className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+    <div className="flex flex-col md:flex-row">
+      <SkeletonBlock className="aspect-16/10 shrink-0 md:aspect-auto md:min-h-[230px] md:w-64" />
+      <div className="flex min-w-0 flex-1 flex-col gap-3.5 p-4 md:p-5">
+        <SkeletonBlock className="h-6 w-2/3 rounded-md" />
+        <div className="flex flex-wrap gap-x-4 gap-y-2">
+          {['w-24', 'w-16', 'w-28'].map((w) => <SkeletonBlock key={w} className={`h-4 rounded ${w}`} />)}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {[0, 1, 2, 3].map((i) => <SkeletonBlock key={i} className="h-7 w-24 rounded-full" />)}
+        </div>
+        <div className="mt-auto flex items-end justify-between gap-4 border-t border-slate-100 pt-3.5">
+          <SkeletonBlock className="h-4 w-28 rounded" />
+          <div className="flex items-end gap-4">
+            <SkeletonBlock className="h-8 w-32 rounded-md" />
+            <SkeletonBlock className="h-11 w-28 rounded-xl" />
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+);
 
 /**
  * Thẻ một hạng phòng: ảnh lớn, thông số có icon, tiện ích nổi bật có icon, giá nổi bật và nút Đặt ngay ngay trên thẻ. Ngày và đoàn

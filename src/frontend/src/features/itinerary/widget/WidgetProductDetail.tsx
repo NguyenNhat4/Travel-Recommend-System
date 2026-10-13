@@ -4,6 +4,7 @@ import { getProduct, productFromApi, trackProductView } from '../../../services/
 import { useTravel } from '../../../context/TravelContext';
 import { PriceTag } from '../../../components/common/PriceTag';
 import { TaxonomyBadge } from '../../../components/common/TaxonomyBadge';
+import { SkeletonBlock, SkeletonStatus } from '../../../components/common/Skeleton';
 import type { Product } from '../../../types/travel';
 import { isFreeToVisit } from './widgetPlan';
 import { WidgetProductGallery } from './WidgetProductGallery';
@@ -136,7 +137,10 @@ export function WidgetProductDetail({ productId, summary, onClose, onAddToCart, 
 
       {state.status === 'error' && <LoadError onRetry={() => setAttempt((count) => count + 1)} />}
       {state.status === 'loading' && (
-        <p role="status" className="flex items-center gap-2 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />Đang tải chi tiết…</p>
+        <SkeletonStatus label="Đang tải chi tiết…" className="space-y-2 border-t border-slate-100 pt-5">
+          <SkeletonBlock className="h-4 w-24 rounded" />
+          {['w-full', 'w-full', 'w-5/6', 'w-2/3'].map((w, i) => <SkeletonBlock key={i} className={`h-3 rounded ${w}`} />)}
+        </SkeletonStatus>
       )}
 
       {description && (
@@ -211,16 +215,13 @@ function LoadError({ onRetry }: { onRetry: () => void }) {
 
 function DetailSkeleton() {
   return (
-    <div role="status" className="space-y-5">
-      <span className="sr-only">Đang tải chi tiết…</span>
-      <div aria-hidden="true" className="space-y-5 animate-pulse motion-reduce:animate-none">
-        <div className="aspect-[4/3] rounded-xl bg-slate-100" />
-        <div className="h-6 w-3/4 rounded bg-slate-100" />
-        <div className="space-y-2">
-          <div className="h-3 w-full rounded bg-slate-100" />
-          <div className="h-3 w-5/6 rounded bg-slate-100" />
-        </div>
+    <SkeletonStatus label="Đang tải chi tiết…" className="space-y-5">
+      <SkeletonBlock className="aspect-[4/3] rounded-xl" />
+      <SkeletonBlock className="h-6 w-3/4 rounded" />
+      <div className="space-y-2">
+        <SkeletonBlock className="h-3 w-full rounded" />
+        <SkeletonBlock className="h-3 w-5/6 rounded" />
       </div>
-    </div>
+    </SkeletonStatus>
   );
 }

@@ -8,6 +8,7 @@ import { fetchRecommendations } from '../../services/recsys';
 import type { ListProductsParams } from '../../services/catalog';
 import type { RecommendationResponse } from '../../types/travel';
 import { ProductCard } from '../common/ProductCard';
+import { ProductCardSkeleton, SkeletonBlock, SkeletonStatus } from '../common/Skeleton';
 import { GuestRecommendationBanner } from './GuestRecommendationBanner';
 import { WhyPopover } from '../common/WhyPopover';
 import { NavIcon } from '../layout/nav/NavIcon';
@@ -141,6 +142,8 @@ export const HomeView: React.FC = () => {
   const destination = recResponse?.destination ?? '';
   const recommendations = recResponse?.recommendations ?? [];
   const excludedVerticals = recResponse?.diagnostics.excludedVerticals ?? [];
+  // Chưa có thẻ nào (lần tải đầu, thử lại sau lỗi): khung 4 thẻ đứng chỗ khối ① (product.md §4.1.5). Đã có thẻ thì giữ thẻ, mờ đi khi tải lại.
+  const showRecsSkeleton = Boolean(currentPersona) && isLoadingRecs && recommendations.length === 0;
 
   // Gợi ý tức thì khi gõ (FR-SRC-05): chọn điểm đến hoặc từ khoá thì tìm như Enter, chọn sản phẩm thì mở trang chi tiết.
   const { containerRef: instantContainerRef, ...instant } = useInstantSearchBox({
@@ -266,34 +269,44 @@ export const HomeView: React.FC = () => {
             </p>
           </section>
         )}
-        {currentPersona && recommendations.length > 0 && (
-          <section aria-label="Gợi ý cho bạn" className="mx-auto max-w-7xl px-4 pb-4 pt-8 sm:px-6 lg:px-8">
+        {currentPersona && (recommendations.length > 0 || showRecsSkeleton) && (
+          <section aria-label="Gợi ý cho bạn" aria-busy={showRecsSkeleton} className="mx-auto max-w-7xl px-4 pb-4 pt-8 sm:px-6 lg:px-8">
             <div className="rounded-3xl border border-slate-200/80 bg-white p-6 shadow-sm">
               <div className="flex flex-col items-start justify-between gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-center">
                 <h2 className="type-title text-slate-900">Gợi ý</h2>
-                <button
-                  onClick={() => setShowSectionWhy(true)}
-                  className="inline-flex cursor-pointer items-center gap-1 rounded-xl border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700 transition-colors hover:bg-brand-100"
-                >
-                  <HelpCircle className="h-3.5 w-3.5" aria-hidden="true" />
-                  <span>Vì sao có gợi ý này?</span>
-                </button>
+                {showRecsSkeleton ? (
+                  <SkeletonBlock className="h-[30px] w-44 rounded-xl" />
+                ) : (
+                  <button
+                    onClick={() => setShowSectionWhy(true)}
+                    className="inline-flex cursor-pointer items-center gap-1 rounded-xl border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700 transition-colors hover:bg-brand-100"
+                  >
+                    <HelpCircle className="h-3.5 w-3.5" aria-hidden="true" />
+                    <span>Vì sao có gợi ý này?</span>
+                  </button>
+                )}
               </div>
 
-              <div className={`mt-5 grid grid-cols-1 gap-4 transition-opacity duration-200 sm:grid-cols-2 lg:grid-cols-4 ${isLoadingRecs ? 'pointer-events-none opacity-60' : 'opacity-100'}`}>
-                {recommendations.slice(0, 4).map((rec) => (
-                  <ProductCard
-                    key={rec.product.id}
-                    product={rec.product}
-                    variant="grid"
-                    because={rec.because}
-                    strategy={strategy}
-                    excludedVerticals={excludedVerticals}
-                    score={rec.score}
-                    rank={rec.rank}
-                  />
-                ))}
-              </div>
+              {showRecsSkeleton ? (
+                <SkeletonStatus label="Đang tải gợi ý cho bạn" className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  {[0, 1, 2, 3].map((i) => <ProductCardSkeleton key={i} />)}
+                </SkeletonStatus>
+              ) : (
+                <div className={`mt-5 grid grid-cols-1 gap-4 transition-opacity duration-200 sm:grid-cols-2 lg:grid-cols-4 ${isLoadingRecs ? 'pointer-events-none opacity-60' : 'opacity-100'}`}>
+                  {recommendations.slice(0, 4).map((rec) => (
+                    <ProductCard
+                      key={rec.product.id}
+                      product={rec.product}
+                      variant="grid"
+                      because={rec.because}
+                      strategy={strategy}
+                      excludedVerticals={excludedVerticals}
+                      score={rec.score}
+                      rank={rec.rank}
+                    />
+                  ))}
+                </div>
+              )}
 
               <WhyPopover
                 isOpen={showSectionWhy}

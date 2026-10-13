@@ -11,6 +11,7 @@ import tooLateFixture from '../../../shared/mocks/booking/cancelBooking.409-too-
 import familyFixture from '../../../shared/mocks/booking/createBooking.201-family.json';
 import rebookDraft from '../../../shared/mocks/booking/createBookingDraft.201-hotel.json';
 import notRebookable from '../../../shared/mocks/booking/createBooking.409-pending-payment.json';
+import popularFixture from '../../../shared/mocks/catalog/listProducts.200-popular.json';
 import type { BookingResponse } from '../../src/services/booking';
 
 const api = vi.hoisted(() => ({
@@ -50,6 +51,7 @@ vi.mock('../../src/context/TravelContext', () => ({ useTravel: () => travel }));
 
 import { ConfirmationView } from '../../src/components/confirmation/ConfirmationView';
 import { resetProductInfoCache } from '../../src/components/confirmation/useProductInfo';
+import { productFromApi } from '../../src/services/catalog';
 import { ApiError } from '../../src/services/http';
 
 const NOW = Date.parse('2026-09-16T10:30:00Z');
@@ -199,6 +201,78 @@ describe('ConfirmationView — trạng thái đơn', () => {
     fireEvent.click(await screen.findByText('Huỷ đơn'));
     fireEvent.click(screen.getByText('Xác nhận huỷ'));
     expect((await screen.findByRole('alert')).textContent).toMatch(/Đã quá hạn huỷ trực tuyến \(hạn: .*14\/10\/2026\)/);
+  });
+});
+
+describe('ConfirmationView — khung chờ (product.md §4.6.3)', () => {
+  const recsFor = (count: number) => ({
+    strategy: 'cross_vertical', destination: 'Nha Trang',
+    recommendations: popularFixture.results.slice(0, count).map((item, i) => ({
+      product: productFromApi(item as never), score: 0.8, rank: i + 1, because: [],
+    })),
+    diagnostics: { eventsUsed: 1, coldStart: false, excludedVerticals: [], modelVersion: 't' }, generatedAt: '',
+  });
+  const recsSkeleton = () => screen.queryByRole('status', { name: 'Đang tải gợi ý cho chuyến đi' });
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    travel.getBookingByCode.mockReturnValue(undefined);
+  });
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+  });
+
+  it('while the booking loads the page shows its skeleton (status card, detail blocks, payment panel), then the booking', async () => {
+    let answer!: (booking: BookingResponse) => void;
+    api.getBooking.mockReturnValue(new Promise((resolve) => { answer = resolve; }));
+    api.fetchRecommendations.mockReturnValue(new Promise(() => {}));
+    render(<ConfirmationView referenceCode="VOTA-20260916-8K3F" />);
+    const page = screen.getByRole('status', { name: 'Đang tải đơn đặt chỗ' });
+    expect(page.getAttribute('aria-busy')).toBe('true');
+    expect(page.querySelectorAll('.rounded-2xl.border').length).toBe(4);
+    expect(screen.queryByText('Đặt chỗ thành công!')).toBeNull();
+
+    answer(confirmed());
+    expect(await screen.findByText('Đặt chỗ thành công!')).toBeTruthy();
+    expect(screen.queryByRole('status', { name: 'Đang tải đơn đặt chỗ' })).toBeNull();
+  });
+
+  it('the booking shows at once while the next-trip block holds its place with a 3-card skeleton until recs arrive', async () => {
+    let answer!: (value: unknown) => void;
+    api.getBooking.mockResolvedValue(confirmed());
+    api.fetchRecommendations.mockReturnValue(new Promise((resolve) => { answer = resolve; }));
+    render(<ConfirmationView referenceCode="VOTA-20260916-8K3F" />);
+    expect(await screen.findByText('Đặt chỗ thành công!')).toBeTruthy();
+    expect(recsSkeleton()!.querySelectorAll('[aria-hidden="true"].rounded-xl')).toHaveLength(3);
+
+    answer(recsFor(3));
+    expect(await screen.findByText('TIẾP THEO CHO CHUYẾN NHA TRANG')).toBeTruthy();
+    expect(recsSkeleton()).toBeNull();
+  });
+
+  it('a failed or empty recommendation call removes the skeleton without leaving an empty block', async () => {
+    api.getBooking.mockResolvedValue(confirmed());
+    api.fetchRecommendations.mockRejectedValue(new Error('503'));
+    const { unmount } = render(<ConfirmationView referenceCode="VOTA-20260916-8K3F" />);
+    await screen.findByText('Đặt chỗ thành công!');
+    await waitFor(() => expect(recsSkeleton()).toBeNull());
+    expect(screen.queryByText(/TIẾP THEO CHO CHUYẾN/)).toBeNull();
+    unmount();
+
+    api.fetchRecommendations.mockResolvedValue(recsFor(0));
+    render(<ConfirmationView referenceCode="VOTA-20260916-8K3F" />);
+    await screen.findByText('Đặt chỗ thành công!');
+    await waitFor(() => expect(recsSkeleton()).toBeNull());
+    expect(screen.queryByText(/TIẾP THEO CHO CHUYẾN/)).toBeNull();
+  });
+
+  it('an unpaid booking never shows the recommendation skeleton', async () => {
+    api.getBooking.mockResolvedValue(pending());
+    render(<ConfirmationView referenceCode="VOTA-20260916-8K3F" />);
+    expect(await screen.findByText('Đơn đang được giữ chỗ')).toBeTruthy();
+    expect(recsSkeleton()).toBeNull();
   });
 });
 

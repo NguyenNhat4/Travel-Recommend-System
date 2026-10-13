@@ -5,6 +5,7 @@ import { Check, Loader2, LockKeyhole, LogIn } from 'lucide-react';
 import { useTravel } from '../../context/TravelContext';
 import * as authApi from '../../services/auth';
 import { ApiError } from '../../services/http';
+import { SkeletonBlock, SkeletonStatus } from '../../components/common/Skeleton';
 import {
   NAME_MAX, isDirty, profileChanges, validatePassword, validateProfile,
   type PasswordErrors, type PasswordForm, type ProfileForm,
@@ -19,6 +20,38 @@ const Card: React.FC<{ id: string; title: string; children: React.ReactNode }> =
     <h2 id={id} className="px-5 pt-4 text-base font-semibold text-slate-900">{title}</h2>
     <div className="px-5 pb-5 pt-4">{children}</div>
   </section>
+);
+
+/** Khung chờ khi phiên đang khôi phục: tiêu đề, thẻ "Thông tin cá nhân" ba ô và thẻ "Mật khẩu", đúng bố cục khi đã tải. */
+const ProfileSkeleton: React.FC = () => (
+  <SkeletonStatus label="Đang tải hồ sơ" className="grid gap-4">
+    <div className="space-y-1.5">
+      <SkeletonBlock className="h-7 w-48 rounded-lg" />
+      <SkeletonBlock className="h-4 w-72 max-w-full rounded" />
+    </div>
+    <div className="rounded-2xl border border-slate-200 bg-white px-5 pb-5 pt-4">
+      <SkeletonBlock className="h-5 w-40 rounded" />
+      <div className="grid max-w-[30rem] gap-4 pt-4">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="grid gap-1.5">
+            <SkeletonBlock className="h-4 w-28 rounded" />
+            <SkeletonBlock className="h-11 w-full rounded-xl" />
+          </div>
+        ))}
+        <div className="flex gap-2 pt-1">
+          <SkeletonBlock className="h-11 w-36 rounded-full" />
+          <SkeletonBlock className="h-11 w-32 rounded-full" />
+        </div>
+      </div>
+    </div>
+    <div className="rounded-2xl border border-slate-200 bg-white px-5 pb-5 pt-4">
+      <SkeletonBlock className="h-5 w-24 rounded" />
+      <div className="flex items-center justify-between gap-3 pt-4">
+        <SkeletonBlock className="h-4 w-64 max-w-full rounded" />
+        <SkeletonBlock className="h-11 w-36 rounded-full" />
+      </div>
+    </div>
+  </SkeletonStatus>
 );
 
 const Field: React.FC<{ id: string; label: string; optional?: boolean; error?: string; hint?: string; children: React.ReactNode }> = ({
@@ -72,18 +105,15 @@ export const ProfileView: React.FC = () => {
   const [pwBusy, setPwBusy] = useState(false);
   const [reveal, setReveal] = useState<Partial<Record<keyof PasswordForm, boolean>>>({});
 
+  if (!currentPersona && !authReady) return <ProfileSkeleton />;
   if (!currentPersona) {
     return (
       <div className="grid justify-items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-12 text-center">
         <h1 className="text-xl font-bold text-slate-900">Hồ sơ cá nhân</h1>
-        {authReady ? (
-          <>
-            <p className="max-w-[44ch] text-[13px] text-slate-500">Đăng nhập để xem và sửa thông tin của bạn.</p>
-            <button type="button" className={`${BTN_PRIMARY} mt-2`} onClick={() => openLoginModal()}>
-              <LogIn className="h-4 w-4" aria-hidden="true" /> Đăng nhập
-            </button>
-          </>
-        ) : <Loader2 className="mt-2 h-6 w-6 animate-spin text-slate-400" aria-label="Đang tải hồ sơ" />}
+        <p className="max-w-[44ch] text-[13px] text-slate-500">Đăng nhập để xem và sửa thông tin của bạn.</p>
+        <button type="button" className={`${BTN_PRIMARY} mt-2`} onClick={() => openLoginModal()}>
+          <LogIn className="h-4 w-4" aria-hidden="true" /> Đăng nhập
+        </button>
       </div>
     );
   }

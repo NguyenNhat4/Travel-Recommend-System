@@ -38,6 +38,20 @@ describe('TripDetailsForm', () => {
     expect(buttons.length).toBeLessThanOrEqual(8);
   });
 
+  it('while destinations load, shows chip-shaped skeletons instead of a spinner line, then the real chips', async () => {
+    let answer!: (value: unknown) => void;
+    global.fetch = vi.fn().mockReturnValue(new Promise((resolve) => { answer = resolve; }));
+    render(<TripDetailsForm form={baseForm} onConfirm={vi.fn()} />);
+
+    const skeleton = screen.getByRole('status', { name: 'Đang tải điểm đến…' });
+    expect(skeleton.querySelectorAll('.skeleton-wave.rounded-full')).toHaveLength(5);
+    expect(screen.queryByRole('button', { name: 'Điểm 0' })).toBeNull();
+
+    answer({ ok: true, status: 200, json: async () => ({ destinations: [{ destination: 'Điểm 0', productCount: 9 }] }) });
+    expect(await screen.findByRole('button', { name: 'Điểm 0' })).toBeTruthy();
+    expect(screen.queryByRole('status', { name: 'Đang tải điểm đến…' })).toBeNull();
+  });
+
   it('clamps the day stepper to the 1–7 range', () => {
     global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ destinations: [] }) });
     render(<TripDetailsForm form={baseForm} onConfirm={vi.fn()} />);

@@ -13,6 +13,7 @@ import type { Product, RecommendationResponse } from '../../types/travel';
 import { FlightSummary } from '../common/FlightSummary';
 import { PriceTag } from '../common/PriceTag';
 import { ProductCard } from '../common/ProductCard';
+import { ProductCardSkeleton, SkeletonBlock, SkeletonStatus } from '../common/Skeleton';
 import { formatVnd } from '../confirmation/bookingLabels';
 import type { CartState } from '../checkout/allocation';
 import { estimateFares } from '../checkout/fareEstimate';
@@ -27,9 +28,9 @@ import { AmenityList, amenityList } from './AmenityList';
 import { DateInput } from './DateInput';
 import { HotelTripBar } from './HotelTripBar';
 import { RoomAmenityFilter, amenityOptions, matchesAmenities } from './RoomAmenityFilter';
-import { RoomCard } from './RoomCard';
+import { RoomCard, RoomCardSkeleton } from './RoomCard';
 import { ImageLightbox, ProductGallery, imagesOf } from './ProductGallery';
-import { MapPin, ShieldCheck, BedDouble, Plane, Loader2, Star } from 'lucide-react';
+import { MapPin, ShieldCheck, BedDouble, Plane, Star } from 'lucide-react';
 
 /**
  * Trang chi tiết `/product/{productId}` (docs/spec/hop-dong-tich-hop-frontend.md §4.3, product.md §4.3).
@@ -143,14 +144,42 @@ function variantFacts(variant: Product): string[] {
   return facts;
 }
 
+/** Khung chờ của trang chi tiết (product.md §4.3.4): ba dòng tiêu đề, ảnh lớn kèm bốn ảnh nhỏ, mô tả và khung hộp đặt. */
+const DetailSkeleton: React.FC = () => (
+  <SkeletonStatus label="Đang tải sản phẩm" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-10">
+    <div className="space-y-3">
+      <SkeletonBlock className="h-4 w-64 max-w-full rounded" />
+      <SkeletonBlock className="h-4 w-40 rounded" />
+      <SkeletonBlock className="h-8 w-2/3 rounded-lg" />
+    </div>
+    <div className="grid aspect-4/3 grid-cols-4 grid-rows-2 gap-1 overflow-hidden rounded-2xl md:aspect-16/7">
+      <SkeletonBlock className="col-span-4 row-span-2 md:col-span-2" />
+      {[0, 1, 2, 3].map((i) => <SkeletonBlock key={i} className="hidden md:block" />)}
+    </div>
+    <div className="grid grid-cols-1 gap-8 items-start lg:grid-cols-3">
+      <div className="space-y-3 lg:col-span-2">
+        <SkeletonBlock className="h-6 w-40 rounded-md" />
+        {['w-full', 'w-full', 'w-11/12', 'w-2/3'].map((w, i) => <SkeletonBlock key={i} className={`h-4 rounded ${w}`} />)}
+      </div>
+      <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
+        <SkeletonBlock className="h-8 w-44 rounded-md" />
+        <SkeletonBlock className="h-11 w-full rounded-lg" />
+        <SkeletonBlock className="h-11 w-full rounded-lg" />
+        <SkeletonBlock className="h-12 w-full rounded-xl" />
+      </div>
+    </div>
+  </SkeletonStatus>
+);
+
 /** 404: "Sản phẩm này không còn trên V-OTA" + carousel phổ biến (product.md §4.3.4). */
 const NotFound: React.FC<{ onHome: () => void }> = ({ onHome }) => {
-  const [popular, setPopular] = useState<Product[]>([]);
+  // null = đang tải: giữ chỗ khối phổ biến bằng khung; lỗi hoặc rỗng thì ẩn khối.
+  const [popular, setPopular] = useState<Product[] | null>(null);
   useEffect(() => {
     const controller = new AbortController();
     listProducts({ sort: 'popular', limit: 4 }, controller.signal)
       .then((page) => setPopular(page.results.map(productFromApi)))
-      .catch(() => setPopular([]));
+      .catch(() => { if (!controller.signal.aborted) setPopular([]); });
     return () => controller.abort();
   }, []);
   return (
@@ -163,7 +192,14 @@ const NotFound: React.FC<{ onHome: () => void }> = ({ onHome }) => {
           Về trang chủ
         </button>
       </div>
-      {popular.length > 0 && (
+      {popular === null ? (
+        <SkeletonStatus label="Đang tải sản phẩm phổ biến" className="space-y-4">
+          <SkeletonBlock className="h-5 w-40 rounded" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[0, 1, 2, 3].map((i) => <ProductCardSkeleton key={i} />)}
+          </div>
+        </SkeletonStatus>
+      ) : popular.length > 0 && (
         <div className="space-y-4">
           <h3 className="text-base font-bold text-slate-900">Phổ biến trên Sota</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -306,13 +342,17 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
 
   // Hoàn thiện chuyến: chỉ khi đăng nhập và gợi ý cùng điểm đến với sản phẩm.
   const [trip, setTrip] = useState<RecommendationResponse | null>(null);
+  const [tripLoading, setTripLoading] = useState(false);
   useEffect(() => {
     setTrip(null);
+    setTripLoading(false);
     if (!product || !currentPersona) return;
     const controller = new AbortController();
+    setTripLoading(true);
     fetchRecommendations({ k: 4, destination: product.destination, signal: controller.signal })
       .then(setTrip)
-      .catch(() => setTrip(null));
+      .catch(() => setTrip(null))
+      .finally(() => { if (!controller.signal.aborted) setTripLoading(false); });
     return () => controller.abort();
   }, [product, currentPersona]);
 
@@ -359,15 +399,7 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
   const bookingTaxonomy = (unit ?? product)?.taxonomy;
   const cartEligible = bookingTaxonomy ? isCartEligible(bookingTaxonomy) : false;
 
-  if (state.status === 'loading') {
-    return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6" aria-busy="true">
-        <div className="h-8 w-2/3 rounded-lg bg-slate-100 animate-pulse" />
-        <div className="aspect-16/7 rounded-2xl bg-slate-100 animate-pulse" />
-        <div className="h-40 rounded-2xl bg-slate-100 animate-pulse" />
-      </div>
-    );
-  }
+  if (state.status === 'loading') return <DetailSkeleton />;
   if (state.status === 'not_found') return <NotFound onHome={() => navigate('/')} />;
   if (state.status === 'error' || !product) {
     const error = state.status === 'error' ? state.error : null;
@@ -461,9 +493,9 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
               {variantsFailed ? (
                 <p className="text-xs text-slate-500">Chưa tải được danh sách hạng phòng.</p>
               ) : hotelRooms === null || (needsVariant && variants === null) ? (
-                <div className="flex items-center gap-2 text-xs text-slate-500">
-                  <Loader2 className="w-4 h-4 animate-spin" /> Đang tải hạng phòng…
-                </div>
+                <SkeletonStatus label="Đang tải hạng phòng" className="space-y-3">
+                  {[0, 1, 2].map((i) => <RoomCardSkeleton key={i} />)}
+                </SkeletonStatus>
               ) : hotelRooms.length === 0 ? (
                 <p className="text-xs text-slate-600 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
                   {needsVariant ? 'Khách sạn này chưa có hạng phòng nào trên Sota — chỉ để tham khảo.' : unavailableReason}
@@ -525,9 +557,17 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
               {variantsFailed ? (
                 <p className="text-xs text-slate-500">Chưa tải được danh sách {variantNoun}.</p>
               ) : variants === null ? (
-                <div className="flex items-center gap-2 text-xs text-slate-500">
-                  <Loader2 className="w-4 h-4 animate-spin" /> Đang tải {variantNoun}…
-                </div>
+                <SkeletonStatus label={`Đang tải ${variantNoun}`} className="space-y-2">
+                  {[0, 1, 2].map((i) => (
+                    <div key={i} aria-hidden="true" className="flex items-center justify-between gap-4 p-3.5 rounded-xl border border-slate-200 bg-white">
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <SkeletonBlock className="h-4 w-1/2 rounded" />
+                        <SkeletonBlock className="h-3 w-1/3 rounded" />
+                      </div>
+                      <SkeletonBlock className="h-6 w-28 shrink-0 rounded-md" />
+                    </div>
+                  ))}
+                </SkeletonStatus>
               ) : variants.length === 0 ? (
                 <p className="text-xs text-slate-500">
                   {product.taxonomy === 'flight' ? 'Tuyến bay' : 'Khách sạn'} này chưa có {variantNoun} nào trên Sota — chỉ để tham khảo.
@@ -644,6 +684,14 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
         )}
       </div>
 
+      {tripLoading && !trip && (
+        <SkeletonStatus label="Đang tải gợi ý cho chuyến đi" className="pt-8 border-t border-slate-200 space-y-4">
+          <SkeletonBlock className="h-6 w-64 max-w-full rounded-md" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[0, 1, 2, 3].map((i) => <ProductCardSkeleton key={i} />)}
+          </div>
+        </SkeletonStatus>
+      )}
       {tripRecs.length > 0 && (
         <div className="pt-8 border-t border-slate-200 space-y-4">
           <h2 className="text-lg font-black text-slate-900">Hoàn thiện chuyến {product.destination}</h2>
