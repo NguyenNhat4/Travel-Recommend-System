@@ -1,11 +1,25 @@
 import React from 'react';
 import { X, Plus, MessageSquare } from 'lucide-react';
+import { SkeletonBlock, SkeletonStatus } from '../../../components/common/Skeleton';
 import type { FloatingWidgetController } from './useFloatingWidget';
 
 export function WidgetHistory({ widget }: { widget: FloatingWidgetController }) {
   const { setIsHistoryOpen, handleStartNewChat, conversations, activeSessionId,
     handleSelectConversation, isSignedIn, historyStatus, loadHistory } = widget;
-  const emptyText = historyStatus === 'loading' ? 'Đang tải lịch sử…' : 'Chưa có lịch sử hội thoại nào';
+  // Lần tải đầu: khung các dòng hội thoại (icon, tên, thời gian) thay cho dòng chữ; đã có danh sách thì giữ danh sách khi tải lại.
+  const emptyState = historyStatus === 'loading' ? (
+    <SkeletonStatus label="Đang tải lịch sử…" className="space-y-1">
+      {['w-3/4', 'w-2/3', 'w-4/5', 'w-1/2'].map((w, i) => (
+        <div key={i} className="flex min-h-11 items-center gap-2 p-2.5">
+          <SkeletonBlock className="h-4 w-4 shrink-0 rounded" />
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <SkeletonBlock className={`h-4 rounded ${w}`} />
+            <SkeletonBlock className="h-3 w-20 rounded" />
+          </div>
+        </div>
+      ))}
+    </SkeletonStatus>
+  ) : <p className="py-8 text-center text-sm text-slate-500">Chưa có lịch sử hội thoại nào</p>;
   return (
     <div className="absolute inset-0 z-[1050] flex overflow-hidden">
       <button aria-label="Đóng lịch sử hội thoại" onClick={() => setIsHistoryOpen(false)} className="absolute inset-0 bg-slate-900/40 backdrop-blur-xs" tabIndex={-1} />
@@ -27,7 +41,7 @@ export function WidgetHistory({ widget }: { widget: FloatingWidgetController }) 
               <button type="button" onClick={() => void loadHistory()} className="min-h-11 rounded-lg px-2 font-semibold hover:bg-rose-100">Thử lại</button>
             </div>
           )}
-          {conversations.length === 0 ? <p className="py-8 text-center text-sm text-slate-500">{emptyText}</p> : conversations.map((session) => (
+          {conversations.length === 0 ? emptyState : conversations.map((session) => (
             <div key={session.id} className={`flex items-center gap-2 rounded-xl ${activeSessionId === session.id ? 'bg-ai-50 text-ai-900' : 'text-slate-700 hover:bg-slate-50'}`}>
               <button type="button" aria-label={`Mở hội thoại ${session.title}`} onClick={() => void handleSelectConversation(session)} className="flex min-h-11 min-w-0 flex-1 items-center gap-2 p-2.5 text-left text-sm">
                 <MessageSquare className="h-4 w-4 shrink-0" aria-hidden="true" />

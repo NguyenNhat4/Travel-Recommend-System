@@ -89,6 +89,21 @@ describe('FlightResultsView', () => {
     expect(screen.queryByRole('button', { name: /06\/10/ })).toBeNull();
   });
 
+  it('holds the list with a date-strip skeleton and three flight-card skeletons while the flights load', async () => {
+    let release!: () => void;
+    api.listRouteFlights.mockImplementation((routeId: string) => new Promise((resolve) => { release = () => resolve(FLIGHTS[routeId] ?? []); }));
+    renderView();
+    const skeleton = await screen.findByRole('status', { name: 'Đang tải chuyến bay' });
+    expect(skeleton.getAttribute('aria-busy')).toBe('true');
+    expect(skeleton.querySelectorAll(':scope > [aria-hidden="true"]')).toHaveLength(4);
+    expect(skeleton.querySelector('.animate-pulse')).toBeNull();
+    expect(screen.queryAllByRole('article')).toHaveLength(0);
+    await waitFor(() => expect(api.listRouteFlights).toHaveBeenCalled());
+    release();
+    await ready();
+    expect(screen.queryByRole('status', { name: 'Đang tải chuyến bay' })).toBeNull();
+  });
+
   it('shows only what the data says: no baggage, no fare label for a flight without fare classes', async () => {
     renderView();
     await ready();

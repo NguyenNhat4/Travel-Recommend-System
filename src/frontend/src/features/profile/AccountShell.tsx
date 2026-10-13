@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ListChecks, UserRound } from 'lucide-react';
 import { useTravel } from '../../context/TravelContext';
+import { SkeletonBlock } from '../../components/common/Skeleton';
 import { initialsOf } from './profileModel';
 
 export const PROFILE_PATH = '/profile';
@@ -21,10 +22,20 @@ const ITEMS = [
  */
 export const AccountShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const pathname = usePathname() ?? PROFILE_PATH;
-  const { currentPersona } = useTravel();
+  const { currentPersona, authReady } = useTravel();
   return (
     <div className="mx-auto grid max-w-5xl gap-4 px-4 py-6 sm:px-6 md:grid-cols-[15rem_minmax(0,1fr)] md:gap-6 md:py-8">
       <aside className="grid content-start gap-3 md:sticky md:top-4">
+        {/* Phiên đang khôi phục: giữ chỗ thẻ người dùng bằng khung, không để menu nhảy xuống khi tên về. */}
+        {!currentPersona && authReady === false && (
+          <div aria-hidden="true" className="hidden items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3.5 md:flex">
+            <SkeletonBlock className="h-11 w-11 flex-none rounded-full" />
+            <div className="min-w-0 flex-1 space-y-1.5">
+              <SkeletonBlock className="h-4 w-3/4 rounded" />
+              <SkeletonBlock className="h-3 w-full rounded" />
+            </div>
+          </div>
+        )}
         {currentPersona && (
           <div className="hidden items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3.5 md:flex">
             <span aria-hidden="true" className="grid h-11 w-11 flex-none place-items-center rounded-full bg-brand-600 text-[17px] font-bold text-white">

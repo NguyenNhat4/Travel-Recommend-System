@@ -13,7 +13,8 @@
  * toán thì được hỏi lại (`useLeaveGuard`, `LeaveCheckoutDialog`).
  */
 import React, { useEffect, useState } from 'react';
-import { Clock, Loader2 } from 'lucide-react';
+import { Clock } from 'lucide-react';
+import { SkeletonBlock, SkeletonStatus } from '../common/Skeleton';
 import { LeaveCheckoutDialog } from './LeaveCheckoutDialog';
 import { MobileBar, SummaryPanel } from './OrderSummary';
 import { ReviewStep } from './ReviewStep';
@@ -71,6 +72,64 @@ const ExpiredDraft: React.FC<{ ctl: ReturnType<typeof useCheckout> }> = ({ ctl }
   );
 };
 
+/**
+ * Khung chờ của trang thanh toán: thanh ba bước, tiêu đề bước, hai thẻ hành khách và hộp tóm tắt đơn (từ `lg`). Dùng cả khi đơn
+ * nháp chưa về và làm fallback Suspense của trang (`app/(storefront)/checkout/page.tsx`).
+ */
+export const CheckoutSkeleton: React.FC = () => (
+  <SkeletonStatus label="Đang tải thông tin thanh toán" className="pb-40 lg:pb-0">
+    <div className="bg-white border-b border-slate-200">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center gap-2">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className={`flex items-center gap-2 ${i < 2 ? 'flex-1' : ''}`}>
+            <SkeletonBlock className="w-7 h-7 rounded-full shrink-0" />
+            <SkeletonBlock className="h-4 w-24 rounded" />
+          </div>
+        ))}
+      </div>
+    </div>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+        <div className="lg:col-span-2 space-y-5">
+          <div className="space-y-2">
+            <SkeletonBlock className="h-7 w-40 rounded-lg" />
+            <SkeletonBlock className="h-4 w-80 max-w-full rounded" />
+          </div>
+          <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+            <SkeletonBlock className="h-5 w-48 rounded" />
+            {[0, 1].map((i) => (
+              <div key={i} className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <SkeletonBlock className="w-7 h-7 rounded-full" />
+                  <SkeletonBlock className="h-4 w-32 rounded" />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <SkeletonBlock className="h-11 w-full rounded-lg" />
+                  <SkeletonBlock className="h-11 w-full rounded-lg" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="hidden lg:block bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-xl space-y-4">
+          <SkeletonBlock className="h-5 w-36 rounded" />
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="flex justify-between gap-4">
+              <SkeletonBlock className="h-4 w-32 rounded" />
+              <SkeletonBlock className="h-4 w-20 rounded" />
+            </div>
+          ))}
+          <div className="pt-3 border-t border-slate-200 flex justify-between gap-4">
+            <SkeletonBlock className="h-5 w-24 rounded" />
+            <SkeletonBlock className="h-6 w-28 rounded" />
+          </div>
+          <SkeletonBlock className="h-11 w-full rounded-xl" />
+        </div>
+      </div>
+    </div>
+  </SkeletonStatus>
+);
+
 export const CheckoutView: React.FC = () => {
   const ctl = useCheckout();
   const timeLeft = useCountdown(ctl.sourceStatus === 'ready' ? ctl.draftExpiresAt : null, () => void ctl.refreshCart());
@@ -86,13 +145,7 @@ export const CheckoutView: React.FC = () => {
     );
   }
 
-  if (!ctl.cart || ctl.items.length === 0 || ctl.drafts.length === 0) {
-    return (
-      <div className="max-w-4xl mx-auto px-4 py-16 flex justify-center text-slate-400">
-        <Loader2 className="w-6 h-6 animate-spin" aria-label="Đang tải thông tin thanh toán" />
-      </div>
-    );
-  }
+  if (!ctl.cart || ctl.items.length === 0 || ctl.drafts.length === 0) return <CheckoutSkeleton />;
 
   return (
     <div id="checkout-top" className="pb-40 lg:pb-0">

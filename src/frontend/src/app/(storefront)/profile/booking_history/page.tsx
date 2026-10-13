@@ -1,10 +1,11 @@
 import { Suspense } from 'react';
-import { BookingHistoryView } from '../../../../features/bookings/BookingHistoryView';
+import { BookingHistorySkeleton, BookingHistoryView } from '../../../../features/bookings/BookingHistoryView';
 
-// BookingHistoryView đọc bộ lọc (`?tab=`, `?taxonomy=`, `?days=`, `?page=`) bằng `useSearchParams`, nên cần ranh giới Suspense.
+// BookingHistoryView đọc bộ lọc (`?tab=`, `?taxonomy=`, `?days=`, `?page=`) bằng `useSearchParams`, nên cần ranh giới Suspense;
+// fallback là khung trang.
 export default function BookingHistoryPage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<BookingHistorySkeleton />}>
       <BookingHistoryView />
     </Suspense>
   );

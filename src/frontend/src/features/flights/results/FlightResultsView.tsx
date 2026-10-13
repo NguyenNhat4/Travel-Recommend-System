@@ -10,7 +10,8 @@ import { guestsText } from '../../../components/checkout/guestCounts';
 import { SortMenu } from '../../../components/search/SortMenu';
 import { productFromApi } from '../../../services/catalog';
 import { todayVN } from '../../search/tripContext';
-import { FlightCard } from './FlightCard';
+import { SkeletonStatus } from '../../../components/common/Skeleton';
+import { FlightCard, FlightCardSkeleton, FlightDateStripSkeleton } from './FlightCard';
 import { FlightDateStrip } from './FlightDateStrip';
 import { FlightFilters } from './FlightFilters';
 import { TicketPanel, type LegId, type TicketLeg } from './TicketPanel';
@@ -151,10 +152,10 @@ export const FlightResultsView: React.FC<{ search: FlightSearch; notice?: string
   let body: React.ReactNode;
   if (outbound.status === 'loading' || (step === 'ret' && back.status === 'loading')) {
     body = (
-      <div className="space-y-3.5" aria-busy="true">
-        <div className="h-28 animate-pulse rounded-[20px] bg-slate-200/70" />
-        {[0, 1, 2].map((i) => <div key={i} className="h-44 animate-pulse rounded-[20px] bg-slate-200/70" />)}
-      </div>
+      <SkeletonStatus label="Đang tải chuyến bay" className="space-y-3.5">
+        <FlightDateStripSkeleton />
+        {[0, 1, 2].map((i) => <FlightCardSkeleton key={i} />)}
+      </SkeletonStatus>
     );
   } else if (outbound.status === 'error' || (step === 'ret' && back.status === 'error')) {
     body = (

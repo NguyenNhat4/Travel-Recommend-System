@@ -9,7 +9,8 @@ import * as bookingApi from '../../services/booking';
 import type { BookingListResponse } from '../../services/booking';
 import { ApiError } from '../../services/http';
 import { BOOKING_HISTORY_PATH } from '../profile/AccountShell';
-import { BookingCard } from './BookingCard';
+import { SkeletonBlock, SkeletonStatus } from '../../components/common/Skeleton';
+import { BookingCard, BookingCardSkeleton } from './BookingCard';
 import { DaysFilter } from './DaysFilter';
 import { HistoryPagination } from './HistoryPagination';
 import {
@@ -26,6 +27,38 @@ type LoadState =
   | { kind: 'ready'; data: BookingListResponse }
   | { kind: 'signed_out' }
   | { kind: 'error'; error: ApiError | null };
+
+const PageTitle: React.FC = () => (
+  <div>
+    <h1 className="text-[22px] font-bold leading-tight tracking-tight text-slate-900">Lịch sử đặt chỗ</h1>
+    <p className="mt-0.5 text-[13px] text-slate-500">Theo dõi đơn đã đặt, thanh toán và hoàn tiền.</p>
+  </div>
+);
+
+/**
+ * Khung của trang khi `BookingHistoryView` chưa chạy được (fallback Suspense lúc trang mới tải, trước khi đọc được bộ lọc trên
+ * URL): tiêu đề thật, thanh tab và chip loại dịch vụ dạng khung, dòng số đơn + lọc ngày, ba thẻ đơn khung.
+ */
+export const BookingHistorySkeleton: React.FC = () => (
+  <div className="grid gap-3.5">
+    <PageTitle />
+    <SkeletonStatus label="Đang tải đơn hàng" className="grid gap-3.5">
+      <div aria-hidden="true" className="rounded-2xl border border-slate-200 bg-white">
+        <div className="grid grid-cols-3 gap-2 border-b border-slate-200 px-2 py-3.5">
+          {BOOKING_TABS.map((item) => <SkeletonBlock key={item.id} className="mx-auto h-5 w-20 rounded" />)}
+        </div>
+        <div className="flex gap-2 overflow-hidden px-3.5 py-3">
+          {SERVICE_FILTERS.map((item) => <SkeletonBlock key={item.id} className="h-10 w-24 flex-none rounded-full" />)}
+        </div>
+      </div>
+      <div aria-hidden="true" className="flex items-center justify-between gap-4 px-0.5">
+        <SkeletonBlock className="h-4 w-14 rounded" />
+        <SkeletonBlock className="h-10 w-40 rounded-full" />
+      </div>
+      {[0, 1, 2].map((n) => <BookingCardSkeleton key={n} />)}
+    </SkeletonStatus>
+  </div>
+);
 
 export const BookingHistoryView: React.FC = () => {
   const router = useRouter();
@@ -93,10 +126,7 @@ export const BookingHistoryView: React.FC = () => {
   const ready = load.kind === 'ready' ? load.data : null;
   return (
     <div id="booking-history-panel" className="grid gap-3.5">
-      <div>
-        <h1 className="text-[22px] font-bold leading-tight tracking-tight text-slate-900">Lịch sử đặt chỗ</h1>
-        <p className="mt-0.5 text-[13px] text-slate-500">Theo dõi đơn đã đặt, thanh toán và hoàn tiền.</p>
-      </div>
+      <PageTitle />
 
       <div className="sticky top-0 z-[5] rounded-2xl border border-slate-200 bg-white">
         <div role="tablist" aria-label="Trạng thái đơn" className="grid grid-cols-3 border-b border-slate-200 px-2">
@@ -141,9 +171,9 @@ export const BookingHistoryView: React.FC = () => {
 
       <div id="booking-history-list" role="tabpanel" aria-labelledby={`booking-tab-${tab}`}>
         {load.kind === 'loading' && (
-          <div className="grid gap-3.5" aria-busy="true" aria-label="Đang tải đơn hàng">
-            {[0, 1, 2].map((n) => <div key={n} className="h-40 animate-pulse rounded-2xl border border-slate-200 bg-slate-100" />)}
-          </div>
+          <SkeletonStatus label="Đang tải đơn hàng" className="grid gap-3.5">
+            {[0, 1, 2].map((n) => <BookingCardSkeleton key={n} />)}
+          </SkeletonStatus>
         )}
 
         {load.kind === 'signed_out' && (

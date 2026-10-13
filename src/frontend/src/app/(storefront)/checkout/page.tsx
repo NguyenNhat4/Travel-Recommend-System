@@ -1,10 +1,10 @@
 import { Suspense } from 'react';
-import { CheckoutView } from '../../../components/checkout/CheckoutView';
+import { CheckoutSkeleton, CheckoutView } from '../../../components/checkout/CheckoutView';
 
-// CheckoutView đọc `?draft=` bằng `useSearchParams`, nên cần một ranh giới Suspense (như trang /search).
+// CheckoutView đọc `?draft=` bằng `useSearchParams`, nên cần một ranh giới Suspense (như trang /search); fallback là khung trang.
 export default function CheckoutPage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<CheckoutSkeleton />}>
       <CheckoutView />
     </Suspense>
   );

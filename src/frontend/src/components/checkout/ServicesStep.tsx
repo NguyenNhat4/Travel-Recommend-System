@@ -9,6 +9,7 @@ import { AlertTriangle, ArrowLeft, ArrowRight, BedDouble, CircleAlert, Check, Ch
 import { getProduct } from '../../services/catalog';
 import type { ApiCartItem } from '../../services/booking';
 import { TaxonomyBadge } from '../common/TaxonomyBadge';
+import { SkeletonBlock, SkeletonStatus } from '../common/Skeleton';
 import { formatVnd } from '../confirmation/bookingLabels';
 import type { Taxonomy } from '../../types/travel';
 import {
@@ -71,9 +72,15 @@ const PolicyNote: React.FC<{ productId: string }> = ({ productId }) => {
       <summary className="cursor-pointer select-none text-brand-600 font-semibold inline-flex items-center gap-1">
         <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />Điều kiện vé trẻ em của điểm đến
       </summary>
-      <p className="mt-2 text-slate-600 leading-relaxed bg-slate-50 border border-slate-100 rounded-lg px-3 py-2 whitespace-pre-line">
-        {state === 'loading' ? 'Đang tải…' : text ?? 'Chưa có thông tin điều kiện vé trẻ em cho điểm đến này.'}
-      </p>
+      {state === 'loading' ? (
+        <SkeletonStatus label="Đang tải điều kiện vé trẻ em" className="mt-2 space-y-2 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2.5">
+          {['w-full', 'w-11/12', 'w-2/3'].map((w) => <SkeletonBlock key={w} className={`h-3 rounded ${w}`} />)}
+        </SkeletonStatus>
+      ) : (
+        <p className="mt-2 text-slate-600 leading-relaxed bg-slate-50 border border-slate-100 rounded-lg px-3 py-2 whitespace-pre-line">
+          {text ?? 'Chưa có thông tin điều kiện vé trẻ em cho điểm đến này.'}
+        </p>
+      )}
     </details>
   );
 };

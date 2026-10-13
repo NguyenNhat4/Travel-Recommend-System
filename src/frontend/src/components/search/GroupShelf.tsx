@@ -5,9 +5,23 @@ import { ArrowRight } from 'lucide-react';
 import { SEARCH_GROUPS, searchShelfApi, shelfCacheKey, type TabGroup } from '../../services/search';
 import { useLazySection } from '../../hooks/useLazySection';
 import { ProductCard } from '../common/ProductCard';
+import { SkeletonBlock, SkeletonStatus } from '../common/Skeleton';
 import { HScroller } from './HScroller';
 
 const CARD_WIDTH = 'w-[72%] shrink-0 snap-start sm:w-[calc((100%-16px)/2)] md:w-[calc((100%-32px)/3)] lg:w-[calc((100%-48px)/4)]';
+
+/** Bốn ô khung của một hàng (ảnh vuông, tên, dòng phụ), cùng bề rộng ô thật; đặt trong một hàng `flex gap-4 overflow-hidden`. */
+export const ShelfTilesSkeleton: React.FC = () => (
+  <>
+    {[0, 1, 2, 3].map((i) => (
+      <div key={i} className={`${CARD_WIDTH} flex flex-col gap-3`} aria-hidden="true">
+        <SkeletonBlock className="aspect-square w-full rounded-3xl" />
+        <SkeletonBlock className="h-5 w-3/4 rounded-md" />
+        <SkeletonBlock className="h-4 w-1/2 rounded-md" />
+      </div>
+    ))}
+  </>
+);
 
 interface GroupShelfProps {
   group: TabGroup;
@@ -50,15 +64,9 @@ export const GroupShelf: React.FC<GroupShelfProps> = ({ group, query, destinatio
           <button type="button" onClick={section.retry} className="cursor-pointer font-semibold text-brand-600 hover:underline">Thử lại</button>
         </div>
       ) : section.loading && items.length === 0 ? (
-        <div className="flex gap-4 overflow-hidden" aria-busy="true">
-          {[0, 1, 2, 3].map((i) => (
-            <div key={i} className={`${CARD_WIDTH} flex flex-col gap-3`} aria-hidden="true">
-              <div className="skeleton-wave aspect-square w-full rounded-3xl" />
-              <div className="skeleton-wave h-5 w-3/4 rounded-md" />
-              <div className="skeleton-wave h-4 w-1/2 rounded-md" />
-            </div>
-          ))}
-        </div>
+        <SkeletonStatus label={`Đang tải ${SEARCH_GROUPS[group].label}`} className="flex gap-4 overflow-hidden">
+          <ShelfTilesSkeleton />
+        </SkeletonStatus>
       ) : (
         <HScroller count={items.length + 1} label={`Kết quả nhóm ${SEARCH_GROUPS[group].label}`}>
           {items.map((item) => (
