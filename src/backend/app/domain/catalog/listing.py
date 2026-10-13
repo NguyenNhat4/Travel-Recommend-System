@@ -2,9 +2,9 @@
 (docs/spec/hop-dong-tich-hop-backend.md §4.1)."""
 from __future__ import annotations
 
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from itertools import zip_longest
-from typing import Collection, Iterable, Mapping, Sequence
 
 from .models import Product
 
@@ -48,7 +48,8 @@ def summarize_variants(children: Iterable[Product]) -> VariantSummary:
 
 
 def filter_items(items: Iterable[ListingItem], *, destination: str | None = None,
-                 taxonomy: str | Collection[str] | None = None, available_only: bool = False) -> list[ListingItem]:
+                 taxonomy: str | Collection[str] | None = None, available_only: bool = False,
+                 free_only: bool = False) -> list[ListingItem]:
     """`taxonomy` là một loại hoặc một tập loại (contract 1.27.0, `taxonomy=attraction,golf`)."""
     wanted = None if taxonomy is None else ({taxonomy} if isinstance(taxonomy, str) else set(taxonomy))
     return [
@@ -56,6 +57,7 @@ def filter_items(items: Iterable[ListingItem], *, destination: str | None = None
         if (destination is None or i.product.destination == destination)
         and (wanted is None or i.product.taxonomy in wanted)
         and (not available_only or i.product.available)
+        and (not free_only or i.product.entry_policy in ("free", "assumed_free"))
     ]
 
 

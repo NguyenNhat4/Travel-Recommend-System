@@ -1,14 +1,16 @@
 import React from 'react';
 import { Taxonomy } from '../../types/travel';
-import { Building2, Plane, Ticket, Sparkles, Flag } from 'lucide-react';
+import { Building2, Plane, Ticket, Sparkles, Flag, MapPin } from 'lucide-react';
 
 interface TaxonomyBadgeProps {
   taxonomy: Taxonomy;
   size?: 'sm' | 'md';
   className?: string;
+  /** Điểm tham quan tự do (biển, cầu, phố đi bộ): ghi "Điểm tham quan", không gọi là vé. */
+  freeToVisit?: boolean;
 }
 
-export const TaxonomyBadge: React.FC<TaxonomyBadgeProps> = ({ taxonomy, size = 'sm', className = '' }) => {
+export const TaxonomyBadge: React.FC<TaxonomyBadgeProps> = ({ taxonomy, size = 'sm', className = '', freeToVisit = false }) => {
   const configs: Record<Taxonomy, { label: string; icon: React.ReactNode; bg: string; text: string; border: string }> = {
     hotel: {
       label: 'Khách sạn',
@@ -47,7 +49,10 @@ export const TaxonomyBadge: React.FC<TaxonomyBadgeProps> = ({ taxonomy, size = '
     }
   };
 
-  const c = configs[taxonomy] || configs.hotel;
+  const c = freeToVisit && taxonomy === 'attraction'
+    ? { label: 'Điểm tham quan', icon: <MapPin className={size === 'sm' ? 'w-3 h-3' : 'w-3.5 h-3.5'} />,
+        bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' }
+    : configs[taxonomy] || configs.hotel;
   const padding = size === 'sm' ? 'px-2 py-0.5 text-xs' : 'px-2.5 py-1 text-xs';
 
   return (

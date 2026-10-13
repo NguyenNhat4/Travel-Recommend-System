@@ -192,15 +192,23 @@ stateDiagram-v2
 
 ### Công cụ, lập lịch và hai loại ngân sách
 
-- Tám tool: Search, Recommendation, Similar, Detail, Destinations, Catalog list, Flights và build_itinerary.
+- Năm tool nghiệp vụ: find_products (Search + Catalog list), recommend (Recommendation + Similar), get_products
+  (Detail tối đa 10 refs, kèm hạng phòng), lookup_flights và plan_itinerary. Tên điểm đến catalog đặt sẵn
+  trong system prompt, cache ngắn ngoài ngân sách lượt; không lấy được danh sách thì dùng tên khách nói.
   Chỉ cung cấp tool có adapter hoạt động; từng tham số có mô tả, đơn vị, null/default, ví dụ và lỗi.
   Danh tính do server lấy từ phiên; model không truyền userId, URL, secret hay quyền thực thi.
 - Có điểm đến vẫn được dùng Recommendation; strategy/because/diagnostics thể hiện rõ popular/fallback,
   không gọi là cá nhân hóa khi không có căn cứ. Không đổi thuật toán Search/Rec trong chuyển đổi này.
-- Orc chọn refs và phác ngày/giờ. build_itinerary chỉ kiểm, tính tiền, tối ưu trong quyền được cấp, trả violations,
+- Orc chọn refs, thứ tự và buổi trong ngày. plan_itinerary tính giờ từ thời lượng, giờ mở cửa và đệm sân bay,
+  số đêm, số phòng, tiền từng dòng; trả violations,
   warnings, assumptions và changes. Không thêm, bỏ, thay sản phẩm; tối ưu giữ multiset refs và các mốc khóa.
   Không gọi compose_plan để chọn thay orc. Có thể không lưu trú, 0 đêm, không chuyến bay, không combo.
-  Không áp trần hai hoạt động/ngày; thiếu giờ/thời lượng/di chuyển thì feasibility provisional và nêu giả định.
+  Ngày trọn vẹn có 2–3 hoạt động, tối đa một sản phẩm mỗi buổi sáng/chiều/tối; hoạt động cả ngày dùng
+  cả sáng và chiều nhưng tính một sản phẩm. Ngày đến/về theo giờ bay có thể ít hơn. Thiếu thời lượng dùng
+  ước tính hai giờ có công bố; thiếu giờ mở/di chuyển thì feasibility provisional. Không tự đổi buổi hay sản phẩm.
+  Lưu trú tối đa số ngày − 1 đêm, trả phòng ngày cuối; có thể chia chặng khách sạn. Số phòng = ceil(tổng khách /
+  priceAdults); thiếu priceAdults dùng maxOccupancy kèm PRICE_CAPACITY_UNKNOWN. Số phòng khách nói rõ được giữ
+  và kiểm sức chứa, tối đa 9. Tiền phòng = giá/đêm × đêm × phòng. Combo gợi ý riêng ở thẻ, không vào lịch.
 - Giá theo số người/phòng, tối đa 9 phòng, ngày hợp lệ, tuyến/giờ bay và khoảng đệm sân bay 90/150 phút vẫn kiểm.
   Tối ưu khoảng cách chỉ khi orc yêu cầu, trong tập refs gửi vào; không nói tối ưu toàn catalog.
 - Ngân sách chuyến đi là warning-only: vượt vẫn trả/lưu lịch, công bố tổng, ngân sách, số vượt và phạm vi tính.
@@ -217,8 +225,14 @@ stateDiagram-v2
 - ProductId, tên, giá, ảnh, link, ngày và mọi facts lấy từ tool của chính lượt, ref do server cấp.
   Registry giữ provenance và presented_to_orc; lịch sử chỉ nhận diện sản phẩm, phải refresh trước khi hiện lại.
   Cùng sản phẩm hai nguồn dùng một ref; cursor opaque gắn owner/conversation/run/query fingerprint.
-- Phân biệt miễn phí có căn cứ, có phí và unknown. Thiếu giá không chứng minh miễn phí.
-  free_only chỉ nhận căn cứ vào cửa tự do hoặc giá 0 hợp lệ; thiếu giá không cộng thành 0.
+- Bộ lọc miễn phí tìm điểm tham quan tự do: attraction/golf giá 0 hoặc ticketed=false là vào cửa tự do.
+  Attraction/golf không giá và không ghi ticketed=true được nhận theo quy ước tham quan tự do, tính 0 tiền
+  vào cửa kèm FREE_ENTRY_ASSUMED cần xác nhận; không khẳng định miễn phí đã xác minh, giá nguồn vẫn null.
+  Vé ghi ticketed=true nhưng không giá và hotel/flight/combo thiếu giá vẫn unknown, không tính 0.
+  Catalog lọc freeOnly trước phân trang, không tự đọc thêm trang hay chọn thẻ thay orc. entryPolicy tuỳ chọn
+  giữ căn cứ free/assumed_free/paid/unknown từ nguồn dù C2 lược bỏ attributes=false; không đổi C2.
+  Chat/nút/Think không kể về catalog, cursor, offset hay phân trang; chỉ nói giới hạn xác minh cho khách.
+  *(Chốt Nguyễn Minh Nhật 2026-10-13, `update-archive/2026-10-13-tham-quan-tu-do-trong-bo-loc-v2.md`.)*
   Lịch điểm miễn phí không có nghĩa ăn uống/di chuyển miễn phí; công bố phạm vi chi phí đã biết.
   Yêu cầu mới “không tốn tiền” không bị ngân sách cũ ghi đè; orc hỏi/nêu cách hiểu nếu phạm vi chưa rõ.
 - Final dùng refs/fact refs và disclosures được orc chọn; renderer hydrate thuần, không bù thẻ hoặc nút.
@@ -232,17 +246,18 @@ stateDiagram-v2
   hết ngân sách được trả thông báo hệ thống ngắn; không gắn sản phẩm mới hay sửa lịch đã lưu.
   Catalog và lịch sử là dữ liệu không tin cậy, không phải system instruction. Không thêm LLM guardrail thứ hai.
 - shown/context/constraints/pending chỉ commit sau final hợp lệ, đúng một lần/run. planEffect=keep giữ lịch/revision;
-  replace cần plan_result_id hợp lệ do build_itinerary của lượt này, người dùng đã cho phép lập/sửa lịch và revision khớp.
-  Preview và tool thử lịch không commit. Restore legacy thiếu schema_version lấy intent/refs/lịch, đánh dấu refresh.
+  replace cần plan_result_id hợp lệ do plan_itinerary của lượt này, người dùng đã cho phép lập/sửa lịch và revision khớp.
+  Tool thử lịch không commit. Restore legacy thiếu schema_version lấy intent/refs/lịch, đánh dấu refresh.
 - Redis working memory 24 giờ; archive Postgres cho user đăng nhập vẫn giữ quyền owner và lỗi archive không phá lượt.
   Claim owner/conversation/clientTurnId nguyên tử ở store dùng chung, cùng request trả final đã có, đang chạy trả
   TURN_IN_PROGRESS + Retry-After, ID giống nội dung khác trả IDEMPOTENCY_CONFLICT. Không thêm bảng DB.
 - Tiến trình theo công việc orc thực sự yêu cầu, có thể tìm nhiều vòng hoặc trả lời ngay. Code đếm riêng tìm thấy,
   đủ điều kiện, orc chọn, thực sự hiện. Think là lời giải thích công khai ngắn trong quyết định có cấu trúc của orc, kiểm trước khi phát; Act từ call thật, Observe từ kết quả/lỗi thật. Không thêm model call, không prompt hay suy luận nội bộ (chốt Nguyễn Minh Nhật 2026-10-13, `update-archive/2026-10-13-giai-thich-quyet-dinh-agent-trong-tien-trinh.md`).
-  Preview chỉ refs đã chọn/kiểm, không có hành động đặt/chọn, không ghi shown hay committed plan.
-- Giữ model/provider/SDK cấu hình hiện có. structured output OrcDecision chỉ execute/respond, union theo tên tool,
-  không args dict tự do. Context patch chỉ trường được phép, thay hard constraints cần source=user_message/ui_action
-  và bằng chứng đầu vào. Mọi câu vé/đổi lịch/nút vé quay về orc, không shortcut final nghiệp vụ.
+  Không hiện thẻ sản phẩm trước câu trả lời (chốt Nguyễn Minh Nhật 2026-10-14, `update-archive/2026-10-14-bo-the-xem-truoc-trong-tien-trinh.md`).
+- Giữ model/provider/SDK cấu hình hiện có. Function calling với schema riêng từng tool, hội thoại trong lượt
+  nối thêm assistant/tool messages; không có args tự do. update_trip ghi trường ngữ cảnh được phép có bằng chứng
+  từ tin nhắn/nút/form; respond mang câu trả lời cấu trúc. Hai tool này không tính lượt nghiệp vụ.
+  Hết lượt chỉ bind respond; quá ba call nghiệp vụ thì call thừa trả TOO_MANY_CALLS, không thực thi. Mọi câu vé/đổi lịch/nút vé quay về orc, không shortcut final nghiệp vụ.
 
 ### Chuyển phiên bản và nghiệm thu
 
@@ -343,3 +358,5 @@ API v2 đặt ở `api/v2/` cùng quy tắc layering §2; không thay semantics 
 ### 6.4. Review chéo
 
 Thay đổi contract cần reviewer của Web và Backend. Thay đổi schema CDP/Insider hoặc port `CdpClient` cần reviewer của Data/Integration. Phân công workstream: [implementation-plan.md](implementation-plan.md).
+
+*(Bộ tool và luật lập lịch A–G chốt Nguyễn Minh Nhật 2026-10-13, `update-archive/2026-10-13-thiet-ke-lai-bo-tool-orc.md`.)*

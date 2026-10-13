@@ -895,6 +895,9 @@ class _LoggedModel:
     def with_structured_output(self, schema, *args, **kwargs):
         return _LoggedStructured(self._llm.with_structured_output(schema, *args, **kwargs), schema)
 
+    def bind_tools(self, tools, **kwargs):
+        return _LoggedStructured(self._llm.bind_tools(tools, **kwargs), {"title": "OrcFunctions"})
+
     def __getattr__(self, name):
         return getattr(self._llm, name)
 

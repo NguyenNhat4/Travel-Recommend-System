@@ -15,7 +15,6 @@ export function AssistantProgressDiagnostics() {
     </table>
     {state.activities.map((a,index) => <p key={index}>{a.nodeId} · {a.code} · vòng {a.round ?? '—'} · +{state.run ? a.at-state.run.startedAt : 0} ms</p>)}
     {(state.progressModel.searches ?? []).map((g) => <div key={g.groupId}><p>{g.groupId} · {g.status}</p><pre className="whitespace-pre-wrap break-words">{JSON.stringify(g.counts,null,2)}</pre></div>)}
-    {state.previewAt && <p>Preview: +{state.previewAt-(state.run?.startedAt ?? state.previewAt)} ms</p>}
     {state.completedAt && <p>Kết quả: +{state.completedAt-(state.run?.startedAt ?? state.completedAt)} ms</p>}
   </section>;
 }

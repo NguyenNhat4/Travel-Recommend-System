@@ -125,7 +125,7 @@ export function WidgetProductDetail({ productId, summary, onClose, onAddToCart, 
         activeImage={activeImage} onSelect={setActiveImage} />
 
       <div className="space-y-3">
-        <TaxonomyBadge taxonomy={product.taxonomy} size="sm" />
+        <TaxonomyBadge taxonomy={product.taxonomy} size="sm" freeToVisit={freeToVisit} />
         <h2 className="font-sans break-words text-xl font-semibold leading-snug tracking-tight text-slate-900 xl:text-2xl">{product.name}</h2>
         {product.aggregateRating && (
           <p className="flex flex-wrap items-center gap-2 text-sm text-slate-600">

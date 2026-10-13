@@ -1,8 +1,7 @@
-"""Schema quyết định của orc trong assistant v2: tham số tám tool và hai dạng quyết định execute/respond.
+"""Schemas function calling assistant v2: năm tool nghiệp vụ, update_trip và respond.
 
-Schema viết sẵn ở dạng OpenAI strict mode nhận được: mọi field đều bắt buộc (không dùng thì null), không có
-`uniqueItems`/`default`. Cùng một schema vừa gửi cho model vừa dùng để kiểm quyết định model trả về, nên provider
-không ép schema (Gemini, Anthropic) cũng được kiểm như nhau. Bounds khớp OpenAPI nguồn (test kiểm).
+Schema nội bộ cho phép bỏ field tuỳ chọn; adapter OpenAI chuyển sang nullable strict. Mọi provider đều
+được kiểm lại bằng jsonschema trước thực thi. Các cấu trúc draft/final giữ tương thích working memory v2.
 """
 from __future__ import annotations
 
@@ -73,25 +72,6 @@ RECOMMENDATIONS = _obj(
     k=_opt(_int("Số gợi ý, null = 5.", 1, 20)),
     destination=_opt(_str("Chỉ gợi ý ở điểm đến này; null = mọi nơi.")))
 
-SIMILAR = _obj("Sản phẩm cùng loại tương tự một sản phẩm đã biết, khi khách muốn đổi món.",
-               product_ref=REF, limit=_opt(_int("Số kết quả, null = 8.", 1, 20)))
-
-DETAIL = _obj("Đọc dữ kiện mới nhất của một sản phẩm đã biết (giá, giờ mở cửa, tiện ích, địa chỉ, mô tả đầy đủ). "
-              "Bắt buộc trước khi nói lại dữ kiện hay hiện lại thẻ của sản phẩm chỉ có trong lịch sử.", product_ref=REF)
-
-DESTINATIONS = _obj("Danh sách điểm đến hệ thống có dữ liệu. Chỉ gọi khi hướng dẫn chưa kèm danh sách điểm đến.")
-
-LIST_PRODUCTS = _obj(
-    "Duyệt catalog có cấu trúc, không hiểu câu chữ: theo điểm đến, loại, sản phẩm cha, sắp theo giá. "
-    "Dùng cho rẻ nhất/đắt nhất cả điểm đến hoặc liệt kê hạng phòng của một khách sạn.",
-    destination=_opt(DESTINATION), taxonomy=_opt(TAXONOMY),
-    parent_ref=_opt(_str("Mã khách sạn để liệt kê hạng phòng (sản phẩm đặt được).", pattern="^p[0-9]+$")),
-    sort=_opt(_str("popular phổ biến, price_asc giá tăng, price_desc giá giảm; null = popular.",
-                   enum=["popular", "price_asc", "price_desc"])),
-    available_only=_bool("true: chỉ sản phẩm đang bán."),
-    limit=_opt(_int("Số kết quả, null = 20.", 1, 50)),
-    cursor=CURSOR, free_only=FREE_ONLY, exclude_refs=EXCLUDE_REFS)
-
 FLIGHTS = _obj(
     "Tra chuyến bay MỘT CHIỀU của một tuyến trong cả đợt mở bán. Trả các chuyến theo thứ tự yêu cầu và thống kê "
     "cả đợt (rẻ nhất, đắt nhất, ngày có/không có chuyến). Chiều về là một lời gọi khác, đảo nơi đi và nơi đến.",
@@ -136,12 +116,6 @@ BUILD = _obj(
     locked_refs=_list(REF, "Sản phẩm khách đã chốt: giữ nguyên chỗ, tối ưu không di chuyển."),
     optimize=_str("none giữ nguyên thứ tự; reorder_within_day đổi thứ tự hoạt động trong ngày cho bớt đi lại "
                   "(chỉ khi đủ toạ độ và các hoạt động hoán đổi được).", enum=["none", "reorder_within_day"]))
-
-TOOLS: dict[str, dict] = {
-    "search_products": SEARCH, "get_recommendations": RECOMMENDATIONS, "get_similar_products": SIMILAR,
-    "get_product_detail": DETAIL, "list_destinations": DESTINATIONS, "list_products": LIST_PRODUCTS,
-    "lookup_flights": FLIGHTS, "build_itinerary": BUILD,
-}
 
 CONTEXT_PATCH = _opt(_obj(
     "Thay đổi ngữ cảnh chuyến đi mà khách vừa nói rõ trong tin nhắn này (hoặc nút vừa bấm). Field null = không đổi.",
@@ -200,35 +174,108 @@ RESPOND = _obj(
     suggestions=_list(SUGGESTION, "Tối đa 3 nút.", maxItems=3))
 
 
-def _call(name: str) -> dict:
-    """Mã lời gọi (c1, c2…) do server đánh theo thứ tự trong lượt, model không phải tự đặt."""
-    return _obj("Gọi " + name + ".", name=_str("Tên tool.", enum=[name]), arguments=TOOLS[name])
+def optional_fields(schema: dict) -> dict:
+    """Fields nullable ở baseline có thể bỏ khi dùng function calling; kiểm local vẫn chấp nhận null."""
+    from copy import deepcopy
+    result = deepcopy(schema)
+    def visit(node):
+        if not isinstance(node, dict):
+            return
+        if "properties" in node:
+            node["required"] = [key for key, value in node["properties"].items()
+                                if "null" not in (value.get("type") if isinstance(value.get("type"), list) else [])]
+        for value in node.values():
+            if isinstance(value, dict):
+                visit(value)
+            elif isinstance(value, list):
+                for item in value:
+                    visit(item)
+    visit(result)
+    return result
 
 
-def decision_schema(tools: list[str], can_execute: bool = True) -> dict:
-    """Schema của một quyết định. Hết lượt gọi tool hoặc hết giờ thì chỉ còn dạng respond."""
-    choices = [RESPOND]
-    if can_execute and tools:
-        execute = _obj("Gọi 1–3 tool độc lập; mọi kết quả quay lại cho bạn.",
-                       action=_str("Gọi tool.", enum=["execute"]),
-                       explanation=RESPOND["properties"]["explanation"], context_patch=CONTEXT_PATCH,
-                       calls=_list({"anyOf": [_call(name) for name in tools]}, "Các lời gọi độc lập.",
-                                   minItems=1, maxItems=3))
-        choices.insert(0, execute)
-    schema = _obj("Một quyết định của orc.", decision={"anyOf": choices})
-    schema["title"] = "OrcDecision"
-    return schema
+def _parameters(description: str, required: list[str], **properties) -> dict:
+    return {"type": "object", "description": description, "properties": properties,
+            "required": required, "additionalProperties": False}
+
+
+WHY = _str("Một câu ghi chú công việc công khai: vì sao cần gọi tool, không tên/giá/số liệu.", minLength=1, maxLength=400)
+FIND = _parameters(
+    "Tìm catalog: có query thì Search theo độ khớp; bỏ query thì duyệt theo sort. Khách sạn trả kèm hạng phòng. "
+    "Mỗi khách sạn kèm phòng tốn thêm một request nguồn; coverage.rooms cho biết phần chưa đọc được.",
+    ["why", "taxonomy"], why=WHY, taxonomy={**TAXONOMY, "enum": ["hotel", "attraction", "combo", "golf"]},
+    destination=_opt(DESTINATION), query=_opt(SEARCH["properties"]["query"]),
+    sort=_opt(_str("Có query: relevance giữ thứ tự Search; price_asc/desc chỉ sắp trang đã tìm, không cả catalog. "
+                  "Không query: popular/price_asc/price_desc theo Catalog.",
+                  enum=["relevance", "popular", "price_asc", "price_desc"])),
+    price_max=_opt(PRICE), star_rating_min=SEARCH["properties"]["star_rating_min"],
+    check_in=SEARCH["properties"]["check_in"], check_out=SEARCH["properties"]["check_out"],
+    free_only=_opt(FREE_ONLY), exclude_refs=_opt(EXCLUDE_REFS),
+    limit=_opt(_int("Số ứng viên; mặc định 10. Không phải số thẻ hiển thị.", 1, 20)), cursor=CURSOR,
+    parent_ref=_opt(_str("Mã khách sạn để lấy trang hạng phòng khi phần rooms chưa đủ.", pattern="^p[0-9]+$")))
+GET = _parameters("Đọc mới tối đa mười sản phẩm, kèm hạng phòng khi include_rooms. Một request nguồn mỗi ref; "
+                  "kèm phòng tốn thêm một request mỗi khách sạn. Lỗi từng ref không huỷ refs khác.",
+                  ["why", "refs"], why=WHY, refs=_list(REF, "Refs cần refresh.", minItems=1, maxItems=10),
+                  include_rooms=_opt(_bool("Kèm phòng đặt được của khách sạn.")))
+RECOMMEND = _parameters("Gợi ý theo khách/phổ biến; like_ref thì lấy Similar cùng loại. strategy cho biết căn cứ.",
+    ["why"], why=WHY, destination=_opt(DESTINATION), taxonomy=_opt(TAXONOMY), like_ref=_opt(REF),
+    k=RECOMMENDATIONS["properties"]["k"], exclude_refs=_opt(EXCLUDE_REFS))
+PLAN = _parameters("Orc chọn sản phẩm từng buổi. Code tính giờ, đêm (= ngày − 1), phòng, tiền; không đổi sản phẩm. "
+                   "Combo gợi ý riêng ở cards.combo. Lỗi có fix_hint để bạn sửa buổi; không trả lịch infeasible.",
+    ["why", "destination", "start_date", "days", "adults", "schedule"],
+    why=WHY, destination=DESTINATION, start_date=DATE, days=BUILD["properties"]["days"],
+    adults=BUILD["properties"]["adults"], children=_opt(BUILD["properties"]["children"]),
+    budget_vnd=BUILD["properties"]["trip_budget_vnd"], origin=BUILD["properties"]["origin"],
+    free_only=_opt(FREE_ONLY), locked_refs=_opt(EXCLUDE_REFS),
+    schedule=_list(_parameters("Một ngày đủ buổi khách cần; cùng ref morning/afternoon = hoạt động cả ngày.",
+                   ["day"], day=_int("Ngày từ một.", 1, 7), morning=_opt(REF), afternoon=_opt(REF), evening=_opt(REF)),
+                   "Đủ mọi ngày; ngày trọn vẹn hai hoặc ba hoạt động nếu catalog có đủ.", minItems=1, maxItems=7),
+    stays=_opt(_list(_parameters("Một chặng phòng; mặc định nhận ngày đầu, trả ngày cuối.", ["room_ref"],
+                  room_ref=REF, from_day=_opt(_int("Ngày nhận phòng.", 1, 7)),
+                  to_day=_opt(_int("Ngày trả phòng.", 1, 7)), rooms=_opt(_int("Chỉ khi khách nói rõ số phòng.", 1, 9))),
+                  "Bỏ trống = không lưu trú.")),
+    flights=_opt(_parameters("Chọn chuyến tới đúng nơi và ngày; chiều về đảo tuyến.", [],
+                             outbound=_opt(REF), **{"return": _opt(REF)})),
+    fixed_times=_opt(_list(_parameters("Giữ giờ cố định khách yêu cầu; phải nằm trong buổi.",
+                       ["day", "slot", "start_minute"], day=_int("Ngày.", 1, 7),
+                       slot=_str("Buổi.", enum=["morning", "afternoon", "evening"]),
+                       start_minute=_int("Phút từ nửa đêm.", 0, 1439)), "Các mốc giờ phải giữ.")))
+UPDATE_TRIP = optional_fields(CONTEXT_PATCH)
+UPDATE_TRIP["type"] = "object"
+UPDATE_TRIP["required"] = ["evidence"]
+# budget_vnd là tên tool; working memory giữ trip_budget_vnd để tương thích hội thoại đã lưu.
+UPDATE_TRIP["properties"]["budget_vnd"] = UPDATE_TRIP["properties"].pop("trip_budget_vnd")
+FINAL = optional_fields(RESPOND)
+for field in ("action", "context_patch"):
+    FINAL["properties"].pop(field)
+    if field in FINAL["required"]:
+        FINAL["required"].remove(field)
+FLIGHT_PARAMETERS = optional_fields(FLIGHTS)
+FLIGHT_PARAMETERS["properties"]["why"] = WHY
+FLIGHT_PARAMETERS["required"].append("why")
+TOOLS = {"find_products": FIND, "get_products": GET, "recommend": RECOMMEND,
+         "lookup_flights": FLIGHT_PARAMETERS, "plan_itinerary": PLAN}
+CONTROL_TOOLS = {"update_trip": UPDATE_TRIP, "respond": FINAL}
+
+
+def function_tools(allowed: list[str], can_execute: bool = True) -> list[dict]:
+    names = [*allowed, "update_trip", "respond"] if can_execute else ["respond"]
+    return [{"type": "function", "function": {"name": name, "description": schema["description"],
+             "parameters": schema}} for name in names for schema in [TOOLS.get(name) or CONTROL_TOOLS[name]]]
+
+
+def tool_errors(name: str, arguments: Any) -> list[str]:
+    schema = TOOLS.get(name) or CONTROL_TOOLS.get(name)
+    if schema is None:
+        return ["tool: TOOL_NOT_ALLOWED"]
+    return decision_errors(arguments, schema)
 
 
 def decision_errors(value: Any, schema: dict) -> list[str]:
-    """Lỗi schema của quyết định model trả về, dạng `đường/dẫn: lý do` để orc tự sửa.
-
-    Với anyOf, lấy lỗi sâu nhất: đó là nhánh model định dùng (ví dụ đúng tên tool nhưng sai một tham số).
-    """
     errors = []
     for error in Draft202012Validator(schema, format_checker=FormatChecker()).iter_errors(value):
         while error.context:
             error = max(error.context, key=lambda item: len(item.absolute_path))
-        path = "/".join(str(part) for part in error.absolute_path) or "decision"
+        path = "/".join(str(part) for part in error.absolute_path) or "arguments"
         errors.append(f"{path}: {error.message[:200]}")
     return errors

@@ -199,8 +199,6 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     const isCurrent = () => activeRunIdRef.current === runId && !controller.signal.aborted;
     // Chậm = 12 giây không có node nào xong. Thời gian dồn vào các node gọi LLM, nên đo theo từng node chứ không
     // theo cả lượt: lượt dài nhưng vẫn tiến đều thì không báo chậm.
-    const requestStartedAt = Date.now();
-    let previewTimer = 0;
     let slowTimer = 0;
     const armSlowTimer = () => {
       window.clearTimeout(slowTimer);
@@ -234,12 +232,6 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
           } else if (event.event === 'tool-completed') {
             dispatch({ type: 'v2-progress', entry: v2Timeline(event.data, true) });
             armSlowTimer();
-          } else if (event.event === 'preview') {
-            dispatch({ type: 'run-preview', preview: { runId: event.runId, products: event.data.products.slice(0, 6) } });
-            window.clearTimeout(previewTimer);
-            previewTimer = window.setTimeout(() => {
-              if (isCurrent()) dispatch({ type: 'preview-visible' });
-            }, Math.max(0, 5000 - (Date.now() - requestStartedAt)));
           }
         },
       }).then((final) => {
@@ -262,7 +254,6 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
           ? { type: 'request-refused', text: failure.message } : { type: 'request-failed', error: failure });
       }).finally(() => {
         window.clearTimeout(slowTimer);
-        window.clearTimeout(previewTimer);
         if (abortControllerRef.current === controller) abortControllerRef.current = null;
       });
       return;
@@ -282,15 +273,6 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
           if (typeof event.data.nodeId==='string' && typeof event.data.code==='string') {
             dispatch({type:'node-activity',activity:event.data as ProgressActivity});
             armSlowTimer();
-          }
-        } else if (event.event === 'run.preview') {
-          if (Array.isArray(event.data.products) && typeof event.data.runId==='string') {
-            const preview = event.data as components['schemas']['AssistantRunPreview'];
-            dispatch({type:'run-preview',preview});
-            window.clearTimeout(previewTimer);
-            previewTimer=window.setTimeout(() => {
-              if (isCurrent()) dispatch({type:'preview-visible'});
-            },Math.max(0,5000-(Date.now()-requestStartedAt)));
           }
         } else if (event.event === 'node.completed') {
           dispatch({ type: 'node-completed', progress: nodeProgress(event.data) });
@@ -327,7 +309,6 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       abortControllerRef.current = null;
     }).finally(() => {
       window.clearTimeout(slowTimer);
-      window.clearTimeout(previewTimer);
       if (abortControllerRef.current === controller) abortControllerRef.current = null;
     });
   }, [abortCurrentRun]);

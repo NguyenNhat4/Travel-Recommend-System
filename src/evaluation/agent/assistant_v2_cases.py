@@ -32,6 +32,11 @@ CASES = {
     "follow-up-vs-new": ["khách sạn ở Huế có hồ bơi", "xem thêm", "còn Đà Lạt thì sao", "khách sạn rẻ hơn"],
     "second-card": ["Khách sạn ở Huế", "Khách sạn thứ hai có hồ bơi không?"],
     "whole-catalog": ["Khách sạn ở Huế", "Tìm thêm toàn catalog, không chỉ Huế"],
+    # Lập lịch rõ ràng phải ra lịch theo ngày (plan_effect=replace), không phải danh sách thẻ.
+    "plan-danang": ["Lên lịch chuyến đi Đà Nẵng 3 ngày từ 25/10", "mình đi một mình"],
+    # Thiếu ngày đi: hỏi một câu, không phác lịch bằng chữ; đủ ngày thì ra lịch (AC-AGT-01).
+    "plan-no-date": ["gợi ý lịch trình 3 ngày 2 đêm ở đà nẵng phù hợp cặp đôi khách sạn nào được yêu thích nhất",
+                     "ngày mai đi"],
     "fare-after-plan": ["Lập lịch Hà Nội đi Đà Nẵng 3 ngày từ 28/10, 2 người lớn", "Vé chiều về rẻ nhất là chuyến nào?"],
     "fare": ["vé sg ra hn bao nhiêu"],
     "over-budget": ["Lập lịch Đà Nẵng 2 ngày từ 26/10 cho 2 người lớn, ngân sách 500 nghìn"],
