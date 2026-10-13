@@ -227,6 +227,7 @@ Warning:
       - PARTIAL_COVERAGE
       - OPTIMIZATION_UNAVAILABLE
       - PRICE_CAPACITY_UNKNOWN
+      - ROOM_CAPACITY_UNKNOWN
       - SIMULATED_PRICE
       - TRAVEL_TIME_UNKNOWN
       - DATE_AVAILABILITY_UNKNOWN
@@ -1776,7 +1777,7 @@ ProgressCounts:
       minimum: 0
 ActivityData:
   type: object
-  description: Safe progress data; no query, prompt, raw model/tool payload or internal reasoning.
+  description: Actual Think/Act/Observe progress; explanation is a checked public decision summary, never internal reasoning or raw model output.
   additionalProperties: false
   required:
   - groupId
@@ -1793,6 +1794,7 @@ ActivityData:
       type: string
       description: Actual work requested, no predetermined next steps.
       enum:
+      - think
       - search
       - recommend
       - similar
@@ -1817,6 +1819,18 @@ ActivityData:
       - type: 'null'
     counts:
       $ref: ../assistant-v2.openapi.yaml#/components/schemas/ProgressCounts
+    explanation:
+      type: string
+      minLength: 1
+      maxLength: 400
+      description: Checked public explanation for a think activity; authored with the existing model decision. No raw facts, queries, secrets or internal reasoning.
+    destination:
+      type: string
+      description: Destination from the checked tool arguments, when present.
+    outcome:
+      type: string
+      description: Actual source outcome; empty differs from error and needs_input.
+      enum: [ok, empty, partial, needs_input, error]
 EventStart:
   type: object
   description: One start event; final/error are terminal and only one terminal event is emitted.

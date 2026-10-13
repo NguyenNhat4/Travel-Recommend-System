@@ -1,8 +1,7 @@
 import type { components as V2 } from '../../../types/assistant-v2.gen';
 import type { components } from '../../../types/api.gen';
 import type { AssistantResponse } from '../../../services/assistantStream';
-import type { AssistantProgress } from '../../../context/assistantState';
-import type { ProgressActivity } from './progressModel';
+import type { ProgressTimelineEntry } from './progressModel';
 
 type Final = V2['schemas']['AssistantV2Final'];
 type UiAction = V2['schemas']['UiAction'];
@@ -45,7 +44,7 @@ function itinerary(plan: NonNullable<Final['itinerary']>): V1['ItineraryComplete
       })),
     })),
     stays: plan.stays.map((stay) => ({
-      product: stay.product, nights: stay.nights, rooms: stay.rooms, fromNight: dayOffset(plan.startDate, stay.checkIn) + 1,
+      product: stay.product, nights: stay.nights, ...(stay.rooms === null ? { note: 'Chưa xác định số phòng theo giá nguồn.' } : { rooms: stay.rooms }), fromNight: dayOffset(plan.startDate, stay.checkIn) + 1,
     })),
     flights: plan.flights.map((flight) => ({
       product: flight.product,
@@ -93,25 +92,8 @@ export function v2AsV1Response(final: Final): AssistantResponse {
 }
 
 type ActivityData = V2['schemas']['ActivityData'];
-const ACTIVITY_CODE: Partial<Record<ActivityData['kind'], ProgressActivity['code']>> = {
-  flights: 'SEARCHING_FLIGHTS', itinerary: 'CHECKING_AVAILABILITY', detail: 'READING_SHOWN',
-};
 
-/** Một lời gọi tool orc vừa bắt đầu → dòng "đang làm" của khung tiến trình (AC-AGT-09). */
-export function v2Activity(data: ActivityData): ProgressActivity {
-  if (data.kind === 'answer') return { nodeId: 'gatekeep', code: 'STARTED' };
-  return { nodeId: 'run_jobs', code: ACTIVITY_CODE[data.kind] ?? 'SEARCHING', groupId: `job:${data.groupId.slice(1)}`,
-    ...(data.taxonomy ? { kinds: [data.taxonomy] } : {}) };
-}
-
-/** Lời gọi tool xong → nhóm tìm kiếm có số đếm của backend: tìm thấy (đủ điều kiện) và số đã giới thiệu. */
-export function v2Progress(data: ActivityData): AssistantProgress {
-  const status = data.status === 'failed' ? 'failed' : data.status === 'partial' ? 'partial'
-    : data.counts.eligible ? 'ok' : 'empty';
-  const search = data.taxonomy && data.kind !== 'itinerary' ? [{
-    groupId: `job:${data.groupId.slice(1)}`, kind: data.taxonomy, status,
-    counts: { inScope: data.counts.eligible, ...(data.counts.displayed ? { chosen: data.counts.displayed } : {}) },
-  } as const] : [];
-  return { nodeId: 'run_jobs', outcome: data.status,
-    progress: { steps: ['understand', 'search', 'write'], ...(search.length ? { searches: search } : {}) } };
+export function v2Timeline(data: ActivityData, observation = false): ProgressTimelineEntry {
+  const phase = data.kind === 'think' ? 'Think' : observation ? 'Observe' : 'Act';
+  return { key: `${phase}:${data.groupId}`, phase, data };
 }

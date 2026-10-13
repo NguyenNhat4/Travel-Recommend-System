@@ -86,7 +86,7 @@ def call(tool: str, call_id: str = "c1", **values) -> dict:
 
 
 def respond(text: str = "Mình đã tìm theo yêu cầu.", **fields) -> dict:
-    decision = {"action": "respond", "context_patch": None, "turn_kind": "answer",
+    decision = {"action": "respond", "explanation": None, "context_patch": None, "turn_kind": "answer",
                 "answer": [{"type": "text", "text": text}], "cards": {t: [] for t in TAXONOMIES},
                 "alternatives": [], "plan_result_id": None, "plan_effect": "keep", "disclosures": [],
                 "suggestions": []}
@@ -98,9 +98,9 @@ def respond(text: str = "Mình đã tìm theo yêu cầu.", **fields) -> dict:
     return decision
 
 
-def execute(*calls: dict, patch: dict | None = None) -> dict:
+def execute(*calls: dict, patch: dict | None = None, explanation: str | None = None) -> dict:
     """Quyết định execute như model trả: không có mã lời gọi."""
-    return {"action": "execute", "context_patch": patch,
+    return {"action": "execute", "explanation": explanation, "context_patch": patch,
             "calls": [{"name": item["name"], "arguments": item["arguments"]} for item in calls]}
 
 

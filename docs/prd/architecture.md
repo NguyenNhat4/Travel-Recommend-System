@@ -238,7 +238,7 @@ stateDiagram-v2
   Claim owner/conversation/clientTurnId nguyên tử ở store dùng chung, cùng request trả final đã có, đang chạy trả
   TURN_IN_PROGRESS + Retry-After, ID giống nội dung khác trả IDEMPOTENCY_CONFLICT. Không thêm bảng DB.
 - Tiến trình theo công việc orc thực sự yêu cầu, có thể tìm nhiều vòng hoặc trả lời ngay. Code đếm riêng tìm thấy,
-  đủ điều kiện, orc chọn, thực sự hiện; SSE chỉ mã/số an toàn, không prompt hay suy luận nội bộ.
+  đủ điều kiện, orc chọn, thực sự hiện. Think là lời giải thích công khai ngắn trong quyết định có cấu trúc của orc, kiểm trước khi phát; Act từ call thật, Observe từ kết quả/lỗi thật. Không thêm model call, không prompt hay suy luận nội bộ (chốt Nguyễn Minh Nhật 2026-10-13, `update-archive/2026-10-13-giai-thich-quyet-dinh-agent-trong-tien-trinh.md`).
   Preview chỉ refs đã chọn/kiểm, không có hành động đặt/chọn, không ghi shown hay committed plan.
 - Giữ model/provider/SDK cấu hình hiện có. structured output OrcDecision chỉ execute/respond, union theo tên tool,
   không args dict tự do. Context patch chỉ trường được phép, thay hard constraints cần source=user_message/ui_action
@@ -248,8 +248,7 @@ stateDiagram-v2
 
 Assistant v2 có entrypoint OpenAPI riêng, request/response/SSE riêng (xem §6), còn v1 giữ hành vi cho client cũ.
 Đây là adapter version; không tạo lại classifier/explore/converse LLM hoặc cờ ITINERARY_ORCHESTRATOR đã gỡ.
-Widget chỉ chuyển v2 sau nghiệm thu model thật và catalog thật (E12), kiểm inventory web/Streamlit/golden/scripts
-trước khi ngừng v1. Không tự ngừng v1. Grounding/schema 100%, tool calling ≥95%, ca trọng yếu chạy ba lần;
+Web Next.js mặc định assistant v2 để người dùng kiểm thử từ 13/10/2026; không đặt NEXT_PUBLIC_ASSISTANT_API cũng dùng v2. Chỉ giá trị v1 tường minh mới chọn client tương thích cũ. Không chuyển Streamlit hoặc runner khác trong thay đổi này (chỉ đạo Nguyễn Minh Nhật 2026-10-13, `update-archive/2026-10-13-nextjs-mac-dinh-assistant-v2.md`). Nghiệm thu model/catalog thật E12 chưa được coi là đạt; thực hiện trước nghiệm thu phát hành. Kiểm inventory trước khi ngừng backend v1; không tự ngừng v1. Grounding/schema 100%, tool calling ≥95%, ca trọng yếu chạy ba lần;
 NFR-PERF-02 vẫn phải đo, tiến trình không tính là first text token. Scripted model không chứng minh tự chủ LLM.
 
 *(Chốt Nguyễn Minh Nhật 2026-10-13, `update-archive/2026-10-13-orc-tu-chu-goi-tool-va-chon-san-pham.md`.)*

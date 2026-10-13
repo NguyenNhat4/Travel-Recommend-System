@@ -1,8 +1,25 @@
 import type { components } from '../../../types/api.gen';
+import type { components as V2 } from '../../../types/assistant-v2.gen';
 export type ProgressUpdate = components['schemas']['AssistantProgressUpdate'];
 export type ProgressActivity = components['schemas']['AssistantNodeActivity'];
-export type ProgressModel = ProgressUpdate & { completed: string[] };
+export interface ProgressTimelineEntry {
+  key: string;
+  phase: 'Think' | 'Act' | 'Observe';
+  data: V2['schemas']['ActivityData'];
+}
+export type ProgressModel = ProgressUpdate & { completed: string[]; timeline?: ProgressTimelineEntry[] };
 export const emptyProgress = (): ProgressModel => ({ completed: [] });
+
+export function mergeTimeline(model: ProgressModel, entry: ProgressTimelineEntry): ProgressModel {
+  const rows = new Map((model.timeline ?? []).map((row) => [row.key, row]));
+  if (entry.phase === 'Observe') {
+    const key = `Act:${entry.data.groupId}`;
+    const act = rows.get(key);
+    if (act) rows.set(key, { ...act, data: { ...act.data, status: entry.data.status } });
+  }
+  rows.set(entry.key, entry);
+  return { ...model, timeline: [...rows.values()] };
+}
 
 export function mergeProgress(model: ProgressModel, update?: ProgressUpdate): ProgressModel {
   if (!update) return model;

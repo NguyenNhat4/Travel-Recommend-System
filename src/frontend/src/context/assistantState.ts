@@ -1,4 +1,4 @@
-import { emptyProgress, mergeProgress, type ProgressModel, type ProgressActivity, type ProgressUpdate } from '../features/itinerary/widget/progressModel';
+import { emptyProgress, mergeProgress, mergeTimeline, type ProgressTimelineEntry, type ProgressModel, type ProgressActivity, type ProgressUpdate } from '../features/itinerary/widget/progressModel';
 import { progressView, type ProgressView } from '../features/itinerary/widget/widgetProgressView';
 import type { components } from '../types/api.gen';
 import type { AssistantRequest, AssistantResponse } from '../services/assistantStream';
@@ -73,6 +73,8 @@ type Action =
   | { type: 'request-started'; request: AssistantRequestSnapshot; userText: string; appendUser: boolean }
   | { type: 'stream-started' }
   | { type: 'run-started'; runId: string; requestId: string }
+  | { type: 'v2-progress-started' }
+  | { type: 'v2-progress'; entry: ProgressTimelineEntry }
   | { type: 'node-activity'; activity: ProgressActivity }
   | { type: 'run-preview'; preview: components['schemas']['AssistantRunPreview'] }
   | { type: 'preview-visible' }
@@ -157,6 +159,10 @@ export function assistantReducer(state: AssistantState, action: Action): Assista
     }
     case 'run-started':
       return {...state, phase:'streaming', run:{runId:action.runId,requestId:action.requestId,startedAt:state.run?.startedAt ?? Date.now()}};
+    case 'v2-progress-started':
+      return { ...state, progressModel: { ...emptyProgress(), timeline: [] } };
+    case 'v2-progress':
+      return { ...state, phase: 'streaming', progressModel: mergeTimeline(state.progressModel, action.entry), isSlow: false };
     case 'node-activity':
       return {...state,phase:'streaming',activities:[...state.activities,{...action.activity,at:Date.now()}],isSlow:false};
     case 'run-preview':

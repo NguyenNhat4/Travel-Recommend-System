@@ -50,7 +50,7 @@ EXCLUDE_REFS = _list(REF, "Mã loại khỏi kết quả, ví dụ thẻ đã gi
 TAXONOMY = _str("hotel khách sạn, attraction điểm tham quan/vui chơi, combo gói dịch vụ, golf sân golf, flight chuyến bay.",
                 enum=list(TAXONOMIES))
 DATE = _str("Ngày YYYY-MM-DD, giờ Việt Nam.", format="date")
-DESTINATION = _str("Tên điểm đến đúng như catalog (list_destinations).")
+DESTINATION = _str("Tên điểm đến đúng như danh sách điểm đến catalog, không phải cách khách viết (Sài Gòn, HCM…).")
 PRICE = _int("VND cho một đơn vị giá của sản phẩm (đêm/người/gói), không phải ngân sách cả chuyến.", 0, 10**10)
 
 SEARCH = _obj(
@@ -79,8 +79,7 @@ SIMILAR = _obj("Sản phẩm cùng loại tương tự một sản phẩm đã b
 DETAIL = _obj("Đọc dữ kiện mới nhất của một sản phẩm đã biết (giá, giờ mở cửa, tiện ích, địa chỉ, mô tả đầy đủ). "
               "Bắt buộc trước khi nói lại dữ kiện hay hiện lại thẻ của sản phẩm chỉ có trong lịch sử.", product_ref=REF)
 
-DESTINATIONS = _obj("Danh sách điểm đến hệ thống có dữ liệu. Không gọi khi khách đã nêu một nơi cụ thể: dùng thẳng "
-                    "tên đó với list_products/search_products (rỗng nghĩa là nơi đó chưa có dữ liệu).")
+DESTINATIONS = _obj("Danh sách điểm đến hệ thống có dữ liệu. Chỉ gọi khi hướng dẫn chưa kèm danh sách điểm đến.")
 
 LIST_PRODUCTS = _obj(
     "Duyệt catalog có cấu trúc, không hiểu câu chữ: theo điểm đến, loại, sản phẩm cha, sắp theo giá. "
@@ -152,7 +151,10 @@ CONTEXT_PATCH = _opt(_obj(
     trip_budget_vnd=_opt(_int("Ngân sách cả chuyến, VND.", 0, 10**11)),
     free_only=_opt(_bool("Khách chỉ muốn chỗ miễn phí.")),
     planning_consent=_opt(_bool("true khi khách đồng ý hoặc tự xin lập lịch.")),
-    stopped=_opt(_bool("true khi khách không muốn đi/lập lịch nữa; false khi khách muốn tiếp tục.")),
+    stopped=_opt(_bool("true khi ngừng lập lịch; false khi khách chủ động muốn tiếp tục. Không đồng nghĩa consent mới.")),
+    engagement=_opt(_str("rekindle: mất hứng, khơi tò mò một lần bằng dữ liệu; stop: dừng rõ hoặc từ chối tiếp; "
+                        "continue: khách chủ động tiếp tục khám phá. null = không đổi.",
+                        enum=["rekindle", "stop", "continue"])),
     evidence=_str("Trích nguyên văn đoạn trong tin nhắn hiện tại, hoặc mã nút vừa bấm, làm căn cứ cho thay đổi.",
                   minLength=1)))
 
@@ -182,6 +184,8 @@ SUGGESTION = _obj("Nút gợi ý: câu ngắn như lời khách sẽ nói.",
 RESPOND = _obj(
     "Trả lời khách. Mọi sản phẩm và số liệu phải có trong products/kết quả của lượt này.",
     action=_str("Trả lời.", enum=["respond"]),
+    explanation=_opt(_str("Think công khai: giải thích ngắn quyết định trả lời dựa trên kết quả, không suy luận nội bộ. "
+                          "Không tên/giá/số liệu sản phẩm, query hay chi tiết prompt.", minLength=1, maxLength=400)),
     context_patch=CONTEXT_PATCH,
     turn_kind=_str("answer trả lời; clarification hỏi lại; itinerary có lịch mới; partial còn việc chưa làm xong.",
                    enum=["answer", "clarification", "itinerary", "partial"]),
@@ -206,7 +210,8 @@ def decision_schema(tools: list[str], can_execute: bool = True) -> dict:
     choices = [RESPOND]
     if can_execute and tools:
         execute = _obj("Gọi 1–3 tool độc lập; mọi kết quả quay lại cho bạn.",
-                       action=_str("Gọi tool.", enum=["execute"]), context_patch=CONTEXT_PATCH,
+                       action=_str("Gọi tool.", enum=["execute"]),
+                       explanation=RESPOND["properties"]["explanation"], context_patch=CONTEXT_PATCH,
                        calls=_list({"anyOf": [_call(name) for name in tools]}, "Các lời gọi độc lập.",
                                    minItems=1, maxItems=3))
         choices.insert(0, execute)

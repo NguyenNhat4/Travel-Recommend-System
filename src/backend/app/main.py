@@ -35,6 +35,7 @@ from fastapi.responses import JSONResponse
 
 from src.backend.app.agents.runtime_dependencies import RuntimeAgentDependencies, orchestrator_budget
 from src.backend.app.agents.orc_v2 import OrcV2Runtime
+from src.backend.app.application.itinerary.destination_names import DestinationNames
 from src.backend.app.agents.tools.itinerary_gateway import ItineraryToolGateway
 from src.backend.app.api.errors import install_error_handlers
 from src.backend.app.api.middleware import (
@@ -681,7 +682,8 @@ def _itinerary_v2_runtime(app: FastAPI, settings: Settings, *, known_refs: dict[
     return OrcV2Runtime(tools=gateway, llm=llm, known_refs=known_refs,
                         request_timeout_seconds=settings.itinerary_request_timeout_seconds,
                         tool_timeout_seconds=settings.itinerary_tool_timeout_seconds,
-                        model_timeout_seconds=settings.itinerary_llm_timeout_seconds, progress=progress)
+                        model_timeout_seconds=settings.itinerary_llm_timeout_seconds, progress=progress,
+                        destinations=getattr(app.state, "itinerary_destination_names", None))
 
 
 def _forward_langsmith_env(settings) -> None:
@@ -813,6 +815,8 @@ async def lifespan(app: FastAPI):
             lambda authorization, owner: _itinerary_planner(app, settings, authorization, owner),
             settings.itinerary_request_timeout_seconds,
         )
+        app.state.itinerary_destination_names = DestinationNames(
+            timeout_seconds=settings.itinerary_tool_timeout_seconds)
         app.state.run_assistant_v2 = RunAssistantV2(
             app.state.itinerary_v2_store, lambda **turn: _itinerary_v2_runtime(app, settings, **turn))
         mode = settings.itinerary_data_mode or ("fixture" if settings.app_env in {"development", "test"} else "disabled")

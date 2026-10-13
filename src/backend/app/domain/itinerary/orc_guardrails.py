@@ -27,6 +27,13 @@ def _issue(code: str, field: str, refs: list[str] | None = None) -> dict[str, An
     return {"code": code, "field": field, "refs": refs or []}
 
 
+def public_explanation(text: str | None) -> str | None:
+    """Public decision summary, omitted when it contains unchecked figures, links or secrets."""
+    if not text or len(text) > 400 or _SECRET.search(text) or _NUMBER_TEXT.search(text):
+        return None
+    return text.strip() or None
+
+
 def final_issues(decision: dict[str, Any], *, products: dict[str, dict[str, Any]], fact: Callable[[str, str], Any],
                  plans: dict[str, dict[str, Any]], consent: bool, free_only: bool) -> list[dict[str, Any]]:
     """Vấn đề của quyết định respond.

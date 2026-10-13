@@ -829,3 +829,11 @@ Ca biên bắt buộc để dựng đủ 8 màn hình:
 ## 14. Definition of Done
 
 > Team Web dựng cả tám màn hình và mọi ca biên chỉ bằng type sinh từ `openapi.yaml` và fixture trong `src/shared/mocks/`, rồi đổi sang backend thật mà không sửa tầng `services`; Team Backend và Team Agent chạy contract test trên cùng file OpenAPI và cùng bộ fixture.
+
+### Tiến trình assistant v2 (AC-AGT-09, chốt 2026-10-13)
+
+V2 hiển thị Think/Act/Observe theo stream thực tế, không chuyển sang understand/search/write của v1. Think đọc explanation đã kiểm; Act từ activity, Observe từ tool-completed có outcome phân biệt empty/error/needs_input và found/eligible/selected/displayed. Thay hàng cùng phase/groupId để cập nhật số, giữ thứ tự; parser lọc sequence trùng và sai runId. Giao diện không in nhãn Think/Act/Observe: Think là một câu thường; Act và Observe cùng groupId gộp thành một dòng viết liền mạch (đang chạy “Đang tìm khách sạn ở Vũng Tàu…”, xong “Tìm khách sạn ở Vũng Tàu” + số phù hợp/chọn). Sự kiện đến dồn vẫn hiện lần lượt từng dòng (cách nhau ~0,45 giây, chỉ là nhịp hiển thị, không đổi trạng thái thật); khi chưa có dòng nào đang chạy thì có dòng chờ “Đang đọc yêu cầu…”/“Đang cân nhắc bước tiếp theo…”. Bản thu gọn liệt kê tối đa hai việc đã làm. Xong thu gọn và mở xem lại; không lưu tiến trình ở server. V1 tiếp tục dùng hình thức cũ cho client cũ.
+
+Phòng v2 chưa biết rooms thì giữ trạng thái chưa xác định khi chuyển sang widget, không tự nhân giá cho số người hoặc mặc định số phòng. Giờ hoạt động v2 là nguồn của nhãn buổi; không dồn hoạt động chiều về sáng.
+
+Next.js mặc định v2 từ 2026-10-13 theo chỉ đạo người dùng để kiểm thử; thiếu NEXT_PUBLIC_ASSISTANT_API cũng dùng v2, v1 chỉ khi đặt tường minh. Thẻ phương án từ hội thoại v1 trên web v2 gửi lựa chọn bằng tin nhắn cho orc v2 để tra lại, không gọi mutation v1. Không chuyển Streamlit; E12 và lưu/khôi phục lịch sử v2 chưa được chứng minh bởi đổi mặc định này.

@@ -854,7 +854,9 @@ class _LoggedStructured:
     câu trả lời thô (docs/spec/logging-schema.md §4). Mọi thuộc tính khác chuyển thẳng cho runnable gốc."""
 
     def __init__(self, inner, schema):
-        self._inner, self._schema = inner, getattr(schema, "__name__", str(schema))
+        # Schema dạng dict (JSON schema của orc) chỉ ghi `title`, không dump cả schema vào log.
+        name = schema.get("title") if isinstance(schema, dict) else getattr(schema, "__name__", None)
+        self._inner, self._schema = inner, name or type(schema).__name__
 
     def _log(self, started: float, outcome: str) -> None:
         log_event(logger, "assistant.llm.call", "INFO" if outcome == "ok" else "WARNING", schema=self._schema,

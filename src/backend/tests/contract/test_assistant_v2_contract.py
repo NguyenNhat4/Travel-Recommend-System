@@ -27,6 +27,9 @@ class Runner:
 
     async def run(self, inputs):
         if self.progress:
+            await self.progress("activity", {"groupId": "think:1", "kind": "think", "status": "completed",
+                "taxonomy": None, "explanation": "Mình sẽ tra lựa chọn phù hợp.",
+                "counts": {"found": 0, "eligible": 0, "selected": 0, "displayed": 0}})
             activity = {"groupId": "c1", "kind": "search", "status": "running", "taxonomy": "hotel",
                         "counts": {"found": 0, "eligible": 0, "selected": 0, "displayed": 0}}
             await self.progress("activity", activity)
@@ -64,8 +67,9 @@ def test_stream_reports_progress_then_exactly_one_final_and_json_replays_it():
         stream = api.post("/api/v2/assistant/itineraries/stream", json=body())
         assert stream.status_code == 200
         rows = events(stream.text)
-        assert [row["event"] for row in rows] == ["start", "activity", "tool-completed", "final"]
-        assert [row["sequence"] for row in rows] == [1, 2, 3, 4] and len({row["runId"] for row in rows}) == 1
+        assert [row["event"] for row in rows] == ["start", "activity", "activity", "tool-completed", "final"]
+        assert rows[1]["data"]["kind"] == "think" and rows[1]["data"]["explanation"]
+        assert [row["sequence"] for row in rows] == [1, 2, 3, 4, 5] and len({row["runId"] for row in rows}) == 1
         replay = api.post("/api/v2/assistant/itineraries", json=body())
         assert replay.status_code == 200 and replay.json() == rows[-1]["data"]
         assert valid("AssistantV2Final", replay.json())

@@ -22,7 +22,7 @@ import {
 import { getAssistantConversation } from '../services/assistantHistory';
 import { ApiError, apiJson } from '../services/http';
 import { newAssistantV2TurnId, requestAssistantV2Stream, type AssistantV2Request } from '../services/assistantV2Stream';
-import { v2Actions, v2Activity, v2AsV1Response, v2Progress } from '../features/itinerary/widget/widgetV2';
+import { v2Actions, v2AsV1Response, v2Timeline } from '../features/itinerary/widget/widgetV2';
 
 const CONVERSATION_STORAGE_KEY = 'vota.assistant.conversationId';
 type IntentOverride = components['schemas']['TripIntentPatch'];
@@ -97,8 +97,8 @@ function isAssistantResponse(value: unknown): value is AssistantResponse {
 
 const SLOW_NODE_MS = 12_000;
 
-/** Widget gọi assistant v2 khi bật `NEXT_PUBLIC_ASSISTANT_API=v2`; mặc định v1 tới khi nghiệm thu xong (PRD §3). */
-const ASSISTANT_V2 = process.env.NEXT_PUBLIC_ASSISTANT_API === 'v2';
+/** Next.js defaults to the current assistant; v1 requires an explicit compatibility override. */
+const ASSISTANT_V2 = process.env.NEXT_PUBLIC_ASSISTANT_API !== 'v1';
 
 function nodeProgress(data: Record<string, unknown>) {
   return {
@@ -225,12 +225,14 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
         signal: controller.signal,
         onEvent: (event) => {
           if (!isCurrent()) return;
-          if (event.event === 'start') dispatch({ type: 'run-started', runId: event.runId, requestId: event.runId });
-          else if (event.event === 'activity' && event.data.status === 'running') {
-            dispatch({ type: 'node-activity', activity: v2Activity(event.data) });
+          if (event.event === 'start') {
+            dispatch({ type: 'run-started', runId: event.runId, requestId: event.runId });
+            dispatch({ type: 'v2-progress-started' });
+          } else if (event.event === 'activity') {
+            dispatch({ type: 'v2-progress', entry: v2Timeline(event.data) });
             armSlowTimer();
           } else if (event.event === 'tool-completed') {
-            dispatch({ type: 'node-completed', progress: v2Progress(event.data) });
+            dispatch({ type: 'v2-progress', entry: v2Timeline(event.data, true) });
             armSlowTimer();
           } else if (event.event === 'preview') {
             dispatch({ type: 'run-preview', preview: { runId: event.runId, products: event.data.products.slice(0, 6) } });
@@ -359,6 +361,17 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
 
   const selectStayOption = useCallback(async (index: number) => {
     if (!state.conversationId) return false;
+    if (ASSISTANT_V2) {
+      // Saved v1 cards have no server-issued v2 action. Send the user's choice to the current agent for refresh.
+      const option = state.response?.status === 'COMPLETED'
+        ? state.response.stayOptions?.options.find((item) => item.index === index) : undefined;
+      const hotel = option?.itinerary.stays?.[0]?.product ?? option?.itinerary.stay?.product;
+      if (!hotel) return false;
+      const message = `Chọn khách sạn ${hotel.name}`;
+      executeRequest({ message, conversationId: state.conversationId, intentOverride: null,
+        context: { language: currentLocale === 'en' ? 'en' : 'vi' } }, message, true);
+      return true;
+    }
     const request: AssistantRequest = {
       message: null,
       conversationId: state.conversationId,
@@ -376,7 +389,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     } catch {
       return false;
     }
-  }, [currentLocale, state.conversationId]);
+  }, [currentLocale, executeRequest, state.conversationId, state.response]);
 
   const retry = useCallback(() => {
     if (state.lastRequest) {

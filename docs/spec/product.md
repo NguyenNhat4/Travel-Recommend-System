@@ -752,6 +752,10 @@ Handbook §7: `because` là "ranh giới giữa một cuộc tranh cãi và mộ
 
 ### 6.1 Tiến trình theo công việc thật (AC-AGT-09)
 
+**Assistant v2 (chốt 2026-10-13):** Think → Act → Observe theo các vòng thật, Think do LLM viết công khai trong cùng quyết định và được kiểm trước phát. Tool trả kết quả/lỗi và code đếm; UI không dựng trước ba bước. Calls song song có thể tạo nhiều Act trước Observe; cập nhật cùng group không thêm vòng giả. Khi mất hứng, một lựa chọn mới có nguồn có thể khơi tò mò một lần; dừng rõ/từ chối tiếp thì dừng. Khách chưa biết gì được gợi mở bằng dữ liệu. Không tự hồi sinh consent lập lịch.
+
+Các chi tiết node/nhóm bên dưới mô tả client **v1** đang giữ để tương thích.
+
 - Lập lịch: hiểu yêu cầu → tìm sản phẩm → xếp lịch → viết lời tư vấn.
 - Khám phá: hiểu → tìm → viết câu trả lời; hỏi vé: hiểu → tra vé.
 - Trò chuyện và hỏi lại: chỉ hiểu; lượt bị chặn không đánh ✓. Trước khi server xác định loại lượt chỉ có dòng đang hiểu, chưa có bước tương lai.

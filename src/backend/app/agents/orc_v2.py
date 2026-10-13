@@ -21,7 +21,7 @@ from src.backend.app.application.itinerary.orc_dispatch import VIETNAM, OrcToolD
 from src.backend.app.application.itinerary.product_registry import ProductRegistry
 from src.backend.app.application.itinerary.v2_final import card, fact, render_final
 from src.backend.app.domain.itinerary.normalization import fold
-from src.backend.app.domain.itinerary.orc_guardrails import FATAL, final_issues
+from src.backend.app.domain.itinerary.orc_guardrails import FATAL, final_issues, public_explanation
 
 from . import clock
 from .runtime_dependencies import orchestrator_budget
@@ -37,7 +37,7 @@ KINDS = {"search_products": "search", "get_recommendations": "recommend", "get_s
          "get_product_detail": "detail", "list_destinations": "destinations", "list_products": "catalog",
          "lookup_flights": "flights", "build_itinerary": "itinerary"}
 
-PROMPT = """Bạn là trợ lý du lịch S-OTA. Mỗi lần bạn ra MỘT quyết định:
+PROMPT = """Bạn là trợ lý du lịch Sota. Mỗi lần bạn ra MỘT quyết định:
 - execute: gọi 1–3 tool độc lập (không lời gọi nào cần kết quả của lời gọi khác cùng lượt). Mọi kết quả, kể cả lỗi,
   quay lại cho bạn ở results (server đánh mã c1, c2… theo thứ tự) để bạn quyết định tiếp. Không gọi lại tool với
   cùng tham số: kết quả đã nằm trong results và products.
@@ -59,18 +59,32 @@ Cách gọi tool
 - Chỉ có 3 lượt gọi tool: gộp các lời gọi độc lập vào cùng một lượt (ví dụ tìm điểm chơi và khách sạn cùng lúc).
 - query ngắn, chỉ chủ đề hoặc loại chỗ ("điểm tham quan", "bãi biển", "khách sạn có hồ bơi"). Ngày, số ngày, số người,
   giá, ngân sách, miễn phí đi vào tham số riêng (check_in, guests, price_max, free_only…), không viết vào query.
-- Chỉ gọi list_destinations khi chưa biết nơi hoặc nơi khách nói có thể không có trong catalog.
+- destination phải đúng một tên trong "Điểm đến trong catalog" ở cuối hướng dẫn này. Khách viết khác (viết tắt, tên
+  cũ, không dấu, tên tiếng Anh) thì dùng tên tương ứng trong danh sách. Nơi không có trong danh sách là chưa có dữ
+  liệu: nói thật, có thể gợi ý nơi gần giống trong danh sách, không gọi tool cho nơi đó. Chỉ gọi list_destinations
+  khi hướng dẫn không kèm danh sách.
 - Xem chung chỗ chơi hay chỗ ở của một nơi (khám phá, lập lịch) thì list_products theo destination + taxonomy: đủ
   danh sách, không lọc theo độ khớp chữ. search_products dành cho chủ đề hay tiện ích cụ thể (chùa, biển, hồ bơi);
   search có thể trả ít kết quả vì chỉ giữ kết quả khớp.
+- Đã có đủ ứng viên hợp để chọn số thẻ cần giới thiệu thì respond ngay, chọn thẻ từ chính các kết quả đó. Chỉ lấy
+  trang tiếp (cursor) hay tìm lại khi
+  kết quả đang có thiếu đúng thứ khách cần (ví dụ chưa có chỗ hợp gia đình), không lấy thêm chỉ để có nhiều lựa chọn.
 
 Trò chuyện và khám phá (trước khi khách đồng ý lập lịch)
 - Chỉ nêu một nơi ("Đà Lạt") là muốn khám phá: tìm vài điểm chơi và vài khách sạn ở đó, giới thiệu, rồi mời lập lịch.
 - Nhu cầu đủ rõ thì tìm ngay, không hỏi lại. Chưa có nơi thì destination=null (toàn catalog); không lấy thành phố của
   thẻ cũ làm nơi khách chọn. Muốn xem thêm thì loại thẻ đã giới thiệu bằng exclude_refs, giữ điều kiện chưa đổi.
 - Chưa đồng ý lập lịch thì KHÔNG hỏi số ngày, ngày đi, số người, ngân sách. Khách đồng ý hoặc tự xin lập lịch:
-  context_patch.planning_consent=true, evidence là đúng đoạn khách nói. Khách không muốn đi/lập lịch nữa: stopped=true,
-  cảm ơn và hẹn gặp lại; không thẻ, không nút, không hỏi thêm.
+  context_patch.planning_consent=true, evidence là đúng đoạn khách nói.
+- Khách mất hứng ("không muốn đi nữa", "chán quá"): engagement=rekindle, stopped=true; ngừng lập lịch/form nhưng
+  khơi tò mò MỘT lần bằng tối đa một lựa chọn mới đã tra, tối đa hai câu và một nút xem thêm. Nêu chi tiết đáng xem
+  có trong description/attributes, đổi hướng so với thứ khách chê, không chỉ hẹn "khi nào quay lại".
+  context.curiosity_offered=true nghĩa là đã khơi tò mò: khách từ chối tiếp thì engagement=stop, không níu lần nữa.
+- Khách nói "dừng", "đừng gợi ý nữa", "không cần tư vấn nữa": engagement=stop, stopped=true; trả lời ngắn, không
+  thẻ/nút/câu hỏi và không gọi tool. Giữ lịch cũ; gợi ý khám phá không phải đồng ý lập lịch. Khách chủ động tiếp tục
+  khám phá thì engagement=continue, stopped=false; chỉ cấp planning_consent khi có yêu cầu lập lịch rõ mới.
+- Khách chưa biết gì/chưa biết đi đâu: chủ động gọi get_recommendations hoặc tra catalog để chọn vài trải nghiệm
+  khác nhau có chi tiết thú vị trong dữ liệu. Không hỏi lặp "bạn thích gì"; không tự chọn điểm đến thay khách.
 - Số thẻ: khách nêu số thì theo số đó (tối đa 10 mỗi loại); không nêu thì vài thẻ hợp nhất. Không lặp, không bù bằng
   sản phẩm không hợp; thiếu thì nói thật thiếu bao nhiêu và vì sao (turn_kind=partial).
 - Gợi ý kể như một câu chuyện ngắn về nơi đó, không phải danh sách và cũng không phải lịch trình: mở bằng một câu gợi
@@ -101,6 +115,13 @@ Lập lịch (sau khi khách đồng ý)
 - Ngân sách cả chuyến là mục tiêu mềm: ưu tiên lựa chọn hợp túi tiền nhưng không dùng free_only hay price_max để ép
   theo ngân sách, không bỏ chỗ ở hay bỏ lập lịch vì ngân sách; build_itinerary tính tổng và báo vượt.
 - Chuyến qua đêm thì đưa chỗ ở (hạng phòng của khách sạn, list_products parent_ref) vào lịch, trừ khi khách nói không cần.
+- Số khách không phải số phòng. Đọc maxOccupancy (có phòng chứa 8 người) và priceAdults (số người lớn giá đã gồm)
+  của đúng hạng phòng, không lấy giá khách sạn tổng thay giá phòng. Tool tính rooms=ceil(adults/priceAdults), tiền
+  phòng=giá/đêm × đêm thật × rooms; không tự nhân giá phòng với cả đoàn. Sức chứa lớn không chứng minh giá gồm cả đoàn;
+  thiếu cơ sở giá hay sức chứa thì đọc cảnh báo và nói rõ chưa kiểm đủ, không coi tổng đã biết là tổng hoàn chỉnh.
+- Ngày trọn vẹn có đủ cửa sổ và sản phẩm phù hợp: phác hoạt động cả sáng lẫn chiều, chừa nghỉ/di chuyển theo dữ kiện
+  hoặc giả định có công bố. Không mặc định mọi hoạt động vào sáng; không lấp chiều/tối bằng chỗ giả. Chỉ đi sáng,
+  hoạt động cả ngày hoặc cửa sổ chuyến bay ngắn thì giữ giới hạn đó và giải thích phần buổi còn trống.
 - Gọi build_itinerary để kiểm. Có violations thì tự sửa lịch (đổi giờ, bỏ hoặc thay sản phẩm) rồi gọi lại; không trả
   lịch infeasible. Hợp lệ thì respond: turn_kind=itinerary, plan_effect=replace, plan_result_id, disclosures liệt kê
   MỌI mã trong warnings của lịch đó (code tự viết câu báo kèm số). Vượt ngân sách vẫn trả lịch.
@@ -127,11 +148,27 @@ Kết quả tool
 - remaining cho biết còn bao nhiêu lượt gọi tool; hết thì respond bằng phần đã có và nói rõ phần chưa làm.
 - issues là lỗi của quyết định trước: sửa đúng chỗ đó.
 - Đã có kết quả thì trả lời bằng kết quả đó; không viết kiểu "mình sẽ tìm" khi đang respond.
+- explanation là Think CÔNG KHAI ngắn cho người dùng, tối đa hai câu: hiểu yêu cầu và việc sắp làm, hoặc đánh giá
+  kết quả và quyết định tiếp. Gọi tiếp sau khi đã có kết quả thì nói kết quả đang có thiếu gì nên phải gọi (ví dụ
+  "các điểm vừa xem chủ yếu là ngắm cảnh, cần thêm chỗ tìm hiểu lịch sử"). Khi respond có thẻ, explanation nói tiêu chí
+  đã dùng để chọn các thẻ đó trong số kết quả (ví dụ "chọn mỗi kiểu trải nghiệm một nơi: lịch sử, ngắm cảnh, trên
+  sông; ưu tiên nơi nhiều đánh giá"); số đã xem và số chọn do code hiện. Giọng ghi chú công việc, không mở đầu
+  kiểu trò chuyện ("Được chứ", "Bạn muốn…"). Viết trong cùng object quyết định, không suy luận nội bộ/prompt. Không ghi tên, giá,
+  giờ, số liệu hay khẳng định tiện ích sản phẩm trong explanation; dữ kiện sản phẩm để đoạn fact/product ở answer.
+  Không tự nhận đã kiểm hoặc tìm đủ trước khi có kết quả tool; không dùng cùng một câu mẫu cho mọi vòng.
 """
+
+
+def system_prompt(destinations: list[str] | None) -> str:
+    """PROMPT kèm tên điểm đến catalog (lấy lúc chạy, không viết cứng); không có danh sách thì giữ nguyên PROMPT."""
+    if not destinations:
+        return PROMPT
+    return PROMPT + "\nĐiểm đến trong catalog\n- " + ", ".join(destinations) + "\n"
 
 
 class V2State(TypedDict, total=False):
     message: str
+    destinations: list[str] | None
     ui_action: dict | None
     intent_override: dict | None
     language: str
@@ -169,8 +206,15 @@ def _plan_view(plan: dict | None, shown: dict) -> dict | None:
 
 
 def _merged(patch: dict | None, update: dict | None) -> dict:
-    return {**(patch or {}), **{key: value for key, value in (update or {}).items()
-                                 if value is not None and key != "evidence"}}
+    merged = {**(patch or {}), **{key: value for key, value in (update or {}).items()
+                                if value is not None and key != "evidence"}}
+    if (update or {}).get("engagement") == "continue":
+        merged.update(stopped=False, curiosity_offered=False)
+    elif (update or {}).get("engagement") in ("rekindle", "stop"):
+        merged["stopped"] = True
+    if merged.get("stopped"):
+        merged["planning_consent"] = False
+    return merged
 
 
 def _status(result: dict) -> str:
@@ -182,6 +226,8 @@ def _activity(call: dict, status: str, result: dict | None = None, shown: set | 
     refs = (result or {}).get("refs") or []
     displayed = sum(ref in (shown or set()) for ref in refs)
     return {"groupId": call["call_id"], "kind": KINDS[call["name"]], "status": status, "taxonomy": taxonomy,
+            **({"destination": call["arguments"]["destination"]} if call["arguments"].get("destination") else {}),
+            **({"outcome": result["status"]} if result else {}),
             "counts": {"found": ((result or {}).get("coverage") or {}).get("checked", len(refs)),
                        "eligible": len(refs), "selected": displayed, "displayed": displayed}}
 
@@ -231,7 +277,7 @@ def build_orc_v2_graph(dispatcher: OrcToolDispatcher, llm, *, model_timeout_seco
                           "source_requests": dispatcher.budget.limit - dispatcher.budget.used,
                           "model_calls": MAX_MODEL_CALLS - state.get("model_calls", 0)},
         }
-        return [("system", PROMPT), ("human", json.dumps(data, ensure_ascii=False, default=str))]
+        return [("system", system_prompt(state.get("destinations"))), ("human", json.dumps(data, ensure_ascii=False, default=str))]
 
     def patch_issue(state: V2State, patch: dict | None) -> dict | None:
         """Thay đổi ngữ cảnh phải có căn cứ trong tin nhắn hiện tại, nút vừa bấm hoặc form vừa gửi."""
@@ -267,20 +313,42 @@ def build_orc_v2_graph(dispatcher: OrcToolDispatcher, llm, *, model_timeout_seco
         problem = patch_issue(state, decision["context_patch"])
         if problem:
             return {**update, "issues": [problem]}
+        patch = _merged(state.get("patch"), decision["context_patch"])
+        context = {**state["context"], **patch}
+        engagement = context.get("engagement")
+        if engagement == "rekindle" and state["context"].get("curiosity_offered"):
+            return {**update, "issues": [{"code": "CURIOSITY_ALREADY_OFFERED", "field": "context_patch.engagement"}]}
+        if decision["action"] == "execute" and context.get("stopped") and engagement != "rekindle":
+            return {**update, "issues": [{"code": "STOPPED_NO_TOOLS", "field": "calls"}]}
+        if decision["action"] == "execute" and context.get("stopped") and any(
+                call["name"] == "build_itinerary" for call in decision["calls"]):
+            return {**update, "issues": [{"code": "STOPPED_NO_PLANNING", "field": "calls"}]}
         return {**update, "decision": decision}
 
+    async def explain(state: V2State, counts: dict | None = None) -> None:
+        """Think công khai. Ở quyết định respond, `counts` là số ứng viên orc đã xem trong lượt và số orc chọn hiện."""
+        text = public_explanation(state["decision"].get("explanation"))
+        if text:
+            await emit("activity", {"groupId": f"think:{state['model_calls']}", "kind": "think",
+                                    "status": "completed", "taxonomy": None, "explanation": text,
+                                    "counts": counts or {"found": 0, "eligible": 0, "selected": 0, "displayed": 0}})
+
     async def dispatch(state: V2State) -> dict:
+        await explain(state)
         decision, done = state["decision"], len(state.get("calls", []))
         calls = [{**call, "call_id": f"c{done + number}"} for number, call in enumerate(decision["calls"], 1)]
         for call in calls:
             await emit("activity", _activity(call, "running"))
-        results = await asyncio.gather(*(dispatcher.run(call) for call in calls))
-        for call, result in zip(calls, results):
+        async def run_and_report(call):
+            result = await dispatcher.run(call)
             await emit("tool-completed", _activity(call, _status(result), result))
             plan = dispatcher.plans.get(call["call_id"])
             if plan and plan["feasibility"] != "infeasible":
                 await emit("preview", {"groupId": call["call_id"], "products": [
                     card(dispatcher.registry.product(ref)) for ref in result["refs"]]})
+            return result
+
+        results = await asyncio.gather(*(run_and_report(call) for call in calls))
         return {"calls": [*state.get("calls", []), *calls],
                 "results": [*state.get("results", []), *results], "batches": state.get("batches", 0) + 1,
                 "patch": _merged(state.get("patch"), decision["context_patch"])}
@@ -289,11 +357,19 @@ def build_orc_v2_graph(dispatcher: OrcToolDispatcher, llm, *, model_timeout_seco
         decision, registry = state["decision"], dispatcher.registry
         patch = _merged(state.get("patch"), decision["context_patch"])
         context = {**state["context"], **patch}
-        await emit("activity", {"groupId": "answer", "kind": "answer", "status": "running", "taxonomy": None,
-                                "counts": {"found": 0, "eligible": 0, "selected": 0, "displayed": 0}})
         issues = final_issues(decision, products=registry.fetched(), plans=dispatcher.plans,
                               fact=lambda ref, field: fact(registry, dispatcher.results, ref, field),
-                              consent=bool(context.get("planning_consent")), free_only=bool(context.get("free_only")))
+                              consent=bool(context.get("planning_consent")) and not context.get("stopped"),
+                              free_only=bool(context.get("free_only")))
+        refs = {ref for refs in decision["cards"].values() for ref in refs}
+        refs.update(a["product_ref"] for a in decision["alternatives"])
+        refs.update(s["ref"] for s in decision["answer"] if s["type"] == "product")
+        if context.get("stopped") and context.get("engagement") != "rekindle" and (refs or decision["suggestions"]):
+            issues.append({"code": "STOPPED_NO_SUGGESTIONS", "field": "cards"})
+        if context.get("engagement") == "rekindle" and (len(refs) > 1 or len(decision["suggestions"]) > 1):
+            issues.append({"code": "CURIOSITY_LIMIT", "field": "cards"})
+        if context.get("engagement") == "rekindle" and refs.intersection(state["shown"]):
+            issues.append({"code": "CURIOSITY_NEEDS_NEW_OPTION", "field": "cards"})
         if any(issue["code"] in FATAL for issue in issues):
             return {"failure": "ITINERARY_VALIDATION_FAILED"}
         if not issues:
@@ -310,10 +386,12 @@ def build_orc_v2_graph(dispatcher: OrcToolDispatcher, llm, *, model_timeout_seco
                 return {"failure": "ITINERARY_VALIDATION_FAILED"}
             return {"issues": issues, "repaired": True}
         shown = set(memory["shown"])
+        seen = len(registry.fetched())
+        await explain(state, {"found": seen, "eligible": seen, "selected": len(shown), "displayed": len(shown)})
+        if context.get("engagement") == "rekindle":
+            patch["curiosity_offered"] = True
         for call, result in zip(state.get("calls", []), state.get("results", [])):
             await emit("tool-completed", _activity(call, _status(result), result, shown))
-        await emit("activity", {"groupId": "answer", "kind": "answer", "status": "completed", "taxonomy": None,
-                                "counts": {"found": 0, "eligible": 0, "selected": 0, "displayed": 0}})
         return {"final": final, "memory": memory, "patch": patch}
 
     def after_decide(state: V2State) -> str:
@@ -342,7 +420,8 @@ class OrcV2Runtime:
     """Dựng registry, dispatcher và graph cho một lượt; không có gì sống qua lượt sau."""
 
     def __init__(self, *, tools, llm, known_refs: dict[str, str], request_timeout_seconds: float,
-                 tool_timeout_seconds: float, model_timeout_seconds: float, progress=None):
+                 tool_timeout_seconds: float, model_timeout_seconds: float, progress=None, destinations=None):
+        self.destinations = destinations  # DestinationNames dùng chung cả process; None = không kèm danh sách
         self.registry = ProductRegistry(known_refs)
         budget = SourceBudget(deadline=monotonic() + orchestrator_budget(request_timeout_seconds))
         self.dispatcher = OrcToolDispatcher(tools, self.registry, budget, timeout_seconds=tool_timeout_seconds,
@@ -351,6 +430,8 @@ class OrcV2Runtime:
                                         progress=progress)
 
     async def run(self, inputs: dict[str, Any]) -> dict[str, Any]:
+        if self.destinations is not None:
+            inputs = {**inputs, "destinations": await self.destinations.get(self.dispatcher.tools)}
         state = await self.graph.ainvoke(inputs)
         logger.info("itinerary.v2.turn outcome=%s modelCalls=%s toolRounds=%s sourceRequests=%s",
                     state.get("failure") or "final", state.get("model_calls", 0), state.get("batches", 0),

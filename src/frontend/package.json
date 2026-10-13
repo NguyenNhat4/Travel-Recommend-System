@@ -20,7 +20,9 @@
     "test": "vitest run",
     "test:api": "vitest run tests/api tests/contract",
     "test:unit": "vitest run tests/unit",
-    "test:e2e": "npm run build:web && playwright test",
+    "test:e2e": "npm run test:e2e:legacy && npm run test:e2e:v2",
+    "test:e2e:legacy": "cross-env NEXT_PUBLIC_ASSISTANT_API=v1 npm run build:web && cross-env NEXT_PUBLIC_ASSISTANT_API=v1 playwright test --grep-invert @assistant-v2",
+    "test:e2e:v2": "cross-env NEXT_PUBLIC_ASSISTANT_API=v2 npm run build:web && cross-env NEXT_PUBLIC_ASSISTANT_API=v2 playwright test --grep @assistant-v2",
     "generate:assistant-v2-types": "openapi-typescript ../shared/contracts/assistant-v2.openapi.yaml -o src/types/assistant-v2.gen.ts"
   },
   "dependencies": {

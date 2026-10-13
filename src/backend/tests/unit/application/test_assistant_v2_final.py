@@ -78,3 +78,24 @@ def test_response_outside_the_contract_is_an_error_not_trimmed():
     refs = [registry.add(product(f"h{i}", "hotel")) for i in range(11)]
     with pytest.raises(ValueError):
         render(respond(hotel=refs), registry)
+
+
+@pytest.mark.parametrize('basis,expected_rooms', [(2, 1), (8, 1), (None, None)])
+def test_stay_rooms_and_totals_are_consistent_with_the_price_basis(basis, expected_rooms):
+    registry = ProductRegistry()
+    room = registry.add(product('room', 'hotel', price=1_000_000, unit='PER_NIGHT',
+                                priceAdults=basis, maxOccupancy=8))
+    adults = 8 if basis == 8 else 2
+    draft = arguments('build_itinerary', destination='Huế', start_date='2026-10-24', days=2,
+                      adults=adults, children=0, plan_days=[{'day_index': i, 'activities': []} for i in [1, 2]],
+                      stays=[{'product_ref': room, 'check_in': '2026-10-24', 'check_out': '2026-10-25'}])
+    products = {room: registry.product(room)}
+    checked = check_draft(draft, products)
+    plans = {'c1': {'plan_result_id': 'c1', 'draft': draft, 'products': products, **checked}}
+    decision = respond(turn_kind='itinerary', plan_effect='replace', plan_result_id='c1',
+                       disclosures=[warning['code'] for warning in checked['warnings']])
+    final, _ = render(decision, registry, plans)
+    assert final['itinerary']['stays'][0]['rooms'] == expected_rooms
+    assert final['itinerary']['costs']['estimatedTotalVnd'] == (None if basis is None else 1_000_000)
+    if basis is None:
+        assert 'chưa tính đủ' in final['message'] and 'tạm cho 1 phòng' not in final['message']

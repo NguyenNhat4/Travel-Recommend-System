@@ -25,6 +25,10 @@ CASES = {
     "for-me": ["Gợi ý hợp với mình"],
     # AC-AGT-07: kể chuyện theo sở thích, mỗi thẻ một đoạn có câu dẫn; chưa đồng ý thì không xếp sáng/chiều/tối.
     "explore-story": ["đi hcm"],
+    # Tên khách viết khác tên catalog ("TP. Hồ Chí Minh", "Đà Lạt"): orc phải dùng đúng tên trong danh sách điểm đến.
+    "alias-saigon": ["sài gòn có gì chơi"],
+    "alias-short": ["hcm có gì vui"],
+    "alias-no-diacritics": ["da lat co gi choi"],
     "follow-up-vs-new": ["khách sạn ở Huế có hồ bơi", "xem thêm", "còn Đà Lạt thì sao", "khách sạn rẻ hơn"],
     "second-card": ["Khách sạn ở Huế", "Khách sạn thứ hai có hồ bơi không?"],
     "whole-catalog": ["Khách sạn ở Huế", "Tìm thêm toàn catalog, không chỉ Huế"],
@@ -41,7 +45,7 @@ def turn(url: str, conversation_id: str | None, message: str, revision: int | No
     body = {"clientTurnId": uuid.uuid4().hex, "basePlanRevision": revision, "message": message}
     if conversation_id:
         body["conversationId"] = conversation_id
-    started, steps, final, error = time.monotonic(), [], None, None
+    started, steps, thinks, final, error = time.monotonic(), [], [], None, None
     with httpx.stream("POST", url, json=body, timeout=180) as response:
         if response.status_code != 200:
             return {"message": message, "status": response.status_code, "error": json.loads(response.read()),
@@ -52,10 +56,14 @@ def turn(url: str, conversation_id: str | None, message: str, revision: int | No
             event = json.loads(line[6:])
             if event["event"] == "activity" and event["data"]["status"] == "running" and event["data"]["kind"] != "answer":
                 steps.append(event["data"]["kind"])
+            if event["event"] == "activity" and event["data"]["kind"] == "think":
+                counts = event["data"]["counts"]
+                thinks.append((f'[{counts["displayed"]}/{counts["found"]}] ' if counts["displayed"] else "")
+                              + event["data"]["explanation"])
             final = event["data"] if event["event"] == "final" else final
             error = event["data"] if event["event"] == "error" else error
-    return {"message": message, "seconds": round(time.monotonic() - started, 1), "steps": steps, "final": final,
-            "error": error}
+    return {"message": message, "seconds": round(time.monotonic() - started, 1), "steps": steps, "thinks": thinks,
+            "final": final, "error": error}
 
 
 def summary(row: dict) -> str:
@@ -69,7 +77,8 @@ def summary(row: dict) -> str:
                  f'status={plan["costs"]["budgetStatus"]}') if plan else ""
     return (f'  {row["seconds"]}s {final["turnKind"]}/{final["planEffect"]} cards={cards}{plan_text} '
             f'warnings={[w["code"] for w in final["warnings"]]} tools={row["steps"]}\n'
-            f'  > {final["message"][:300]}')
+            + "".join(f'  think: {text}\n' for text in row.get("thinks", []))
+            + f'  > {final["message"][:300]}')
 
 
 def main() -> None:

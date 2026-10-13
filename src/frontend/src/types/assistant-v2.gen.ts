@@ -124,7 +124,7 @@ export interface components {
              * @description Safe warning code; warning does not automatically block a plan.
              * @enum {string}
              */
-            code: "OVER_TRIP_BUDGET" | "PRICE_UNKNOWN" | "OPENING_HOURS_UNKNOWN" | "TIMING_ESTIMATED" | "PARTIAL_COVERAGE" | "OPTIMIZATION_UNAVAILABLE" | "PRICE_CAPACITY_UNKNOWN" | "SIMULATED_PRICE" | "TRAVEL_TIME_UNKNOWN" | "DATE_AVAILABILITY_UNKNOWN" | "CAPACITY_UNKNOWN" | "STAY_AVAILABILITY_UNVERIFIED";
+            code: "OVER_TRIP_BUDGET" | "PRICE_UNKNOWN" | "OPENING_HOURS_UNKNOWN" | "TIMING_ESTIMATED" | "PARTIAL_COVERAGE" | "OPTIMIZATION_UNAVAILABLE" | "PRICE_CAPACITY_UNKNOWN" | "ROOM_CAPACITY_UNKNOWN" | "SIMULATED_PRICE" | "TRAVEL_TIME_UNKNOWN" | "DATE_AVAILABILITY_UNKNOWN" | "CAPACITY_UNKNOWN" | "STAY_AVAILABILITY_UNVERIFIED";
             /**
              * @description Non-blocking warning; required disclosures checked before final.
              * @constant
@@ -545,7 +545,7 @@ export interface components {
             /** @description Code-counted displayed for this group, not model-provided or accumulated across replacements. */
             displayed: number;
         };
-        /** @description Safe progress data; no query, prompt, raw model/tool payload or internal reasoning. */
+        /** @description Actual Think/Act/Observe progress; explanation is a checked public decision summary, never internal reasoning or raw model output. */
         ActivityData: {
             /** @description Stable group identity, replace its state rather than cumulatively append counts. */
             groupId: string;
@@ -553,7 +553,7 @@ export interface components {
              * @description Actual work requested, no predetermined next steps.
              * @enum {string}
              */
-            kind: "search" | "recommend" | "similar" | "detail" | "destinations" | "catalog" | "flights" | "itinerary" | "answer";
+            kind: "think" | "search" | "recommend" | "similar" | "detail" | "destinations" | "catalog" | "flights" | "itinerary" | "answer";
             /**
              * @description Actual lifecycle of this activity.
              * @enum {string}
@@ -562,6 +562,15 @@ export interface components {
             /** @description Optional taxonomy for this activity. */
             taxonomy: components["schemas"]["Taxonomy"] | null;
             counts: components["schemas"]["ProgressCounts"];
+            /** @description Checked public explanation for a think activity; authored with the existing model decision. No raw facts, queries, secrets or internal reasoning. */
+            explanation?: string;
+            /** @description Destination from the checked tool arguments, when present. */
+            destination?: string;
+            /**
+             * @description Actual source outcome; empty differs from error and needs_input.
+             * @enum {string}
+             */
+            outcome?: "ok" | "empty" | "partial" | "needs_input" | "error";
         };
         /** @description One start event; final/error are terminal and only one terminal event is emitted. */
         EventStart: {

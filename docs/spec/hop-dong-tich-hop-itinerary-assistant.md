@@ -752,8 +752,7 @@ Entry riêng `src/shared/contracts/assistant-v2.openapi.yaml`, prefix `/api/v2`;
   `costs` có tổng/ngân sách/vượt hoặc unknown), `planEffect` (`keep` giữ lịch, `replace` thay lịch và tăng
   `planRevision`; revision lệch thì 409 `PLAN_REVISION_CONFLICT`), `warnings` (câu báo do code viết), `suggestions`.
 - `message` nhắc sản phẩm bằng `[Tên](product:id)` như lời diễn giải v1, để widget đặt thẻ ngay sau câu đó.
-- SSE: `start` → `activity`/`tool-completed` theo lời gọi tool orc thực sự yêu cầu (đếm tìm thấy, đủ điều kiện, được
-  chọn, được hiện) → `preview` (lịch đã kiểm, chỉ xem) → đúng một `final` hoặc `error`. Mất kết nối không huỷ lượt.
+- SSE: `start` → Think (`activity.kind=think`, `explanation` công khai đã kiểm) → Act (`activity` của tool) → Observe (`tool-completed`, `outcome` và số đếm thật) → Think tiếp theo hoặc `final`/`error`. Các call độc lập chạy song song; Observe phát khi từng call xong. Cập nhật số chọn/hiển thị của cùng group thay số cũ, không thêm vòng giả. `preview` chỉ lịch đã kiểm, chỉ xem. Mất kết nối không huỷ lượt. Không thêm model call để viết tiến trình.
 - Lỗi theo §4.6: `LLM_UNAVAILABLE` 503 (model lỗi, hết giới hạn lượt), `ITINERARY_VALIDATION_FAILED` 500 (câu trả lời
   vẫn sai sau một lần sửa), `VALIDATION_ERROR` 400 (đầu vào bị chặn, NFR-SEC-04) hoặc 422 (request sai).
 - Chưa có: ghi archive Postgres cho user đăng nhập và endpoint đọc lại lịch sử v2 (làm cùng lúc chuyển widget).
@@ -923,3 +922,9 @@ OpenAPI 1.2.0 đã khóa phiên bản đầu tiên của:
 3. `ItineraryResponse` — Agent trả về cho Web.
 
 Ba schema được tham chiếu từ `src/shared/contracts/openapi.yaml`. Frontend tạo mock/client từ contract này; backend dùng cùng contract cho validation và contract test. Mọi thay đổi required field, enum hoặc HTTP behavior phải sửa OpenAPI trước, cập nhật fixture và chạy validator.
+
+### Tương tác và phòng trong assistant v2 (chốt 2026-10-13)
+
+FR-AGT-01/06, AC-AGT-01/04/07/09: context_patch.engagement phân biệt rekindle (mất hứng, khơi tò mò một lần), stop (dừng rõ/từ chối tiếp), continue (chủ động khám phá tiếp). Khi dừng, consent lập lịch bị hủy; khám phá tiếp không tự cấp lại consent. curiosity_offered chỉ commit sau final hợp lệ. Một lần khơi tò mò tối đa một sản phẩm đã tra, một nút; prompt giới hạn hai câu, không tạo classifier/agent riêng. Khách chưa biết gì được gợi mở từ catalog/recommendation.
+
+Giá lưu trú dùng priceAdults theo PRD; maxOccupancy được kiểm riêng cho cả người lớn/trẻ em, không lấy sức chứa thay số khách giá đã gồm. Không có priceAdults thì rooms=null và tổng tiền unknown; không ghi “tính tạm một phòng”. Thiếu maxOccupancy có cảnh báo ROOM_CAPACITY_UNKNOWN; vượt sức chứa là violation ROOM_CAPACITY_EXCEEDED để orc chọn lại. Giờ sáng/chiều giữ qua response/UI; prompt phác lịch trọn ngày theo cửa sổ thực tế và giải thích khi chỉ có sáng. Chất lượng model thật do người dùng eval sau kiểm kỹ thuật.

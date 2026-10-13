@@ -1,12 +1,22 @@
 // @vitest-environment jsdom
 import React from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({
+const mocks = vi.hoisted(() => {
+  // These scenarios intentionally cover the retained v1 compatibility client, not the Next.js default.
+  const previousVersion = process.env.NEXT_PUBLIC_ASSISTANT_API;
+  process.env.NEXT_PUBLIC_ASSISTANT_API = 'v1';
+  return {
+  previousVersion,
   requestAssistantStream: vi.fn(), getAssistantConversation: vi.fn(),
   travel: { currentLocale: 'vi', authReady: true, currentPersona: null as { id: string; code: string } | null },
-}));
+  };
+});
+afterAll(() => {
+  if (mocks.previousVersion === undefined) delete process.env.NEXT_PUBLIC_ASSISTANT_API;
+  else process.env.NEXT_PUBLIC_ASSISTANT_API = mocks.previousVersion;
+});
 
 vi.mock('../../src/context/TravelContext', () => ({ useTravel: () => mocks.travel }));
 

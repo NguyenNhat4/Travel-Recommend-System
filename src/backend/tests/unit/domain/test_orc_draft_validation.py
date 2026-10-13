@@ -2,6 +2,8 @@
 from collections import Counter
 from copy import deepcopy
 
+import pytest
+
 from src.backend.app.domain.itinerary.draft_validation import check_draft, cost_mode
 from src.backend.tests.fakes.orc_tools import product
 
@@ -21,6 +23,30 @@ def draft(*days, **fields):
 
 def codes(issues):
     return {issue["code"] for issue in issues}
+
+
+@pytest.mark.parametrize('adults,basis,capacity,expected', [(2, 2, 2, 1), (8, 8, 8, 1), (9, 8, 8, 2), (8, 2, 8, 4)])
+def test_stay_price_uses_included_guests_not_party_size(adults, basis, capacity, expected):
+    room = product('room', 'hotel', price=1_000_000, unit='PER_NIGHT', priceAdults=basis, maxOccupancy=capacity)
+    result = check_draft(draft([], [], adults=adults, stays=[
+        {'product_ref': 'p1', 'check_in': '2026-10-24', 'check_out': '2026-10-25'}]), {'p1': room})
+    assert result['violations'] == []
+    assert result['costs']['estimated_total_vnd'] == expected * 1_000_000
+
+
+def test_stay_capacity_includes_children_and_reports_insufficient_space():
+    room = product('room', 'hotel', price=1_000_000, unit='PER_NIGHT', priceAdults=2, maxOccupancy=2)
+    result = check_draft(draft([], [], children=1, stays=[
+        {'product_ref': 'p1', 'check_in': '2026-10-24', 'check_out': '2026-10-25'}]), {'p1': room})
+    assert 'ROOM_CAPACITY_EXCEEDED' in codes(result['violations'])
+
+
+def test_unknown_price_basis_is_not_a_priced_single_room():
+    room = product('room', 'hotel', price=1_000_000, unit='PER_NIGHT', maxOccupancy=8)
+    result = check_draft(draft([], [], stays=[
+        {'product_ref': 'p1', 'check_in': '2026-10-24', 'check_out': '2026-10-25'}]), {'p1': room})
+    assert 'PRICE_CAPACITY_UNKNOWN' in codes(result['warnings'])
+    assert result['costs']['estimated_total_vnd'] is None
 
 
 def test_day_trip_with_four_activities_has_zero_nights_and_no_cap():

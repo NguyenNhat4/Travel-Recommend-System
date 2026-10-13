@@ -114,6 +114,9 @@ POST /api/v2/assistant/itineraries hoặc /stream
 ```
 
 Giới hạn mỗi lượt: 3 lượt gọi tool (1–3 tool mỗi lượt), 10 request nguồn, 5 lần gọi model, sửa câu trả lời 1 lần.
+System prompt kèm tên điểm đến của catalog (`application/itinerary/destination_names.py`, lấy qua `list_destinations`,
+cache 10 phút trong process, không tính vào ngân sách lượt) để orc dùng đúng tên catalog thay cách khách viết ("Sài Gòn",
+"HCM" → "TP. Hồ Chí Minh"); không lấy được thì prompt không kèm danh sách và orc tự gọi `list_destinations`.
 Mã sản phẩm `p1, p2…` và mã lời gọi `c1, c2…` do server cấp; số liệu trong lời đáp đi qua đoạn `fact`, tên sản phẩm qua
 đoạn `product` (code điền tên và đặt thẻ). Test: `tests/unit/agents/test_orc_*.py`, `tests/unit/application/test_assistant_v2_*.py`,
 `tests/unit/domain/test_orc_*.py`, `tests/contract/test_assistant_v2_contract.py`; model giả ở `tests/fakes/orc_tools.py`.

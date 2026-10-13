@@ -12,6 +12,6 @@ export function WidgetProgressSummary({view}:{view:ProgressView}) {
       <span className="min-w-0 flex-1 break-words">{view.summary}<span className="ml-2 font-semibold text-ai-700">{open ? 'Thu gọn' : 'Xem các bước'}</span></span>
       <ChevronDown aria-hidden="true" className={`mt-1 h-4 w-4 shrink-0 ${open ? 'rotate-180' : ''}`} />
     </button>
-    <div id={id} hidden={!open} className="pt-3"><ProgressSteps view={view} /></div>
+    <div id={id} hidden={!open} className="pt-3"><ProgressSteps steps={view.steps} /></div>
   </div>;
 }

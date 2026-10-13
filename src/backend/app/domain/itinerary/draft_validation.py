@@ -215,6 +215,11 @@ def check_draft(draft: dict[str, Any], products: dict[str, dict[str, Any]]) -> d
             flag(warnings, "PRICE_CAPACITY_UNKNOWN", ref)
         elif rooms > MAX_ROOMS:
             flag(violations, "TOO_MANY_ROOMS", ref)
+        capacity = (product.get("attributes") or {}).get("maxOccupancy")
+        if isinstance(capacity, bool) or not isinstance(capacity, int) or capacity < 1:
+            flag(warnings, "ROOM_CAPACITY_UNKNOWN", ref)
+        elif rooms and people > rooms * capacity:
+            flag(violations, "ROOM_CAPACITY_EXCEEDED", ref)
         price = product.get("unitPrice")
         charge(ref, int(price * len(nights) * rooms)
                if rooms and price is not None and product.get("priceUnit") == "PER_NIGHT" else None)

@@ -191,6 +191,18 @@ body {
   .message-send-in { animation: none; }
 }
 
+/* Tiến trình trợ lý (AC-AGT-09): mỗi bước hiện dần khi được mở ra, đọc lần lượt thay vì cả khối cùng lúc */
+@keyframes progressStepIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.progress-step-in {
+  animation: progressStepIn 0.25s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .progress-step-in { animation: none; }
+}
+
 /* Đổi khách sạn bằng hàng thẻ "Phương án khác" (AC-AGT-04): lịch mới ở cột phải trượt vào từ bên phải */
 @keyframes staySwapIn {
   from { opacity: 0; transform: translateX(16px); }

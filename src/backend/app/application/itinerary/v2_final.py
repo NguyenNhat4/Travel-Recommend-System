@@ -14,7 +14,7 @@ from typing import Any
 
 from jsonschema import Draft202012Validator, FormatChecker
 
-from src.backend.app.domain.itinerary.planning import rooms_of
+from src.backend.app.domain.itinerary.planning import stay_rooms
 from src.shared.contracts.scripts.bundle_openapi import bundle
 
 from .product_registry import ProductRegistry
@@ -30,7 +30,8 @@ WARNINGS = {
         "OPENING_HOURS_UNKNOWN": "Giờ mở cửa của một số điểm chưa có trong dữ liệu, bạn nên kiểm tra trước khi đi.",
         "TIMING_ESTIMATED": "Một số giờ trong lịch là ước tính, chưa xác minh từ dữ liệu.",
         "TRAVEL_TIME_UNKNOWN": "Thời gian di chuyển giữa các điểm chưa được tính vào lịch.",
-        "PRICE_CAPACITY_UNKNOWN": "Chưa rõ một phòng ở được mấy người nên tiền phòng tính tạm cho 1 phòng.",
+        "PRICE_CAPACITY_UNKNOWN": "Chưa rõ giá phòng đã bao gồm bao nhiêu người nên chưa tính đủ tiền lưu trú.",
+        "ROOM_CAPACITY_UNKNOWN": "Chưa có sức chứa tối đa của một số hạng phòng; cần xác nhận trước khi đặt.",
         "OPTIMIZATION_UNAVAILABLE": "Chưa sắp lại thứ tự cho bớt đi lại được vì thiếu vị trí của một số điểm.",
         "SIMULATED_PRICE": "Giá vé máy bay trong lịch là giá minh hoạ của dữ liệu.",
     },
@@ -40,7 +41,8 @@ WARNINGS = {
         "OPENING_HOURS_UNKNOWN": "Opening hours of some places are not in our data; please check before you go.",
         "TIMING_ESTIMATED": "Some times in this plan are estimates, not verified from data.",
         "TRAVEL_TIME_UNKNOWN": "Travel time between places is not included in the plan.",
-        "PRICE_CAPACITY_UNKNOWN": "Room capacity is unknown, so the stay is priced for 1 room.",
+        "PRICE_CAPACITY_UNKNOWN": "The number of guests included in the room price is unknown, so the stay total is unknown.",
+        "ROOM_CAPACITY_UNKNOWN": "Maximum occupancy is missing for some room types; confirm it before booking.",
         "OPTIMIZATION_UNAVAILABLE": "The order could not be optimised because some locations are missing.",
         "SIMULATED_PRICE": "Flight prices in this plan are illustrative catalog prices.",
     },
@@ -109,7 +111,7 @@ def _itinerary(plan: dict[str, Any], language: str) -> dict[str, Any]:
                              "assumption": a["assumption"]} for a in day["activities"]]}
             for day in plan["plan_days"]]
     stays = [{"product": card(products[stay["product_ref"]]), "checkIn": stay["check_in"],
-              "checkOut": stay["check_out"], "rooms": rooms_of(products[stay["product_ref"]], party),
+              "checkOut": stay["check_out"], "rooms": stay_rooms(products[stay["product_ref"]], party),
               "nights": (date.fromisoformat(stay["check_out"]) - date.fromisoformat(stay["check_in"])).days}
              for stay in draft["stays"]]
     return {"planResultId": plan["plan_result_id"], "party": party,
