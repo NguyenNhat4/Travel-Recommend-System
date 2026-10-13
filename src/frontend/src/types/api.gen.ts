@@ -586,7 +586,7 @@ export interface paths {
         put?: never;
         /**
          * Tạo hoặc tiếp tục lịch trình và stream tiến trình graph
-         * @description SSE phát topology, node.activity, node.completed với progress tuỳ chọn, run.preview sau compose và kết quả cuối. Progress cập nhật theo groupId; số cộng dồn do backend tính. Preview tối đa 6 sản phẩm đã kiểm nguồn. Không phát raw state, prompt hoặc token.
+         * @description SSE phát topology, node.activity, node.completed với progress tuỳ chọn và kết quả cuối. Progress cập nhật theo groupId; số cộng dồn do backend tính. run.preview giữ trong schema cho client cũ nhưng server không còn phát (2026-10-14). Không phát raw state, prompt hoặc token.
          */
         post: operations["streamItinerary"];
         delete?: never;
@@ -873,6 +873,11 @@ export interface components {
             taxonomy: components["schemas"]["Taxonomy"];
             /** @description Nhãn du lịch đã chuẩn hóa ("Nha Trang", "Hạ Long"), KHÔNG phải tỉnh. Lấy danh sách hiện hành qua GET /api/v1/destinations. */
             destination: string;
+            /**
+             * @description Căn cứ phí vào cửa từ nguồn, giữ ý nghĩa ticketed=false khi C2 lược bỏ thuộc tính false. Attraction/golf giá 0 hoặc ticketed=false là free; không giá và không ghi ticketed=true là assumed_free (tham quan tự do theo quy ước, cần xác nhận phí vào cửa). Vé thu phí thiếu giá là unknown. Hotel/flight/combo không áp dụng giả định tham quan tự do. unitPrice nguồn không đổi.
+             * @enum {string}
+             */
+            entryPolicy?: "free" | "assumed_free" | "paid" | "unknown";
             /** @description Thương hiệu ("Vinpearl", "independent"). Cần cho yêu cầu ưu tiên Vinpearl và để đo rủi ro vector space phân cụm theo nguồn crawl. */
             brand?: string | null;
             /**
@@ -2359,6 +2364,7 @@ export interface components {
             /** Format: date */
             date?: string;
         };
+        /** @description Deprecated 2026-10-14 — server không còn phát run.preview; giữ schema cho client cũ. */
         AssistantRunPreview: {
             runId: string;
             products: components["schemas"]["ProductSummary"][];
@@ -2702,6 +2708,8 @@ export interface operations {
                 /** @description Lọc một hoặc nhiều danh mục (1.27.0): nhiều giá trị cách nhau bằng dấu phẩy, ví dụ taxonomy=attraction,golf. Một giá trị như cũ vẫn hợp lệ. Giá trị trùng được bỏ qua; giá trị ngoài enum hoặc đoạn rỗng (taxonomy=hotel,) trả 400 VALIDATION_ERROR, details.fields có "taxonomy". */
                 taxonomy?: components["schemas"]["Taxonomy"][];
                 availableOnly?: boolean;
+                /** @description Chỉ điểm tham quan/golf vào cửa tự do, lọc trước sort và phân trang; total là số điểm phù hợp. entryPolicy=free hoặc assumed_free (điểm không giá, không ghi ticketed=true; cần xác nhận phí vào cửa). Không gửi/false giữ hành vi cũ. Không tự suy hotel/flight/combo thiếu giá thành miễn phí. */
+                freeOnly?: boolean;
                 sort?: components["schemas"]["ProductSort"];
                 /** @description (1.27.0) Chỉ nhận taxonomy. Trộn danh sách đã lọc và xếp theo round-robin giữa các nhóm loại, thứ tự nhóm cố định: khách sạn (hotel) → vé tham quan và golf (attraction, golf) → combo → vé máy bay (flight); trong mỗi nhóm giữ thứ tự của sort, nhóm hết món thì bỏ qua. Trộn trước khi cắt offset/limit nên kết quả là một hoán vị: total không đổi, các trang nối tiếp nhau. Lọc taxonomy chỉ còn một nhóm thì thứ tự không đổi. Chỉ đi với sort=popular và không có parentProductId; giá trị khác, đi cùng sort giá hoặc parentProductId trả 400 VALIDATION_ERROR, details.fields có "diversify". Không gửi thì giữ hành vi cũ. */
                 diversify?: "taxonomy";
