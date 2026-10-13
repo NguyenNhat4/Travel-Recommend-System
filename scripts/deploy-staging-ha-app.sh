@@ -53,6 +53,8 @@ google_compute_instance_template.app|create,delete
 google_compute_instance_template.app|delete,create
 google_compute_region_instance_group_manager.app|update
 google_compute_region_autoscaler.app|update
+# Ngưỡng autoscaler lên 90% CPU/RAM (2026-10-13): alert "CPU trung bình > cpu_target" lấy threshold = var.cpu_target nên đổi theo.
+google_monitoring_alert_policy.group_at_max|update
 google_compute_instance.crawler[0]|create
 google_compute_firewall.patroni_clients[0]|update
 # Cảnh báo crawler (crawler_alerts_enabled = true, 2026-10-12): metric và policy đã có trong state.
