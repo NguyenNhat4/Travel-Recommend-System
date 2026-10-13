@@ -14,14 +14,11 @@ on:
       - release-mvp-v3
     paths:
       - '.github/workflows/backend-ci-cd.yml'
-      - '.github/actions/sync-env-from-secret-manager/**'
       - 'Dockerfile.backend'
       - 'src/backend/**'
       - 'db/migrations/**'
       - 'scripts/**'
       - 'src/shared/contracts/**'
-      - 'scripts/**'
-      - 'ops/docker-compose.backend-vm.yml'
   push:
     branches:
       - main
@@ -30,13 +27,11 @@ on:
       - release-mvp-v3
     paths:
       - '.github/workflows/backend-ci-cd.yml'
-      - '.github/actions/sync-env-from-secret-manager/**'
       - 'Dockerfile.backend'
       - 'src/backend/**'
       - 'db/migrations/**'
       - 'scripts/**'
       - 'src/shared/contracts/**'
-      - 'ops/docker-compose.backend-vm.yml'
   workflow_dispatch:
 
 permissions:
@@ -81,14 +76,13 @@ jobs:
       - name: Run backend tests
         run: PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -q src/backend/tests
 
-      - name: Validate deployment scripts
+      - name: Check staging-ha deploy script syntax
         run: |
           bash -n \
-            scripts/check-db-tunnel.sh \
-            scripts/deploy-backend-vm.sh \
-            scripts/install-vota-cron.sh \
-            scripts/tests/test-backend-vm-cd-sync.sh
-          bash scripts/tests/test-backend-vm-cd-sync.sh
+            scripts/deploy-staging-ha-app.sh \
+            scripts/roll-staging-ha-app-slots.sh \
+            scripts/pin-staging-ha-mig-opportunistic.sh \
+            scripts/deploy-staging-ha-crawler.sh
 
   build:
     name: Build images

@@ -14,7 +14,6 @@ on:
       - release-mvp-v3
     paths:
       - '.github/workflows/crawler-ci-cd.yml'
-      - '.github/actions/sync-env-from-secret-manager/**'
       - 'Dockerfile.daily'
       - 'Dockerfile.fresh-catalog'
       - 'src/data_collection/**'
@@ -32,7 +31,6 @@ on:
       - release-mvp-v3
     paths:
       - '.github/workflows/crawler-ci-cd.yml'
-      - '.github/actions/sync-env-from-secret-manager/**'
       - 'Dockerfile.daily'
       - 'Dockerfile.fresh-catalog'
       - 'src/data_collection/**'
@@ -75,29 +73,11 @@ jobs:
   build:
     name: Build crawler image
     needs: quality
+    # Chỉ kiểm Dockerfile.fresh-catalog trên PR. Trên push, image staging-ha do staging-ha-crawler-cd.yml build; không build hai lần.
+    if: ${{ github.event_name == 'pull_request' }}
     runs-on: [self-hosted, vota-staging-ha]
-    permissions:
-      contents: read
-      id-token: write
-    # Cache: PR chỉ đọc GHA cache, không ghi. Push/dispatch ghi cache layer vào Artifact Registry (`:buildcache`)
-    # vì GHA cache của repo sát giới hạn 10 GB và bị evict (layer torch + e5 rất lớn, mode=max ghi cả layer trung gian).
     steps:
       - uses: actions/checkout@v4
-      - name: Authenticate to Google Cloud
-        if: ${{ github.event_name != 'pull_request' }}
-        id: auth
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
-          service_account: ${{ secrets.GCP_CI_SERVICE_ACCOUNT }}
-          token_format: access_token
-      - name: Log in to Artifact Registry
-        if: ${{ github.event_name != 'pull_request' }}
-        uses: docker/login-action@v3
-        with:
-          registry: asia-southeast1-docker.pkg.dev
-          username: oauth2accesstoken
-          password: ${{ steps.auth.outputs.access_token }}
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v6
         with:
@@ -105,66 +85,5 @@ jobs:
           file: ./Dockerfile.fresh-catalog
           push: false
           tags: vota-fresh-catalog-ci:${{ github.sha }}
-          cache-from: ${{ github.event_name == 'pull_request' && 'type=gha,scope=crawler' || format('type=registry,ref={0}:buildcache', secrets.GAR_FRESH_IMAGE) }}
-          cache-to: ${{ github.event_name != 'pull_request' && format('type=registry,mode=max,ref={0}:buildcache', secrets.GAR_FRESH_IMAGE) || '' }}
-
-  publish:
-    name: Publish fresh crawler SHA image
-    if: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
-    needs: build
-    runs-on: [self-hosted, vota-staging-ha]
-    environment: staging
-    permissions:
-      contents: read
-      id-token: write
-    env:
-      CRAWLER_IMAGE: ${{ secrets.GAR_FRESH_IMAGE }}
-    outputs:
-      crawler_digest: ${{ steps.crawler.outputs.digest }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Validate publishing configuration
-        env:
-          GCP_WIF_PROVIDER: ${{ secrets.GCP_WIF_PROVIDER }}
-          GCP_CI_SERVICE_ACCOUNT: ${{ secrets.GCP_CI_SERVICE_ACCOUNT }}
-          CRAWLER_IMAGE: ${{ secrets.GAR_FRESH_IMAGE }}
-        run: |
-          for name in GCP_WIF_PROVIDER GCP_CI_SERVICE_ACCOUNT CRAWLER_IMAGE; do
-            if [ -z "${!name:-}" ]; then
-              echo "Missing staging secret: $name" >&2
-              exit 1
-            fi
-          done
-          if [[ ! "$CRAWLER_IMAGE" =~ ^[a-z0-9][a-z0-9._/-]*$ ]]; then echo "CRAWLER_IMAGE must be an untagged Artifact Registry image path." >&2; exit 1; fi
-
-      - name: Authenticate to Google Cloud
-        id: auth
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
-          service_account: ${{ secrets.GCP_CI_SERVICE_ACCOUNT }}
-          token_format: access_token
-
-      - name: Log in to Artifact Registry
-        uses: docker/login-action@v3
-        with:
-          registry: asia-southeast1-docker.pkg.dev
-          username: oauth2accesstoken
-          password: ${{ steps.auth.outputs.access_token }}
-
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Publish crawler image
-        id: crawler
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile.fresh-catalog
-          push: true
-          tags: |
-            ${{ env.CRAWLER_IMAGE }}:${{ github.sha }}
-          # Chỉ đọc: build job đã ghi `:buildcache` trước (needs: build), không ghi lại để tránh ghi trùng.
-          cache-from: type=registry,ref=${{ env.CRAWLER_IMAGE }}:buildcache
+          # Chỉ đọc cache: không ghi GHA cache từ PR, vì cache repo sát giới hạn 10 GB và bị evict.
+          cache-from: type=gha,scope=crawler

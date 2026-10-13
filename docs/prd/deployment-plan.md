@@ -25,7 +25,7 @@ Hệ thống được thiết kế để vận hành trên ba cấp môi trườ
 
 ### 1.1. Tầng DB HA riêng cho `staging-ha`
 
-`staging-ha` là Terraform root và state riêng (`infra/staging-ha`), tách khỏi root/state `infra/staging`. Vì hai root có state khác nhau, thay đổi Patroni không làm thay đổi tài nguyên do workflow `infra-terraform-staging.yml` quản lý; các workflow CI/CD ứng dụng và crawler cũng không bị sửa trong phạm vi này.
+`staging-ha` là môi trường staging duy nhất, có Terraform root và state riêng (`infra/staging-ha`). Staging cũ đã ngừng ngày 2026-10-13: repo không còn Terraform, workflow CI/CD hay code monitoring của nó (`infra/terraform/environments/staging`, `infra/monitoring` dạng Terraform). Cùng ngày, monitoring cũ đã xoá khỏi GCP: 18 alert policy (15 gắn VM cũ đã nghỉ hoặc probe đã hỏng, 3 policy VM do Compute Engine tự tạo), 4 log-metric, dashboard, uptime check và exclusion log `vota-staging-debug-and-health-ok`. Còn lại trên GCP, chưa có code quản lý: 8 alert policy toàn project và log-metric `vota-staging_*` của chúng, kênh email `vota-staging email alerts`, metric descriptor `custom.googleapis.com/vota/container/*` (dashboard staging-ha dùng), IP tĩnh `34.142.132.251` (bastion dùng), và hai state `infra/staging`, `monitoring/staging`, state này đã lệch so với GCP nên không chạy plan hay apply. Muốn dọn phần còn lại thì import vào root staging-ha trước (task riêng). *(Theo `update-archive/2026-10-13-xoa-monitoring-staging-cu.md`.)*
 
 Khi được bật có chủ đích bằng `create_patroni = true`, staging-ha tạo hai node PostgreSQL + Patroni ở hai zone, một witness etcd ở zone thứ ba và một ILB private. ILB chỉ gửi kết nối ghi tới node trả HTTP `200` ở `/primary`; Patroni tự bầu leader khi mất node. `create_patroni = false` vẫn là mặc định, nên việc merge mã không tự dựng cụm.
 
@@ -183,4 +183,4 @@ gcloud dns record-sets update db.vota.internal. \
   --rrdatas=<old-primary-private-ip>
 ```
 
-Không chạy `terraform apply` của root `infra/terraform/environments/staging` để rollback Patroni; hai state có ranh giới riêng.
+Không dùng state `infra/staging` của staging cũ (đã gỡ khỏi repo) để rollback Patroni; hai state có ranh giới riêng.

@@ -14,9 +14,6 @@ on:
       - release-mvp-v3
     paths:
       - '.github/workflows/frontend-ci-cd.yml'
-      - '.github/actions/sync-env-from-secret-manager/**'
-      - 'ops/docker-compose.backend-vm.yml'
-      - 'scripts/deploy-frontend-vm.sh'
       - 'src/frontend/Dockerfile.web'
       - 'src/frontend/**'
       - 'src/shared/contracts/**'
@@ -28,9 +25,6 @@ on:
       - release-mvp-v3
     paths:
       - '.github/workflows/frontend-ci-cd.yml'
-      - '.github/actions/sync-env-from-secret-manager/**'
-      - 'ops/docker-compose.backend-vm.yml'
-      - 'scripts/deploy-frontend-vm.sh'
       - 'src/frontend/Dockerfile.web'
       - 'src/frontend/**'
       - 'src/shared/contracts/**'
