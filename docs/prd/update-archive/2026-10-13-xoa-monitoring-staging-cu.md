@@ -23,4 +23,4 @@
 
 - `docs/prd/deployment-plan.md` §1.1 — sửa theo nội dung trên.
 - `infra/monitoring/README.md` — sửa: bỏ exclusion đã xoá, ghi danh sách còn lại đúng với GCP.
-- `history/2026-10-13-go-ci-cd-staging-cu.md` và `history/2026-10-13-xoa-monitoring-staging-cu.md` — ghi thao tác xoá trên GCP.
+- `history/2026-10-13-xoa-monitoring-staging-cu.md` — ghi thao tác xoá trên GCP.

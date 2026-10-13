@@ -1,0 +1,131 @@
+name: Staging-HA Image Build
+
+# Build-hoặc-tái-dùng một image cho staging-ha theo content key (scripts/ci/image-key.sh): image có tag `key-<key>` đã có
+# trong Artifact Registry thì dùng lại digest đó, không build. Được staging-ha-app-cd.yml và staging-ha-crawler-cd.yml gọi
+# qua workflow_call sau khi CI của thành phần đó đã pass.
+# Builder BuildKit cố định trên runner (scripts/ci/buildx-builder.sh) giữ cache giữa các job, nên build trên PR làm nóng
+# cache cho build sau merge; không còn cache registry `:buildcache`.
+# Chỉ truyền digest qua output: đường dẫn image là secret, GitHub che giá trị secret trong output.
+
+on:
+  workflow_call:
+    inputs:
+      component:
+        description: backend | frontend | crawler
+        type: string
+        required: true
+    outputs:
+      digest:
+        description: Digest sha256 của image (vừa build hoặc tái dùng)
+        value: ${{ jobs.image.outputs.digest }}
+      key:
+        description: Content key của image
+        value: ${{ jobs.image.outputs.key }}
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    name: Build or reuse ${{ inputs.component }} image
+    runs-on: [self-hosted, vota-staging-ha]
+    timeout-minutes: 45
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      digest: ${{ steps.refs.outputs.digest }}
+      key: ${{ steps.path.outputs.key }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve image path and content key
+        id: path
+        env:
+          COMPONENT: ${{ inputs.component }}
+          BACKEND_IMAGE: ${{ secrets.GAR_BACKEND_IMAGE }}
+          CRAWLER_IMAGE: ${{ secrets.GAR_FRESH_IMAGE }}
+        run: |
+          set -euo pipefail
+          [[ "$BACKEND_IMAGE" =~ ^asia-southeast1-docker\.pkg\.dev/[a-z0-9][a-z0-9._/-]*/vota-backend$ ]] \
+            || { echo 'GAR_BACKEND_IMAGE phải kết thúc bằng /vota-backend trong Artifact Registry.' >&2; exit 1; }
+          case "$COMPONENT" in
+            backend)  image="$BACKEND_IMAGE"; file=./Dockerfile.backend ;;
+            frontend) image="${BACKEND_IMAGE%/vota-backend}/vota-frontend"; file=./src/frontend/Dockerfile.web ;;
+            crawler)
+              [[ "$CRAWLER_IMAGE" =~ ^[a-z0-9][a-z0-9._/-]*$ ]] || { echo 'GAR_FRESH_IMAGE phải là đường dẫn image không có tag.' >&2; exit 1; }
+              image="$CRAWLER_IMAGE"; file=./Dockerfile.fresh-catalog ;;
+            *) echo "component không hợp lệ: $COMPONENT" >&2; exit 1 ;;
+          esac
+          key="$(bash scripts/ci/image-key.sh "$COMPONENT")"
+          { echo "image=$image"; echo "file=$file"; echo "key=$key"; } >> "$GITHUB_OUTPUT"
+          echo "$COMPONENT: content key $key" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_CI_SERVICE_ACCOUNT }}
+          token_format: access_token
+
+      - name: Isolate Docker credentials per job
+        # Mọi runner chạy chung một VM và chung HOME (~/.docker/config.json). Bước `docker logout` ở cuối job khác xoá đăng nhập
+        # của job đang đẩy image: lỗi 403 "failed to fetch anonymous token" ngày 2026-10-12. Mỗi job dùng thư mục riêng.
+        run: |
+          mkdir -p "$RUNNER_TEMP/docker-config"
+          echo "DOCKER_CONFIG=$RUNNER_TEMP/docker-config" >> "$GITHUB_ENV"
+
+      - name: Log in to Artifact Registry
+        uses: docker/login-action@v3
+        with:
+          registry: asia-southeast1-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
+
+      - name: Persistent BuildKit builder
+        id: builder
+        run: bash scripts/ci/buildx-builder.sh
+
+      - name: Reuse the image if this content key was already built
+        id: existing
+        env:
+          IMAGE: ${{ steps.path.outputs.image }}
+          KEY: ${{ steps.path.outputs.key }}
+        run: |
+          digest="$(docker buildx imagetools inspect "$IMAGE:key-$KEY" --format '{{json .Manifest}}' 2>/dev/null | jq -r '.digest // empty' || true)"
+          if [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "digest=$digest" >> "$GITHUB_OUTPUT"
+            echo "Tái dùng image key-$KEY ($digest), không build." | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Chưa có image key-$KEY: build."
+          fi
+
+      - name: Build and push image
+        id: build
+        if: ${{ steps.existing.outputs.digest == '' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ steps.path.outputs.file }}
+          builder: ${{ steps.builder.outputs.name }}
+          push: true
+          tags: |
+            ${{ steps.path.outputs.image }}:${{ github.sha }}
+            ${{ steps.path.outputs.image }}:key-${{ steps.path.outputs.key }}
+
+      - name: Resolve immutable image reference
+        id: refs
+        env:
+          EXISTING: ${{ steps.existing.outputs.digest }}
+          BUILT: ${{ steps.build.outputs.digest }}
+        run: |
+          digest="${EXISTING:-$BUILT}"
+          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]] || { echo "digest không hợp lệ: $digest" >&2; exit 1; }
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Keep builder cache bounded
+        if: ${{ always() && steps.builder.outputs.name != '' }}
+        run: docker buildx prune --builder "${{ steps.builder.outputs.name }}" --force --filter 'until=336h' >/dev/null || true
