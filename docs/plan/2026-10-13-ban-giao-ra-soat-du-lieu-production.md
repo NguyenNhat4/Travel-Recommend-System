@@ -38,6 +38,17 @@ trước" → "nhớ test đầy đủ".
 - Lượt daily cũng qua `normalise_step` nên danh sách loại áp cho cả daily; `drop_orphans` cũ là lưới an toàn thứ hai.
 - Job **không ghi đè `name`/`description`** của dòng không phải chuyến bay đã có trên DB → production phải sửa trực tiếp (bước dưới).
 
+Cập nhật 13/10 chiều (xem `history/2026-10-13-kiem-lai-ra-soat-va-loai-tms-lee-xinh.md`):
+- Người dùng chốt: L'azur Cửa Lò (29 tin) và căn hộ TMS Quy Nhơn **giữ hết** (căn hộ khác chủ cùng toà, ID và giá khác nhau);
+  **loại** `trip:attraction:141833025` "TMS Quy Nhơn - Lee Xinh" (bản ghi Trip trộn: nameEn "Dieu Tri Market", giờ chợ, nhưng địa chỉ
+  và toạ độ là toà TMS; không giá) → `excluded_products.csv` tổng 45 dòng.
+- Người dùng chốt: **chỉ sửa production sau khi `test/newcrawl` được merge vào `release-mvp-v2` và CD crawler đã deploy**. VM chạy code
+  cũ (daily 13/10 08:45 trên #188) không có 7 ref này trong danh sách loại → ẩn trước deploy có thể bị lượt daily bật lại.
+- Bản xem trước (đọc production 13/10, read-only): 7 ref đang bán + 10 phòng con đang bán (Mango House 6, Gia An 2, Cubicity Trip 2)
+  → **ẩn 17 dòng**; đổi tên 2 dòng → tổng 19 dòng. Không dòng nào mang `windowClosed`; tuyến `cah-han` 0 chuyến. Bản giữ
+  (`VW00613`, `booking:hotel:16986224`) đang bán bình thường.
+- Đổi tên trên production: ghi cả `attributes.originalName`, `nameSource`, `nameEvidence` như `apply_name_overrides`.
+
 Việc còn lại của mục 1:
 1. Nếu commit chưa lên remote: `git -C ~/code/Travel-Recommendation-Product-newcrawl log origin/test/newcrawl..HEAD` rồi push
    (không thêm Co-Authored-By / "Generated with Claude Code").
@@ -45,13 +56,13 @@ Việc còn lại của mục 1:
    chính `~/code/Travel-Recommendation-Product`): mặc định **chỉ đọc** (transaction read-only) in đúng các dòng sẽ đổi; `--apply` chỉ chạy
    khi người dùng đồng ý **trong chat**.
    - Đổi tên 2 dòng: `name` + đầu `description` nếu bắt đầu bằng tên cũ + ".".
-   - Ẩn (`available = false`) 6 ref trên + hạng phòng con của chúng (đếm lúc rà: Cubicity Trip 2 phòng, Gia An 2, Mango House 6 —
+   - Ẩn (`available = false`) 7 ref (6 ref trên + `trip:attraction:141833025`) + hạng phòng con của chúng (đếm lúc rà: Cubicity Trip 2 phòng, Gia An 2, Mango House 6 —
      kiểm lại bằng `catalog.product_meta.parent_product_id`).
    - Trước khi ghi: đọc `fresh_catalog_db.py` để chắc dòng **vắng khỏi catalog** không bị lượt sau bật lại (quy tắc FR-CAT-02 chỉ bật
      khách sạn còn phòng đặt được — phòng đã ẩn + ref đã loại thì không còn).
 3. Người dùng bấm "Bảo trì và index" trên monitor → kiểm lại (chạy lại script rà, xem §6).
-4. **Hỏi người dùng** các trùng lặp chưa rõ: L'azur 29 tin condotel + TMS ×2 (giữ hết hay gộp?); 2 cặp tour Booking cùng tên (giữ cả
-   hai?); Thác Bạc ×2 (khả năng là hai thác khác nhau → giữ).
+4. **Hỏi người dùng** các trùng lặp chưa rõ: ~~L'azur 29 tin condotel + TMS ×2~~ (đã chốt giữ hết, 13/10); 2 cặp tour Booking cùng
+   tên (giữ cả hai?); Thác Bạc ×2 (khả năng là hai thác khác nhau → giữ).
 
 ## 3. Mục 2 — chưa làm
 
@@ -87,4 +98,11 @@ thương hiệu: "Sun World…", "VinWonders…"); không chắc thì để tr�
 - Test: từ `src/` chạy `python -m pytest -q -p no:cacheprovider data_collection/tests` với `DBX_TEST_DATABASE_URL` trỏ DB test local
   (container `travel-recommendation-product-postgres-1`); env `vsf2` (py3.11). Kết quả 13/10: 687 passed, 18 skipped (cần các DSN
   test khác: `CATALOG_TEST_DATABASE_URL`, `STREAM_TEST_ADMIN_URL`, `CATALOG_ONLY_TEST_DATABASE_URL`).
+  Chạy đủ (13/10 chiều): thêm `CATALOG_TEST_DATABASE_URL` = `CATALOG_ONLY_TEST_DATABASE_URL` = DB mới tạo từ `template0` + `db/vota_schema.sql`;
+  `STREAM_TEST_ADMIN_URL` = superuser local (`…/postgres`, test tự tạo/xoá DB); `APPEND_TEST_DATABASE_URL` = DB trống;
+  `RELEASE_TEST_DATABASE_URL` = DB trống tên `vota_business_test_*` (tạo mới mỗi lần, test tự chạy DDL);
+  `SIMULATED_TEST_DATABASE_URL` = bản sao `vota_simbiz_test_*` của DB có vé `demo:business:*` (vd. `TEMPLATE vota_crawl_vmcheck`).
+  Kết quả: **704 passed, 1 failed, 0 skipped**. Lỗi duy nhất `test_stream_feed_db::test_rows_loaded_separately_then_merged_leave_one_visible`
+  có từ trước (cũng lỗi ở `70e142e2` và `origin/release-mvp-v2`): test 29/09 dùng khách sạn không có hạng phòng, bị quy tắc FR-CAT-02
+  (06/10) tắt — chỉ cần thêm một phòng vào dữ liệu test; chưa sửa (ngoài phạm vi, hỏi người dùng).
 - Hạ tầng (VM, lịch tắt) thuộc Khoa: chỉ đọc. Không `pkill -f`. Mọi thay đổi `src/`/`docs/`/`db/` cần entry `history/` mới.

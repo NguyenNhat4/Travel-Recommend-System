@@ -444,9 +444,11 @@ class QualityTests(unittest.TestCase):
         self.assertEqual(names["trip:attraction:55838986"][0], "Động Trung Trang")
         excluded = n.load_excluded_products()
         for ref in ("trip:hotel:118233319:room:482483850", "trip:route:cah-han", "vinpearl:tour:VW00469", "trip:hotel:135398727",
-                    "agoda:hotel:nha-nghi-gia-an:ha-tien-kien-giang", "agoda:hotel:mango-house:ha-tien-kien-giang"):
+                    "agoda:hotel:nha-nghi-gia-an:ha-tien-kien-giang", "agoda:hotel:mango-house:ha-tien-kien-giang",
+                    "trip:attraction:141833025"):
             self.assertIn(ref, excluded)
         self.assertNotIn("vinpearl:tour:VW00613", excluded)  # bản giữ lại của cặp vé trùng
+        self.assertNotIn("booking:hotel:8466578", excluded)  # căn hộ TMS thật: người dùng giữ hết (13/10/2026)
 
 
 if __name__ == "__main__":
