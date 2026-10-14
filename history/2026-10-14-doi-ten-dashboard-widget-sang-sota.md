@@ -25,4 +25,4 @@
 
 ## Còn lại / rủi ro
 
-- Cần chạy lại workflow deploy sau khi cổng plan cho phép cập nhật `google_monitoring_dashboard.ha_db_crawler`; lần chạy trước dừng đúng quy tắc an toàn vì thay đổi này chưa có trong allowlist.
+- Cần chạy lại workflow deploy sau khi cổng plan cho phép cập nhật `google_monitoring_dashboard.ha_db_crawler`; các dashboard monitoring có thể xuất hiện dưới dạng `update` do API chuẩn hoá lại JSON; cổng plan đã cho phép update các dashboard này, nhưng vẫn giữ nguyên metric và log filter.
