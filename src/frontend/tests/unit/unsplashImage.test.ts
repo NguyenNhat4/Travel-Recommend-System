@@ -7,7 +7,7 @@ import { unsplashPath } from '../../src/lib/unsplash';
 
 const PHOTO = '1582719508461-905c673771fd';
 /** Nhãn điểm đến có ảnh bìa (destinationCovers.ts). */
-const COVERED_DESTINATIONS = ['Nha Trang', 'Phú Quốc', 'Đà Nẵng', 'Hội An', 'TP. Hồ Chí Minh', 'Hạ Long', 'Quy Nhơn', 'Đà Lạt'];
+const COVERED_DESTINATIONS = ['Nha Trang', 'Phú Quốc', 'Đà Nẵng', 'Hội An', 'TP. Hồ Chí Minh', 'Hạ Long', 'Quy Nhơn', 'Đà Lạt', 'Hà Nội', 'Huế'];
 
 /** Đường dẫn ảnh trong `src` phải có file tương ứng trong `public/`, nếu không trình duyệt nhận 404. */
 const publicFile = (src: string) => path.join(process.cwd(), 'public', src);

@@ -15,6 +15,8 @@ const COVERS: Record<string, string> = {
   'Hạ Long': cover('1528127269322-539801943592'),
   'Quy Nhơn': cover('1507525428034-b723cf961d3e'),
   'Đà Lạt': cover('1519681393784-d120267933ba'),
+  'Hà Nội': cover('1753380226922-06a65b17ddf2'),
+  'Huế': cover('1765034841805-8330b54bfdb7'),
 };
 
 export function coverFor(destination: string): string | null {
