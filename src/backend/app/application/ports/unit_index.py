@@ -9,7 +9,7 @@ import numpy as np
 
 from src.backend.app.domain.catalog import Product, StayDates, UnitAttributes
 from src.backend.app.domain.catalog.stay_dates import calendar_open
-from src.backend.app.domain.catalog.unit_attributes import ChildRow
+from src.backend.app.domain.catalog.unit_attributes import DURATION_TAXONOMIES, ChildRow
 
 
 @dataclass
@@ -69,7 +69,8 @@ class UnitIndex:
              exclude_brands: Iterable[str] = (), exclude_taxonomies: Iterable[str] = (),
              exclude_flags: Iterable[str] = (), min_occupancy: int | None = None,
              require_entities: Iterable[str] = (),
-             stay: StayDates | None = None) -> np.ndarray:
+             stay: StayDates | None = None,
+             duration_days: int | None = None, duration_nights: int | None = None) -> np.ndarray:
         """Mask bool theo index unit; mọi tham số mới mặc định tắt nên không đổi hành vi cũ.
 
         Quy ước "không biết" (spec §2.7 [C2]):
@@ -85,6 +86,9 @@ class UnitIndex:
         `require_entities` (contract 1.18.0, entity gate CỨNG): chỉ giữ unit có ít nhất một khoá entity trong tập
         (`UnitAttributes.entities` — dựng từ TÊN unit, chỉ attraction/combo có khoá); unit không có khoá bị loại — đây là gate,
         không phải quy ước "không biết → giữ". Rỗng = không gate.
+        `duration_days` / `duration_nights` (plan 2026-10-13 §2.3, vai trò gate): chỉ giữ unit thuộc `DURATION_TAXONOMIES` có số
+        ngày khớp (khi câu nêu ngày); số đêm đã biết thì phải khớp, chưa biết thì giữ; câu chỉ nêu đêm → unit phải có số đêm
+        khớp. Đây cũng là gate: loại khác (khách sạn…) bị loại — vai trò `stay` (câu có cue lưu trú) không gọi tham số này.
         """
         m = np.ones(len(self.units), dtype=bool)
         if only_available:
@@ -127,9 +131,22 @@ class UnitIndex:
             m &= np.array([bool(e & req) for e in a.entities], dtype=bool)
         if stay is not None:
             m &= self._stay_mask(stay)
+        if duration_days is not None or duration_nights is not None:
+            m &= self._duration_mask(duration_days, duration_nights)
         if price_min is not None or price_max is not None or min_occupancy is not None or stay is not None:
             m &= self._rooms_ok(price_min, price_max, min_occupancy, stay)
         return m
+
+    def _duration_mask(self, days: int | None, nights: int | None) -> np.ndarray:
+        a = self.attrs
+        ok = np.isin(self.taxonomy, list(DURATION_TAXONOMIES))
+        for i in np.flatnonzero(ok):
+            d, n = a.duration_days[i], a.duration_nights[i]
+            if days is not None:
+                ok[i] = days in d and (nights is None or not n or nights in n)
+            else:
+                ok[i] = nights in n
+        return ok
 
     def _stay_mask(self, stay: StayDates) -> np.ndarray:
         """Bộ lọc ngày (FR-SRC-03 / FR-CAT-03, `domain/catalog/stay_dates.py`), theo loại:

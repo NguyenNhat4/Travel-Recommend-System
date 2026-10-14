@@ -309,6 +309,8 @@ search:           { mode: HYBRID_CANDIDATE_SCORE, cutoff: 0.84, candidateK: 200,
                     fuzzyK: 0, fuzzyCandidateK: 50, fuzzyMinSim: 0.75, rrfWeights: { dense: 1, lexical: 1, fuzzy: 1 },
                     llmFallback: off,                                                                        # 2026-10-06, §2.2 (contract 1.17.0)
                     durationFilter: false, poiResolve: false, entityFilter: false,                           # 2026-10-07, §2.2 (contract 1.18.0)
+                    evidenceGate: false, durationMask: false, embedResidual: false, unexplainedEmpty: false,
+                    emitBackground: false,                     # 2026-10-13, plan 2026-10-13-search-evidence-gate-no-answer (contract 1.30.0)
                     logQueries: false }                                                                      # 2026-10-06, §7.3
 similar:          { mode: ANN_CANDIDATE_SCORE, topK: 20 }
 recommendations:  { mode: ANN_CANDIDATE_SCORE, candidateK: 200 }
@@ -1009,6 +1011,17 @@ Team Search cung cấp:
     `search("vé lẻ VinWonders Nam Hội An, không lấy combo")` (F3 bật) → `applied` có `mustNot` và `entity`, không có combo;
     `search("không lấy VinWonders, vé Safari")` → `hard.entity == ["safari"]`. Cả ba cờ tắt → response không có
     `queryPlan.duration` / `location` / `entity`, y như 1.17.0.
+10g. (13/10, contract 1.30.0; FR-SRC-03/04 chốt 13/10; plan `docs/plan/2026-10-13-search-evidence-gate-no-answer.md`)
+    Cờ `SEARCH_UNEXPLAINED_EMPTY`: `search("Nguyễn Khắc Tiệp")`, `search("khách sạn Nguyễn Khắc Tiệp")` → `total 0`,
+    `queryPlan.emptyReason == "unexplained"`, `queryPlan.unexplained == ["Nguyễn Khắc Tiệp"]`, không gọi embed;
+    `search("khách sạn Đà Lạt rẻ bèo")` vẫn có kết quả; `search("Nguyễn Khắc Tiệp gần biển")` → `unparsed == ["Nguyễn Khắc Tiệp"]`.
+    Cờ `SEARCH_EVIDENCE_GATE`: `search("Trần Thị Mai")` không vớt "Thị trấn Hoàng Hôn" (khớp phải là cặp âm tiết liền nhau,
+    đúng thứ tự, giữ dấu); `diagnostics.evidenceGate == true`. Cờ `SEARCH_DURATION_MASK`: `search("2 ngày 1 đêm")` →
+    `queryPlan.duration.role == gate`, chỉ vé tham quan / combo có "2 ngày"; cùng câu với `taxonomy=hotel` → `emptyReason ==
+    duration`; `search("khách sạn Đà Lạt 2 ngày 1 đêm")` → `role == stay`, khách sạn vẫn còn. Cờ `SEARCH_EMBED_RESIDUAL`:
+    `queryPlan.denseText` là câu đem embed; residual rỗng + gate → `diagnostics.filterOnly`, `cutoff 0`.
+    `SEARCH_NO_DIACRITICS_MODE=restore`: `diagnostics.accentRestored`, không nới cutoff. `SEARCH_EMIT_BACKGROUND`:
+    `backgroundScore` = trung vị cosine top-K dense trong F (xấp xỉ §3.4 khi |F| > candidateK). Mọi cờ tắt → như 1.27.0.
 11. p95 dưới 300 ms trên catalog đầy đủ, đo với Weaviate cùng mạng nội bộ (local hoặc cùng region).
     *(Bổ sung 2026-09-29: PRD NFR-PERF-01 đặt ngưỡng chặt hơn, ≤ 250 ms; báo p95 tổng kèm p95 từng bước theo
     `diagnostics.stageMs` để thấy phần nào là embed, phần nào là Weaviate. Bổ sung 2026-09-30: báo p95 riêng cho

@@ -732,7 +732,7 @@ export interface components {
         PriceUnit: "PER_NIGHT" | "PER_PERSON" | "PER_PACKAGE" | "UNKNOWN";
         /**
          * @description ANN_CANDIDATE_SCORE là mặc định cho /similar và /recommendations (từ 2026-09-24): lọc id theo structured filter, lấy top-K ứng viên từ Weaviate, rồi chấm điểm và đếm trên tập ứng viên đó. Ở chế độ này approximate là true, totalExact và facetsExact bắt buộc là false.
-         *     HYBRID_CANDIDATE_SCORE là mặc định của /search (từ 2026-09-25): R = R_dense ∪ R_lex. R_dense = top-K dense có score >= cutoff (như ANN). R_lex = hit BM25 (trên nameAscii/searchTextAscii đã fold dấu) có rank <= diagnostics.lexicalK, score trong [diagnostics.lexicalCutoff, cutoff) và tên chứa >= diagnostics.lexicalMinCoverage token của truy vấn. results sắp theo RRF (k = diagnostics.rrfK) nên score — vẫn là cosine đã clamp — KHÔNG đơn điệu trong một trang; đếm phần vớt ở diagnostics.lexicalCount. approximate/totalExact/facetsExact như ANN. Backend tắt hybrid (SEARCH_HYBRID=false) thì /search khai lại ANN_CANDIDATE_SCORE.
+         *     HYBRID_CANDIDATE_SCORE là mặc định của /search (từ 2026-09-25): R = R_dense ∪ R_lex. R_dense = top-K dense có score >= cutoff (như ANN). R_lex = hit BM25 (trên nameAscii/searchTextAscii đã fold dấu) có rank <= diagnostics.lexicalK, score trong [diagnostics.lexicalCutoff, cutoff) và tên chứa >= diagnostics.lexicalMinCoverage token của truy vấn. Khi diagnostics.evidenceGate = true (1.30.0): R_lex còn đòi tên khớp ít nhất một cặp âm tiết liền nhau, đúng thứ tự, giữ dấu với câu; RRF chỉ cộng hạng BM25 của unit có cặp đó trong tên hoặc mô tả. Khi diagnostics.filterOnly = true: R = top-K của F, không cutoff. results sắp theo RRF (k = diagnostics.rrfK) nên score — vẫn là cosine đã clamp — KHÔNG đơn điệu trong một trang; đếm phần vớt ở diagnostics.lexicalCount. approximate/totalExact/facetsExact như ANN. Backend tắt hybrid (SEARCH_HYBRID=false) thì /search khai lại ANN_CANDIDATE_SCORE.
          *     EXACT_FILTER_SCORE giữ cho engine quét toàn bộ vector (bản chạy offline).
          * @enum {string}
          */
@@ -1153,6 +1153,7 @@ export interface components {
             /**
              * @description [C3] Trung vị cosine của TOÀN BỘ tập đã lọc F. Lấy miễn phí trong cùng lượt quét exact của C4.
              *     Dùng cho quy tắc margin: model họ e5 có dải cosine bị nén (cặp không liên quan đã ở 0.72–0.78), nên ngưỡng tuyệt đối đơn thuần không đáng tin. Client tính margin = topScore - backgroundScore và báo "kết quả yếu" khi topScore < WEAK_RESULT_TOP_SCORE HOẶC margin < WEAK_RESULT_MARGIN. null khi results rỗng.
+             *     (1.30.0) Backend chỉ phát khi SEARCH_EMIT_BACKGROUND bật, và tính trên top-K dense trong F (candidateK) — xấp xỉ khi |F| > candidateK. Vắng khoá = backend không phát.
              */
             backgroundScore?: number | null;
             /** @description [C3][C4] Ngưỡng đã áp cho nhánh dense **ở câu này** (cutoff hiệu lực: khác cấu hình chung chỉ khi diagnostics.queryProfile có mặt). Giá trị tạm 0.62 (PROVISIONAL), benchmark Ngày 3 trên 80 cặp query-product gán nhãn cộng 10 truy vấn âm. Nguồn sự thật là search.cutoff trong application.yml; frontend đọc lại từ trường này, KHÔNG hard-code bản sao. Ở HYBRID_CANDIDATE_SCORE, kết quả vớt từ nhánh BM25 có score trong [diagnostics.lexicalCutoff, cutoff). */
@@ -1369,12 +1370,17 @@ export interface components {
                     /** @enum {string} */
                     source?: "param" | "query";
                 };
-                /** @description (1.18.0) Thời lượng chuyến nêu trong câu: "N ngày M đêm", "M đêm N ngày", "3N2Đ", "N ngày", "M đêm", "N days M nights" — chữ số 1–30, không nhận số viết bằng chữ; "/đêm" của giá, "3 tiếng", "chợ đêm", "qua đêm" không tính. P0 chỉ khai và bỏ cụm khỏi lexicalText (cờ SEARCH_DURATION_FILTER); KHÔNG lọc, không xếp hạng vì catalog chưa có trường thời lượng (P1). Chỉ khai khi cờ bật. */
+                /** @description (1.18.0) Thời lượng chuyến nêu trong câu: "N ngày M đêm", "M đêm N ngày", "3N2Đ", "N ngày", "M đêm", "N days M nights" — chữ số 1–30, không nhận số viết bằng chữ; "/đêm" của giá, "3 tiếng", "chợ đêm", "qua đêm" không tính. Khai và bỏ cụm khỏi lexicalText (cờ SEARCH_DURATION_FILTER). Từ 1.30.0 (cờ SEARCH_DURATION_MASK) có `role`: gate → chỉ giữ vé tham quan / combo có số ngày (đêm) suy từ tên hoặc thời lượng gợi ý khớp; stay (câu có cue lưu trú) → chỉ khai, không lọc. Chỉ khai khi cờ bật. */
                 duration?: {
                     days?: number | null;
                     nights?: number | null;
                     /** @enum {string} */
                     source?: "query";
+                    /**
+                     * @description (1.30.0) Chỉ khi SEARCH_DURATION_MASK bật. gate = câu chỉ có thời lượng → lọc vé / combo đúng số ngày; soft = câu còn nội dung khác → chỉ khai và bỏ cụm, không lọc; stay = câu lưu trú → không lọc.
+                     * @enum {string}
+                     */
+                    role?: "gate" | "soft" | "stay";
                 };
                 /** @description (1.18.0) Điểm vui chơi trong gazetteer repo (domain/search/gazetteer.py: vinwonders, safari, grand_world, …) nhận ra trong câu (bỏ cụm trong scope phủ định), chỉ khi SEARCH_ENTITY_FILTER bật. role = gate: câu chỉ nêu entity hoặc kèm cue attraction / combo → chỉ giữ unit attraction / combo có TÊN chứa entity (HARD, không nới; "entity" vào applied); location: câu có cue loại khác (khách sạn / vé máy bay / golf, kể cả cue yếu) hoặc nêu từ hai loại → entity chỉ định vị, không lọc. Tham số taxonomy của request không đổi role, chỉ giao với mask (tab Web có thể 0 → emptyReason entity). Thương hiệu khách sạn (Vinpearl, Meliá) không phải entity. */
                 entity?: {
@@ -1399,17 +1405,23 @@ export interface components {
                     /** @enum {string} */
                     source?: "param";
                 };
-                /** @description Câu đưa vào nhánh BM25 và độ phủ vớt sau khi bỏ các cụm đã thành filter (phủ định, giá/sao, cue loại, địa danh tuyến; từ 1.18.0 thêm thời lượng). Vector dense vẫn dùng câu chuẩn hoá đầy đủ (khoá cache embed không đổi). */
+                /** @description Câu đưa vào nhánh BM25 và độ phủ vớt sau khi bỏ các cụm đã thành filter (phủ định, giá/sao, cue loại, địa danh tuyến; từ 1.18.0 thêm thời lượng; từ 1.30.0 thêm cụm `unparsed`). Vector dense dùng câu chuẩn hoá đầy đủ, trừ khi có `denseText` (1.30.0). */
                 lexicalText?: string;
+                /** @description (1.30.0, cờ SEARCH_EMBED_RESIDUAL) Câu thật sự đem embed khi khác câu chuẩn hoá đầy đủ: đã bỏ thời lượng, giá/sao, số khách, phủ định đang áp và cụm `unparsed`; giữ điểm đến, entity và cue loại. Không khai khi giống câu đầy đủ. */
+                denseText?: string;
+                /** @description (1.30.0, cờ SEARCH_UNEXPLAINED_EMPTY) Cụm khiến câu không có đáp án: phần câu còn lại sau khi tách điều kiện toàn bộ là cụm dạng tên riêng catalog không có, hoặc cả câu không có chữ nào catalog hiểu. Đi cùng emptyReason `unexplained`, total 0 (FR-SRC-04). */
+                unexplained?: string[];
+                /** @description (1.30.0, cờ SEARCH_UNEXPLAINED_EMPTY) Cụm lạ (không có trong catalog) đã bị bỏ khỏi câu BM25 và câu embed; phần còn lại vẫn được tìm. */
+                unparsed?: string[];
                 /** @description Họ filter suy từ câu THẬT SỰ đã áp (cờ bật và câu có giá trị); rỗng khi mọi cờ tắt. Từ 1.18.0: duration (chỉ tác động lên câu BM25 — lexicalText — không vào F) và entity (gate vào F). */
                 applied?: ("taxonomy" | "route" | "mustNot" | "price" | "star" | "party" | "date" | "duration" | "entity")[];
                 /** @description Số kết quả bị loại ở bước kiểm lại hard filter sau fusion (kỳ vọng 0; > 0 là lỗi dữ liệu/mask). Ở 1.16.0 – 1.18.0 gồm cả unit có phòng/chuyến con mà KHÔNG con nào thoả đồng thời giá và số khách; từ 1.19.0 mask kiểm các điều kiện cấp phòng (giá, số khách, ngày) trên cùng một con nên không còn trường hợp đó. */
                 revalidatedDrops?: number;
                 /**
-                 * @description F rỗng do họ filter nào (họ đầu tiên làm F rỗng theo thứ tự áp). Filter suy từ câu KHÔNG được nới ngầm (kiến trúc Phase A §6); chỉ điểm đến suy ra có fallback (diagnostics.destinationFilter.fallback, FR-SRC-04). Từ 1.16.0 khai thêm star (mọi unit còn lại đều KHAI sao thấp hơn starRatingMin — giá trị engine 1.15.0 đã có thể trả) và party (mọi unit còn lại có sức chứa đã biết nhỏ hơn số khách). Từ 1.18.0: entity (mọi unit còn lại không có tên chứa entity trong tập attraction / combo — kể cả khi request taxonomy ∉ {attraction, combo}); duration khai cho đủ họ, 1.18.0 không bao giờ phát (duration không vào F). (mọi unit còn lại có sức chứa đã biết nhỏ hơn số khách). Từ 1.19.0 khai thêm date (mọi unit còn lại không dùng được vào khoảng ngày checkIn / checkOut).
+                 * @description F rỗng do họ filter nào (họ đầu tiên làm F rỗng theo thứ tự áp). Filter suy từ câu KHÔNG được nới ngầm (kiến trúc Phase A §6); chỉ điểm đến suy ra có fallback (diagnostics.destinationFilter.fallback, FR-SRC-04). Từ 1.16.0 khai thêm star (mọi unit còn lại đều KHAI sao thấp hơn starRatingMin — giá trị engine 1.15.0 đã có thể trả) và party (mọi unit còn lại có sức chứa đã biết nhỏ hơn số khách). Từ 1.18.0: entity (mọi unit còn lại không có tên chứa entity trong tập attraction / combo — kể cả khi request taxonomy ∉ {attraction, combo}); duration khai cho đủ họ, 1.18.0 không bao giờ phát (duration không vào F). (mọi unit còn lại có sức chứa đã biết nhỏ hơn số khách). Từ 1.19.0 khai thêm date (mọi unit còn lại không dùng được vào khoảng ngày checkIn / checkOut). Từ 1.30.0: duration phát khi gate thời lượng làm F rỗng (không vé / combo đúng số ngày); unexplained = câu không có đáp án theo `queryPlan.unexplained` (F có thể không rỗng — filteredCount vẫn là |F|, total 0).
                  * @enum {string}
                  */
-                emptyReason?: "taxonomy" | "route" | "mustNot" | "price" | "star" | "party" | "date" | "destination" | "param" | "entity" | "duration";
+                emptyReason?: "taxonomy" | "route" | "mustNot" | "price" | "star" | "party" | "date" | "destination" | "param" | "entity" | "duration" | "unexplained";
                 /** @description Tham số request bị bỏ qua vì sai ngữ cảnh (ví dụ origin cho câu không phải vé máy bay). */
                 ignored?: string[];
                 /** @description (1.16.0) Router confidence của plan rule-based (kiến trúc §5): 1 trừ 0.25 cho mỗi lý do ở fallbackReasons, tất định. Có mặt khi khối queryPlan có mặt. Từ 1.17.0: dưới ngưỡng SEARCH_LLM_FALLBACK_MIN_CONFIDENCE và SEARCH_LLM_FALLBACK ≠ off thì kích hoạt LLM fallback (khối llm); giá trị này luôn là của plan rule. */

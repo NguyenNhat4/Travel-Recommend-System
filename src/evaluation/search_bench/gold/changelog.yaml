@@ -345,3 +345,16 @@
   new_labels_by_source:
     machine_accepted: 546
   pool_dir: v6a
+- version: gold_v7
+  at: '2026-10-13T23:54:46+07:00'
+  action: import_append
+  n_queries_active: 252
+  n_queries_retired: 1
+  n_labels: 8903
+  source: pool@gold_v7
+  merged: merged.csv
+  snapshot: '2026-09-23'
+  new_queries: 77
+  new_labels_by_source:
+    machine_accepted: 767
+  pool_dir: v7a

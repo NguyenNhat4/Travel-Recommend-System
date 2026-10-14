@@ -167,7 +167,7 @@ class Settings(BaseSettings):
     search_dest_filter_fallback: bool = True
     # Câu gõ không dấu (slice no_diacritics; contract 1.14.0 `diagnostics.queryProfile`): `relax` nới cổng vớt BM25 và (tuỳ chọn)
     # cutoff dense cho riêng câu phát hiện không dấu (≥ min_tokens token); `off` = như cũ. Giá trị nới là tạm, chưa qua dev/test.
-    search_no_diacritics_mode: Literal["off", "relax"] = "relax"
+    search_no_diacritics_mode: Literal["off", "relax", "restore"] = "restore"   # production 14/10: phục hồi dấu, không nới
     search_no_diacritics_lexical_k: int = Field(default=20, ge=0)
     search_no_diacritics_lexical_cutoff: float = 0.0
     search_no_diacritics_min_coverage: float = Field(default=0.4, ge=0, le=1)
@@ -189,9 +189,16 @@ class Settings(BaseSettings):
     # 07/10 (contract 1.18.0; spec docs/spec/bench/tong-hop-chinh-sua-luong-search-ota.md; plan docs/plan/2026-10-07-search-duration-
     # entity-poi.md): ba họ mới, mặc định tắt — TẮT thì không parse, không khai (response y như 1.17.0); bật mới parse + khai ở
     # queryPlan. Bật ở production chỉ sau khi bench WIN/TIE + Forbidden@10 = 0 (plan §Bước 9).
-    search_duration_filter: bool = False       # F7: "3 ngày 2 đêm" / "3N2Đ" → queryPlan.duration; bỏ cụm khỏi câu BM25 (không lọc)
-    search_poi_resolve: bool = False           # địa danh gazetteer repo ("Hồ Hoàn Kiếm" → Hà Nội) vào F1; hard.destinationSource = poi
-    search_entity_filter: bool = False         # entity gate CỨNG: câu nêu điểm vui chơi (VinWonders…) → chỉ attraction/combo có tên
+    search_duration_filter: bool = True        # production 14/10. F7: "3 ngày 2 đêm" / "3N2Đ" → queryPlan.duration; bỏ cụm khỏi câu BM25 (không lọc)
+    search_poi_resolve: bool = True            # production 14/10. địa danh gazetteer repo ("Hồ Hoàn Kiếm" → Hà Nội) vào F1; hard.destinationSource = poi
+    # 13/10 (contract 1.30.0; plan docs/plan/2026-10-13-search-evidence-gate-no-answer.md; PRD FR-SRC-03/04 chốt 13/10):
+    # mặc định tắt → response như 1.27.0. Bật từng cờ chỉ sau khi bench đạt cổng ở plan §4.
+    search_evidence_gate: bool = True          # production 14/10 (bench gold_v7 r2): BM25 chỉ vớt theo cụm giữ dấu
+    search_duration_mask: bool = True          # production 14/10 (bench r3). thời lượng vai trò gate → chỉ vé/combo đúng số ngày; câu lưu trú → stay (không lọc)
+    search_embed_residual: bool = True         # production 14/10 (bench r3). dense embed câu đã bỏ span điều kiện; residual rỗng + gate thời lượng → chỉ-filter
+    search_unexplained_empty: bool = True      # production 14/10: residual chỉ là tên lạ / vô nghĩa → rỗng (unexplained)
+    search_emit_background: bool = False       # phát backgroundScore (trung vị cosine top-K trong F) + diagnostics.saturated
+    search_entity_filter: bool = True          # production 14/10 (Web đã chốt). entity gate CỨNG: câu nêu điểm vui chơi (VinWonders…) → chỉ attraction/combo có tên
     #                                            chứa entity; đổi số đếm tab của Web khi bật — cần Web xác nhận (như F4)
     # Kênh fuzzy tên gần đúng (trigram cửa sổ, domain/search/fuzzy.py): 0 = tắt. Bật thì unit có rank fuzzy ≤ K, độ giống
     # ≥ MIN_SIM (0.6 vớt cả tên chung chung — đo 06/10) và cosine ≥ SEARCH_LEXICAL_CUTOFF được vớt vào R. Chỉ ở hybrid.

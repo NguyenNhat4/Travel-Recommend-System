@@ -35,6 +35,9 @@ class HybridConfig:
     dense_weight: float = 1.0
     lexical_weight: float = 1.0
     fuzzy_weight: float = 1.0
+    # Cổng bằng chứng (plan 2026-10-13 §2.2): BM25 chỉ được cộng điểm RRF cho unit có bằng chứng cụm (`rrf_admissible`);
+    # `admissible` (vớt) do use case truyền bằng chứng TÊN theo cụm thay cho độ phủ túi chữ. False = như trước.
+    evidence_gate: bool = False
 
 
 @dataclass
@@ -65,7 +68,8 @@ def hybrid_filter_score(cosines: Mapping[int, float], dense_rank: Mapping[int, i
                         admissible: Callable[[int], bool], cutoff: float, cfg: HybridConfig,
                         filtered_count: int, facet_fields: dict[str, np.ndarray], *,
                         fuzzy_rank: Mapping[int, int] | None = None,
-                        fuzzy_admissible: Callable[[int], bool] | None = None) -> HybridOutcome:
+                        fuzzy_admissible: Callable[[int], bool] | None = None,
+                        rrf_admissible: Callable[[int], bool] | None = None) -> HybridOutcome:
     """`cosines`: cosine của mọi ứng viên các nhánh. Giữ dense ≥ cutoff, vớt lexical (và fuzzy) theo `cfg`, sắp theo RRF.
 
     `lexical_k = 0` cho đúng tập R của `candidate_filter_score` (chỉ khác thứ tự). `fuzzy_rank` None hoặc `cfg.fuzzy_k = 0`
@@ -82,6 +86,8 @@ def hybrid_filter_score(cosines: Mapping[int, float], dense_rank: Mapping[int, i
         kept_fuzzy = {u for u, r in fuzzy.items()
                       if u not in kept_dense and u not in kept_lex and r <= cfg.fuzzy_k and u in cosines
                       and cosines[u] >= cfg.lexical_cutoff and (fuzzy_admissible is None or fuzzy_admissible(u))}
+    if cfg.evidence_gate and rrf_admissible is not None:   # khớp rời rạc / sai dấu không được đẩy thứ hạng
+        lexical_rank = {u: r for u, r in lexical_rank.items() if u in kept_lex or rrf_admissible(u)}
     fused = rrf(dense_rank, lexical_rank, cfg.rrf_k, fuzzy_rank=fuzzy, dense_weight=cfg.dense_weight,
                 lexical_weight=cfg.lexical_weight, fuzzy_weight=cfg.fuzzy_weight)
     kept = kept_dense | kept_lex | kept_fuzzy

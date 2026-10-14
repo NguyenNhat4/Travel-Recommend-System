@@ -2,8 +2,8 @@
 
 - Ngày: 2026-10-06
 - Người đề xuất: Pham Nguyen Dang Khoi / Claude Code soạn
-- Trạng thái: chờ chốt
-- Chốt bởi / ngày:
+- Trạng thái: từ chối (thay bằng `2026-10-13-search-evidence-gate-no-answer.md`)
+- Chốt bởi / ngày: tqanh123, 2026-10-13
 - PRD bị ảnh hưởng: không đổi câu chữ (`docs/prd/requirements.md` §1.2 không ghi các tham số này). Giá trị đang nằm ở
   `docs/spec/hop-dong-tich-hop-search-recommendation.md` §2.4 và mục S9 "chưa benchmark" §10. Đổi chúng làm đổi kết quả tìm kiếm người
   dùng thấy, nên đưa ra để nhóm chốt. **Phụ thuộc** đề xuất đổi model `2026-10-05-fr-src-02-embedding-local-e5-small.md`: chỉ áp dụng khi

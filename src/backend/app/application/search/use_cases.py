@@ -49,7 +49,10 @@ from src.backend.app.domain.search import (
     soft_star_order,
     tokens,
 )
+from src.backend.app.domain.search.explain import Grams, content as evidence_tokens, name_evidence, token_hit
+from src.backend.app.domain.search.explain import toks as evidence_toks
 from src.backend.app.domain.search.fuzzy import FuzzyIndex
+from src.backend.app.domain.search.query_plan import EMPTY_UNEXPLAINED
 
 from .query_plan_llm import (
     MODE_OFF,
@@ -256,6 +259,13 @@ class SearchProducts:
     duration_filter: bool = False        # F7 "3 ngày 2 đêm" → bỏ cụm khỏi câu BM25, khai queryPlan.duration (không lọc)
     poi_resolve: bool = False            # địa danh gazetteer ("Hồ Hoàn Kiếm" → Hà Nội) vào F1; hard.destinationSource = poi
     entity_filter: bool = False          # gate cứng: câu nêu điểm vui chơi → chỉ attraction/combo có tên chứa entity
+    # 13/10 (contract 1.30.0; plan docs/plan/2026-10-13-search-evidence-gate-no-answer.md): mặc định tắt → response như 1.27.0.
+    # Cổng bằng chứng theo cụm của nhánh lexical nằm trong `HybridConfig.evidence_gate`.
+    duration_mask: bool = False          # thời lượng có vai trò gate → chỉ vé/combo đúng số ngày (cần parse F7, tự bật)
+    embed_residual: bool = False         # dense embed câu đã bỏ span điều kiện; residual rỗng + gate thời lượng → chỉ-filter
+    unexplained_empty: bool = False      # residual chỉ là tên lạ / câu vô nghĩa → rỗng (`emptyReason: unexplained`)
+    emit_background: bool = False        # phát `backgroundScore` (trung vị cosine top-K trong F) + `diagnostics.saturated`
+    no_diacritics_restore: bool = False  # câu không dấu đã được normalizer phục hồi dấu: chỉ khai queryProfile, không nới ngưỡng
     # LLM fallback của query plan (đề xuất đã chốt 2026-10-06-search-llm-fallback-query-plan; contract 1.17.0): off | shadow | on.
     # Chỉ khi plan rule có confidence < `llm_min_confidence`; `hypothesizer` = QueryHypothesisPort (bọc cache nếu chưa bọc).
     llm_fallback: str = MODE_OFF
@@ -264,6 +274,8 @@ class SearchProducts:
     hypothesizer: Any = None
     today: Callable[[], date] = field(default=lambda: datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).date())  # hôm nay giờ Việt Nam
     _name_tokens: list[set[str]] = field(default_factory=list, init=False, repr=False, compare=False)
+    _name_grams: list[Grams] = field(default_factory=list, init=False, repr=False, compare=False)
+    _text_grams: dict[int, Grams] = field(default_factory=dict, init=False, repr=False, compare=False)
     _normalizer: QueryNormalizer | None = field(default=None, init=False, repr=False, compare=False)
     _gaz: PlanGazetteers = field(default_factory=PlanGazetteers, init=False, repr=False, compare=False)
     _fuzzy: FuzzyIndex | None = field(default=None, init=False, repr=False, compare=False)
@@ -275,11 +287,16 @@ class SearchProducts:
         # Token (đã fold) của tên từng search unit, tính một lần: dùng để xét độ phủ khi vớt hit BM25.
         if self.hybrid_on:
             self._name_tokens = [set(tokens(p.name)) for p in self.index.units]
+            if self.evidence_on:   # bằng chứng tên theo cụm (giữ dấu): tên ngắn, dựng hết một lần
+                self._name_grams = [Grams.build([p.name]) for p in self.index.units]
         if self.normalize:   # từ vựng sửa chính tả + gazetteer lấy từ chính catalog đang chạy
             self._normalizer = QueryNormalizer(destinations=set(self.index.destination.tolist()),
-                                               names=(p.name for p in self.index.units), tone=self.tone_normalize)
+                                               names=(p.name for p in self.index.units), tone=self.tone_normalize,
+                                               restore=self.no_diacritics_restore)
             self._gaz = _plan_gazetteers(self.index.units, entities=self.index.attrs.entities,
                                          destinations=set(self.index.destination.tolist()))
+            if self.unexplained_empty:   # từ vựng catalog cho luật residual (tên + mô tả rút gọn + tiện ích)
+                self._gaz = replace(self._gaz, vocab=Grams.build(unit_text(p) for p in self.index.units))
         if self.fuzzy_on:   # dựng chỉ mục trigram ngay lúc nạp catalog (luồng nạp lại), không để request đầu tiên trả giá
             self._fuzzy_index()
         if self.llm_fallback != MODE_OFF and self.normalize:   # off → không dựng gì: response như 1.16.0
@@ -292,6 +309,17 @@ class SearchProducts:
     @property
     def hybrid_on(self) -> bool:
         return self.lexical is not None and self.hybrid is not None
+
+    @property
+    def evidence_on(self) -> bool:
+        return self.hybrid_on and any(c is not None and c.evidence_gate for c in (self.hybrid, self.no_diacritics))
+
+    def _unit_text_grams(self, u: int) -> Grams:
+        g = self._text_grams.get(u)
+        if g is None:
+            g = Grams.build([unit_text(self.index.units[u])])
+            self._text_grams[u] = g
+        return g
 
     @property
     def fuzzy_on(self) -> bool:
@@ -332,9 +360,12 @@ class SearchProducts:
                           numeric=self.numeric_filter if derive_plan is None else derive_plan,
                           taxonomy_strong_only=self.taxonomy_strong_only,
                           party=self.party_filter if derive_plan is None else derive_plan,
-                          duration=self.duration_filter if derive_plan is None else derive_plan,
+                          duration=(self.duration_filter or self.duration_mask) if derive_plan is None else derive_plan,
                           poi=self.poi_resolve if derive_plan is None else derive_plan,
-                          entity=self.entity_filter if derive_plan is None else derive_plan)
+                          entity=self.entity_filter if derive_plan is None else derive_plan,
+                          duration_mask=self.duration_mask if derive_plan is None else (derive_plan and self.duration_mask),
+                          embed_residual=self.embed_residual,
+                          unexplained=self.unexplained_empty and derive_plan is not False)
         params = PlanParams(taxonomy=taxonomy, destination=destination, origin=origin, price_min=price_min,
                             price_max=price_max, star_min=star_min, available_only=available_only,
                             adults=adults, children=children,
@@ -344,26 +375,46 @@ class SearchProducts:
             # LLM fallback bật: dựng plan TRƯỚC embed để lượt gọi model (khi confidence thấp) chạy song song với embed
             plan = build_query_plan(nq, q, params, flags, self._gaz)
             pending = self._llm.begin(plan, nq, q, flags)
-        qvec, embed_cache = self._embed(text)
-        stages.lap("embed")
+        if plan is None and (flags.embed_residual or flags.unexplained):   # 1.30.0: câu embed / rỗng sớm phụ thuộc plan
+            plan = build_query_plan(nq, q, params, flags, self._gaz)
         # Câu không dấu → bộ ngưỡng riêng (nếu bật); khoá cache và vector không đổi, chỉ cổng vớt / cutoff đổi.
         profile = self._profile(q)
         cfg = self.no_diacritics if profile and self.no_diacritics is not None else self.hybrid
         cutoff = self.no_diacritics_cutoff if profile and self.no_diacritics_cutoff is not None else self.cutoff
-        if plan is None:
-            plan = build_query_plan(nq, q, params, flags, self._gaz)
-        if pending is not None:
-            plan, llm_block = self._llm.finish(pending)   # chờ phần hạn còn lại; on + nhận → plan đã trộn
-            stages.lap("llm")
-        decision = plan.destination
-        out, diagnostics, drops = self._retrieve(plan, text, qvec, decision.value, cfg, cutoff, stages)
         fallback = None
-        if decision.source == SOURCE_QUERY and out.total == 0 and self.dest_filter_fallback:
-            # FR-SRC-04: chỉ điểm đến suy ra được nới (gazetteer có thể suy sai); filter suy ra khác KHÔNG nới (kiến trúc §6).
-            out, diagnostics, drops = self._retrieve(plan, text, qvec, None, cfg, cutoff, stages)
-            fallback = FALLBACK_DROPPED_EMPTY
-        empty_reason = (self._empty_reason(plan, None if fallback else decision.value)
-                        if out.filtered_count == 0 else None)
+        if plan is not None and plan.unexplained and pending is None:
+            # FR-SRC-04 (chốt 13/10): phần câu còn lại chỉ là tên lạ / vô nghĩa → không có đáp án; không gọi embed / kho vector
+            embed_cache = None
+            decision = plan.destination
+            mask = self.index.mask(**plan.mask_kwargs(destination=decision.value))
+            out = SearchOutcome(order=[], scores={}, filtered_count=int(mask.sum()),
+                                facets={"taxonomy": {}, "destination": {}})
+            diagnostics, drops = self._mode_diagnostics(cfg), 0
+            empty_reason = EMPTY_UNEXPLAINED
+        else:
+            embed_text = canonical_query(plan.dense_text) if plan is not None and plan.dense_text else text
+            qvec, embed_cache = self._embed(embed_text)
+            stages.lap("embed")
+            if plan is None:
+                plan = build_query_plan(nq, q, params, flags, self._gaz)
+            if pending is not None:
+                plan, llm_block = self._llm.finish(pending)   # chờ phần hạn còn lại; on + nhận → plan đã trộn
+                stages.lap("llm")
+            # residual rỗng + gate thời lượng: R = F (≤ candidateK), không cutoff, xếp theo cosine với câu đầy đủ; response khai 0
+            retrieve_cutoff = -1.0 if plan.filter_only else cutoff
+            if plan.filter_only:
+                cutoff = 0.0
+            decision = plan.destination
+            out, diagnostics, drops = self._retrieve(plan, text, qvec, decision.value, cfg, retrieve_cutoff, stages)
+            if decision.source == SOURCE_QUERY and out.total == 0 and self.dest_filter_fallback:
+                # FR-SRC-04: chỉ điểm đến suy ra được nới (gazetteer có thể suy sai); filter suy ra khác KHÔNG nới (kiến trúc §6).
+                out, diagnostics, drops = self._retrieve(plan, text, qvec, None, cfg, retrieve_cutoff, stages)
+                fallback = FALLBACK_DROPPED_EMPTY
+            empty_reason = (self._empty_reason(plan, None if fallback else decision.value)
+                            if out.filtered_count == 0 else None)
+        background = diagnostics.pop("_background", None)
+        if plan.filter_only:
+            diagnostics["filterOnly"] = True
         if nq:
             diagnostics.update(_normalization_diagnostics(q, nq))
             # phát kể cả khi cờ tắt: bench đếm được tần suất filter sẽ kích hoạt. = nq.destinations, cộng điểm đến suy từ địa
@@ -378,6 +429,8 @@ class SearchProducts:
             diagnostics["destinationFilter"] = decision.as_dict(fallback)
         if profile:
             diagnostics["queryProfile"] = profile
+        if nq is not None and nq.restored:
+            diagnostics["accentRestored"] = list(nq.restored)
         if embed_cache:   # contract 1.12.0: chỉ khi embedder có cache (CachingQueryEmbedder)
             diagnostics["embedCache"] = embed_cache
         page = out.order[offset: offset + limit]
@@ -393,6 +446,8 @@ class SearchProducts:
             "topScore": round(max(0.0, min(1.0, max(float(out.scores[i]) for i in out.order))), 4) if out.order else None,
             "cutoff": cutoff,   # cutoff hiệu lực cho câu này (khác `self.cutoff` chỉ ở profile không dấu)
             "facets": out.facets,
+            **({"backgroundScore": (round(max(0.0, min(1.0, background)), 4) if out.order and background is not None
+                                    else None)} if self.emit_background else {}),
             "diagnostics": {**diagnostics,
                             "filteredCount": out.filtered_count, "relevantCount": out.total,
                             "modelVersion": self.index.model_version,
@@ -410,7 +465,8 @@ class SearchProducts:
         return response
 
     def _profile(self, q: str) -> str | None:
-        if (self.no_diacritics is None and self.no_diacritics_cutoff is None) or not is_unaccented(q, self.no_diacritics_min_tokens):
+        if (self.no_diacritics is None and self.no_diacritics_cutoff is None and not self.no_diacritics_restore) \
+                or not is_unaccented(q, self.no_diacritics_min_tokens):
             return None
         return PROFILE_NO_DIACRITICS
 
@@ -425,6 +481,10 @@ class SearchProducts:
         facet_fields = {"taxonomy": self.index.taxonomy, "destination": self.index.destination}
         dense = [h for h in self.vectors.near_vector(qvec, allowed, self.candidate_k) if h.product_id in self.index.idx]
         stages.lap("dense")
+        extra: dict = {}
+        if self.emit_background:   # contract §3.4: nền = trung vị cosine; ở đây trên top-K dense của F (xấp xỉ khi |F| > K)
+            extra["_background"] = float(np.median([h.score for h in dense])) if dense else None
+            extra["saturated"] = sum(h.score >= cutoff for h in dense) >= self.candidate_k
         # Địa danh đã thành filter thì không còn là bằng chứng độ phủ tên khi vớt hit BM25 ("sân golf ở Nha Trang" không
         # vớt "Vinpearl Resort Nha Trang" chỉ vì tên chứa "Nha Trang"); lượt fallback (destination None) không bỏ gì.
         drop = plan.drop_tokens if destination else frozenset()
@@ -447,6 +507,7 @@ class SearchProducts:
             order = soft_star_order(order, self.index.star_known_ok(plan.star_min))
         if order != out.order:
             out.order = order
+        diagnostics.update(extra)
         return out, diagnostics, drops
 
     def _matched_children(self, i: int, child_filter: dict) -> dict:
@@ -531,23 +592,42 @@ class SearchProducts:
             fuzzy_rank, fuzzy_admissible = self._fuzzy_channel(q, qv, qn, mask, cfg, cosines)
             if stages is not None:
                 stages.lap("fuzzy")
-        q_tokens = query_tokens(q)
-        if drop_tokens:
-            q_tokens = [t for t in q_tokens if t not in drop_tokens] or q_tokens   # câu chỉ có địa danh thì giữ nguyên
+        if cfg.evidence_gate and self._name_grams:
+            # plan 2026-10-13 §2.1–2.2: vớt cần bằng chứng TÊN theo cụm liền nhau, đúng thứ tự, giữ dấu ("Trần Thị Mai" không
+            # khớp "Thị trấn …"); cộng RRF chỉ cần một âm tiết giữ dấu có trong tên hoặc mô tả (bench 14/10: đòi cặp âm tiết ở
+            # đây làm tụt câu mô tả — "combo trải nghiệm tại Phú Quốc" −0,84 nDCG)
+            ev = evidence_tokens(evidence_toks(q), drop_tokens)
+            admissible = lambda u: name_evidence(ev, self._name_grams[u], cfg.min_coverage)  # noqa: E731
+            rrf_admissible = lambda u: token_hit(ev, self._name_grams[u]) or token_hit(ev, self._unit_text_grams(u))  # noqa: E731
+        else:
+            q_tokens = query_tokens(q)
+            if drop_tokens:
+                q_tokens = [t for t in q_tokens if t not in drop_tokens] or q_tokens   # câu chỉ có địa danh thì giữ nguyên
+            admissible = lambda u: coverage(q_tokens, self._name_tokens[u]) >= cfg.min_coverage  # noqa: E731
+            rrf_admissible = None
         out = hybrid_filter_score(
-            cosines, dense_rank, lexical_rank,
-            lambda u: coverage(q_tokens, self._name_tokens[u]) >= cfg.min_coverage,
+            cosines, dense_rank, lexical_rank, admissible,
             cutoff, cfg, filtered_count, facet_fields,
-            fuzzy_rank=fuzzy_rank, fuzzy_admissible=fuzzy_admissible,
+            fuzzy_rank=fuzzy_rank, fuzzy_admissible=fuzzy_admissible, rrf_admissible=rrf_admissible,
         )
         if stages is not None:
             stages.lap("fuse")
-        diagnostics = {**HYBRID_DIAGNOSTICS, "fusion": "rrf", "rrfK": cfg.rrf_k, "lexicalK": cfg.lexical_k,
-                       "lexicalCutoff": cfg.lexical_cutoff, "lexicalMinCoverage": cfg.min_coverage,
-                       "lexicalCandidates": len(lex), "lexicalCount": len(out.lexical_only)}
+        diagnostics = {**self._mode_diagnostics(cfg), "lexicalCandidates": len(lex), "lexicalCount": len(out.lexical_only)}
         if cfg.fuzzy_k > 0:   # contract 1.16.0: chỉ khi kênh fuzzy bật
             diagnostics["fuzzyCount"] = len(getattr(out, "fuzzy_only", ()))
         return out, diagnostics
+
+    def _mode_diagnostics(self, cfg: HybridConfig | None) -> dict:
+        """Khối diagnostics của chế độ truy xuất (không phụ thuộc kết quả) — dùng chung cho đường rỗng sớm 1.30.0."""
+        if not self.hybrid_on:
+            return dict(ANN_DIAGNOSTICS)
+        cfg = cfg if cfg is not None else self.hybrid
+        out = {**HYBRID_DIAGNOSTICS, "fusion": "rrf", "rrfK": cfg.rrf_k, "lexicalK": cfg.lexical_k,
+               "lexicalCutoff": cfg.lexical_cutoff, "lexicalMinCoverage": cfg.min_coverage,
+               "lexicalCandidates": 0, "lexicalCount": 0}
+        if cfg.evidence_gate:
+            out["evidenceGate"] = True
+        return out
 
     def _fuzzy_channel(self, q: str, qv: np.ndarray, qn: float, mask: np.ndarray | None, cfg: HybridConfig,
                        cosines: dict[int, float]):
@@ -618,3 +698,14 @@ class SimilarProducts:
         hits = self.vectors.near_vector(anchor, self.index.allowed_ids(m), k)
         return SimilarLookup("ok", anchor_id, tuple(
             scored(self.index, self.index.idx[h.product_id], h.score) for h in hits if h.product_id in self.index.idx))
+
+
+def unit_text(p) -> str:
+    """Văn bản của unit cho bằng chứng mô tả và từ vựng residual: tên, 80 từ đầu mô tả, điểm đến, tiện ích / điểm nổi bật."""
+    a = p.attributes or {}
+    parts = [p.name, " ".join((p.description or "").split()[:80]), p.destination or "", str(a.get("province") or "")]
+    for k in ("amenities", "highlights", "tags"):
+        v = a.get(k)
+        if isinstance(v, (list, tuple)):
+            parts.extend(str(x) for x in v)
+    return " . ".join(parts)

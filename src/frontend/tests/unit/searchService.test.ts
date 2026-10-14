@@ -274,3 +274,30 @@ describe('search groups', () => {
     expect(shelfCacheKey('x', null, 'stay')).toBe(searchCacheKey('group', 'x', null, 'stay', PREVIEW_LIMIT, 0));
   });
 });
+
+describe('weak match rule with backgroundScore (contract 1.30.0)', () => {
+  const originalFetch = global.fetch;
+  afterEach(() => { global.fetch = originalFetch; });
+
+  it('applies margin + ceiling only when F is large enough and not in filter-only mode', async () => {
+    const { isWeakMatch } = await import('../../src/services/search');
+    expect(isWeakMatch(0.86, 0.84, 200)).toBe(true);          // top chỉ nhỉnh hơn nền, dưới trần
+    expect(isWeakMatch(0.91, 0.89, 200)).toBe(false);         // trên trần 0.88
+    expect(isWeakMatch(0.86, 0.85, 3)).toBe(false);           // điểm đến nhỏ: nền ≈ top, không gắn nhãn
+    expect(isWeakMatch(0.86, 0.84, 200, true)).toBe(false);   // chỉ-filter
+    expect(isWeakMatch(0.86, null, 200)).toBe(false);         // backend không phát nền → luật cũ
+    expect(isWeakMatch(null, 0.5, 200)).toBe(false);
+  });
+
+  it('maps backgroundScore, filteredCount and queryPlan.unexplained', async () => {
+    global.fetch = vi.fn().mockImplementation(async () => new Response(JSON.stringify({
+      results: [], total: 0, topScore: null, backgroundScore: null,
+      diagnostics: { filteredCount: 40, queryPlan: { emptyReason: 'unexplained', unexplained: ['Nguyễn Khắc Tiệp'] } },
+    }), { status: 200 }));
+    const r = await searchProductsApi('Nguyễn Khắc Tiệp');
+    expect(r.unexplained).toEqual(['Nguyễn Khắc Tiệp']);
+    expect(r.isWeakMatch).toBe(false);
+    const overview = await searchOverviewApi('Nguyễn Khắc Tiệp');
+    expect(overview.unexplained).toEqual(['Nguyễn Khắc Tiệp']);
+  });
+});

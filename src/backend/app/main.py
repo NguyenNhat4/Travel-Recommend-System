@@ -276,6 +276,7 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None, *,
         lexical_k=settings.search_lexical_k,
         lexical_cutoff=min(settings.search_lexical_cutoff, settings.search_cutoff),  # contract: lexicalCutoff ≤ cutoff
         min_coverage=settings.search_lexical_min_coverage,
+        evidence_gate=settings.search_evidence_gate,
         **fusion,
     ) if settings.search_hybrid and hasattr(vector_search, "bm25") else None
     logger.info("startup.recsys.search.mode=%s", "HYBRID_CANDIDATE_SCORE" if hybrid else "ANN_CANDIDATE_SCORE")
@@ -289,6 +290,7 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None, *,
         lexical_cutoff=min(settings.search_no_diacritics_lexical_cutoff,
                            no_diacritics_cutoff if no_diacritics_cutoff is not None else settings.search_cutoff),
         min_coverage=settings.search_no_diacritics_min_coverage,
+        evidence_gate=settings.search_evidence_gate,
         **fusion,
     ) if hybrid and relax else None
     logger.info("startup.recsys.search.dest_filter=%s no_diacritics=%s", settings.search_dest_filter,
@@ -298,6 +300,9 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None, *,
                 settings.search_taxonomy_strong_only, settings.search_route_filter, settings.search_numeric_filter,
                 settings.search_party_filter, settings.search_tone_normalize, settings.search_duration_filter,
                 settings.search_poi_resolve, settings.search_entity_filter)
+    logger.info("startup.recsys.search.evidence gate=%s duration_mask=%s embed_residual=%s unexplained=%s background=%s",
+                settings.search_evidence_gate, settings.search_duration_mask, settings.search_embed_residual,
+                settings.search_unexplained_empty, settings.search_emit_background)
     logger.info("startup.recsys.search.fusion fuzzy_k=%s weights=%s/%s/%s", settings.search_fuzzy_k if hybrid else 0,
                 settings.search_rrf_dense_weight, settings.search_rrf_lexical_weight, settings.search_rrf_fuzzy_weight)
     product_popularity = {index.units[u].product_id: s for u, s in popularity.unit_scores().items()}
@@ -336,6 +341,11 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None, *,
             duration_filter=settings.search_duration_filter,
             poi_resolve=settings.search_poi_resolve,
             entity_filter=settings.search_entity_filter,
+            duration_mask=settings.search_duration_mask,
+            embed_residual=settings.search_embed_residual,
+            unexplained_empty=settings.search_unexplained_empty,
+            emit_background=settings.search_emit_background,
+            no_diacritics_restore=settings.search_no_diacritics_mode == "restore",
             llm_fallback=settings.search_llm_fallback,
             llm_min_confidence=settings.search_llm_fallback_min_confidence,
             llm_timeout_ms=settings.search_llm_fallback_timeout_ms,
@@ -919,7 +929,7 @@ settings = get_settings()
 app = FastAPI(
     title=settings.app_name,
     description="Travel recommendation and itinerary API",
-    version="1.29.0",
+    version="1.30.0",
     lifespan=lifespan,
 )
 

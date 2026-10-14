@@ -28,6 +28,7 @@ from typing import Any
 import numpy as np
 
 from ..search.amenities import amenity_keys
+from ..search.constraints import parse_duration
 from ..search.gazetteer import ENTITY_TAXONOMIES, entities_of_name, entity_table
 from .models import Product
 from .stay_dates import Calendar, as_ordinal, parse_calendar
@@ -119,6 +120,9 @@ class UnitAttributes:
     sale_to: np.ndarray | None = None               # (n,) float64 — ordinal của available_to, NaN khi thiếu
     calendars: tuple[tuple[Calendar | None, ...], ...] = ()  # điểm tham quan / golf: lịch của chính unit; loại khác: ()
                                                     # (lịch hạng phòng khách sạn nằm ở `children`)
+    # Thời lượng (plan 2026-10-13 §2.3, FR-SRC-03 chốt 13/10): chỉ `DURATION_TAXONOMIES`; rỗng = không biết.
+    duration_days: tuple[frozenset[int], ...] = ()
+    duration_nights: tuple[frozenset[int], ...] = ()
 
     def __post_init__(self) -> None:
         n = len(self.amenities)
@@ -136,8 +140,12 @@ class UnitAttributes:
             object.__setattr__(self, "children", ((),) * n)
         if not self.entities:
             object.__setattr__(self, "entities", (frozenset(),) * n)
+        if not self.duration_days:
+            object.__setattr__(self, "duration_days", (frozenset(),) * n)
+        if not self.duration_nights:
+            object.__setattr__(self, "duration_nights", (frozenset(),) * n)
         if (len(self.flags) != n or len(self.children) != n or self.max_occupancy.shape != (n,)
-                or len(self.entities) != n
+                or len(self.entities) != n or len(self.duration_days) != n or len(self.duration_nights) != n
                 or len(self.calendars) != n or self.sale_from.shape != (n,) or self.sale_to.shape != (n,)):
             raise ValueError("flags / max_occupancy / children / entities / calendars / sale_from / sale_to "
                              "phải cùng chiều với amenities")
@@ -156,6 +164,7 @@ class UnitAttributes:
         kinds_of: Mapping[str, Iterable[str]] = combo_kinds_of or {}
         kids = [kids_of.get(p.product_id, ()) for p in units]
         names = entity_table()
+        durations = [_durations(p) for p in units]
         return UnitAttributes(
             amenities=tuple(
                 amenity_keys(_amenity_strings(p) + [s for c in cs for s in _amenity_strings(c)]) for p, cs in zip(units, kids)
@@ -173,7 +182,32 @@ class UnitAttributes:
             sale_from=np.array([as_ordinal(p.available_from) for p in units], dtype=np.float64),
             sale_to=np.array([as_ordinal(p.available_to) for p in units], dtype=np.float64),
             calendars=tuple(_calendars(p, cs) for p, cs in zip(units, kids)),
+            duration_days=tuple(d for d, _ in durations),
+            duration_nights=tuple(n for _, n in durations),
         )
+
+
+#: Loại sản phẩm có thời lượng cố định (vé nhiều ngày, combo). Khách sạn không: số đêm do khách chọn.
+DURATION_TAXONOMIES = ("attraction", "combo")
+
+
+def _durations(p: Product) -> tuple[frozenset[int], frozenset[int]]:
+    """(số ngày, số đêm) suy từ tên ("[2 ngày]", "[Combo 01 ngày]", "3N2Đ"), `suggestedDuration` ("1 ngày") và
+    `attributes.nights` (loader gán cho combo). Không suy từ `durationMinutes` (giờ, không phải ngày)."""
+    if p.taxonomy not in DURATION_TAXONOMIES:
+        return frozenset(), frozenset()
+    days: set[int] = set()
+    nights: set[int] = set()
+    for text in (p.name, str(p.attributes.get("suggestedDuration") or "")):
+        d = parse_duration(text)
+        if d.days:
+            days.add(d.days)
+        if d.nights:
+            nights.add(d.nights)
+    n = p.attributes.get("nights")
+    if isinstance(n, int) and not isinstance(n, bool) and n > 0:
+        nights.add(n)
+    return frozenset(days), frozenset(nights)
 
 
 def _calendars(p: Product, kids: Sequence[Product]) -> tuple[Calendar | None, ...]:

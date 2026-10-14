@@ -59,6 +59,11 @@ class ItineraryToolGateway:
         if similar is not None:
             self._handlers[SIMILAR_PRODUCTS] = lambda args: similar.get_similar_products(
                 args["productId"], args["limit"])
+        # Bundle contract (≈1,3 s lần đầu, lru_cache) dựng ngay ở đây, ngoài timeout của từng lời gọi tool: để lười thì lời gọi
+        # tool đầu tiên sau khởi động trả timeout (bench 14/10: test_catalog_hydration_is_concurrent_and_bounded).
+        contracts()
+        for name in ("ProductDetail", "DestinationListResponse"):
+            valid(name, None)
 
     def definitions(self) -> list[ToolDefinition]:
         return [definition for definition in definitions() if definition["name"] in self._handlers]
