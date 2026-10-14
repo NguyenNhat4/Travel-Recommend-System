@@ -146,14 +146,19 @@ def test_plan_feedback_requires_consent_without_granting_it():
         adults=1,
         schedule=[{"day": 1, "morning": "p1"}],
     )
-    denied = asyncio.run(d.run(planning, context={}))
+    trip = {"destination": "Huế", "start_date": "2026-10-25", "days": 1, "adults": 1}
+    denied = asyncio.run(d.run(planning, context=trip))
     assert denied["data"]["commit_allowed"] is False
     assert denied["data"]["needs_update_trip"] == ["planning_consent"]
-    accepted = asyncio.run(d.run(planning, context={"planning_consent": True}))
+    accepted = asyncio.run(d.run(planning, context={"planning_consent": True, **trip}))
     assert accepted["data"]["commit_allowed"] is True
     assert accepted["data"]["needs_update_trip"] == []
+    # Số người lớn orc tự điền, khách chưa nói: chưa được lưu lịch (AC-AGT-01).
+    guessed = asyncio.run(d.run(planning, context={"planning_consent": True, **trip, "adults": None}))
+    assert guessed["data"]["commit_allowed"] is False
+    assert guessed["data"]["needs_update_trip"] == ["adults"]
     stopped = asyncio.run(
-        d.run(planning, context={"planning_consent": True, "stopped": True})
+        d.run(planning, context={"planning_consent": True, "stopped": True, **trip})
     )
     assert stopped["data"]["commit_allowed"] is False
 
@@ -220,3 +225,47 @@ def test_only_new_tools_are_available_and_stale_plan_ref_is_rejected():
         )
     )
     assert result["error"]["code"] == "STALE_REF"
+
+
+def test_named_hotel_outside_previous_destination_filters_before_registering():
+    # Search can return semantic near matches; none may masquerade as the requested name.
+    rows = [
+        {**product('wrong-name', 'hotel', destination='Phan Thiết'), 'name': 'Le Aqua Resort'},
+        {**product('old-city', 'hotel', destination='Phan Thiết'), 'name': 'Khách sạn Lê Phan'},
+        {**product('right', 'hotel', destination='Đà Lạt'), 'name': 'Khách sạn Lê Phan'},
+        {**product('substring', 'hotel', destination='Đà Lạt'), 'name': 'Le Phanorama Hotel'},
+    ]
+    tools = FakeTools(rows)
+    d = dispatcher(tools)
+    result = asyncio.run(d.run(call('find_products', taxonomy='hotel', query='Le Phan',
+                                   name_contains='Le Phan', excluded_destinations=['phan thiet']),
+                              context={'destination': 'Phan Thiết'}))
+    assert result['status'] == 'ok'
+    assert [d.registry.product(r)['productId'] for r in result['refs']] == ['right']
+    assert result['coverage']['filtered'] == 3
+    assert 'destination' not in tools.calls[0][1]
+    assert [params['parentProductId'] for name, params in tools.calls if name == 'list'] == ['right']
+
+
+def test_filtered_name_page_keeps_cursor_and_does_not_claim_exhaustion():
+    rows = [{**product('wrong', 'hotel'), 'name': 'Le Aqua'},
+            {**product('right', 'hotel'), 'name': 'Lê Phan'}]
+    d = dispatcher(FakeTools(rows))
+    args = {'taxonomy': 'hotel', 'query': 'Le Phan', 'name_contains': 'Le Phan', 'limit': 1}
+    first = asyncio.run(d.run(call('find_products', **args)))
+    assert first['status'] == 'empty' and first['refs'] == []
+    cursor = first['coverage']['next_cursor']
+    assert cursor and first['coverage']['checked'] == 1
+    second = asyncio.run(d.run(call('find_products', 'c2', **args, cursor=cursor)))
+    assert [d.registry.product(r)['productId'] for r in second['refs']] == ['right']
+    wrong = asyncio.run(d.run(call('find_products', 'c3', **args, cursor=cursor,
+                                  excluded_destinations=['Huế'])))
+    assert wrong['error']['code'] == 'CURSOR_MISMATCH'
+
+
+def test_hotel_name_filter_does_not_remove_its_differently_named_rooms():
+    hotel = {**product('h', 'hotel'), 'name': 'Lê Phan'}
+    room = {**product('r', 'hotel', level='room'), 'name': 'Deluxe', 'parentProductId': 'h'}
+    d = dispatcher(FakeTools([hotel], listing={'h': [room]}))
+    result = asyncio.run(d.run(call('find_products', taxonomy='hotel', query='Le Phan', name_contains='Le Phan')))
+    assert result['data']['rooms']['p1']

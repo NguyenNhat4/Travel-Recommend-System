@@ -134,7 +134,9 @@ def test_g01_g02_over_budget_plan_needs_disclosure_then_commits_without_more_too
                              respond("Lịch Huế một ngày.", **replace, disclosures=["TIMING_ESTIMATED"]),
                              respond("Lịch Huế một ngày.", **replace, disclosures=["TIMING_ESTIMATED",
                                                                                    "OVER_TRIP_BUDGET"])],
-                            tools=tools, context={"planning_consent": True}, message="Lập lịch Huế 24/10")
+                            tools=tools, context={"planning_consent": True, "destination": "Huế",
+                                                  "start_date": "2026-10-24", "days": 1, "adults": 2},
+                            message="Lập lịch Huế 24/10")
     assert "MISSING_BUDGET_DISCLOSURE" in model.payloads[3][-1].content
     final = outcome["final"]
     assert final["planEffect"] == "replace" and final["itinerary"]["costs"]["overByVnd"] == 300_000
@@ -151,7 +153,7 @@ def test_cheaper_follow_up_refreshes_old_plan_refs_then_replaces_plan():
     # Không tra lại thì ref cũ là STALE_REF, không dựng lịch trên dữ kiện cũ.
     stale, model, _ = run([execute(call("plan_itinerary", **plan, schedule=[{"day": 1, "morning": "p1"}])),
                            respond("Mình chưa dựng lại được lịch.")],
-                          tools=FakeTools([pricey, free]), shown=shown, context={"planning_consent": True},
+                          tools=FakeTools([pricey, free]), shown=shown, context={"planning_consent": True, **plan},
                           message="Tìm phương án tiết kiệm hơn")
     assert "STALE_REF" in model.payloads[1][-1].content and stale["final"]["planEffect"] == "keep"
     tools = FakeTools([pricey, free], failures=0)
@@ -162,7 +164,7 @@ def test_cheaper_follow_up_refreshes_old_plan_refs_then_replaces_plan():
                      schedule=[{"day": 1, "morning": "p2", "afternoon": "p1"}])),
         respond("Lịch mới thay một điểm bằng điểm tham quan tự do.", **replace, plan_result_id="c3",
                 disclosures=["TRAVEL_TIME_UNKNOWN", "TIMING_ESTIMATED"])],
-        tools=tools, shown=shown, context={"planning_consent": True}, message="Tìm phương án tiết kiệm hơn")
+        tools=tools, shown=shown, context={"planning_consent": True, **plan}, message="Tìm phương án tiết kiệm hơn")
     assert ("detail", "dai-noi") in tools.calls
     assert any(name == "list" and params.get("freeOnly") for name, params in tools.calls)
     assert outcome["final"]["planEffect"] == "replace", model.payloads[-1][-1].content
@@ -243,6 +245,22 @@ def test_explicit_new_planning_consent_survives_resuming_a_stopped_conversation(
     assert outcome["patch"]["planning_consent"] is True and outcome["patch"]["stopped"] is False
 
 
+def test_plan_with_trip_fields_the_user_never_gave_is_not_saved():
+    """Khách chưa nói số người lớn: orc tự điền adults=2 thì lịch không được lưu; sửa bằng câu hỏi (AC-AGT-01)."""
+    tools = FakeTools([product("a", openingHours="08:00-22:00", durationMinutes=120)])
+    build = call("plan_itinerary", "c2", destination="Huế", start_date="2026-10-24", days=1, adults=2,
+                 schedule=[{"day": 1, "morning": "p1"}])
+    outcome, model, _ = run([
+        execute(call("find_products", taxonomy="attraction")), execute(build),
+        respond("Lịch Huế.", turn_kind="itinerary", plan_effect="replace", plan_result_id="c2"),
+        respond("Bạn đi cùng bao nhiêu người lớn?", turn_kind="clarification")],
+        tools=tools, message="1 ngay, 24/10",
+        context={"planning_consent": True, "destination": "Huế", "start_date": "2026-10-24", "days": 1})
+    assert '"needs_update_trip": ["adults"]' in model.payloads[2][-1].content
+    assert "TRIP_FIELD_UNCONFIRMED" in model.payloads[3][-1].content
+    assert outcome["final"]["planEffect"] == "keep" and outcome["final"]["itinerary"] is None
+
+
 def test_rekindle_does_not_repeat_an_already_shown_option():
     pause = patch('chán quá', stopped=True, engagement='rekindle')
     outcome, model, _ = run([execute(call('recommend', k=2), patch=pause),
@@ -260,7 +278,8 @@ def test_append_only_messages_do_not_repeat_product_payload_after_plan():
         execute(call('plan_itinerary', destination='Huế', start_date='2026-10-24', days=1, adults=1,
                      schedule=[{'day':1,'morning':'p1'}])),
         respond('Lịch theo yêu cầu.', turn_kind='itinerary', plan_effect='replace', plan_result_id='c2')],
-        tools=tools, context={'planning_consent':True})
+        tools=tools, context={'planning_consent': True, 'destination': 'Huế', 'start_date': '2026-10-24',
+                              'days': 1, 'adults': 1})
     assert outcome['final']
     for before, after in zip(model.payloads, model.payloads[1:]):
         assert before == after[:len(before)]
@@ -312,3 +331,51 @@ def test_invalid_respond_schema_also_has_only_one_final_repair():
     assert outcome['final'] and [t['function']['name'] for t in model.schemas[-1]]==['respond']
     failed,_,_=run([invalid,invalid])
     assert failed['failure']=='ITINERARY_VALIDATION_FAILED'
+
+
+def native_final(text, patch=None, **fields):
+    from langchain_core.messages import AIMessage
+    args = {k: v for k, v in respond(text, **fields).items() if k != 'action'}
+    args['context_patch'] = patch
+    return AIMessage(content='', tool_calls=[{'id': 'final', 'name': 'respond', 'args': args}])
+
+
+def test_clarification_can_persist_date_in_the_same_final_call():
+    outcome, _, tools = run([native_final('Bạn đi mấy ngày và có bao nhiêu người lớn?',
+                                         {'start_date': '2026-10-16', 'evidence': 't6 tuần này'},
+                                         turn_kind='clarification')],
+                            message='t6 tuần này', context={'destination': 'Hà Nội', 'planning_consent': True})
+    assert outcome['patch'] == {'start_date': '2026-10-16'}
+    assert outcome['final']['turnKind'] == 'clarification' and tools.calls == []
+
+
+def test_final_patch_without_current_evidence_is_repaired_without_committing_it():
+    outcome, model, _ = run([
+        native_final('Đã ghi nhận.', {'start_date': '2026-10-16', 'evidence': 'ngày mai'}),
+        native_final('Bạn đi mấy ngày?', {'adults': 3, 'evidence': '3 người lớn'}, turn_kind='clarification'),
+    ], message='3 người lớn', context={'start_date': '2026-10-16'})
+    assert 'UNSUPPORTED_CONTEXT_PATCH' in model.payloads[1][-1].content
+    assert outcome['patch'] == {'adults': 3}
+
+
+def test_rest_ideas_without_products_stop_planning_and_count_one_invitation():
+    outcome, _, tools = run([native_final(
+        'Mình có thể gợi ý nghỉ tại chỗ hoặc thư giãn nhẹ nhàng. Bạn đang ở khu vực nào?',
+        {'engagement': 'rekindle', 'evidence': 'Tôi không muốn đi chơi'})],
+        message='Tôi không muốn đi chơi', context={'planning_consent': True})
+    assert outcome['final'] and not tools.calls
+    assert outcome['patch'] == {'engagement': 'rekindle', 'stopped': True,
+                                'planning_consent': False, 'curiosity_offered': True}
+    stopped, _, tools = run([native_final('Được, mình dừng gợi ý nhé.',
+                                          {'engagement': 'stop', 'evidence': 'đừng gợi ý nữa'})],
+        message='đừng gợi ý nữa', context=outcome['patch'])
+    assert stopped['final'] and not stopped['final']['suggestions'] and not tools.calls
+
+
+def test_final_cannot_rekindle_again_after_the_user_declines():
+    outcome, model, tools = run([
+        native_final('Mình gợi ý thêm nhé?', {'engagement': 'rekindle', 'evidence': 'không cần'}),
+        native_final('Được, mình dừng nhé.', {'engagement': 'stop', 'evidence': 'không cần'}),
+    ], message='không cần', context={'engagement': 'rekindle', 'stopped': True, 'curiosity_offered': True})
+    assert 'CURIOSITY_ALREADY_OFFERED' in model.payloads[1][-1].content
+    assert outcome['patch']['engagement'] == 'stop' and not tools.calls

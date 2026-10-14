@@ -37,6 +37,19 @@ CASES = {
     # Thiếu ngày đi: hỏi một câu, không phác lịch bằng chữ; đủ ngày thì ra lịch (AC-AGT-01).
     "plan-no-date": ["gợi ý lịch trình 3 ngày 2 đêm ở đà nẵng phù hợp cặp đôi khách sạn nào được yêu thích nhất",
                      "ngày mai đi"],
+    # Phan Thiết không có tuyến bay: vé là tuỳ chọn như khách sạn, không thấy chuyến vẫn trả lịch kèm phạm vi (AC-AGT-02).
+    "plan-no-flight": ["Lập lịch TP. Hồ Chí Minh đi Phan Thiết 3 ngày từ thứ Sáu này, 2 người lớn"],
+    "origin-after-plan-no-flight": ["lên lịch đi Phan Thiết", "thứ 6 này, 3 ngày, 2 người lớn", "đi từ Hồ Chí Minh HCM"],
+    # Lịch mới kể theo ngày: tiêu đề "Ngày N", mỗi buổi một câu và thẻ ngay sau câu đó, không dồn thẻ cuối câu trả lời
+    # (PRD user-flow §4.2). Câu không dấu, trả lời cụt từng trường như hội thoại thật 14/10.
+    "plan-by-day": ["len ke hoach di du lich phan thiet", "3 ngay, thu 6 tuan nay", "3"],
+    # Trẻ em không bắt buộc: không hỏi riêng; nếu đã hỏi thì "ko" là children=0 và lập tiếp, không phải dừng (chat 14/10).
+    "kids-short-no": ["10 người đi HCM cuối tuần này", "3 ngày cuối tuần", "ko"],
+    # Câu cụt/phủ định sau câu hỏi thông tin chuyến là trả lời câu hỏi đó, không phải dừng (chat 14/10). Né câu hỏi thì
+    # trợ lý đề xuất lựa chọn phổ biến, "ok" là lập lịch ngay (AC-AGT-07, chốt 14/10).
+    "short-unknown": ["lên lịch đi Đà Lạt từ thứ 7 này, 2 người lớn", "ko biết", "ok"],
+    "short-whatever": ["lên lịch đi Đà Nẵng", "tùy bạn", "ok"],
+    "short-k": ["lên lịch đi Nha Trang 3 ngày", "k", "ok"],
     "fare-after-plan": ["Lập lịch Hà Nội đi Đà Nẵng 3 ngày từ 28/10, 2 người lớn", "Vé chiều về rẻ nhất là chuyến nào?"],
     "fare": ["vé sg ra hn bao nhiêu"],
     "over-budget": ["Lập lịch Đà Nẵng 2 ngày từ 26/10 cho 2 người lớn, ngân sách 500 nghìn"],

@@ -15,6 +15,17 @@ from .normalization import fold
 
 FATAL = {"SECRET_EXPOSURE"}
 MAX_CARDS_PER_TAXONOMY = 10
+#: Bốn trường bắt buộc để lập lịch (AC-AGT-01); trẻ em, ngân sách, nơi đi không bắt buộc.
+TRIP_FIELDS = ("destination", "start_date", "days", "adults")
+
+
+def unconfirmed_trip_fields(draft: dict[str, Any], context: dict[str, Any]) -> list[str]:
+    """Trường bắt buộc mà lịch dùng giá trị khác ngữ cảnh đã lưu (ngữ cảnh chỉ nhận giá trị có căn cứ từ khách).
+
+    Lịch không được lưu với số ngày, số người hay ngày đi orc tự điền khi khách chưa nói hoặc chưa đồng ý đề xuất.
+    """
+    return [field for field in TRIP_FIELDS
+            if context.get(field) is None or fold(str(context[field])) != fold(str(draft.get(field)))]
 #: Số tiền, giờ hay link viết thẳng trong lời văn: phải đi qua đoạn fact để số đúng dữ liệu (NFR-REL-01).
 _NUMBER_TEXT = re.compile(
     r"\d[\d.,]*\s*(?:vnd|vnđ|đ\b|₫|đồng|k\b|nghìn|ngàn|tr\b|triệu|tỷ|usd|\$|km\b)|\b\d{1,3}(?:[.,]\d{3})+\b"
@@ -46,11 +57,12 @@ def _compact(text: str) -> str:
 
 def final_issues(decision: dict[str, Any], *, products: dict[str, dict[str, Any]], fact: Callable[[str, str], Any],
                  plans: dict[str, dict[str, Any]], consent: bool, free_only: bool,
-                 user_message: str = "") -> list[dict[str, Any]]:
+                 user_message: str = "", trip: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """Vấn đề của quyết định respond.
 
     `products`: sản phẩm tra trong lượt (ref → sản phẩm); `fact(ref, field)`: giá trị server có, None khi không có;
     `plans`: lịch build_itinerary trả trong lượt (plan_result_id → kết quả); `consent`: khách đã đồng ý lập lịch.
+    `trip`: ngữ cảnh chuyến sau patch của lượt; có thì lịch thay mới phải dùng đúng bốn trường bắt buộc trong đó.
     `user_message`: tin nhắn hiện tại của khách. Câu trả lời không nhắc sản phẩm/dữ kiện nào (vd. từ chối việc ngoài
     du lịch) được nhắc lại con số chính khách vừa viết; có sản phẩm thì không, để số khách nói không thành dữ kiện
     sản phẩm (NFR-REL-01).
@@ -140,6 +152,9 @@ def final_issues(decision: dict[str, Any], *, products: dict[str, dict[str, Any]
                 if warning["code"] not in decision["disclosures"]:
                     code = "MISSING_BUDGET_DISCLOSURE" if warning["code"] == "OVER_TRIP_BUDGET" else "MISSING_DISCLOSURE"
                     issues.append(_issue(code, "disclosures", warning["refs"]))
+            missing = unconfirmed_trip_fields(plan["draft"], trip) if trip is not None else []
+            if missing:
+                issues.append(_issue("TRIP_FIELD_UNCONFIRMED", "context_patch", missing))
         if not consent:
             issues.append(_issue("PLAN_CONSENT_REQUIRED", "plan_effect"))
 

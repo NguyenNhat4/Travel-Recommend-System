@@ -50,7 +50,7 @@ def test_fact_segments_are_filled_from_current_data():
                                {"type": "text", "text": "mỗi đêm, rẻ nhất đợt là"},
                                {"type": "fact", "ref": "c2", "field": "period.cheapest_price_vnd"}])
     final, _ = render(decision, registry, results={"c2": {"data": {"period": {"cheapest_price_vnd": 900_000}}}})
-    assert final["message"] == "Giá từ 1.500.000 ₫ mỗi đêm, rẻ nhất đợt là 900.000 ₫"
+    assert final["message"] == "Giá từ **1.500.000 ₫** mỗi đêm, rẻ nhất đợt là **900.000 ₫**"
 
 
 def test_sentence_naming_a_product_ends_its_paragraph():
@@ -82,6 +82,23 @@ def test_sentence_end_split_across_segments_still_ends_the_paragraph():
                                                "Ngày thứ hai: trọn ngày ở [Sản phẩm ba-na](product:ba-na)."]
 
 
+def test_day_heading_stands_on_its_own_line():
+    """Model viết tiêu đề ngày liền câu trước hoặc liền link sản phẩm; widget chỉ coi dòng `**…**` riêng là tiêu đề."""
+    registry = ProductRegistry()
+    beach, bridge = registry.add(product("my-khe")), registry.add(product("cau-rong"))
+    decision = respond(answer=[
+        {"type": "text", "text": "Mình đã xếp lịch ba ngày. **Ngày 1 — 16/10** Sáng ghé bãi biển."},
+        {"type": "product", "ref": beach},
+        {"type": "text", "text": "**Ngày 2 — 17/10** Tối dạo"}, {"type": "product", "ref": bridge},
+        {"type": "text", "text": "ngắm cầu và **đặc biệt** là phun lửa."}])
+    final, _ = render(decision, registry)
+    assert final["message"].split("\n\n") == [
+        "Mình đã xếp lịch ba ngày.",
+        "**Ngày 1 — 16/10**\nSáng ghé bãi biển.",
+        "[Sản phẩm my-khe](product:my-khe)",
+        "**Ngày 2 — 17/10**\nTối dạo [Sản phẩm cau-rong](product:cau-rong) ngắm cầu và **đặc biệt** là phun lửa."]
+
+
 def test_facts_and_lowercase_text_stay_in_the_product_sentence():
     registry = ProductRegistry()
     ref = registry.add(product("h", "hotel", price=563_333))
@@ -89,7 +106,18 @@ def test_facts_and_lowercase_text_stay_in_the_product_sentence():
                                {"type": "fact", "ref": ref, "field": "unitPrice"},
                                {"type": "text", "text": "mỗi đêm."}])
     final, _ = render(decision, registry)
-    assert final["message"] == "[Sản phẩm h](product:h) giá từ 563.333 ₫ mỗi đêm."
+    assert final["message"] == "[Sản phẩm h](product:h) giá từ **563.333 ₫** mỗi đêm."
+
+
+def test_price_right_after_a_product_link_stays_inline_not_a_heading():
+    """Số tiền in đậm (dữ kiện code điền) không bị coi là tiêu đề ngày dù đứng ngay sau link sản phẩm."""
+    registry = ProductRegistry()
+    ref = registry.add(product("h", "hotel", price=700_000))
+    decision = respond(answer=[{"type": "text", "text": "Nơi nghỉ là"}, {"type": "product", "ref": ref},
+                               {"type": "fact", "ref": ref, "field": "unitPrice"},
+                               {"type": "text", "text": "mỗi đêm."}])
+    final, _ = render(decision, registry)
+    assert final["message"] == "Nơi nghỉ là [Sản phẩm h](product:h) **700.000 ₫** mỗi đêm."
 
 
 def test_g01_over_budget_plan_shows_exact_amounts_and_zero_nights():
@@ -100,7 +128,9 @@ def test_g01_over_budget_plan_shows_exact_amounts_and_zero_nights():
     final, memory = render(decision, registry, plans)
     assert final["itinerary"]["nights"] == 0 and final["itinerary"]["stays"] == []
     assert final["itinerary"]["costs"]["overByVnd"] == 300_000
-    assert "vượt ngân sách 2.000.000 ₫ là 300.000 ₫" in final["message"]
+    assert "vượt ngân sách **2.000.000 ₫** là **300.000 ₫**" in final["message"]
+    budget = next(w for w in final["warnings"] if w["code"] == "OVER_TRIP_BUDGET")
+    assert "**" not in budget["message"] and "300.000 ₫" in budget["message"]
     assert {w["code"] for w in final["warnings"]} == {"OVER_TRIP_BUDGET", "TIMING_ESTIMATED", "OPENING_HOURS_UNKNOWN"}
     assert list(memory["shown"]) == ["p1"]
 

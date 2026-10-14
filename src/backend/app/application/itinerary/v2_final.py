@@ -77,7 +77,8 @@ def _fact_text(field: str, value: Any, language: str) -> str:
     if isinstance(value, int) and field.endswith(("start_minute", "end_minute", "startMinute", "endMinute")):
         return f"{value // 60:02d}:{value % 60:02d}"
     if isinstance(value, (int, float)) and field.endswith(("_vnd", "Price")):
-        return money(value, language)
+        # Số tiền là số khách cần thấy nhất trong câu trả lời: in đậm (widget hiển thị `**…**`).
+        return f"**{money(value, language)}**"
     if isinstance(value, str) and ISO_DATE.match(value):
         day = date.fromisoformat(value[:10]).strftime("%d/%m/%Y")
         return f"{value[11:16]} {day}" if "T" in value else day
@@ -97,6 +98,9 @@ def _segment_text(segment: dict[str, Any], registry: ProductRegistry, results: d
 
 
 _SENTENCE_END = re.compile(r"[.!?…](?=\s+\S)")
+# Đậm ở đầu đoạn, sau dấu kết câu hoặc sau link sản phẩm là tiêu đề ("**Ngày 1 — 16/10**"); đậm giữa câu giữ nguyên.
+# Đậm mở đầu bằng chữ số là số tiền in đậm, không phải tiêu đề.
+_HEADING = re.compile(r"(^|\n|[.!?…)])[ \t]*(\*\*[^\d*\n][^*\n]*\*\*)[ \t]*")
 
 
 def _join(parts: list[tuple[str, bool]]) -> str:
@@ -125,7 +129,9 @@ def _join(parts: list[tuple[str, bool]]) -> str:
             text += " "
         text += part
         after_product = is_product
-    return text.strip()
+    # Widget chỉ coi dòng chỉ có `**…**` là tiêu đề, nên tiêu đề ngày model viết liền câu được tách thành dòng riêng.
+    text = _HEADING.sub(lambda m: f"{m[1]}\n\n{m[2]}\n", text)
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
 def _itinerary(plan: dict[str, Any], language: str) -> dict[str, Any]:
@@ -152,8 +158,10 @@ def _itinerary(plan: dict[str, Any], language: str) -> dict[str, Any]:
                       "budgetStatus": costs["budget_status"], "coverageNotes": [COVERAGE[language]]}}
 
 
-def _warning_text(code: str, costs: dict[str, Any], language: str) -> str:
-    amounts = {key: money(costs[name], language) if costs[name] is not None else ""
+def _warning_text(code: str, costs: dict[str, Any], language: str, bold: bool = False) -> str:
+    """Câu cảnh báo do code viết; `bold` in đậm số tiền khi câu nằm trong `message` (không trong `warnings`)."""
+    mark = "**" if bold else ""
+    amounts = {key: f"{mark}{money(costs[name], language)}{mark}" if costs[name] is not None else ""
                for key, name in (("total", "estimated_total_vnd"), ("budget", "trip_budget_vnd"),
                                  ("over", "over_by_vnd"), ("subtotal", "known_subtotal_vnd"))}
     return WARNINGS[language][code].format(**amounts)
@@ -170,7 +178,7 @@ def render_final(decision: dict[str, Any], *, registry: ProductRegistry, plans: 
     paragraphs = [_join([(_segment_text(segment, registry, results, language), segment["type"] == "product")
                          for segment in decision["answer"]])]
     if plan:
-        paragraphs += [_warning_text(w["code"], plan["costs"], language) for w in plan["warnings"]
+        paragraphs += [_warning_text(w["code"], plan["costs"], language, bold=True) for w in plan["warnings"]
                        if w["code"] in decision["disclosures"]]
 
     shown_refs: list[str] = [ref for refs in decision["cards"].values() for ref in refs]
