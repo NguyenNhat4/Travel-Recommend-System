@@ -1,4 +1,11 @@
 // @vitest-environment jsdom
+// DebugPanel đã comment (xem history/2026-10-14-comment-out-debug-panel.md): test cũ nằm trong khối comment dưới,
+// khôi phục cùng DebugPanel.
+import {it} from 'vitest';
+
+it.todo('DebugPanel: chẩn đoán trợ lý (test tạm bỏ khi DebugPanel đã comment)');
+
+/*
 import React from 'react';
 import {render,screen,fireEvent,cleanup} from '@testing-library/react';
 import {it,expect,vi,afterEach} from 'vitest';
@@ -22,3 +29,4 @@ it('keeps assistant diagnostics hidden when debug mode is off',()=>{
   expect(screen.queryByText('request-example')).toBeNull();
   expect(screen.queryByRole('region',{name:'Trợ lý — lượt gần nhất'})).toBeNull();
 });
+*/

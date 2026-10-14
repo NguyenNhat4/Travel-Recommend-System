@@ -1,3 +1,6 @@
+// DebugPanel đã được comment toàn bộ (không render ở đâu): xem history/2026-10-14-comment-out-debug-panel.md.
+// Khôi phục: bỏ khối comment dưới đây, bật lại import và <DebugPanel /> trong AppShell.tsx.
+/*
 import { AssistantProgressDiagnostics } from '../../features/itinerary/widget/AssistantProgressDiagnostics';
 import React, { useEffect, useState } from 'react';
 import { useTravel } from '../../context/TravelContext';
@@ -90,3 +93,4 @@ export const DebugPanel: React.FC = () => {
     </div>
   );
 };
+*/
