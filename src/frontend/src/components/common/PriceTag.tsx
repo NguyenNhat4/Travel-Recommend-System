@@ -1,6 +1,9 @@
 import React from 'react';
 import { Taxonomy } from '../../types/travel';
 
+// Dựng một lần: PriceTag render cho mọi thẻ sản phẩm, tạo formatter mỗi lần render tốn CPU trên mobile.
+const VND = new Intl.NumberFormat('vi-VN');
+
 interface PriceTagProps {
   /** null = chưa có giá (không phải miễn phí): hiển thị "Chưa có giá", không tiền tố/hậu tố. */
   price: number | null;
@@ -22,7 +25,7 @@ export const PriceTag: React.FC<PriceTagProps> = ({
   if (price == null) {
     return <span className={`text-sm font-medium text-slate-500 ${className}`}>Chưa có giá</span>;
   }
-  const formatted = new Intl.NumberFormat('vi-VN').format(price) + ' ₫';
+  const formatted = VND.format(price) + ' ₫';
 
   let suffix = '';
   if (taxonomy === 'hotel') suffix = '/ đêm';
