@@ -10,6 +10,37 @@ Một VM app (2 vCPU) chỉ xử lý được khoảng 30–36 rps với hỗn h
 
 Không phải nút thắt chính: cụm DB (CPU 4–6%), máy sinh tải (máy local 16 CPU cũng đạt cùng trần).
 
+## Bảng tổng hợp theo endpoint
+
+Đơn vị ms. "Server" là `duration_ms` trong log backend. "Client" là `http_req_duration` của k6. Tỷ trọng là trọng số trong `read.js` (giả định của kế hoạch, không lấy từ traffic thật).
+
+| Endpoint | Tỷ trọng | Ngưỡng p95 | Tải nhẹ, 1 VM, 20 rps: server p50 / p95 | Client p95, 19 đoạn 20 rps: trung vị (min–max), vượt ngưỡng | 100 rps, 1 VM (R1): server p50 / p95 | Lý do |
+|---|---|---|---|---|---|---|
+| `GET /api/v1/products?limit=20` | 35% | 100 | 20 / 36 | 78 (70–324), 5/19 | 1.810 / 2.605 | Server nhanh (20 ms) nhưng client p95 cao hơn ~40 ms (mạng và LB). Dưới tải chậm theo mọi route, có lẽ do chung hàng đợi với `similar` trong cùng tiến trình (suy luận). Mỗi request còn sắp xếp ~4.651 mục, chưa dùng bản presort. |
+| `GET /api/v1/products/{id}` | 30% | 100 | 22 / 42 | 82 (74–384), 6/19 | 6.499 / 9.872 | Chậm nhất trong nhóm đọc sản phẩm dưới tải. Mỗi truy vấn mở một kết nối PostgreSQL mới (`postgres_catalog.py`), và có biến thể thì thêm truy vấn. Chi phí kết nối chưa đo. |
+| `GET /api/v1/products/{id}/similar?limit=8` | 10% | 250 | 777 / 1.641 | 1.695 (1.529–1.904), **19/19** | 2.517 / 3.499 | **Nguyên nhân chính.** Mỗi lượt chịu khoảng 340 ms để mở kết nối tới Weaviate xuyên vùng (đo TCP). Dựng bộ lọc ~6.000 ID tốn ~38 ms CPU (benchmark máy local). Thread pool mặc định chỉ có 6 thread. Vượt ngưỡng ở cả 19 đoạn, kể cả khi tải nhẹ. |
+| `GET /api/v1/recommendations?k=5` | 10% | 250 | 54 / 98 | 145 (125–553), 2/19 | 3.230 / 4.424 | Khách không token đi qua `_cold_start` (popularity trong bộ nhớ, không gọi Weaviate). p50 54 ms ở tải nhẹ chưa giải thích được từ code. Dưới tải chờ chung hàng đợi. |
+| `GET /api/v1/destinations` | 5% | 100 | 5 / 14 | 54 (49–274), 2/19 | 2.232 / 3.293 | Việc rất ít (5 ms ở tải nhẹ) nhưng lên 2,2 s ở 100 rps. Chậm do hàng đợi chung chứ không do endpoint. Edge không cache (`cf-cache-status: DYNAMIC`). |
+| `GET /api/v1/assistant/status` | 5% | không có | 1 / 4 | không có số client trong summary | 1.341 / 1.982 | Gần như không làm việc (1 ms ở tải nhẹ) nhưng tăng từ 1 ms lên 1.341 ms ở 100 rps. Đây là bằng chứng rõ nhất rằng độ trễ dưới tải là hàng đợi dùng chung. |
+
+Tổng đoạn 20 rps: 671.022 request, 22 lỗi HTTP (0,003%), 191 iteration rớt. Số server ở cột "tải nhẹ" lấy từ `seg005`, đủ toàn bộ 35.997 dòng của cửa sổ.
+
+## Các yếu tố hệ thống
+
+| Yếu tố | Số liệu đo được | Lý do ảnh hưởng | Mức bằng chứng |
+|---|---|---|---|
+| Trần một VM app | 25–32 iter/s ở R1, R2, R9, cal-200 (đích 100–500 rps) | 2 vCPU, một tiến trình uvicorn không có `--workers`. Mọi request dùng chung một event loop và một GIL. | Đo được trần. Nguyên nhân CPU là suy luận. |
+| Trần cụm (max 2 VM) | 10 lần resize trong thời gian chạy (12 từ đầu đêm). CPU tín hiệu 0,55 khi có 1 VM, 0,22–0,25 khi có 2 VM | Max 2 VM = 4 vCPU. Ước lượng 100 rps cần ~5,5 vCPU, giả định ~55 ms CPU mỗi request. | Tín hiệu autoscaler đo được. Con số 5,5 vCPU là ước lượng. |
+| Thread pool của `similar` | 6 thread (mặc định của asyncio: min(32, cpu+4) = 6 trên 2 vCPU) | Với ~0,8 s mỗi lượt, một VM chỉ xử lý được ~7–8 lượt `similar` mỗi giây. 10% của 100 rps là 10 lượt mỗi giây, nên các lượt này xếp hàng. | Đọc code và tính toán. Chưa đo độ dài hàng đợi. |
+| Kết nối Weaviate xuyên vùng | TCP connect 338–384 ms. Weaviate ở `eu-central-1`, app ở `asia-southeast1` | Mỗi lượt `similar` chờ ~340 ms trước khi có kết quả. | Đo TCP từ container. Chưa đo TLS và gRPC. |
+| Bộ lọc 6.000 ID trong `similar` | 38 ms CPU mỗi lượt (uuid5 chiếm 24 ms), benchmark máy local | Tốn CPU của tiến trình Python, cạnh tranh GIL với các route khác | Benchmark trên máy local. Chưa đo trên VM. |
+| Autohealing do health check | R2: `fn9m` UNHEALTHY 12:43:21. R9: `z2wq` UNHEALTHY 23:46:45 | Health `/health/live` timeout 5 s, ngưỡng unhealthy 4 lần. VM bị thay giữa lúc chạy, mất capacity và sinh 5xx. | Đo từ log MIG |
+| Lỗi vượt ngưỡng dừng | R2 7,89%, R9 10,38%, cal-200 13,88% | k6 dừng khẩn khi lỗi vượt 5% | Đo |
+| Cụm DB Patroni | CPU pg-a 5–6%, pg-b 4–6%, đỉnh 16–19% lẻ tẻ. `e2-custom-1-1024`. | Không phải nút thắt theo CPU. Cần theo dõi RAM 1 GB. | Đo |
+| Máy sinh tải | Máy local 16 CPU: R9 đạt 24,9 iter/s. VM 2 vCPU: R1 đạt 31,8 iter/s. | Không phải nút thắt | Đo |
+| Không có cache ở backend và edge | Edge `DYNAMIC`. `CACHE_BUST` bật, mọi request đi tới origin. | Mọi request đều chạy truy vấn và sắp xếp | Đo (probe 13/10) và cấu hình test |
+| Chưa deploy presort và cache | Đã duyệt trong `docs/plan/2026-10-13-cache-va-presort-catalog.md`, chưa deploy | Mỗi request sắp xếp ~4.651 mục. Đo ~3,2 ms trên máy dev. | Đọc plan |
+
 ## Bằng chứng
 
 ### 1. Thời gian xử lý phía server theo route
@@ -18,15 +49,15 @@ Lấy từ log sự kiện `http.request` của VM app (`duration_ms`, đo trong
 
 | Route | 20 rps, 1 VM (seg005) p50 / p95 | R1 100 rps, p50 | R9 100 rps local, p50 | R2 500 rps, p50 |
 |---|---|---|---|---|
-| `/api/v1/products` | 21 / 36 | 1.810 | 1.889 | 1.618 |
+| `/api/v1/products` | 20 / 36 | 1.810 | 1.889 | 1.618 |
 | `/api/v1/products/{id}` | 22 / 42 | 6.499 | 12.080 | 11.073 |
-| `/api/v1/recommendations` | 53 / 84 | 3.230 | 4.955 | 3.492 |
-| `/api/v1/products/{id}/similar` | **776 / 1.560** | 2.517 | 3.557 | 2.396 |
+| `/api/v1/recommendations` | 54 / 98 | 3.230 | 4.955 | 3.492 |
+| `/api/v1/products/{id}/similar` | **777 / 1.641** | 2.517 | 3.557 | 2.396 |
 | `/api/v1/destinations` | 5 / 14 | 2.232 | 2.607 | 2.241 |
 
-- Ở tải nhẹ, thời gian phía server của `similar` (p50 776 ms) gần bằng thời gian phía client (p50 812 ms). Phần chậm nằm trong backend, không nằm ở mạng bên ngoài.
+- Ở tải nhẹ, thời gian phía server của `similar` (p50 777 ms) gần bằng thời gian phía client (p50 804 ms). Phần chậm nằm trong backend, không nằm ở mạng bên ngoài.
 - Ở tải cao, mọi route chậm lên gấp 50–100 lần, kể cả route rẻ nhất. Đây là dấu hiệu hàng đợi trên tài nguyên dùng chung, không phải do từng endpoint tự chậm.
-- Mẫu log là 4.000 dòng đầu mỗi cửa sổ, nên đây là ước lượng, không phải toàn bộ.
+- Cột 20 rps (`seg005`) và cột 100 rps (R1), R2, R9 lấy đủ toàn bộ dòng của cửa sổ (`seg005` 35.997 dòng, R1 3.697, R2 2.900, R9 2.427). `seg019` vẫn chỉ có mẫu 4.000 dòng đầu, nên không dùng cho bảng tổng hợp.
 
 ### 2. Trần CPU của một VM
 

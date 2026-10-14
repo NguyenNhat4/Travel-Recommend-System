@@ -12,7 +12,7 @@
 
 - **Ở 20 rps, staging ổn định suốt đêm.** 19 đoạn, 671.022 request, 22 lỗi HTTP (0,003%, đều là 5xx hoặc timeout), 191 iteration bị rớt. Health sampler: 557 mẫu, 1 mẫu lỗi.
 - **Đoạn cuối `seg019` (09:10–09:30) chậm nhất.** p99 6,2 s, max 27,7 s, và health sampler ghi hai lần chậm lúc 09:21 (`/products` 2,3 s) và 09:23 (`/products` 6,3 s). Hai lần này nằm trong lúc autoscaler gỡ `m66l` (09:18:55) rồi thêm `2ztd` (09:19:46). Health check của `2ztd` báo TIMEOUT lúc 09:21 và UNHEALTHY lúc 09:23, rồi HEALTHY lại lúc 09:24:54.
-- **Autoscaler đổi kích thước nhóm 11 lần trong lúc chạy** (giữa 1 và 2 VM). Log quyết định cho thấy CPU chạm ngưỡng 0,55 khi chỉ có 1 VM, và giảm còn khoảng 0,23–0,25 khi có 2 VM. Với tải 20 rps không đổi, nhóm dao động giữa hai mức này. Autoscaler đạt giới hạn max 2 VM lúc 00:10 và từ 09:33.
+- **Autoscaler đổi kích thước nhóm 10 lần trong lúc chạy** (12 lần tính từ đầu đêm) (giữa 1 và 2 VM). Log quyết định cho thấy CPU chạm ngưỡng 0,55 khi chỉ có 1 VM, và giảm còn khoảng 0,23–0,25 khi có 2 VM. Với tải 20 rps không đổi, nhóm dao động giữa hai mức này. Autoscaler đạt giới hạn max 2 VM lúc 00:10 và từ 09:33.
 - **Latency vượt ngưỡng NFR-PERF-01 ngay cả khi tải nhẹ.** `product_similar` có p95 khoảng 1,7 s ở cả 19/19 đoạn (ngưỡng 250 ms). Danh mục và chi tiết vượt 100 ms ở 5–6/19 đoạn.
 - **Từ khoảng 25 rps trở lên, hệ thống không giữ được tốc độ đặt.** Ba run có lỗi cao (R2, R9, cal-200) bị dừng khẩn với lỗi 7,9–13,9%. R1 ở 100 rps chạy hết 2 phút không lỗi, nhưng chỉ đạt 31,8 iter/s và p95 8,5 s.
 
@@ -136,7 +136,7 @@ Bảng dưới ghép quyết định của autoscaler (đọc từ log `compute.
 | 09:31 | — | patch MIG và setMetadata trên cả hai VM (`vota-backend-image`), sau khi run kết thúc |
 | 09:33 | báo đã đạt max 2 | — |
 
-- Trong bảng có 12 thao tác insert/delete từ 00:05 đến 09:21, cộng 11 quyết định resize của autoscaler trong thời gian chạy.
+- Trong bảng có 12 thao tác insert/delete từ 00:05 đến 09:21, cộng 10 quyết định resize của autoscaler trong thời gian chạy (00:10–09:30).
 - Cấu hình autoscaler hiện tại: CPU target 0,55; tín hiệu bộ nhớ tùy chỉnh target 90%; min 1, max 2; cooldown 360 giây; scale-in tối đa 1 VM mỗi 600 giây. Autohealing dùng health check `vota-ha-app-live`, `initialDelaySec` 360.
 - Trạng thái lúc 09:33: MIG có 2 VM RUNNING (`v00s`, `2ztd`), không có thao tác đang chạy.
 
