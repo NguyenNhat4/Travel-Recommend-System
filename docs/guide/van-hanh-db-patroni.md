@@ -160,3 +160,20 @@ Thay thành viên etcd (witness hỏng): với etcd 3 thành viên, mất 1 vẫ
 - Ghi vào `db.vota.internal` đang đi vào cụm HA. Không đưa DNS về `10.148.0.2`: máy đó đã dừng. Quay lại cần quyết định mới (mục 3, bước 5).
 - Đồng bộ không nghiêm ngặt: khi mất replica rồi mất nốt leader trong khoảng đó, ghi sau thời điểm mất replica có thể mất. Probe và cảnh báo "không còn replica" là lớp bảo vệ cho khoảng này.
 - Cập nhật image Patroni: thay `patroni_image` rồi khởi động lại từng VM, **replica trước**, chờ `streaming`, rồi `patronictl switchover` sang node đã cập nhật và cập nhật node còn lại.
+
+## 8. Cảnh báo RAM, đĩa, CPU của node DB
+
+Ba cảnh báo tài nguyên, tách theo từng node (email nêu mã instance; đối chiếu bằng `gcloud compute instances list --project=vinpearl-508801 --format='table(name,id,zone)'`). Ngưỡng đặt trên đỉnh đo được 7 ngày (2026-10-14), xem `history/2026-10-14-canh-bao-tai-nguyen-db-va-crawler.md`.
+
+| Cảnh báo | Ngưỡng | Việc đầu tiên |
+|---|---|---|
+| RAM một node DB cao | RAM đã dùng > 85% trong 10 phút | Ô RAM trên dashboard HA; `docker logs vota-patroni` trên node đó. RAM cao kéo dài có thể làm Postgres bị OOM-kill |
+| Đĩa một node DB đầy | Một thiết bị > 80% trong 5 phút | `du -sh /mnt/disks/pgdata` trên node đó; không xoá dữ liệu Postgres khi chưa đối chiếu mục này |
+| CPU một node DB cao | CPU trung bình > 70% trong 15 phút | Truy vấn đang chạy và autovacuum trong Postgres. pg-w là witness etcd: CPU cao ở đó không liên quan dữ liệu |
+| Không node DB nào gửi RAM hoặc đĩa | Vắng dữ liệu 5–10 phút | Ops Agent trên cả hai node DB có chạy không. Cảnh báo RAM và đĩa không kêu khi không có dữ liệu |
+
+Phạm vi và giới hạn:
+
+- RAM và đĩa chỉ có cho pg-a và pg-b. pg-w (witness etcd) không cài Ops Agent, nên không có RAM, đĩa và log từ node này.
+- CPU lấy từ hypervisor và gồm cả pg-w.
+- Các alert này dùng kênh HA nên chịu lịch mute 23:55–08:35 (giờ Việt Nam), như mọi alert HA khác.

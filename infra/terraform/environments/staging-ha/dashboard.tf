@@ -1,5 +1,6 @@
 # Dashboard nhóm HA (MIG vota-ha-app), bố cục 12 cột, đọc từ trên xuống:
-#   Tiêu đề, readiness và số VM, link log -> request và độ trễ LB -> độ trễ API theo VM và theo route -> CPU/RAM -> log.
+#   Tiêu đề, readiness và số VM, link log -> request và độ trễ LB -> độ trễ API theo VM và theo route -> CPU/RAM -> log
+#   -> CPU của node DB và máy cào, đĩa theo từng VM (xem cuối file).
 # Độ trễ theo VM và theo route lấy từ log http.request của backend (phân phối, nên p95/p99 đúng). LB không biết VM nào
 # phục vụ, nên độ trễ LB chỉ cho toàn nhóm. Chart CPU tách theo instance_name (tên VM); chart RAM chỉ có instance_id vì
 # metric memory của Ops Agent không mang nhãn tên VM. Đối chiếu instance_id với tên VM bằng lệnh trong ô ghi chú.
@@ -58,7 +59,7 @@ resource "google_monitoring_dashboard" "ha" {
           widget = {
             text = {
               format  = "MARKDOWN"
-              content = "## Nhóm HA `${local.vm_name_prefix}`\nNgưỡng: autoscaler CPU ${var.cpu_target} (vàng), RAM ${var.memory_target_percent}% (vàng), p95 search 250 ms NFR-PERF-01 (vàng), ngưỡng alert p95 LB ${var.alert_p95_latency_ms} ms (đỏ). Độ trễ LB gồm cả SSE; độ trễ API theo VM và route không tính SSE và /health. Đối chiếu VM ↔ MIG: `gcloud compute instance-groups managed list-instances ${local.vm_name_prefix} --region=${var.region}`."
+              content = "## Nhóm HA `${local.vm_name_prefix}`\nNgưỡng: autoscaler CPU ${var.cpu_target} (vàng), RAM ${var.memory_target_percent}% (vàng), p95 search 250 ms NFR-PERF-01 (vàng), ngưỡng alert p95 LB ${var.alert_p95_latency_ms} ms (đỏ). Độ trễ LB gồm cả SSE; độ trễ API theo VM và route không tính SSE và /health. Đối chiếu VM ↔ MIG: `gcloud compute instance-groups managed list-instances ${local.vm_name_prefix} --region=${var.region}`. Mã instance (ô RAM và đĩa) đối chiếu với tên VM bằng `gcloud compute instances list --project=${var.project_id} --format='table(name,id,zone)'`."
             }
           }
         },
@@ -354,6 +355,61 @@ resource "google_monitoring_dashboard" "ha" {
                 }
               }]
               yAxis = { scale = "LINEAR" }
+            }
+          }
+        },
+        # Hàng cuối: CPU của node DB và máy cào tách theo tên VM (CPU đo từ hypervisor, có cả pg-w), và đĩa của mọi VM có
+        # Ops Agent tách theo mã instance và thiết bị. Ngưỡng vẽ theo đúng alert: DB 70%, máy cào 95% kéo dài, đĩa 80%.
+        {
+          xPos = 0, yPos = 41, width = 6, height = 4
+          widget = {
+            title = "CPU từng node DB và máy cào (tên VM, 1 = 100%)"
+            xyChart = {
+              dataSets = [
+                {
+                  plotType = "LINE"
+                  timeSeriesQuery = {
+                    timeSeriesFilter = {
+                      filter      = local.db_cpu_filter
+                      aggregation = { alignmentPeriod = "60s", perSeriesAligner = "ALIGN_MEAN", crossSeriesReducer = "REDUCE_MEAN", groupByFields = ["metric.labels.instance_name"] }
+                    }
+                  }
+                },
+                {
+                  plotType = "LINE"
+                  timeSeriesQuery = {
+                    timeSeriesFilter = {
+                      filter      = local.crawler_cpu_filter
+                      aggregation = { alignmentPeriod = "60s", perSeriesAligner = "ALIGN_MEAN", crossSeriesReducer = "REDUCE_MEAN", groupByFields = ["metric.labels.instance_name"] }
+                    }
+                  }
+                },
+              ]
+              thresholds = [
+                { label = "ngưỡng CPU node DB (${var.alert_db_cpu_percent}%)", value = var.alert_db_cpu_percent / 100, targetAxis = "Y1" },
+                { label = "ngưỡng CPU máy cào (${var.alert_crawler_cpu_percent}%, kéo dài)", value = var.alert_crawler_cpu_percent / 100, targetAxis = "Y1" },
+              ]
+              yAxis = { scale = "LINEAR" }
+            }
+          }
+        },
+        {
+          xPos = 6, yPos = 41, width = 6, height = 4
+          widget = {
+            title = "Đĩa đã dùng từng VM (mã instance · thiết bị, %)"
+            xyChart = {
+              dataSets = [{
+                plotType       = "LINE"
+                legendTemplate = "$${resource.labels.instance_id} · $${metric.labels.device}"
+                timeSeriesQuery = {
+                  timeSeriesFilter = {
+                    filter      = "resource.type=\"gce_instance\" metric.type=\"agent.googleapis.com/disk/percent_used\" metric.labels.state=\"used\""
+                    aggregation = { alignmentPeriod = "60s", perSeriesAligner = "ALIGN_MEAN", crossSeriesReducer = "REDUCE_MEAN", groupByFields = ["resource.labels.instance_id", "metric.labels.device"] }
+                  }
+                }
+              }]
+              thresholds = [{ label = "ngưỡng đĩa node DB và máy cào (${var.alert_db_disk_percent}%)", value = var.alert_db_disk_percent, targetAxis = "Y1" }]
+              yAxis      = { scale = "LINEAR" }
             }
           }
         },

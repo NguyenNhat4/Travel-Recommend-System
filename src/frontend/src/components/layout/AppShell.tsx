@@ -8,7 +8,7 @@ import { Footer } from '../common/Footer';
 import { MobileTabBar } from '../common/MobileTabBar';
 import { Toast } from '../common/Toast';
 import { LoginModal } from '../common/LoginModal';
-import { DebugPanel } from '../common/DebugPanel';
+// import { DebugPanel } from '../common/DebugPanel'; // đã comment: xem history/2026-10-14-comment-out-debug-panel.md
 import { AiFloatingWidget } from '../assistant/AiFloatingWidget';
 
 export default function AppShell({ children }: { children: ReactNode }) {
@@ -25,7 +25,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       <MobileTabBar />
       <Toast />
       <LoginModal />
-      <DebugPanel />
+      {/* <DebugPanel /> */}
       {!isCheckout && <AiFloatingWidget />}
     </div>
   );

@@ -12,3 +12,7 @@ Trong env crawler: `CLOUD_SEED_DATABASE_URL=postgresql://<user>:<pass>@db.vota.i
   - CATALOG KHÔNG ĐỔI QUÁ HẠN: `state=late` theo `sla.maxCatalogAgeHours` (mặc định 48 giờ, đặt trong monitor).
   - LƯỢT CÀO THẤT BẠI: `run.end status=failed` → xem log `catalog.failed`.
 - Failover DB làm mất khoá DB (kết nối đứt); giao dịch nạp vẫn tuần tự nhờ khoá giao dịch nên chỉ có rủi ro cào đôi.
+- Tài nguyên VM máy cào (không phụ thuộc `crawler_alerts_enabled`, chỉ cần VM có tồn tại):
+  - RAM máy cào cao: RAM đã dùng > 85% trong 10 phút. Đỉnh 7 ngày 57,8%.
+  - Đĩa máy cào đầy: một thiết bị > 80% trong 5 phút. Đĩa boot 15 GB, mỗi image khoảng 3 GB; đỉnh 7 ngày 77,7% (sát ngưỡng). Nếu kêu mỗi ngày thì cần tăng đĩa, không nên nâng ngưỡng. Đổi kích thước đĩa boot buộc thay VM.
+  - CPU máy cào kéo dài: CPU > 95% liên tục 180 phút. Lượt cào bình thường chạm gần 100% khoảng 1 giờ mỗi ngày (quanh 09:00 giờ Việt Nam), nên ngưỡng thời gian dài hơn lượt bình thường. Kêu tức là lượt bị treo.

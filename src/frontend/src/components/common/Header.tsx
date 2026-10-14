@@ -248,7 +248,7 @@ export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
             {/* Thương hiệu */}
             <Link
               href="/"
-              aria-label="Sota, về trang chủ"
+              aria-label="Sota Resorts & Hotels, về trang chủ"
               className={`group flex shrink-0 items-center gap-3 rounded-full focus-visible:outline-2 focus-visible:outline-offset-4 ${
                 onHero ? 'focus-visible:outline-white' : 'focus-visible:outline-brand-600'
               }`}

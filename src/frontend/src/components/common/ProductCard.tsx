@@ -119,7 +119,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             <p className="text-xs text-slate-600">
               <span className="font-bold text-slate-800">★ {product.aggregateRating.score}</span>
               {product.aggregateRating.count > 0 && (
-                <span className="text-slate-400"> · {product.aggregateRating.count.toLocaleString('vi-VN')} đánh giá</span>
+                <span className="text-slate-500"> · {product.aggregateRating.count.toLocaleString('vi-VN')} đánh giá</span>
               )}
             </p>
           )}
@@ -184,7 +184,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
               <p className="text-[11px] text-slate-600">
                 <span className="font-semibold text-slate-800">{product.aggregateRating.score}/5</span>
                 {product.aggregateRating.count > 0 && (
-                  <span className="text-slate-400"> · {product.aggregateRating.count.toLocaleString('vi-VN')} đánh giá</span>
+                  <span className="text-slate-500"> · {product.aggregateRating.count.toLocaleString('vi-VN')} đánh giá</span>
                 )}
               </p>
             )}
@@ -278,7 +278,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                   <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400 mr-1" />
                   {product.aggregateRating.score}
                   {product.aggregateRating.count > 0 && (
-                    <span className="ml-1 font-normal text-slate-400">({product.aggregateRating.count.toLocaleString('vi-VN')} đánh giá)</span>
+                    <span className="ml-1 font-normal text-slate-500">({product.aggregateRating.count.toLocaleString('vi-VN')} đánh giá)</span>
                   )}
                 </div>
               )}

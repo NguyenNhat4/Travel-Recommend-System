@@ -132,3 +132,140 @@ resource "google_monitoring_alert_policy" "patroni_probe_absent" {
     mime_type = "text/markdown"
   }
 }
+
+# --- Tài nguyên node DB: RAM, đĩa, CPU -------------------------------------------------------------------------------
+# Node witness pg-w (etcd) không cài Ops Agent (patroni-node.sh.tftpl: khối cài nằm trong nhánh role=db), nên không có
+# RAM và đĩa. Lọc RAM và đĩa theo nhãn role=patroni để chỉ lấy hai node DB. CPU lấy theo tiền tố tên và gồm cả pg-w,
+# vì CPU đo từ hypervisor và không cần Ops Agent. Mỗi policy tách theo mã instance để email nêu đúng node.
+locals {
+  db_memory_filter = "resource.type=\"gce_instance\" metric.type=\"agent.googleapis.com/memory/percent_used\" metric.labels.state=\"used\" metadata.user_labels.\"component\"=\"database\" metadata.user_labels.\"role\"=\"patroni\""
+  db_disk_filter   = "resource.type=\"gce_instance\" metric.type=\"agent.googleapis.com/disk/percent_used\" metric.labels.state=\"used\" metadata.user_labels.\"component\"=\"database\" metadata.user_labels.\"role\"=\"patroni\""
+  db_cpu_filter    = "resource.type=\"gce_instance\" metric.type=\"compute.googleapis.com/instance/cpu/utilization\" metric.labels.instance_name=starts_with(\"${var.name_prefix}-pg-\")"
+}
+
+resource "google_monitoring_alert_policy" "db_memory_high" {
+  count                 = var.create_patroni ? 1 : 0
+  display_name          = "${var.name_prefix} DB: RAM một node DB cao"
+  combiner              = "OR"
+  notification_channels = local.alert_channels
+
+  conditions {
+    display_name = "RAM đã dùng trên một node DB > ${var.alert_db_memory_percent}% trong 10 phút"
+    condition_threshold {
+      filter          = local.db_memory_filter
+      comparison      = "COMPARISON_GT"
+      threshold_value = var.alert_db_memory_percent
+      duration        = "600s"
+
+      aggregations {
+        alignment_period     = "60s"
+        per_series_aligner   = "ALIGN_MEAN"
+        cross_series_reducer = "REDUCE_MAX"
+        group_by_fields      = ["resource.label.instance_id"]
+      }
+    }
+  }
+
+  conditions {
+    display_name = "Không node DB nào gửi dữ liệu RAM trong 10 phút"
+    condition_absent {
+      filter   = local.db_memory_filter
+      duration = "600s"
+
+      aggregations {
+        alignment_period     = "60s"
+        per_series_aligner   = "ALIGN_MEAN"
+        cross_series_reducer = "REDUCE_MAX"
+      }
+    }
+  }
+
+  alert_strategy {
+    auto_close = "1800s"
+  }
+
+  documentation {
+    content   = "Một node DB (pg-a hoặc pg-b) dùng quá ${var.alert_db_memory_percent}% RAM trong 10 phút. RAM cao kéo dài có thể làm Postgres bị OOM-kill; khi đó Patroni failover và cụm mất replica. Xem ô RAM trên dashboard HA, rồi docker logs vota-patroni trên node đó (docs/guide/van-hanh-db-patroni.md §6). Mã instance trong alert đối chiếu bằng gcloud compute instances list. Node pg-w không có Ops Agent nên không xuất hiện ở đây."
+    mime_type = "text/markdown"
+  }
+}
+
+resource "google_monitoring_alert_policy" "db_disk_high" {
+  count                 = var.create_patroni ? 1 : 0
+  display_name          = "${var.name_prefix} DB: đĩa một node DB đầy"
+  combiner              = "OR"
+  notification_channels = local.alert_channels
+
+  conditions {
+    display_name = "Đĩa đã dùng trên một thiết bị của node DB > ${var.alert_db_disk_percent}% trong 5 phút"
+    condition_threshold {
+      filter          = local.db_disk_filter
+      comparison      = "COMPARISON_GT"
+      threshold_value = var.alert_db_disk_percent
+      duration        = "300s"
+
+      aggregations {
+        alignment_period     = "60s"
+        per_series_aligner   = "ALIGN_MEAN"
+        cross_series_reducer = "REDUCE_MAX"
+        group_by_fields      = ["resource.label.instance_id", "metric.label.device"]
+      }
+    }
+  }
+
+  conditions {
+    display_name = "Không node DB nào gửi dữ liệu đĩa trong 5 phút"
+    condition_absent {
+      filter   = local.db_disk_filter
+      duration = "300s"
+
+      aggregations {
+        alignment_period     = "60s"
+        per_series_aligner   = "ALIGN_MEAN"
+        cross_series_reducer = "REDUCE_MAX"
+      }
+    }
+  }
+
+  alert_strategy {
+    auto_close = "1800s"
+  }
+
+  documentation {
+    content   = "Một thiết bị đĩa của node DB đầy quá ${var.alert_db_disk_percent}% trong 5 phút. Postgres ngừng ghi khi đĩa dữ liệu đầy. Kiểm thiết bị nào trong alert, rồi du -sh /mnt/disks/pgdata trên node đó và log Postgres. Không xoá dữ liệu của Postgres khi chưa đối chiếu với docs/guide/van-hanh-db-patroni.md. Mã instance trong alert đối chiếu bằng gcloud compute instances list."
+    mime_type = "text/markdown"
+  }
+}
+
+resource "google_monitoring_alert_policy" "db_cpu_high" {
+  count                 = var.create_patroni ? 1 : 0
+  display_name          = "${var.name_prefix} DB: CPU một node DB cao"
+  combiner              = "OR"
+  notification_channels = local.alert_channels
+
+  conditions {
+    display_name = "CPU trung bình của một node DB > ${var.alert_db_cpu_percent}% trong 15 phút"
+    condition_threshold {
+      filter          = local.db_cpu_filter
+      comparison      = "COMPARISON_GT"
+      threshold_value = var.alert_db_cpu_percent / 100
+      duration        = "900s"
+
+      aggregations {
+        alignment_period     = "60s"
+        per_series_aligner   = "ALIGN_MEAN"
+        cross_series_reducer = "REDUCE_MAX"
+        group_by_fields      = ["resource.label.instance_id"]
+      }
+    }
+  }
+
+  alert_strategy {
+    auto_close = "1800s"
+  }
+
+  documentation {
+    content   = "CPU của một node DB (pg-a, pg-b hoặc witness pg-w) trung bình trên ${var.alert_db_cpu_percent}% trong 15 phút. Đỉnh 7 ngày của hai node DB chỉ khoảng 13%, nên mức này là bất thường. Kiểm truy vấn đang chạy và autovacuum trong Postgres (docs/guide/van-hanh-db-patroni.md §4). Nếu là pg-w, kiểm etcd: CPU cao ở witness không liên quan tới dữ liệu."
+    mime_type = "text/markdown"
+  }
+}

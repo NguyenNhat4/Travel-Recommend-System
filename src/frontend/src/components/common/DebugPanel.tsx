@@ -1,7 +1,10 @@
+// DebugPanel đã được comment toàn bộ (không render ở đâu): xem history/2026-10-14-comment-out-debug-panel.md.
+// Khôi phục: bỏ khối comment dưới đây, bật lại import và <DebugPanel /> trong AppShell.tsx.
+/*
 import { AssistantProgressDiagnostics } from '../../features/itinerary/widget/AssistantProgressDiagnostics';
 import React, { useEffect, useState } from 'react';
 import { useTravel } from '../../context/TravelContext';
-import { Bug, X, ChevronUp, ChevronDown } from 'lucide-react';
+import { X, ChevronUp, ChevronDown } from 'lucide-react';
 import { fetchRecommendations } from '../../services/recsys';
 import type { RecommendationResponse } from '../../types/travel';
 
@@ -24,18 +27,8 @@ export const DebugPanel: React.FC = () => {
     return () => controller.abort();
   }, [debugMode, isExpanded, currentPersona, activeEvents]);
 
-  if (!debugMode) {
-    return (
-      <button
-        onClick={toggleDebugMode}
-        title="Bật chế độ chẩn đoán (Shift + D)"
-        className="fixed bottom-4 left-4 z-40 px-2.5 py-1 text-[11px] font-mono font-bold bg-slate-800/80 hover:bg-slate-900 text-slate-300 rounded-full border border-slate-700 shadow-lg backdrop-blur-xs flex items-center gap-1.5 transition-all"
-      >
-        <Bug className="w-3.5 h-3.5 text-amber-400" />
-        <span>DEBUG (Shift+D)</span>
-      </button>
-    );
-  }
+  // Nút DEBUG đã bỏ; panel vẫn bật/tắt bằng Shift+D (TravelContext).
+  if (!debugMode) return null;
 
   return (
     <div className="fixed bottom-4 left-4 z-50 max-w-sm w-full bg-slate-900 text-slate-200 rounded-xl shadow-2xl border border-slate-700 overflow-hidden font-mono text-xs">
@@ -100,3 +93,4 @@ export const DebugPanel: React.FC = () => {
     </div>
   );
 };
+*/
