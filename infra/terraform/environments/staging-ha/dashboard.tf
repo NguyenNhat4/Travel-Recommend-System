@@ -10,12 +10,16 @@
 
 locals {
   # Bộ lọc log dùng chung cho khung log và link Logs Explorer. Phải khớp với bộ lọc của metric độ trễ bên dưới.
-  log_filter_backend   = "resource.type=\"gce_instance\" AND jsonPayload.service=\"backend\""
-  log_filter_errors    = "${local.log_filter_backend} AND severity>=ERROR"
-  log_filter_slow      = "${local.log_filter_backend} AND jsonPayload.event=\"http.request\" AND jsonPayload.duration_ms>1000 AND NOT jsonPayload.route:\"/stream\" AND NOT jsonPayload.route:\"/health/\""
-  log_filter_container = "logName:\"docker_events\" AND NOT jsonPayload.event=\"heartbeat\" AND NOT jsonPayload.container_class=\"helper\""
-  log_filter_crawler   = "jsonPayload.service=\"crawler\" AND severity>=WARNING"
-  logs_url_base        = "https://console.cloud.google.com/logs/query;query="
+  log_filter_backend        = "resource.type=\"gce_instance\" AND jsonPayload.service=\"backend\""
+  log_filter_errors         = "${local.log_filter_backend} AND severity>=ERROR"
+  log_filter_slow           = "${local.log_filter_backend} AND jsonPayload.event=\"http.request\" AND jsonPayload.duration_ms>1000 AND NOT jsonPayload.route:\"/stream\" AND NOT jsonPayload.route:\"/health/\""
+  log_filter_container      = "logName:\"docker_events\" AND NOT jsonPayload.event=\"heartbeat\" AND NOT jsonPayload.container_class=\"helper\""
+  log_filter_crawler        = "jsonPayload.service=\"crawler\""
+  log_filter_all_errors     = "resource.type=\"gce_instance\" AND severity>=ERROR"
+  log_filter_frontend       = "resource.type=\"gce_instance\" AND jsonPayload.service=\"frontend\""
+  log_filter_raw_containers = "resource.type=\"gce_instance\" AND logName:\"docker_json\" AND NOT jsonPayload.service:*"
+  log_filter_patroni        = "resource.type=\"gce_instance\" AND logName:\"patroni_cluster_probe\""
+  logs_url_base             = "https://console.cloud.google.com/logs/query;query="
 
   # Nhóm theo tên VM (metadata của Ops Agent và collector). Metric per-VM dùng 300 giây để ít điểm hơn; metric LB và
   # scorecard giữ 60 giây.
@@ -530,7 +534,7 @@ resource "google_monitoring_dashboard" "ha_db_crawler" {
   })
 }
 
-# 5. Nhật ký: bốn khung log, tất cả VM. Tách riêng vì khung log truy vấn lại mỗi lần mở trang.
+# 5. Nhật ký: log theo từng service (mọi mức) cộng khung lỗi gộp. Tách riêng vì mỗi khung log truy vấn lại mỗi lần mở trang.
 resource "google_monitoring_dashboard" "ha_logs" {
   dashboard_json = jsonencode({
     displayName = "${local.dashboard_prefix}: nhật ký"
@@ -543,34 +547,74 @@ resource "google_monitoring_dashboard" "ha_logs" {
             text = {
               format  = "MARKDOWN"
               style   = {}
-              content = "Bốn khung log, mọi VM. Cột `labels.\"compute.googleapis.com/resource_name\"` trong Logs Explorer là tên VM. Các khung đã lọc sẵn giống link trong dashboard tổng quan."
+              content = "Log của mọi service trên VM staging-ha: backend, frontend, job cào, container khác (proxy, pgbouncer, Patroni), probe Patroni và sự kiện container. Tên VM là cột `labels.\"compute.googleapis.com/resource_name\"` trong Logs Explorer. Syslog của VM không có ở đây."
             }
           }
         },
         {
-          yPos = 2, width = 6, height = 5
+          yPos = 2, width = 12, height = 4
           widget = {
-            title = "Lỗi backend (mức ERROR), mọi VM"
+            title = "Lỗi mọi service (mức ERROR trở lên)"
             logsPanel = {
-              filter        = local.log_filter_errors
+              filter        = local.log_filter_all_errors
               resourceNames = ["projects/${var.project_id}"]
             }
           }
         },
         {
-          xPos = 6, yPos = 2, width = 6, height = 5
+          yPos = 6, width = 6, height = 5
           widget = {
-            title = "Request chậm > 1 s (backend, mọi VM)"
+            title = "Backend (mọi mức)"
             logsPanel = {
-              filter        = local.log_filter_slow
+              filter        = local.log_filter_backend
               resourceNames = ["projects/${var.project_id}"]
             }
           }
         },
         {
-          yPos = 7, width = 6, height = 5
+          xPos = 6, yPos = 6, width = 6, height = 5
           widget = {
-            title = "Container dừng đột ngột / OOM (watcher, không tính helper)"
+            title = "Frontend (mọi mức)"
+            logsPanel = {
+              filter        = local.log_filter_frontend
+              resourceNames = ["projects/${var.project_id}"]
+            }
+          }
+        },
+        {
+          yPos = 11, width = 6, height = 5
+          widget = {
+            title = "Job cào (mọi mức)"
+            logsPanel = {
+              filter        = local.log_filter_crawler
+              resourceNames = ["projects/${var.project_id}"]
+            }
+          }
+        },
+        {
+          xPos = 6, yPos = 11, width = 6, height = 5
+          widget = {
+            title = "Container khác (proxy, pgbouncer, Patroni: stdout/stderr thô)"
+            logsPanel = {
+              filter        = local.log_filter_raw_containers
+              resourceNames = ["projects/${var.project_id}"]
+            }
+          }
+        },
+        {
+          yPos = 16, width = 6, height = 5
+          widget = {
+            title = "Cụm DB Patroni (dòng probe mỗi phút)"
+            logsPanel = {
+              filter        = local.log_filter_patroni
+              resourceNames = ["projects/${var.project_id}"]
+            }
+          }
+        },
+        {
+          xPos = 6, yPos = 16, width = 6, height = 5
+          widget = {
+            title = "Sự kiện container: dừng đột ngột / OOM (không tính helper)"
             logsPanel = {
               filter        = local.log_filter_container
               resourceNames = ["projects/${var.project_id}"]
@@ -578,12 +622,22 @@ resource "google_monitoring_dashboard" "ha_logs" {
           }
         },
         {
-          xPos = 6, yPos = 7, width = 6, height = 5
+          yPos = 21, width = 6, height = 5
           widget = {
-            title = "Lượt cào (job cào), từ mức cảnh báo trở lên"
+            title = "Request chậm > 1 s (backend)"
             logsPanel = {
-              filter        = local.log_filter_crawler
+              filter        = local.log_filter_slow
               resourceNames = ["projects/${var.project_id}"]
+            }
+          }
+        },
+        {
+          xPos = 6, yPos = 21, width = 6, height = 5
+          widget = {
+            text = {
+              format  = "MARKDOWN"
+              style   = {}
+              content = "**Đọc nhanh**\n- Khung lỗi gộp mọi service; khung từng service giữ mọi mức để xem ngữ cảnh.\n- Log container không in JSON (proxy, pgbouncer, Patroni) hiện ở khung \"Container khác\", không có tên service.\n- Mỗi khung là một truy vấn riêng: nhiều khung làm trang tải chậm hơn."
             }
           }
         },

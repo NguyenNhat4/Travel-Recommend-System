@@ -114,12 +114,19 @@ class DashboardContents(unittest.TestCase):
 
     def test_log_panels_only_on_the_logs_dashboard(self):
         logs = dashboard_block("ha_logs")
-        self.assertEqual(logs.count("logsPanel = {"), 4)
+        self.assertEqual(logs.count("logsPanel = {"), 8)   # lỗi gộp, backend, frontend, job cào, container khác, Patroni, sự kiện, request chậm
         for name in NAMES:
             if name != "ha_logs":
                 self.assertNotIn("logsPanel", dashboard_block(name), name)
-        for name in ["log_filter_errors", "log_filter_slow", "log_filter_container", "log_filter_crawler"]:
+        for name in ["log_filter_all_errors", "log_filter_backend", "log_filter_frontend", "log_filter_crawler", "log_filter_raw_containers", "log_filter_patroni", "log_filter_container", "log_filter_slow"]:
             self.assertIn(f"local.{name}", logs, name)
+
+    def test_logs_dashboard_covers_every_service_at_all_levels(self):
+        # Mỗi service có khung riêng, mọi mức (không lọc severity), để không thiếu service nào trên trang nhật ký.
+        logs = dashboard_block("ha_logs")
+        for name in ["log_filter_backend", "log_filter_frontend", "log_filter_crawler", "log_filter_raw_containers", "log_filter_patroni"]:
+            self.assertIn(f"local.{name}", logs, name)
+        self.assertNotIn("severity>=WARNING", DASH)   # khung job cào trước đây chỉ hiện WARNING trở lên
 
     def test_api_latency_metric_excludes_probes_and_sse(self):
         metric = re.search(r'resource "google_logging_metric" "ha_api_latency" \{(.*?)\n\}\n', DASH, re.S).group(1)
