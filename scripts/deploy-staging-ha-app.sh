@@ -98,6 +98,8 @@ google_compute_instance.patroni["a"]|update
 google_compute_instance.patroni["b"]|update
 google_compute_instance.patroni["w"]|update
 google_monitoring_dashboard.ha|update
+# Đổi tên hiển thị dashboard sang SOTA (2026-10-14): chỉ displayName/title, không đổi metric hay log filter.
+google_monitoring_dashboard.ha_db_crawler|update
 # VM bastion và crawler: chỉ bỏ resource_policies (gỡ lịch tắt/bật, 2026-10-12, PR #180). Không đổi gì khác.
 google_compute_instance.bastion[0]|update
 google_compute_instance.crawler[0]|update

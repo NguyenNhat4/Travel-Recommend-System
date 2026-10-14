@@ -25,4 +25,4 @@
 
 ## Còn lại / rủi ro
 
-- Cần chạy workflow `Staging-HA Infra CD` để áp dụng tên mới lên GCP staging-ha.
+- Cần chạy lại workflow deploy sau khi cổng plan cho phép cập nhật `google_monitoring_dashboard.ha_db_crawler`; lần chạy trước dừng đúng quy tắc an toàn vì thay đổi này chưa có trong allowlist.
