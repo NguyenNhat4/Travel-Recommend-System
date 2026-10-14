@@ -1,9 +1,9 @@
-# Kế hoạch `/search` 1.28.0: cổng bằng chứng theo cụm, trả rỗng khi câu chỉ có tên lạ, thời lượng theo vai trò (P0) · trường BM25 riêng + ablation text builder (P1)
+# Kế hoạch `/search` 1.30.0: cổng bằng chứng theo cụm, trả rỗng khi câu chỉ có tên lạ, thời lượng theo vai trò (P0) · trường BM25 riêng + ablation text builder (P1)
 
 > Nhánh nền **`release-mvp-v2`** (@3d059212, contract 1.27.0). Code search trên nhánh này khớp `fix/search-count` @1873f4d5 (đã diff 13/10: chỉ thêm `StageTimer.record`, cấu hình recsys/agent, preload vector) → trích dẫn `domain/search`, `use_cases.py` còn đúng; số dòng `main.py`/`config.py` đọc lại ở Bước 0.1. Đề xuất PRD đi kèm: `docs/prd/update/2026-10-13-search-evidence-gate-no-answer.md` (chờ chốt).
 
 - **Phục vụ:** **FR-SRC-01**, **FR-SRC-03**, **FR-SRC-04**, **AC-SRC-01**, **NFR-PERF-01** (p95 ≤ 250 ms), **NFR-REL-01** — `docs/prd/requirements.md`. Contract §9 AC 5 ("truy vấn vô nghĩa → `results: []`"), AC 7, AC 10b — `docs/spec/hop-dong-tich-hop-search-recommendation.md`.
-- **Phạm vi P0:** backend `/search`, contract OpenAPI **1.28.0 additive** (lấy minor kế tiếp tại thời điểm Bước 4 nếu nhánh khác đã chiếm 1.28.0), frontend banner + empty state, bench + gold, spec. **Không** DDL, **không** re-embed, **không** thêm vector, **không** thêm tham số request. Mọi cờ mới mặc định **tắt** → response byte-identical 1.27.0.
+- **Phạm vi P0:** backend `/search`, contract OpenAPI **1.30.0 additive** (lấy minor kế tiếp tại thời điểm Bước 4 nếu nhánh khác đã chiếm 1.30.0), frontend banner + empty state, bench + gold, spec. **Không** DDL, **không** re-embed, **không** thêm vector, **không** thêm tham số request. Mọi cờ mới mặc định **tắt** → response byte-identical 1.27.0.
 - **Phạm vi P1:** trường BM25 riêng (backfill lexical, không re-embed) + ablation text builder T0–T5.
 - **Đầu vào:** `H:/study/VIN20K/VSF/ke_hoach_xu_ly_false_positive_e5_dense_bm25.md`, probe live 13/10 (read-only), `docs/plan/2026-10-07-search-duration-entity-poi.md` (tiền lệ F7/entity role), report `eval-2026-10-06-search-query-plan-gold-v4.md`, `eval-2026-10-07-search-duration-entity-poi.md`, `eval-2026-10-05-search-e5s-dest-nodia.md`.
 - **Trạng thái:** đề xuất PRD Bước 1 **đã chốt** (tqanh123, 13/10) và PRD đã cập nhật (FR-SRC-03, FR-SRC-04, deployment-plan §2) — làm tiếp từ Bước 0; Bước 0.3 vượt ngưỡng chặn nhầm thì mở đề xuất sửa trước khi code Bước 5.
@@ -18,7 +18,7 @@
 | Q4 | Đề xuất `2026-10-06-search-hybrid-min-coverage-rrf.md` bị thay thế | `git mv` sang `update-archive/` với trạng thái `từ chối (thay bằng …)` sau khi chốt. |
 | Q5 | Không thêm vector | Tên/alias = lexical; tiện ích = filter; description_vector chỉ xét sau ablation P1. |
 | Q6 | Cổng bằng chứng **chỉ** cho nhánh lexical | Dense vẫn nhận theo cosine như hôm nay; cổng chỉ quyết BM25 có được vớt / cộng điểm hay không (§2.1–2.2). |
-| Q7 | Contract **1.28.0**, nhánh nền `release-mvp-v2` | Ghim: `openapi.yaml:4`, `main.py:889`, `test_search_contract.py:144`. |
+| Q7 | Contract **1.30.0**, nhánh nền `release-mvp-v2` | Ghim: `openapi.yaml:4`, `main.py:889`, `test_search_contract.py:144`. |
 
 ---
 
@@ -140,12 +140,12 @@ Kèm: embed residual (để "khách sạn" không kéo ra 153 khách sạn); l�
   Không áp khi `diagnostics.filterOnly`.
 - Empty state (`SearchView.tsx:141-153`) đọc `emptyReason`: `unexplained` → "Không tìm thấy “…”. Thử tên khác hoặc mô tả nhu cầu"; `duration` → "Không có vé/combo đúng thời lượng"; `entity` như hiện có.
 
-### 2.8 Contract 1.28.0 (additive)
+### 2.8 Contract 1.30.0 (additive)
 - `queryPlan`: `unexplained: [string]`, `unparsed: [string]`, `denseText`, `duration.role ∈ {gate, stay}` (chỉ khai khi cờ tương ứng bật); `emptyReason` += `unexplained`; mô tả `duration` "P0 không lọc" → "lọc vé/combo khi `SEARCH_DURATION_MASK`, role gate".
 - `EngineDiagnostics` (mở): `filterOnly`, `saturated`, `accentRestored`, `evidenceGate`.
 - `SearchResponse.backgroundScore` bắt đầu phát (ghi chú xấp xỉ).
 - `common.yaml:70-74` (định nghĩa R): thêm "khi `evidenceGate` bật: R_lex yêu cầu bằng chứng tên theo cụm giữ dấu; RRF chỉ cộng hạng BM25 của unit có bằng chứng văn bản".
-- Ghim 1.28.0: `openapi.yaml:4`, `main.py:889`, `test_search_contract.py:144`; changelog `search.yaml:1-21`; regen `src/frontend/src/types/api.gen.ts`.
+- Ghim 1.30.0: `openapi.yaml:4`, `main.py:889`, `test_search_contract.py:144`; changelog `search.yaml:1-21`; regen `src/frontend/src/types/api.gen.ts`.
 
 ### 2.9 Cờ (`config.py`, mặc định tắt)
 `SEARCH_EVIDENCE_GATE`, `SEARCH_DURATION_MASK`, `SEARCH_EMBED_RESIDUAL`, `SEARCH_UNEXPLAINED_EMPTY`, `SEARCH_NO_DIACRITICS_MODE=restore`, `SEARCH_EMIT_BACKGROUND`. Bảng biến `docs/prd/deployment-plan.md` cập nhật theo đề xuất (Bước 1).
@@ -165,7 +165,7 @@ Mỗi bước: 1 commit + 1 entry `history/`; cổng xanh trước bước sau. 
 | 1 | **Đề xuất PRD** `docs/prd/update/2026-10-13-search-evidence-gate-no-answer.md` (**đã chốt 13/10**, PRD đã cập nhật): (a) `deployment-plan.md:53` "giới hạn đã biết" → cơ chế mới; (b) FR-SRC-04: rỗng khi residual chỉ là tên lạ; (c) FR-SRC-03: lọc thời lượng vé/combo; (d) định nghĩa R; (e) thay thế đề xuất 2026-10-06; (f) P1: thêm property BM25 | `docs/prd/update/` | **người dùng chốt** | **DỪNG** Bước 4–10 tới khi chốt |
 | 2 | Gold + probe: `no_answer` (~40: tên người, tên trùng đường/di tích, vô nghĩa, POI/entity không có), `name_collision` (~12, `forbidden`), `duration_only` (~8), `duration_stay` (~6: "khách sạn Đà Lạt 2 ngày 1 đêm"…), `slang_residual` (~8: "khách sạn Đà Lạt rẻ bèo", "homestay sống ảo view đồi"…), đối chứng tên ngắn có thật + không dấu có đáp án; 10 câu âm AC 7; split `devtest@gold_v7.json` | `search_bench/gold/gold.jsonl`, `config/query_annotations.yaml` | `sb gold check` xanh | song song Bước 1; nhãn máy → QAnh duyệt |
 | 3 | Bench wiring: key app mới trong adapter; arm `APP.e5s.prod_f12356_ev`, `_dm`, `_er`, `_ue`, `_rs`, `_all` | `search_bench/app_adapter.py`, `arms/*.yaml` | identity `topids-diff` rỗng khi tắt | |
-| 4 | Contract 1.28.0 (§2.8) | `schemas/search.yaml`, `common.yaml`, `openapi.yaml`, `api.gen.ts` | `PYTHONDONTWRITEBYTECODE=1 python src/shared/contracts/tests/validate_contract.py`; `pytest src/backend/tests/contract` | sau Bước 1 |
+| 4 | Contract 1.30.0 (§2.8) | `schemas/search.yaml`, `common.yaml`, `openapi.yaml`, `api.gen.ts` | `PYTHONDONTWRITEBYTECODE=1 python src/shared/contracts/tests/validate_contract.py`; `pytest src/backend/tests/contract` | sau Bước 1 |
 | 5 | Domain: `lexical.syllables/bigrams/evidence`; `hybrid.evidence_gate` + `rrf_admissible`; `explain.py` (vocab, span, phân loại, danh sách họ) | `domain/search/lexical.py`, `hybrid.py`, `explain.py`, `__init__.py` | `pytest tests/unit/domain/test_lexical.py test_hybrid.py test_explain.py` | bảng ca §0/§2.6 parametrize; equivalence khi tắt |
 | 6 | Catalog: `duration_days/nights`; `mask(duration_*, duration_taxonomies)` | `domain/catalog/unit_attributes.py`, `application/ports/unit_index.py` | `pytest .../test_unit_attributes.py .../test_unit_index_mask.py` | ca: hotel không bị loại khi role stay |
 | 7 | Query plan: duration role, `dense_text`, `unexplained`/`unparsed`, `families_in_order` | `domain/search/query_plan.py`, `constraints.py` | `pytest .../test_query_plan.py .../test_constraints.py .../test_query_plan_filters.py` | |
@@ -224,7 +224,7 @@ Cổng bật cờ (đo trên test, ngưỡng chọn trên dev):
 ---
 
 ## 7. Definition of Done
-- Contract: `validate_contract.py` PASS; 1.28.0 ghim 3 nơi; `api.gen.ts` regen.
+- Contract: `validate_contract.py` PASS; 1.30.0 ghim 3 nơi; `api.gen.ts` regen.
 - Backend: unit + contract + architecture xanh; byte-identical khi tắt; coverage domain/application ≥ 80 %.
 - Frontend: test xanh.
 - Bench: report `eval-2026-10-1x-search-evidence-gate.md` (commit, run id, gold_v7, cấu hình arm, bảng nguyên văn, lệnh tái sinh); cổng §4 đạt cho mỗi cờ bật.
@@ -242,7 +242,7 @@ Cổng bật cờ (đo trên test, ngưỡng chọn trên dev):
 | Bằng chứng văn bản cần text trong RAM | Bước 0.2; dự phòng `name + description` |
 | Nhãn weak sai ở điểm đến nhỏ | `WEAK_MIN_F` + `WEAK_TOP_CEILING` |
 | Latency (bảng bigram, phục hồi dấu) | dựng lúc load; guard p95 |
-| Nhánh khác chiếm contract 1.28.0 trước | lấy minor kế tiếp tại Bước 4, cập nhật plan |
+| Nhánh khác chiếm contract 1.30.0 trước | lấy minor kế tiếp tại Bước 4, cập nhật plan |
 
 ## 9. Đánh giá lệch PRD
 - Lệch, cần Bước 1 chốt: `deployment-plan.md:53`, hành vi FR-SRC-04 (rỗng khi chỉ có tên lạ), FR-SRC-03 (lọc thời lượng vé/combo), định nghĩa R trong contract, bảng biến môi trường; P1: property BM25 mới.

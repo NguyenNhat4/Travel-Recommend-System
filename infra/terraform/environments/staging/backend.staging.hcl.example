@@ -1,4 +1,0 @@
-# Copy to backend.staging.hcl locally or pass equivalent -backend-config flags.
-# Reuse the monitoring state bucket, but keep this prefix separate.
-bucket = "replace-with-staging-terraform-state-bucket"
-prefix = "infra/staging"

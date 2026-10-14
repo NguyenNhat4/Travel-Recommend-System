@@ -34,7 +34,7 @@ def run_itinerary(
     from src.backend.app.infrastructure.llm import build_chat_model
 
     # Dựng client một lần như composition root; None khi ITINERARY_USE_LLM=false, lúc đó node
-    # classify trả LLM_UNAVAILABLE và lệnh thoát với mã 1.
+    # orchestrate trả LLM_UNAVAILABLE và lệnh thoát với mã 1.
     try:
         llm = build_chat_model(get_settings())
     except RuntimeError as exc:

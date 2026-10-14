@@ -1,12 +1,22 @@
 // @vitest-environment jsdom
 import React from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({
+const mocks = vi.hoisted(() => {
+  // These scenarios intentionally cover the retained v1 compatibility client, not the Next.js default.
+  const previousVersion = process.env.NEXT_PUBLIC_ASSISTANT_API;
+  process.env.NEXT_PUBLIC_ASSISTANT_API = 'v1';
+  return {
+  previousVersion,
   requestAssistantStream: vi.fn(), getAssistantConversation: vi.fn(),
   travel: { currentLocale: 'vi', authReady: true, currentPersona: null as { id: string; code: string } | null },
-}));
+  };
+});
+afterAll(() => {
+  if (mocks.previousVersion === undefined) delete process.env.NEXT_PUBLIC_ASSISTANT_API;
+  else process.env.NEXT_PUBLIC_ASSISTANT_API = mocks.previousVersion;
+});
 
 vi.mock('../../src/context/TravelContext', () => ({ useTravel: () => mocks.travel }));
 
@@ -385,5 +395,32 @@ describe('AssistantProvider', () => {
     await waitFor(() => expect(screen.getByTestId('conversation').textContent).toBe('fresh-id'));
     expect(screen.getByTestId('transcript').textContent).not.toContain('Stale');
     expect(screen.getByTestId('transcript').textContent).toContain('Fresh');
+  });
+});
+
+
+describe('stream activity timing', () => {
+  afterEach(() => { cleanup(); vi.useRealTimers(); });
+  it('resets the slow timer on activity', async () => {
+    vi.useFakeTimers(); sessionStorage.clear();
+    mocks.travel.authReady=true; mocks.travel.currentPersona=null;
+    let emit: ((event:AssistantStreamEvent)=>void) | undefined;
+    mocks.requestAssistantStream.mockImplementation((_request,options)=>{emit=options.onEvent;return new Promise(()=>{});});
+    mount();fireEvent.click(screen.getByText('send'));
+    await act(async()=>{await vi.advanceTimersByTimeAsync(11000);});
+    act(()=>{emit!({event:'node.activity',data:{nodeId:'tool',code:'SEARCHING'}});});
+    await act(async()=>{await vi.advanceTimersByTimeAsync(11000);});
+    expect(screen.getByTestId('slow').textContent).toBe('false');
+  });
+  it('ignores run.preview from an older server: no cards before the answer (chốt 2026-10-14)', async () => {
+    vi.useFakeTimers(); sessionStorage.clear();
+    mocks.travel.authReady=true; mocks.travel.currentPersona=null;
+    let emit: ((event:AssistantStreamEvent)=>void) | undefined;
+    mocks.requestAssistantStream.mockImplementation((_request,options)=>{emit=options.onEvent;return new Promise(()=>{});});
+    mount();fireEvent.click(screen.getByText('send'));
+    act(()=>{emit!({event:'run.preview',data:{runId:'r',products:[]}});});
+    await act(async()=>{await vi.advanceTimersByTimeAsync(6000);});
+    act(()=>{emit!(completed({status:'NEEDS_CLARIFICATION',conversationId:'c',question:'Xong'}));});
+    expect(screen.getByTestId('transcript').textContent).toContain('Xong');
   });
 });

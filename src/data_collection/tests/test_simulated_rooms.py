@@ -56,6 +56,20 @@ class PlanTests(unittest.TestCase):
         self.assertEqual([r['available'] for r in rooms], [False])
         self.assertEqual([(r['available'], r['attributes']['noBookableRoom']) for r in reopened], [(False, True)])
 
+    def test_closing_the_mock_room_of_a_merged_hotel_keeps_the_survivor_open(self):
+        """Gộp A vào B: phòng mô phỏng của A chuyển sang làm con của B rồi bị tắt; B còn phòng mô phỏng của chính nó nên phải
+        vẫn bật (trước 13/10/2026 B bị tắt kèm noBookableRoom tới lượt nạp sau)."""
+        a, b = hotel('agoda:hotel:a'), hotel('booking:hotel:b')
+        rooms, opened = sr.plan([a, b], AS_OF, True)
+        room_a, room_b = sorted(rooms, key=lambda r: r['source_ref'])
+        survivor = next(h for h in opened if h['source_ref'] == 'booking:hotel:b')
+        merged = {**a, 'available': False, 'attributes': {**a['attributes'], 'mergedInto': survivor['product_id']}}
+        moved = {**room_a, 'attributes': {**room_a['attributes'], 'parentProductId': survivor['product_id']}}
+        rooms, reopened = sr.plan([merged, survivor, moved, room_b], AS_OF, True)
+        self.assertEqual(sorted((r['source_ref'], r['available']) for r in rooms),
+                         [('demo:room:agoda:hotel:a', False), ('demo:room:booking:hotel:b', True)])
+        self.assertEqual(reopened, [])  # B giữ nguyên trạng thái đang bán
+
     def test_plan_is_stable_after_apply(self):
         prop = hotel('agoda:hotel:a')
         [room], [opened] = sr.plan([prop], AS_OF, True)

@@ -47,6 +47,8 @@ def in_scope(ref: str, row: dict, product: dict, seen: dict, rejected: list[str]
         return ref in (spec.get("refers_to") or [])
     if spec.get("destination") and fold(product.get("destination")) != fold(spec["destination"]):
         return False
+    if fold(product.get("destination")) in {fold(name) for name in spec.get("excluded_destinations") or []}:
+        return False
     if spec.get("taxonomy") and product.get("taxonomy") != spec["taxonomy"]:
         return False
     if "query_ids" in row and product["productId"] not in row["query_ids"]:
@@ -67,6 +69,18 @@ def in_scope(ref: str, row: dict, product: dict, seen: dict, rejected: list[str]
             return False
         return value < base if row["intent"] == "cheaper" else value > base
     return True
+
+
+def requested_groups(rows: list[dict]) -> dict[int, dict]:
+    """One target per source job; continuation aliases must not multiply the requested count."""
+    groups = {}
+    for row in rows:
+        spec = row.get("spec") or {}
+        count = spec.get("requested_count")
+        if row.get("kind") == "explore" and row.get("intent") != "about_shown" \
+                and row.get("status") != "superseded" and type(count) is int and count >= 1:
+            groups[row.get("source_job", row["job"])] = {"count": min(20, count), "requested": count, "spec": spec}
+    return groups
 
 
 def raw_violations(text: str, known_refs=()) -> list[str]:
@@ -163,17 +177,33 @@ def render(turn: dict, rows: list[dict], codes: dict[str, str], *, seen: dict, l
     """Select cards, replace verified placeholders, and insert all active code-written fare answers."""
     registry = visible(rows, codes)
     refs = list(turn.get("cards") or [])
+    requests = requested_groups(rows)
+    # When an explicit count was requested, fill remaining slots only with fresh, listed, eligible products.
+    refs += [ref for ref, entries in registry.items()
+             if any(row.get("source_job", row["job"]) in requests for row, _ in entries)]
     fare_rows = [row for row in _active(rows) if row.get("kind") == "fare"]
     answered = [row for row in fare_rows if row.get("status") in ("answered", "unavailable")]
     asked = [row for row in fare_rows if row.get("status") == "asked"]
     # Ensure primary flights from each answer take precedence over ancillary day cards.
+    fare_refs = []
     for row in answered:
         linked_ids = [match.group(2).removeprefix("product:") for match in LINK.finditer(row.get("fare_block", ""))]
-        refs += [ref for product_id in linked_ids for ref, pid in codes.items() if pid == product_id and ref in registry]
-    refs += [ref for row in answered for ref in row.get("listed") or []]
+        fare_refs += [ref for product_id in linked_ids for ref, pid in codes.items() if pid == product_id and ref in registry]
+    fare_refs += [ref for row in answered for ref in row.get("listed") or []]
+    refs = fare_refs + refs if requests else refs + fare_refs
     products, selected, dropped = {}, [], []
     limits = {"attraction": 3, "hotel": 4 if hotel_only else 2, "combo": 4, "golf": 4, "flight": 4}
+    requested_by_kind = {}
+    for target in requests.values():
+        kind = target["spec"].get("taxonomy")
+        if kind:
+            requested_by_kind[kind] = requested_by_kind.get(kind, 0) + target["count"]
+        else:
+            for kind in ("attraction", "hotel", "combo", "golf"):
+                requested_by_kind[kind] = 20
+    limits.update({kind: min(20, count) for kind, count in requested_by_kind.items()})
     counts: dict[str, int] = {}
+    group_counts: dict[int, int] = {}
     for ref in dict.fromkeys(refs):
         entries = registry.get(ref, [])
         eligible = [(row, product) for row, product in entries if in_scope(ref, row, product, seen, rejected_refs)
@@ -181,14 +211,17 @@ def render(turn: dict, rows: list[dict], codes: dict[str, str], *, seen: dict, l
         if not eligible:
             dropped.append(ref)
             continue
-        _, product = eligible[-1]
+        row, product = eligible[-1]
+        root = row.get("source_job", row["job"])
         taxonomy = product["taxonomy"]
-        if counts.get(taxonomy, 0) >= limits.get(taxonomy, 0):
+        if len(selected) >= 20 or counts.get(taxonomy, 0) >= limits.get(taxonomy, 0) \
+                or (root in requests and group_counts.get(root, 0) >= requests[root]["count"]):
             dropped.append(ref)
             continue
         products[ref] = product
         selected.append(ref)
         counts[taxonomy] = counts.get(taxonomy, 0) + 1
+        group_counts[root] = group_counts.get(root, 0) + 1
     text = str(turn.get("message") or "")
     if fallback:
         text = "\n".join(f"Bạn có thể xem [{short_name(product).lstrip('-–| ').strip()}]({ref})." if language == "vi" else
@@ -268,4 +301,6 @@ def render(turn: dict, rows: list[dict], codes: dict[str, str], *, seen: dict, l
     return {"body": _one_question(text.strip()), "searchResults": grouped, "selected": selected,
             "dropped": dropped, "suggestions": suggestions[:3], "waiting_jobs": waiting,
             "pending_fare": pending, "fare_question": bool(question_row), "prefill": prefill,
-            "fare_ids": fare_ids}
+            "fare_ids": fare_ids, "shortfalls": [{"job": root, "requested": target["count"],
+                "selected": group_counts.get(root, 0), "spec": target["spec"]} for root, target in requests.items()
+                if group_counts.get(root, 0) < target["count"]]}

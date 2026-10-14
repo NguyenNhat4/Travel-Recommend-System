@@ -2,9 +2,9 @@
 (docs/spec/hop-dong-tich-hop-backend.md §4.1)."""
 from __future__ import annotations
 
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from itertools import zip_longest
-from typing import Collection, Iterable, Mapping, Sequence
 
 from .models import Product
 
@@ -48,7 +48,8 @@ def summarize_variants(children: Iterable[Product]) -> VariantSummary:
 
 
 def filter_items(items: Iterable[ListingItem], *, destination: str | None = None,
-                 taxonomy: str | Collection[str] | None = None, available_only: bool = False) -> list[ListingItem]:
+                 taxonomy: str | Collection[str] | None = None, available_only: bool = False,
+                 free_only: bool = False) -> list[ListingItem]:
     """`taxonomy` là một loại hoặc một tập loại (contract 1.27.0, `taxonomy=attraction,golf`)."""
     wanted = None if taxonomy is None else ({taxonomy} if isinstance(taxonomy, str) else set(taxonomy))
     return [
@@ -56,6 +57,7 @@ def filter_items(items: Iterable[ListingItem], *, destination: str | None = None
         if (destination is None or i.product.destination == destination)
         and (wanted is None or i.product.taxonomy in wanted)
         and (not available_only or i.product.available)
+        and (not free_only or i.product.entry_policy in ("free", "assumed_free"))
     ]
 
 
@@ -79,6 +81,16 @@ def _price_key(item: ListingItem, descending: bool) -> tuple:
     if price is None:
         return (1, 0.0, item.product.name)
     return (0, -price if descending else price, item.product.name)
+
+
+def precompute_orders(items: Sequence[ListingItem],
+                      popularity: Mapping[str, float] | None = None) -> dict[str, list[ListingItem]]:
+    """Thứ tự của từng sắp xếp cấp sản phẩm (không tầng con), tính một lần khi nạp catalog.
+
+    `sort(filter(items))` và `filter(sort(items))` cho cùng danh sách: sắp xếp ổn định và lọc không đổi thứ tự tương
+    đối. Vì vậy request chỉ cần lọc danh sách đã sắp xếp sẵn, không gọi `sort_items` lần nào.
+    """
+    return {sort: sort_items(items, sort, popularity) for sort in PRODUCT_SORTS}
 
 
 def sort_items(items: Sequence[ListingItem], sort: str, popularity: Mapping[str, float] | None = None,

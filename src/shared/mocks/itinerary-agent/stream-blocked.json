@@ -1,0 +1,35 @@
+[
+  {
+    "event": "run.started",
+    "data": {
+      "runId": "fixture-run",
+      "requestId": "fixture-request"
+    }
+  },
+  {
+    "event": "node.completed",
+    "data": {
+      "sequence": 1,
+      "nodeId": "precheck",
+      "outcome": "completed",
+      "message": "internal debug",
+      "durationMs": 100,
+      "progress": {
+        "turnKind": "blocked",
+        "steps": []
+      }
+    }
+  },
+  {
+    "event": "run.completed",
+    "data": {
+      "runId": "fixture-run",
+      "httpStatus": 200,
+      "response": {
+        "status": "NEEDS_CLARIFICATION",
+        "conversationId": "sample-conv",
+        "question": "Bạn muốn khám phá thêm không?"
+      }
+    }
+  }
+]

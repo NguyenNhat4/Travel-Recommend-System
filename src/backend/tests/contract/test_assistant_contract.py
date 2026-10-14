@@ -18,14 +18,15 @@ import json
 import os
 import unittest
 from copy import deepcopy
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator, FormatChecker
 
-from src.backend.app.agents.models import ConversationalAnswer, DestinationChoice, Extraction, TurnRoute
-from src.backend.app.application.itinerary.contracts import schema
+from src.backend.app.agents.models import ConversationalAnswer, DestinationChoice, Extraction, OrchestratorTurn
+from src.backend.app.application.itinerary.contracts import schema, valid
 from src.backend.app.application.itinerary.engine_tools import InProcessItineraryTools
 from src.backend.app.application.auth.principal import AuthPrincipal
 from src.backend.app.api.deps import current_principal
@@ -67,8 +68,12 @@ class ScriptedLlm:
         async def invoke(_prompt):
             if self.fail:
                 raise RuntimeError("provider error")
-            if target is TurnRoute:
-                return TurnRoute(route=self.route)
+            if target is OrchestratorTurn:
+                if self.route == "travel":
+                    return OrchestratorTurn(action="plan", plan_reason="asks_plan")
+                # Ngoài phạm vi: orchestrator trả lời thường, nói rõ không làm thay được, kèm nút (AC-AGT-07).
+                return OrchestratorTurn(action="answer", message="Mình không đặt vé thay bạn được, bạn đặt trên Web nhé.",
+                                        suggestions=["Nha Trang có gì chơi?", "Tìm vé máy bay đi Nha Trang"])
             if target is Extraction:
                 return self.result
             if target is DestinationChoice:
@@ -293,13 +298,15 @@ class AssistantContractTests(unittest.TestCase):
             app.state.itinerary_http_clients = Clients()
             response = client.post(f"/api/v1{STREAM}", json={"message": "lên lịch giúp mình"},
                                    headers={"Authorization": "Bearer secret-token"})
-        allowed = {"sequence", "nodeId", "outcome", "message", "durationMs"}
+        allowed = {"sequence", "nodeId", "outcome", "message", "durationMs", "progress"}
         for line in response.text.splitlines():
             if not line.startswith("data: "):
                 continue
             payload = json.loads(line.removeprefix("data: "))
-            if "nodeId" in payload:
+            if "nodeId" in payload and "sequence" in payload:
                 self.assertEqual(set(payload) - allowed, set())
+                self.assertNotIn("debug",payload)
+                self.assertTrue(valid("AssistantNodeCompletedData",payload),payload)
         self.assertNotIn("secret-token", response.text)
 
     def test_stream_rejects_a_bad_request_before_opening_the_stream(self):
@@ -409,7 +416,8 @@ class AssistantContractTests(unittest.TestCase):
         thành `_IncludedRouter` không mang `path`, nên duyệt routes cho ra tập rỗng và phép so
         sánh luôn đúng một cách vô nghĩa.
         """
-        declared = {f"/api/v1{path}" for path in DOC["paths"]}
+        v2 = bundle(Path(__file__).resolve().parents[3] / "shared/contracts/assistant-v2.openapi.yaml")
+        declared = {f"/api/v1{path}" for path in DOC["paths"]} | {f"/api/v2{path}" for path in v2["paths"]}
         served = {
             path
             for path, operations in app.openapi()["paths"].items()

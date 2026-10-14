@@ -1,0 +1,27 @@
+{
+  "conversationId": "fixture-conversation",
+  "runId": "fixture-run",
+  "turnKind": "partial",
+  "message": "Chỉ tra được một phần dữ liệu.",
+  "recommendations": {
+    "hotel": [],
+    "flight": [],
+    "attraction": [],
+    "combo": [],
+    "golf": []
+  },
+  "alternatives": [],
+  "itinerary": null,
+  "planEffect": "keep",
+  "planRevision": 0,
+  "warnings": [
+    {
+      "id": "w-partial",
+      "code": "PARTIAL_COVERAGE",
+      "severity": "warning",
+      "message": "Chưa quét hết phạm vi.",
+      "productIds": []
+    }
+  ],
+  "suggestions": []
+}

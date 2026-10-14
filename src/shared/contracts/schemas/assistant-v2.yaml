@@ -1,0 +1,2031 @@
+UiSelectAlternative:
+  type: object
+  description: Confirm an alternative after preview. Requires conversation and basePlanRevision.
+  additionalProperties: false
+  required:
+  - type
+  - actionId
+  - alternativeId
+  properties:
+    type:
+      type: string
+      description: Confirm exactly the server-issued alternative; refresh its products before commit.
+      const: select_alternative
+    actionId:
+      type: string
+      description: Server-issued action ID; verify it belongs to this owner/conversation.
+      minLength: 1
+    alternativeId:
+      type: string
+      description: Opaque alternative ID from the displayed answer; never a price or arbitrary product payload.
+      minLength: 1
+UiFareQuery:
+  type: object
+  description: A structured fare button. Server resolves question fields from its stored action, not model or browser
+    prices.
+  additionalProperties: false
+  required:
+  - type
+  - actionId
+  properties:
+    type:
+      type: string
+      description: A server-issued fare question; return to orc, never bypass it.
+      const: fare_query
+    actionId:
+      type: string
+      description: Server-issued action ID, resolved by server to the original question.
+      minLength: 1
+UiAction:
+  description: Supported server-issued user actions. No arbitrary tool permission, product facts or prices.
+  oneOf:
+  - $ref: ../assistant-v2.openapi.yaml#/components/schemas/UiSelectAlternative
+  - $ref: ../assistant-v2.openapi.yaml#/components/schemas/UiFareQuery
+  discriminator:
+    propertyName: type
+    mapping:
+      select_alternative: ../assistant-v2.openapi.yaml#/components/schemas/UiSelectAlternative
+      fare_query: ../assistant-v2.openapi.yaml#/components/schemas/UiFareQuery
+TripIntentPatch:
+  type: object
+  description: Chỉ các trường người dùng sửa bằng chip; trường vắng mặt nghĩa là không đổi.
+  minProperties: 1
+  properties:
+    destination:
+      type: string
+    startDate:
+      type:
+      - string
+      - 'null'
+      format: date
+    days:
+      type: integer
+      minimum: 1
+      maximum: 7
+    party:
+      $ref: ../assistant-v2.openapi.yaml#/components/schemas/Party
+    budget:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+    interests:
+      type: array
+      items:
+        type: string
+    pace:
+      oneOf:
+      - $ref: ../assistant-v2.openapi.yaml#/components/schemas/Pace
+      - type: 'null'
+    origin:
+      type: string
+      minLength: 1
+      maxLength: 150
+      description: (1.18.0) Thành phố đi; chỉ gửi tên thành phố, không gửi toạ độ.
+  additionalProperties: false
+RequestContext:
+  type: object
+  description: Conversation presentation context; no credentials or browser coordinates.
+  additionalProperties: false
+  required: []
+  properties:
+    language:
+      type: string
+      description: Response language; omitted means vi.
+      enum:
+      - vi
+      - en
+      default: vi
+AssistantV2Request:
+  type: object
+  description: Assistant v2 turn. Identity comes from server session. Same clientTurnId/content replays final; in-progress/conflicting
+    content returns 409.
+  additionalProperties: false
+  required:
+  - clientTurnId
+  - basePlanRevision
+  properties:
+    conversationId:
+      type:
+      - string
+      - 'null'
+      description: Existing owner-scoped conversation. Null/omitted starts a new conversation.
+      minLength: 1
+    clientTurnId:
+      type: string
+      description: Stable caller-generated ID, reused only with identical content across reconnects. Atomic shared-store
+        claim, TTL 24h.
+      minLength: 1
+      maxLength: 64
+      pattern: ^[A-Za-z0-9_-]+$
+    basePlanRevision:
+      type:
+      - integer
+      - 'null'
+      description: Revision displayed by the caller. Required for selecting/changing an existing plan; null for
+        no existing plan.
+      minimum: 0
+    message:
+      type:
+      - string
+      - 'null'
+      description: User message, not tool instructions; at least one of message/intentOverride/uiAction is present.
+      minLength: 1
+      maxLength: 1000
+      pattern: \S
+    intentOverride:
+      description: Explicit user form/chip changes; requires an existing conversation, no prices or tool permissions.
+      oneOf:
+      - $ref: ../assistant-v2.openapi.yaml#/components/schemas/TripIntentPatch
+      - type: 'null'
+    uiAction:
+      description: Explicit click on a server-issued action; null means no UI action.
+      oneOf:
+      - $ref: ../assistant-v2.openapi.yaml#/components/schemas/UiAction
+      - type: 'null'
+    context:
+      $ref: ../assistant-v2.openapi.yaml#/components/schemas/RequestContext
+  anyOf:
+  - required:
+    - message
+    properties:
+      message:
+        type: string
+  - required:
+    - intentOverride
+    properties:
+      intentOverride:
+        type: object
+  - required:
+    - uiAction
+    properties:
+      uiAction:
+        type: object
+  allOf:
+  - if:
+      required:
+      - intentOverride
+      properties:
+        intentOverride:
+          type: object
+    then:
+      required:
+      - conversationId
+      properties:
+        conversationId:
+          type: string
+  - if:
+      required:
+      - uiAction
+      properties:
+        uiAction:
+          type: object
+    then:
+      required:
+      - conversationId
+      properties:
+        conversationId:
+          type: string
+  - if:
+      required:
+      - uiAction
+      properties:
+        uiAction:
+          type: object
+          properties:
+            type:
+              const: select_alternative
+          required:
+          - type
+    then:
+      properties:
+        basePlanRevision:
+          type: integer
+Warning:
+  type: object
+  description: Public warning, distinct from guardrail repair/fatal issues.
+  additionalProperties: false
+  required:
+  - id
+  - code
+  - severity
+  - message
+  - productIds
+  properties:
+    id:
+      type: string
+      description: Server-issued warning ID for orc disclosure.
+      minLength: 1
+    code:
+      type: string
+      description: Safe warning code; warning does not automatically block a plan.
+      enum:
+      - OVER_TRIP_BUDGET
+      - PRICE_UNKNOWN
+      - FREE_ENTRY_ASSUMED
+      - OPENING_HOURS_UNKNOWN
+      - TIMING_ESTIMATED
+      - PARTIAL_COVERAGE
+      - OPTIMIZATION_UNAVAILABLE
+      - PRICE_CAPACITY_UNKNOWN
+      - ROOM_CAPACITY_UNKNOWN
+      - SIMULATED_PRICE
+      - TRAVEL_TIME_UNKNOWN
+      - DATE_AVAILABILITY_UNKNOWN
+      - CAPACITY_UNKNOWN
+      - STAY_AVAILABILITY_UNVERIFIED
+    severity:
+      type: string
+      description: Non-blocking warning; required disclosures checked before final.
+      const: warning
+    message:
+      type: string
+      description: Safe grounded disclosure rendered by code for the warning selected by orc.
+      minLength: 1
+    productIds:
+      type: array
+      description: Affected catalog products.
+      items:
+        type: string
+        description: Catalog product ID affected by this warning.
+Costs:
+  type: object
+  description: Server-calculated trip costs. Over-budget plans remain valid; arithmetic/unknown invariants checked
+    at runtime.
+  additionalProperties: false
+  required:
+  - knownSubtotalVnd
+  - estimatedTotalVnd
+  - unpricedProductIds
+  - tripBudgetVnd
+  - overByVnd
+  - budgetStatus
+  - coverageNotes
+  properties:
+    knownSubtotalVnd:
+      type: integer
+      description: Sum of priced items in the selected itinerary only, VND.
+      minimum: 0
+    estimatedTotalVnd:
+      type:
+      - integer
+      - 'null'
+      description: Full selected-product total in VND; null if any selected product has unknown price.
+      minimum: 0
+    unpricedProductIds:
+      type: array
+      description: Unpriced selected products; never assume they are free.
+      items:
+        type: string
+        description: Selected product with an unknown cost.
+      uniqueItems: true
+    tripBudgetVnd:
+      type:
+      - integer
+      - 'null'
+      description: Trip target in VND; 0 is valid and differs from null. Warning-only.
+      minimum: 0
+    overByVnd:
+      type:
+      - integer
+      - 'null'
+      description: max(0,total-budget), null without full total or budget. Never estimate exact overage from subtotal.
+      minimum: 0
+    budgetStatus:
+      type: string
+      description: not_set without budget; unknown with incomplete prices; otherwise within/over.
+      enum:
+      - not_set
+      - within
+      - over
+      - unknown
+    coverageNotes:
+      type: array
+      description: Excluded expenses and coverage; meals/self-transfer are not silently included.
+      items:
+        type: string
+        description: Scope disclosure supported by the tool.
+      minItems: 1
+  allOf:
+  - if:
+      properties:
+        unpricedProductIds:
+          minItems: 1
+    then:
+      properties:
+        estimatedTotalVnd:
+          type: 'null'
+        overByVnd:
+          type: 'null'
+        budgetStatus:
+          enum:
+          - unknown
+          - not_set
+  - if:
+      properties:
+        tripBudgetVnd:
+          type: 'null'
+    then:
+      properties:
+        overByVnd:
+          type: 'null'
+        budgetStatus:
+          const: not_set
+  - if:
+      properties:
+        budgetStatus:
+          const: over
+    then:
+      properties:
+        estimatedTotalVnd:
+          type: integer
+        tripBudgetVnd:
+          type: integer
+        overByVnd:
+          type: integer
+          minimum: 1
+  - if:
+      properties:
+        budgetStatus:
+          const: unknown
+    then:
+      properties:
+        estimatedTotalVnd:
+          type: 'null'
+        overByVnd:
+          type: 'null'
+        unpricedProductIds:
+          minItems: 1
+        tripBudgetVnd:
+          type: integer
+Activity:
+  type: object
+  description: Orc-selected activity, any count that fits the day; no implicit two-activity cap.
+  additionalProperties: false
+  required:
+  - product
+  - startMinute
+  - endMinute
+  - timingSource
+  - assumption
+  properties:
+    product:
+      $ref: ../assistant-v2.openapi.yaml#/components/schemas/ProductSummary
+    startMinute:
+      type: integer
+      description: Start minutes after local midnight in Vietnam (UTC+07:00).
+      minimum: 0
+      maximum: 1439
+    endMinute:
+      type: integer
+      description: End minutes after midnight; must exceed startMinute.
+      minimum: 1
+      maximum: 1440
+    timingSource:
+      type: string
+      description: catalog only with source evidence; otherwise estimate with explicit assumption.
+      enum:
+      - catalog
+      - estimate
+    assumption:
+      type:
+      - string
+      - 'null'
+      description: Required nonempty text when timingSource=estimate; null if sourced timing.
+      minLength: 1
+  allOf:
+  - if:
+      properties:
+        timingSource:
+          const: estimate
+    then:
+      properties:
+        assumption:
+          type: string
+          minLength: 1
+ItineraryDay:
+  type: object
+  description: A trip day with multiple activities in any time window.
+  additionalProperties: false
+  required:
+  - dayIndex
+  - date
+  - activities
+  properties:
+    dayIndex:
+      type: integer
+      description: 1-based trip day, must match the date and trip length.
+      minimum: 1
+      maximum: 7
+    date:
+      type: string
+      description: Day date in Vietnam.
+      format: date
+    activities:
+      type: array
+      description: Activities in the order selected by orc; empty means no planned activity.
+      items:
+        $ref: ../assistant-v2.openapi.yaml#/components/schemas/Activity
+ItineraryStay:
+  type: object
+  description: Explicit chosen accommodation; absent stay means no overnight accommodation.
+  additionalProperties: false
+  required:
+  - product
+  - checkIn
+  - checkOut
+  - nights
+  - rooms
+  properties:
+    product:
+      $ref: ../assistant-v2.openapi.yaml#/components/schemas/ProductSummary
+    checkIn:
+      type: string
+      description: Local check-in date.
+      format: date
+    checkOut:
+      type: string
+      description: Local check-out, after check-in; computed nights must match.
+      format: date
+    nights:
+      type: integer
+      description: Actual checkOut-checkIn, never inferred from max(1,trip days-1).
+      minimum: 1
+      maximum: 30
+    rooms:
+      type:
+      - integer
+      - 'null'
+      description: Rooms needed under catalog priceAdults rules, null when source capacity is unknown; at most 9 when known.
+      minimum: 1
+      maximum: 9
+ItineraryFlight:
+  type: object
+  description: Flight chosen by orc; itinerary validator reads dates/times from catalog.
+  additionalProperties: false
+  required:
+  - product
+  - role
+  properties:
+    product:
+      $ref: ../assistant-v2.openapi.yaml#/components/schemas/ProductSummary
+    role:
+      type: string
+      description: Role of this actual catalog journey.
+      enum:
+      - outbound
+      - return
+      - round_trip
+Itinerary:
+  type: object
+  description: Validated selected itinerary; infeasible candidates cannot be committed as a final itinerary.
+  additionalProperties: false
+  required:
+  - planResultId
+  - destination
+  - startDate
+  - days
+  - stays
+  - flights
+  - nights
+  - feasibility
+  - costs
+  - party
+  properties:
+    planResultId:
+      type: string
+      description: Immutable server-generated build_itinerary result, current owner/run only.
+      minLength: 1
+    party:
+      type: object
+      description: Party the costs were computed for (price per person × people, rooms from adults); used when booking
+        from the plan.
+      additionalProperties: false
+      required:
+      - adults
+      - children
+      properties:
+        adults:
+          type: integer
+          minimum: 1
+        children:
+          type: integer
+          minimum: 0
+    destination:
+      type: string
+      description: Catalog destination selected for this trip.
+      minLength: 1
+    startDate:
+      type: string
+      description: Local trip start date.
+      format: date
+    days:
+      type: array
+      description: Chronological trip days.
+      items:
+        $ref: ../assistant-v2.openapi.yaml#/components/schemas/ItineraryDay
+      minItems: 1
+      maxItems: 7
+    stays:
+      type: array
+      description: Explicit stays; [] is no accommodation, including a one-day trip.
+      items:
+        $ref: ../assistant-v2.openapi.yaml#/components/schemas/ItineraryStay
+    flights:
+      type: array
+      description: Explicit chosen flights; [] means none.
+      items:
+        $ref: ../assistant-v2.openapi.yaml#/components/schemas/ItineraryFlight
+    nights:
+      type: integer
+      description: Number of actual accommodation nights; 0 without stays.
+      minimum: 0
+      maximum: 30
+    feasibility:
+      type: string
+      description: verified only within catalog evidence; provisional means missing time/price/travel evidence.
+      enum:
+      - verified
+      - provisional
+    costs:
+      $ref: ../assistant-v2.openapi.yaml#/components/schemas/Costs
+Recommendations:
+  type: object
+  description: Per-taxonomy suggestions. No overall 20 cap. A duplicate productId cannot count toward requested
+    quantity.
+  additionalProperties: false
+  required:
+  - hotel
+  - attraction
+  - combo
+  - golf
+  - flight
+  properties:
+    hotel:
+      type: array
+      description: Orc-selected unique hotel products in display order; union with alternatives capped at 10.
+      items:
+        allOf:
+        - $ref: ../assistant-v2.openapi.yaml#/components/schemas/ProductSummary
+        - properties:
+            taxonomy:
+              const: hotel
+      maxItems: 10
+      uniqueItems: true
+    attraction:
+      type: array
+      description: Orc-selected unique attraction products in display order; union with alternatives capped at 10.
+      items:
+        allOf:
+        - $ref: ../assistant-v2.openapi.yaml#/components/schemas/ProductSummary
+        - properties:
+            taxonomy:
+              const: attraction
+      maxItems: 10
+      uniqueItems: true
+    combo:
+      type: array
+      description: Orc-selected unique combo products in display order; union with alternatives capped at 10.
+      items:
+        allOf:
+        - $ref: ../assistant-v2.openapi.yaml#/components/schemas/ProductSummary
+        - properties:
+            taxonomy:
+              const: combo
+      maxItems: 10
+      uniqueItems: true
+    golf:
+      type: array
+      description: Orc-selected unique golf products in display order; union with alternatives capped at 10.
+      items:
+        allOf:
+        - $ref: ../assistant-v2.openapi.yaml#/components/schemas/ProductSummary
+        - properties:
+            taxonomy:
+              const: golf
+      maxItems: 10
+      uniqueItems: true
+    flight:
+      type: array
+      description: Orc-selected unique flight products in display order; union with alternatives capped at 10.
+      items:
+        allOf:
+        - $ref: ../assistant-v2.openapi.yaml#/components/schemas/ProductSummary
+        - properties:
+            taxonomy:
+              const: flight
+      maxItems: 10
+      uniqueItems: true
+Alternative:
+  type: object
+  description: Explicitly selected alternative. Counts toward same taxonomy limit as recommendations; no automatic
+    fill.
+  additionalProperties: false
+  required:
+  - alternativeId
+  - product
+  - violates
+  - disclosures
+  - itinerary
+  - uiAction
+  properties:
+    alternativeId:
+      type: string
+      description: Server-issued alternative ID.
+      minLength: 1
+    uiAction:
+      $ref: ../assistant-v2.openapi.yaml#/components/schemas/UiSelectAlternative
+      description: Exact action the client sends (with basePlanRevision) when the user confirms this alternative after
+        preview. Issued by the server for this turn only.
+    product:
+      $ref: ../assistant-v2.openapi.yaml#/components/schemas/ProductSummary
+    violates:
+      type: array
+      description: Disclosed mismatches, never ownership/source/date failures.
+      items:
+        type: string
+        description: Constraint explicitly relaxed in this alternative.
+        enum:
+        - free_only
+        - soft_preference
+        - trip_budget
+      uniqueItems: true
+    disclosures:
+      type: array
+      description: Why this differs from the request; required for any violates entry.
+      items:
+        type: string
+        description: Grounded non-match/coverage disclosure.
+      minItems: 1
+    itinerary:
+      description: Validated preview of an orc-selected alternative; null for a product suggestion.
+      oneOf:
+      - $ref: ../assistant-v2.openapi.yaml#/components/schemas/Itinerary
+      - type: 'null'
+Suggestion:
+  type: object
+  description: A validated orc-selected suggestion, not automatically generated by code.
+  additionalProperties: false
+  required:
+  - label
+  - message
+  - uiAction
+  properties:
+    label:
+      type: string
+      description: Short user-facing label proposed by orc and validated.
+      minLength: 1
+      maxLength: 150
+    message:
+      type:
+      - string
+      - 'null'
+      description: Message to submit when this is a normal conversation button.
+      minLength: 1
+      maxLength: 1000
+    uiAction:
+      description: Structured fare/alternative action, never raw prices.
+      oneOf:
+      - $ref: ../assistant-v2.openapi.yaml#/components/schemas/UiAction
+      - type: 'null'
+  oneOf:
+  - properties:
+      message:
+        type: string
+      uiAction:
+        type: 'null'
+  - properties:
+      message:
+        type: 'null'
+      uiAction:
+        type: object
+AssistantV2Final:
+  type: object
+  description: Validated v2 final response; server commit once per run.
+  additionalProperties: false
+  required:
+  - conversationId
+  - runId
+  - turnKind
+  - message
+  - recommendations
+  - alternatives
+  - itinerary
+  - planEffect
+  - planRevision
+  - warnings
+  - suggestions
+  properties:
+    conversationId:
+      type: string
+      description: Owner-scoped conversation ID.
+      minLength: 1
+    runId:
+      type: string
+      description: Server-generated run ID, stable for idempotent replay.
+      minLength: 1
+    turnKind:
+      type: string
+      description: Business kind distinct from errors and plan effect.
+      enum:
+      - answer
+      - clarification
+      - itinerary
+      - partial
+    message:
+      type: string
+      description: Validated orc response, facts hydrated from current-turn sources.
+      minLength: 1
+    recommendations:
+      $ref: ../assistant-v2.openapi.yaml#/components/schemas/Recommendations
+    alternatives:
+      type: array
+      description: Orc-selected alternatives only; total per-taxonomy union with recommendations ≤10.
+      items:
+        $ref: ../assistant-v2.openapi.yaml#/components/schemas/Alternative
+    itinerary:
+      description: Validated final plan only; null with keep does not remove displayed plan.
+      oneOf:
+      - $ref: ../assistant-v2.openapi.yaml#/components/schemas/Itinerary
+      - type: 'null'
+    planEffect:
+      type: string
+      description: keep preserves committed plan and revision; replace requires a current-turn valid build result
+        and user consent.
+      enum:
+      - keep
+      - replace
+    planRevision:
+      type: integer
+      description: Committed revision after final; increments only on replace.
+      minimum: 0
+    warnings:
+      type: array
+      description: Mandatory disclosures of the selected plan/coverage.
+      items:
+        $ref: ../assistant-v2.openapi.yaml#/components/schemas/Warning
+    suggestions:
+      type: array
+      description: At most three validated orc-selected buttons.
+      items:
+        $ref: ../assistant-v2.openapi.yaml#/components/schemas/Suggestion
+      maxItems: 3
+  allOf:
+  - if:
+      properties:
+        planEffect:
+          const: replace
+    then:
+      properties:
+        itinerary:
+          type: object
+  - if:
+      properties:
+        turnKind:
+          const: itinerary
+    then:
+      properties:
+        itinerary:
+          type: object
+        planEffect:
+          const: replace
+  - if:
+      properties:
+        turnKind:
+          enum:
+          - answer
+          - clarification
+    then:
+      properties:
+        planEffect:
+          const: keep
+  - if:
+      properties:
+        recommendations:
+          properties:
+            hotel:
+              minItems: 1
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: hotel
+          minContains: 0
+          maxContains: 9
+  - if:
+      properties:
+        recommendations:
+          properties:
+            hotel:
+              minItems: 2
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: hotel
+          minContains: 0
+          maxContains: 8
+  - if:
+      properties:
+        recommendations:
+          properties:
+            hotel:
+              minItems: 3
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: hotel
+          minContains: 0
+          maxContains: 7
+  - if:
+      properties:
+        recommendations:
+          properties:
+            hotel:
+              minItems: 4
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: hotel
+          minContains: 0
+          maxContains: 6
+  - if:
+      properties:
+        recommendations:
+          properties:
+            hotel:
+              minItems: 5
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: hotel
+          minContains: 0
+          maxContains: 5
+  - if:
+      properties:
+        recommendations:
+          properties:
+            hotel:
+              minItems: 6
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: hotel
+          minContains: 0
+          maxContains: 4
+  - if:
+      properties:
+        recommendations:
+          properties:
+            hotel:
+              minItems: 7
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: hotel
+          minContains: 0
+          maxContains: 3
+  - if:
+      properties:
+        recommendations:
+          properties:
+            hotel:
+              minItems: 8
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: hotel
+          minContains: 0
+          maxContains: 2
+  - if:
+      properties:
+        recommendations:
+          properties:
+            hotel:
+              minItems: 9
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: hotel
+          minContains: 0
+          maxContains: 1
+  - if:
+      properties:
+        recommendations:
+          properties:
+            hotel:
+              minItems: 10
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: hotel
+          minContains: 0
+          maxContains: 0
+  - if:
+      properties:
+        recommendations:
+          properties:
+            flight:
+              minItems: 1
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: flight
+          minContains: 0
+          maxContains: 9
+  - if:
+      properties:
+        recommendations:
+          properties:
+            flight:
+              minItems: 2
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: flight
+          minContains: 0
+          maxContains: 8
+  - if:
+      properties:
+        recommendations:
+          properties:
+            flight:
+              minItems: 3
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: flight
+          minContains: 0
+          maxContains: 7
+  - if:
+      properties:
+        recommendations:
+          properties:
+            flight:
+              minItems: 4
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: flight
+          minContains: 0
+          maxContains: 6
+  - if:
+      properties:
+        recommendations:
+          properties:
+            flight:
+              minItems: 5
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: flight
+          minContains: 0
+          maxContains: 5
+  - if:
+      properties:
+        recommendations:
+          properties:
+            flight:
+              minItems: 6
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: flight
+          minContains: 0
+          maxContains: 4
+  - if:
+      properties:
+        recommendations:
+          properties:
+            flight:
+              minItems: 7
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: flight
+          minContains: 0
+          maxContains: 3
+  - if:
+      properties:
+        recommendations:
+          properties:
+            flight:
+              minItems: 8
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: flight
+          minContains: 0
+          maxContains: 2
+  - if:
+      properties:
+        recommendations:
+          properties:
+            flight:
+              minItems: 9
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: flight
+          minContains: 0
+          maxContains: 1
+  - if:
+      properties:
+        recommendations:
+          properties:
+            flight:
+              minItems: 10
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: flight
+          minContains: 0
+          maxContains: 0
+  - if:
+      properties:
+        recommendations:
+          properties:
+            attraction:
+              minItems: 1
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: attraction
+          minContains: 0
+          maxContains: 9
+  - if:
+      properties:
+        recommendations:
+          properties:
+            attraction:
+              minItems: 2
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: attraction
+          minContains: 0
+          maxContains: 8
+  - if:
+      properties:
+        recommendations:
+          properties:
+            attraction:
+              minItems: 3
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: attraction
+          minContains: 0
+          maxContains: 7
+  - if:
+      properties:
+        recommendations:
+          properties:
+            attraction:
+              minItems: 4
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: attraction
+          minContains: 0
+          maxContains: 6
+  - if:
+      properties:
+        recommendations:
+          properties:
+            attraction:
+              minItems: 5
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: attraction
+          minContains: 0
+          maxContains: 5
+  - if:
+      properties:
+        recommendations:
+          properties:
+            attraction:
+              minItems: 6
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: attraction
+          minContains: 0
+          maxContains: 4
+  - if:
+      properties:
+        recommendations:
+          properties:
+            attraction:
+              minItems: 7
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: attraction
+          minContains: 0
+          maxContains: 3
+  - if:
+      properties:
+        recommendations:
+          properties:
+            attraction:
+              minItems: 8
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: attraction
+          minContains: 0
+          maxContains: 2
+  - if:
+      properties:
+        recommendations:
+          properties:
+            attraction:
+              minItems: 9
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: attraction
+          minContains: 0
+          maxContains: 1
+  - if:
+      properties:
+        recommendations:
+          properties:
+            attraction:
+              minItems: 10
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: attraction
+          minContains: 0
+          maxContains: 0
+  - if:
+      properties:
+        recommendations:
+          properties:
+            combo:
+              minItems: 1
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: combo
+          minContains: 0
+          maxContains: 9
+  - if:
+      properties:
+        recommendations:
+          properties:
+            combo:
+              minItems: 2
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: combo
+          minContains: 0
+          maxContains: 8
+  - if:
+      properties:
+        recommendations:
+          properties:
+            combo:
+              minItems: 3
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: combo
+          minContains: 0
+          maxContains: 7
+  - if:
+      properties:
+        recommendations:
+          properties:
+            combo:
+              minItems: 4
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: combo
+          minContains: 0
+          maxContains: 6
+  - if:
+      properties:
+        recommendations:
+          properties:
+            combo:
+              minItems: 5
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: combo
+          minContains: 0
+          maxContains: 5
+  - if:
+      properties:
+        recommendations:
+          properties:
+            combo:
+              minItems: 6
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: combo
+          minContains: 0
+          maxContains: 4
+  - if:
+      properties:
+        recommendations:
+          properties:
+            combo:
+              minItems: 7
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: combo
+          minContains: 0
+          maxContains: 3
+  - if:
+      properties:
+        recommendations:
+          properties:
+            combo:
+              minItems: 8
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: combo
+          minContains: 0
+          maxContains: 2
+  - if:
+      properties:
+        recommendations:
+          properties:
+            combo:
+              minItems: 9
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: combo
+          minContains: 0
+          maxContains: 1
+  - if:
+      properties:
+        recommendations:
+          properties:
+            combo:
+              minItems: 10
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: combo
+          minContains: 0
+          maxContains: 0
+  - if:
+      properties:
+        recommendations:
+          properties:
+            golf:
+              minItems: 1
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: golf
+          minContains: 0
+          maxContains: 9
+  - if:
+      properties:
+        recommendations:
+          properties:
+            golf:
+              minItems: 2
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: golf
+          minContains: 0
+          maxContains: 8
+  - if:
+      properties:
+        recommendations:
+          properties:
+            golf:
+              minItems: 3
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: golf
+          minContains: 0
+          maxContains: 7
+  - if:
+      properties:
+        recommendations:
+          properties:
+            golf:
+              minItems: 4
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: golf
+          minContains: 0
+          maxContains: 6
+  - if:
+      properties:
+        recommendations:
+          properties:
+            golf:
+              minItems: 5
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: golf
+          minContains: 0
+          maxContains: 5
+  - if:
+      properties:
+        recommendations:
+          properties:
+            golf:
+              minItems: 6
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: golf
+          minContains: 0
+          maxContains: 4
+  - if:
+      properties:
+        recommendations:
+          properties:
+            golf:
+              minItems: 7
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: golf
+          minContains: 0
+          maxContains: 3
+  - if:
+      properties:
+        recommendations:
+          properties:
+            golf:
+              minItems: 8
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: golf
+          minContains: 0
+          maxContains: 2
+  - if:
+      properties:
+        recommendations:
+          properties:
+            golf:
+              minItems: 9
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: golf
+          minContains: 0
+          maxContains: 1
+  - if:
+      properties:
+        recommendations:
+          properties:
+            golf:
+              minItems: 10
+    then:
+      properties:
+        alternatives:
+          contains:
+            properties:
+              product:
+                properties:
+                  taxonomy:
+                    const: golf
+          minContains: 0
+          maxContains: 0
+  x-runtime-invariants:
+  - Unique productId across all suggestions, no duplicate padding
+  - Current-turn provenance and orc presentation
+  - Plan warnings disclosed; exact cost arithmetic
+  - Dates/times/locked selections valid; replace requires consent and revision match
+ErrorCode:
+  type: string
+  enum:
+  - VALIDATION_ERROR
+  - CART_EMPTY
+  - INVALID_CREDENTIALS
+  - INVALID_TOKEN
+  - TOKEN_EXPIRED
+  - PRODUCT_NOT_FOUND
+  - CART_ITEM_NOT_FOUND
+  - BOOKING_NOT_FOUND
+  - NOT_FOUND
+  - EMAIL_ALREADY_EXISTS
+  - PRODUCT_UNAVAILABLE
+  - PRICE_CHANGED
+  - DATE_OUT_OF_RANGE
+  - SEARCH_UNAVAILABLE
+  - INTERNAL_ERROR
+  - INVALID_TRIP_DURATION
+  - CONVERSATION_NOT_FOUND
+  - UNSUPPORTED_DESTINATION
+  - LLM_UNAVAILABLE
+  - ITINERARY_VALIDATION_FAILED
+  - AVAILABILITY_NOT_FOUND
+  - AVAILABILITY_EXPIRED
+  - NO_RATE_PLAN
+  - MIN_STAY_NOT_MET
+  - CLOSED_ON_ARRIVAL
+  - CLOSED_ON_DEPARTURE
+  - PARTIALLY_AVAILABLE
+  - PRODUCT_NOT_INDEXED
+  - UNAUTHENTICATED
+  - SESSION_EXPIRED
+  - CSRF_FAILED
+  - MFA_REQUIRED
+  - MFA_INVALID
+  - EMAIL_NOT_VERIFIED
+  - TOO_MANY_ATTEMPTS
+  - CAPTCHA_REQUIRED
+  - CAPTCHA_FAILED
+  - WEAK_PASSWORD
+  - INVALID_VERIFICATION_TOKEN
+  - OAUTH_EMAIL_UNVERIFIED
+  - OAUTH_ALREADY_LINKED
+  - CDP_UNAVAILABLE
+  - BOOKING_PENDING_PAYMENT
+  - BOOKING_ALREADY_PAID
+  - BOOKING_NOT_CANCELLABLE
+  - PAYMENT_PROVIDER_UNAVAILABLE
+  - INVALID_WEBHOOK_SIGNATURE
+  - DIRECT_BOOKING_ONLY
+  - BOOKING_DRAFT_NOT_FOUND
+  - BOOKING_DRAFT_EXPIRED
+  - DATABASE_UNAVAILABLE
+  - TURN_IN_PROGRESS
+  - IDEMPOTENCY_CONFLICT
+  - PLAN_REVISION_CONFLICT
+ErrorResponse:
+  type: object
+  required:
+  - error
+  properties:
+    error:
+      type: object
+      required:
+      - code
+      - message
+      - retryable
+      - requestId
+      properties:
+        code:
+          $ref: ../assistant-v2.openapi.yaml#/components/schemas/ErrorCode
+        message:
+          type: string
+          description: Tiếng Việt, hiển thị được trực tiếp cho người dùng.
+        retryable:
+          type: boolean
+          description: Existing project retryability; TURN_IN_PROGRESS true with Retry-After, IDEMPOTENCY_CONFLICT/PLAN_REVISION_CONFLICT
+            false.
+        requestId:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+          description: 'Tùy mã lỗi. VALIDATION_ERROR {fields: ValidationFieldError[]}; PRODUCT_NOT_FOUND và PRODUCT_UNAVAILABLE
+            {productId}; CART_ITEM_NOT_FOUND {cartItemId}; PRICE_CHANGED {productId, oldPrice, newPrice, fareType?}
+            — fareType là CHILD khi giá vé trẻ em đổi; DATE_OUT_OF_RANGE {productId, availableFrom, availableTo};
+            UNSUPPORTED_DESTINATION {destination, supportedDestinations, conversationId} — conversationId là hội
+            thoại đã lưu phần chuyến đi còn lại, gửi lại cùng điểm đến hợp lệ để tiếp tục; MIN_STAY_NOT_MET {productId,
+            minStay}; PRODUCT_NOT_INDEXED {productId, taxonomy}; TOO_MANY_ATTEMPTS {retryAfterSeconds}; MFA_INVALID
+            {attemptsLeft}; EMAIL_NOT_VERIFIED {email}; WEAK_PASSWORD {reasons}; INVALID_VERIFICATION_TOKEN {purpose};
+            OAUTH_EMAIL_UNVERIFIED và OAUTH_ALREADY_LINKED {provider}; BOOKING_PENDING_PAYMENT {referenceCode, holdExpiresAt}
+            — đơn đang giữ chỗ để tiếp tục hoặc huỷ; BOOKING_NOT_CANCELLABLE {referenceCode, reason, cancellableUntil};
+            BOOKING_ALREADY_PAID {referenceCode}; DIRECT_BOOKING_ONLY {productId, taxonomy}; BOOKING_DRAFT_EXPIRED
+            {draftId, items: [{productId, taxonomy, inCart}]}; PRODUCT_UNAVAILABLE khi tạo đơn nháp mà không mục
+            nào được nhận {rejectedItems}.'
+ProgressCounts:
+  type: object
+  description: Separate source, eligibility, orc selection and displayed counts.
+  additionalProperties: false
+  required:
+  - found
+  - eligible
+  - selected
+  - displayed
+  properties:
+    found:
+      type: integer
+      description: Code-counted found for this group, not model-provided or accumulated across replacements.
+      minimum: 0
+    eligible:
+      type: integer
+      description: Code-counted eligible for this group, not model-provided or accumulated across replacements.
+      minimum: 0
+    selected:
+      type: integer
+      description: Code-counted selected for this group, not model-provided or accumulated across replacements.
+      minimum: 0
+    displayed:
+      type: integer
+      description: Code-counted displayed for this group, not model-provided or accumulated across replacements.
+      minimum: 0
+ActivityData:
+  type: object
+  description: Actual Think/Act/Observe progress; explanation is a checked public decision summary, never internal reasoning or raw model output.
+  additionalProperties: false
+  required:
+  - groupId
+  - kind
+  - status
+  - taxonomy
+  - counts
+  properties:
+    groupId:
+      type: string
+      description: Stable group identity, replace its state rather than cumulatively append counts.
+      minLength: 1
+    kind:
+      type: string
+      description: Actual work requested, no predetermined next steps.
+      enum:
+      - think
+      - search
+      - recommend
+      - similar
+      - detail
+      - destinations
+      - catalog
+      - flights
+      - itinerary
+      - answer
+    status:
+      type: string
+      description: Actual lifecycle of this activity.
+      enum:
+      - running
+      - completed
+      - failed
+      - partial
+    taxonomy:
+      description: Optional taxonomy for this activity.
+      oneOf:
+      - $ref: ../assistant-v2.openapi.yaml#/components/schemas/Taxonomy
+      - type: 'null'
+    counts:
+      $ref: ../assistant-v2.openapi.yaml#/components/schemas/ProgressCounts
+    explanation:
+      type: string
+      minLength: 1
+      maxLength: 400
+      description: Checked public explanation for a think activity; authored with the existing model decision. No raw facts, queries, secrets or internal reasoning.
+    destination:
+      type: string
+      description: Destination from the checked tool arguments, when present.
+    outcome:
+      type: string
+      description: Actual source outcome; empty differs from error and needs_input.
+      enum: [ok, empty, partial, needs_input, error]
+EventStart:
+  type: object
+  description: One start event; final/error are terminal and only one terminal event is emitted.
+  additionalProperties: false
+  required:
+  - event
+  - runId
+  - sequence
+  - data
+  properties:
+    event:
+      type: string
+      description: SSE event name.
+      const: start
+    runId:
+      type: string
+      description: Run identity; ignore events of another active run.
+      minLength: 1
+    sequence:
+      type: integer
+      description: Strictly increasing per run; ignore duplicate or stale sequences.
+      minimum: 1
+    data:
+      type: object
+      description: Start of a run.
+      additionalProperties: false
+      required:
+      - conversationId
+      - clientTurnId
+      - planRevision
+      properties:
+        conversationId:
+          type: string
+          description: Conversation for this turn.
+          minLength: 1
+        clientTurnId:
+          type: string
+          description: Caller idempotency ID.
+          minLength: 1
+        planRevision:
+          type: integer
+          description: Committed revision at turn start.
+          minimum: 0
+EventActivity:
+  type: object
+  description: One activity event; final/error are terminal and only one terminal event is emitted.
+  additionalProperties: false
+  required:
+  - event
+  - runId
+  - sequence
+  - data
+  properties:
+    event:
+      type: string
+      description: SSE event name.
+      const: activity
+    runId:
+      type: string
+      description: Run identity; ignore events of another active run.
+      minLength: 1
+    sequence:
+      type: integer
+      description: Strictly increasing per run; ignore duplicate or stale sequences.
+      minimum: 1
+    data:
+      $ref: ../assistant-v2.openapi.yaml#/components/schemas/ActivityData
+EventToolCompleted:
+  type: object
+  description: One tool-completed event; final/error are terminal and only one terminal event is emitted.
+  additionalProperties: false
+  required:
+  - event
+  - runId
+  - sequence
+  - data
+  properties:
+    event:
+      type: string
+      description: SSE event name.
+      const: tool-completed
+    runId:
+      type: string
+      description: Run identity; ignore events of another active run.
+      minLength: 1
+    sequence:
+      type: integer
+      description: Strictly increasing per run; ignore duplicate or stale sequences.
+      minimum: 1
+    data:
+      $ref: ../assistant-v2.openapi.yaml#/components/schemas/ActivityData
+EventPreview:
+  type: object
+  description: Deprecated 2026-10-14 — the server no longer emits preview; kept so older clients still validate.
+  additionalProperties: false
+  required:
+  - event
+  - runId
+  - sequence
+  - data
+  properties:
+    event:
+      type: string
+      description: SSE event name.
+      const: preview
+    runId:
+      type: string
+      description: Run identity; ignore events of another active run.
+      minLength: 1
+    sequence:
+      type: integer
+      description: Strictly increasing per run; ignore duplicate or stale sequences.
+      minimum: 1
+    data:
+      type: object
+      description: Read-only preview, not a final itinerary.
+      additionalProperties: false
+      required:
+      - groupId
+      - products
+      properties:
+        groupId:
+          type: string
+          description: Preview group to replace.
+          minLength: 1
+        products:
+          type: array
+          description: Only current-turn grounded refs already selected by orc. No booking/selection actions. Preview
+            never commits shown or plan.
+          items:
+            $ref: ../assistant-v2.openapi.yaml#/components/schemas/ProductSummary
+EventFinal:
+  type: object
+  description: One final event; final/error are terminal and only one terminal event is emitted.
+  additionalProperties: false
+  required:
+  - event
+  - runId
+  - sequence
+  - data
+  properties:
+    event:
+      type: string
+      description: SSE event name.
+      const: final
+    runId:
+      type: string
+      description: Run identity; ignore events of another active run.
+      minLength: 1
+    sequence:
+      type: integer
+      description: Strictly increasing per run; ignore duplicate or stale sequences.
+      minimum: 1
+    data:
+      $ref: ../assistant-v2.openapi.yaml#/components/schemas/AssistantV2Final
+EventError:
+  type: object
+  description: One error event; final/error are terminal and only one terminal event is emitted.
+  additionalProperties: false
+  required:
+  - event
+  - runId
+  - sequence
+  - data
+  properties:
+    event:
+      type: string
+      description: SSE event name.
+      const: error
+    runId:
+      type: string
+      description: Run identity; ignore events of another active run.
+      minLength: 1
+    sequence:
+      type: integer
+      description: Strictly increasing per run; ignore duplicate or stale sequences.
+      minimum: 1
+    data:
+      $ref: ../assistant-v2.openapi.yaml#/components/schemas/ErrorResponse
+AssistantV2Event:
+  description: Safe SSE envelope. Sequence and terminal cardinality checked by runtime/consumer.
+  oneOf:
+  - $ref: ../assistant-v2.openapi.yaml#/components/schemas/EventStart
+  - $ref: ../assistant-v2.openapi.yaml#/components/schemas/EventActivity
+  - $ref: ../assistant-v2.openapi.yaml#/components/schemas/EventToolCompleted
+  - $ref: ../assistant-v2.openapi.yaml#/components/schemas/EventPreview
+  - $ref: ../assistant-v2.openapi.yaml#/components/schemas/EventFinal
+  - $ref: ../assistant-v2.openapi.yaml#/components/schemas/EventError
+  discriminator:
+    propertyName: event
+    mapping:
+      start: ../assistant-v2.openapi.yaml#/components/schemas/EventStart
+      activity: ../assistant-v2.openapi.yaml#/components/schemas/EventActivity
+      tool-completed: ../assistant-v2.openapi.yaml#/components/schemas/EventToolCompleted
+      preview: ../assistant-v2.openapi.yaml#/components/schemas/EventPreview
+      final: ../assistant-v2.openapi.yaml#/components/schemas/EventFinal
+      error: ../assistant-v2.openapi.yaml#/components/schemas/EventError

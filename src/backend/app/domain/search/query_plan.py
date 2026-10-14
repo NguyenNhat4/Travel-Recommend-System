@@ -103,7 +103,7 @@ class PlanFlags:
     duration: bool = False               # F7 "3 ngày 2 đêm" → bỏ cụm khỏi lexical_text, khai queryPlan.duration
     poi: bool = False                    # địa danh gazetteer ("Hồ Hoàn Kiếm") → điểm đến catalog vào F1
     entity: bool = False                 # điểm vui chơi (VinWonders…) → gate cứng attraction/combo có tên chứa entity
-    # 1.28.0 (plan 2026-10-13) — tắt thì không có đường code mới chạy.
+    # 1.30.0 (plan 2026-10-13) — tắt thì không có đường code mới chạy.
     duration_mask: bool = False          # thời lượng (cần `duration`) → vai trò gate lọc vé/combo; câu lưu trú → stay, không lọc
     embed_residual: bool = False         # dense embed câu đã bỏ span điều kiện; residual rỗng + gate thời lượng → chỉ-filter
     unexplained: bool = False            # residual chỉ là tên lạ / vô nghĩa → rỗng; cụm lạ khác → bỏ khỏi truy vấn
@@ -123,11 +123,11 @@ class PlanGazetteers:
     # mặt trong `UnitAttributes.entities` (entity không có sản phẩm không bao giờ gate).
     entities: Mapping[str, str] = field(default_factory=entity_table)
     places: Mapping[str, Place] = field(default_factory=place_table)
-    # 1.28.0: unigram/bigram của tên + mô tả catalog (`explain.Grams`) — cần cho cờ `unexplained`; None → luật không chạy.
+    # 1.30.0: unigram/bigram của tên + mô tả catalog (`explain.Grams`) — cần cho cờ `unexplained`; None → luật không chạy.
     vocab: Grams | None = None
 
     def entity_spans(self, text: str) -> tuple[tuple[int, int], ...]:
-        """Span ký tự của mọi alias entity trong câu (1.28.0: phần "đã hiểu" khi giải thích residual)."""
+        """Span ký tự của mọi alias entity trong câu (1.30.0: phần "đã hiểu" khi giải thích residual)."""
         if not self.entities:
             return ()
         toks = spans(text)
@@ -227,7 +227,7 @@ class QueryPlan:
     entity_role: str | None = None               # gate | location | None
     location: Place | None = None                # địa danh gazetteer đầu tiên trong câu
     poi_destinations: tuple[str, ...] = ()       # điểm đến suy từ địa danh gazetteer (không phải tên thành phố trong câu)
-    # 1.28.0 — chỉ có giá trị khi cờ tương ứng bật
+    # 1.30.0 — chỉ có giá trị khi cờ tương ứng bật
     duration_role: str | None = None             # gate | stay | None (cờ duration_mask)
     dense_text: str | None = None                # câu đem embed khi khác câu đầy đủ (cờ embed_residual)
     filter_only: bool = False                    # residual rỗng + gate thời lượng → R = F, không cutoff
@@ -504,7 +504,7 @@ def _fallback_reasons(text: str, nq: NormalizedQuery | None, params: PlanParams,
 
 def _understood_spans(text, nq, gaz, numeric, party, duration, negation, roles, *,
                       names_are_content: bool = False) -> list[tuple[int, int]]:
-    """Span "đã hiểu" của câu (1.28.0): số / số khách / thời lượng / phủ định / tuyến bay / điểm đến / địa danh / entity / mọi cue
+    """Span "đã hiểu" của câu (1.30.0): số / số khách / thời lượng / phủ định / tuyến bay / điểm đến / địa danh / entity / mọi cue
     loại — tính cả khi cờ lọc của họ đó tắt (bench 14/10: "combo 3N2Đ" khi F7 tắt, "ks gần hồ gươm" khi POI tắt từng bị coi là
     chữ lạ → rỗng nhầm). `names_are_content`: tên điểm vui chơi / entity (VinWonders, Safari…) KHÔNG tính là điều kiện — dùng khi
     xét câu "chỉ có thời lượng" ("VinWonders 3 ngày 2 đêm" còn nội dung → không lọc cứng)."""
@@ -648,7 +648,7 @@ def build_query_plan(nq: NormalizedQuery | None, raw_query: str, params: PlanPar
     if (decision.source is None and route_destination and APPLIED_ROUTE in applied):
         decision = DestinationDecision(route_destination, SOURCE_QUERY, None, decision.candidates)
 
-    # 1.28.0 — vai trò thời lượng: câu có cue lưu trú ("khách sạn Đà Lạt 2 ngày 1 đêm") → stay (không lọc, khách sạn không có
+    # 1.30.0 — vai trò thời lượng: câu có cue lưu trú ("khách sạn Đà Lạt 2 ngày 1 đêm") → stay (không lọc, khách sạn không có
     # thời lượng cố định); còn lại → gate (chỉ vé / combo đúng số ngày).
     duration_role = None
     if flags.duration_mask and duration_source:

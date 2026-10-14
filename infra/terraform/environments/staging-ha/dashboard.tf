@@ -65,7 +65,7 @@ resource "google_monitoring_dashboard" "ha" {
         {
           xPos = 0, yPos = 3, width = 3, height = 3
           widget = {
-            title = "Readiness qua LB (tỷ lệ pass)"
+            title = "Sẵn sàng qua LB (tỷ lệ đạt)"
             scorecard = {
               timeSeriesQuery = {
                 timeSeriesFilter = {
@@ -158,7 +158,7 @@ resource "google_monitoring_dashboard" "ha" {
         {
           xPos = 0, yPos = 10, width = 6, height = 4
           widget = {
-            title = "p95 API theo VM (ms, không SSE, không health)"
+            title = "p95 API theo VM (ms, bỏ SSE và health)"
             xyChart = {
               dataSets = [{
                 timeSeriesQuery = {
@@ -177,7 +177,7 @@ resource "google_monitoring_dashboard" "ha" {
         {
           xPos = 6, yPos = 10, width = 6, height = 4
           widget = {
-            title = "p99 API theo VM (ms, không SSE, không health)"
+            title = "p99 API theo VM (ms, bỏ SSE và health)"
             xyChart = {
               dataSets = [{
                 timeSeriesQuery = {
@@ -233,7 +233,7 @@ resource "google_monitoring_dashboard" "ha" {
         {
           xPos = 0, yPos = 18, width = 6, height = 4
           widget = {
-            title = "RAM đã dùng từng VM (instance_id, %)"
+            title = "RAM đã dùng từng VM (mã instance, %)"
             xyChart = {
               dataSets = [{
                 timeSeriesQuery = {
@@ -299,7 +299,7 @@ resource "google_monitoring_dashboard" "ha" {
         {
           xPos = 0, yPos = 26, width = 6, height = 5
           widget = {
-            title = "Lỗi backend (ERROR), mọi VM"
+            title = "Lỗi backend (mức ERROR), mọi VM"
             logsPanel = {
               filter        = local.log_filter_errors
               resourceNames = ["projects/${var.project_id}"]
@@ -319,7 +319,7 @@ resource "google_monitoring_dashboard" "ha" {
         {
           xPos = 0, yPos = 31, width = 6, height = 5
           widget = {
-            title = "Container die/OOM (watcher, không tính helper)"
+            title = "Container dừng đột ngột / OOM (watcher, không tính helper)"
             logsPanel = {
               filter        = local.log_filter_container
               resourceNames = ["projects/${var.project_id}"]
@@ -329,10 +329,31 @@ resource "google_monitoring_dashboard" "ha" {
         {
           xPos = 6, yPos = 31, width = 6, height = 5
           widget = {
-            title = "Lượt cào (crawler), cảnh báo trở lên"
+            title = "Lượt cào (job cào), từ mức cảnh báo trở lên"
             logsPanel = {
               filter        = local.log_filter_crawler
               resourceNames = ["projects/${var.project_id}"]
+            }
+          }
+        },
+        # RAM tách theo state của từng VM (used, cached, buffered...). Đường theo cặp (VM, state), không xếp chồng
+        # các VM lên nhau; VM đã xoá thì đường của nó dừng lại. Dùng instance_id vì metric Ops Agent không có instance_name.
+        {
+          xPos = 0, yPos = 36, width = 12, height = 5
+          widget = {
+            title = "RAM theo trạng thái từng VM (mã instance, %)"
+            xyChart = {
+              dataSets = [{
+                plotType       = "LINE"
+                legendTemplate = "$${resource.labels.instance_id} · $${metric.labels.state}"
+                timeSeriesQuery = {
+                  timeSeriesFilter = {
+                    filter      = "resource.type=\"gce_instance\" metric.type=\"agent.googleapis.com/memory/percent_used\" metric.labels.state!=\"free\""
+                    aggregation = { alignmentPeriod = "60s", perSeriesAligner = "ALIGN_MEAN", crossSeriesReducer = "REDUCE_MEAN", groupByFields = ["resource.labels.instance_id", "metric.labels.state"] }
+                  }
+                }
+              }]
+              yAxis = { scale = "LINEAR" }
             }
           }
         },

@@ -1,4 +1,4 @@
-"""SearchProducts — cờ 13/10 (contract 1.28.0; plan docs/plan/2026-10-13-search-evidence-gate-no-answer.md; FR-SRC-03/04 chốt
+"""SearchProducts — cờ 13/10 (contract 1.30.0; plan docs/plan/2026-10-13-search-evidence-gate-no-answer.md; FR-SRC-03/04 chốt
 13/10): cổng bằng chứng theo cụm (`HybridConfig.evidence_gate`), thời lượng có vai trò (`duration_mask`), embed residual
 (`embed_residual`), câu không giải thích được (`unexplained_empty`), `backgroundScore` (`emit_background`), phục hồi dấu
 (`no_diacritics_restore`). Mọi cờ tắt → response y hệt engine cũ.

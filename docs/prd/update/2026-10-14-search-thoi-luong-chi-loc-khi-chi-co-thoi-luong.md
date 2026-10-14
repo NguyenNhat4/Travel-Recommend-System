@@ -31,5 +31,5 @@ FR-SRC-03, ý thời lượng (chốt 13/10):
 ## Thay đổi source sau khi chốt
 
 - `src/backend/app/domain/search/query_plan.py`: vai trò `soft` (câu còn nội dung) — không mask; `gate` chỉ khi không còn nội dung.
-- `src/shared/contracts/schemas/search.yaml`: `queryPlan.duration.role` enum `[gate, soft, stay]` (1.28.0 chưa phát hành).
+- `src/shared/contracts/schemas/search.yaml`: `queryPlan.duration.role` enum `[gate, soft, stay]` (1.30.0 chưa phát hành).
 - Test: `src/backend/tests/unit/application/test_search_v128_evidence_gate.py`.

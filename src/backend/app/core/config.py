@@ -55,7 +55,6 @@ class Settings(BaseSettings):
     # Chỉ áp cho OpenAI. Model reasoning (vd gpt-6-luna) từ chối function tools trên chat completions khi
     # reasoning bật mặc định (400); đặt "none" để tool calling chạy được. Bỏ trống thì không gửi tham số.
     itinerary_llm_reasoning_effort: Literal["none", "minimal", "low", "medium", "high"] | None = None
-    itinerary_orchestrator: Literal["off", "on"] = "off"
     itinerary_orchestrator_model: str | None = None
     itinerary_orchestrator_provider: Literal["gemini", "openai", "anthropic"] | None = None
     itinerary_orchestrator_reasoning_effort: Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"] | None = None
@@ -131,6 +130,8 @@ class Settings(BaseSettings):
     # Cosine e5 dồn ở 0,85–0,92; 0,84 hiệu chỉnh trên gold_v4 (PRD deployment-plan §2).
     search_cutoff: float = 0.84
     search_max_limit: int = 50
+    # Số trang /products đã trả nhớ trong mỗi worker (LRU, khoá theo truy vấn). 0 = tắt. Chọn theo RSS đo được trên VM.
+    catalog_response_cache_size: int = Field(default=256, ge=0)
     search_candidate_k: int = Field(default=200, ge=1)
     recommend_candidate_k: int = 200
     # Ô khám phá khi có chuyến mở (FR-REC-02, chốt 09/10/2026). False = rollback về list trước PR-A, không cần redeploy.
@@ -190,7 +191,7 @@ class Settings(BaseSettings):
     # queryPlan. Bật ở production chỉ sau khi bench WIN/TIE + Forbidden@10 = 0 (plan §Bước 9).
     search_duration_filter: bool = False       # F7: "3 ngày 2 đêm" / "3N2Đ" → queryPlan.duration; bỏ cụm khỏi câu BM25 (không lọc)
     search_poi_resolve: bool = False           # địa danh gazetteer repo ("Hồ Hoàn Kiếm" → Hà Nội) vào F1; hard.destinationSource = poi
-    # 13/10 (contract 1.28.0; plan docs/plan/2026-10-13-search-evidence-gate-no-answer.md; PRD FR-SRC-03/04 chốt 13/10):
+    # 13/10 (contract 1.30.0; plan docs/plan/2026-10-13-search-evidence-gate-no-answer.md; PRD FR-SRC-03/04 chốt 13/10):
     # mặc định tắt → response như 1.27.0. Bật từng cờ chỉ sau khi bench đạt cổng ở plan §4.
     search_evidence_gate: bool = True          # production 14/10 (bench gold_v7 r2): BM25 chỉ vớt theo cụm giữ dấu
     search_duration_mask: bool = False         # thời lượng vai trò gate → chỉ vé/combo đúng số ngày; câu lưu trú → stay (không lọc)

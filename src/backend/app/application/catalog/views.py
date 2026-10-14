@@ -27,6 +27,7 @@ def product_summary(product: Product, fare_classes: list[dict[str, Any]] | None 
         "name": product.name,
         "taxonomy": product.taxonomy,
         "destination": product.destination,
+        "entryPolicy": product.entry_policy,
         "unitPrice": _money(product.unit_price),
         "currency": product.currency,
         "priceUnit": product.price_unit,

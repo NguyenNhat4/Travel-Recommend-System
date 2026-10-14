@@ -368,7 +368,7 @@ RETRIEVAL_MODES = ("hybrid", "dense", "lexical")
 #: Vắng trong YAML ≡ False (tiền lệ khối `app.llm`): KHÔNG vào `APP_DEFAULTS` để 55 arm cũ, `config_hash` của chúng và
 #: `regression/baseline_v1.json` giữ nguyên; vẫn đi qua `supported_kwargs` nên bật trên backend thiếu field thì lỗi.
 V118_FLAG_KEYS = ("duration_filter", "poi_resolve", "entity_filter")
-#: 13/10 (contract 1.28.0, plan docs/plan/2026-10-13-search-evidence-gate-no-answer.md): bốn cờ TUỲ CHỌN của `SearchProducts` +
+#: 13/10 (contract 1.30.0, plan docs/plan/2026-10-13-search-evidence-gate-no-answer.md): bốn cờ TUỲ CHỌN của `SearchProducts` +
 #: `evidence_gate` (field HybridConfig). Vắng ≡ False như V118 → arm cũ giữ nguyên hash. `no_diacritics_mode` nhận thêm `restore`.
 V128_FLAG_KEYS = ("duration_mask", "embed_residual", "unexplained_empty", "emit_background")
 #: giá trị "không đổi hành vi" của từng núm mới — backend chưa có field mà arm để giá trị này thì bỏ qua, khác thì lỗi
@@ -552,7 +552,7 @@ class AppContext:
         flags = supported_kwargs(SearchProducts, "SearchProducts", p, ENGINE_FLAG_KEYS, lambda _k, v: bool(v))
         # 07/10 (contract 1.18.0): F7 duration / POI → F1 / entity gate — tuỳ chọn, vắng = False (app_params đã setdefault)
         flags.update(supported_kwargs(SearchProducts, "SearchProducts", p, V118_FLAG_KEYS, lambda _k, v: bool(v)))
-        # 13/10 (contract 1.28.0): bốn cờ mới + phục hồi dấu (`no_diacritics_mode: restore`) — vắng = False
+        # 13/10 (contract 1.30.0): bốn cờ mới + phục hồi dấu (`no_diacritics_mode: restore`) — vắng = False
         flags.update(supported_kwargs(SearchProducts, "SearchProducts", p, V128_FLAG_KEYS, lambda _k, v: bool(v)))
         if p["no_diacritics_mode"] == "restore":
             flags["no_diacritics_restore"] = True

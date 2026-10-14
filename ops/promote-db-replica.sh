@@ -83,10 +83,9 @@ cat <<NEXT
 Việc còn lại (làm tay):
   1. KHÔNG bật lại $PRIMARY_VM vào cụm: dữ liệu của nó có thể lệch (không pg_rewind được vì không có script). Giữ disk để điều tra.
   2. Tạo VM replica mới Ở ZONE KHÁC $REPLICA_ZONE (cùng region): đặt TF_VAR_db_replica_vm_name mới và
-     TF_VAR_db_replica_zone khác $REPLICA_ZONE rồi chạy workflow Staging Infra Terraform; hoặc tạo VM tay.
-  3. Cho primary mới ($REPLICA_VM) và replica mới chạy replication:
-       GCP_PROJECT_ID=<project> PRIMARY_VM=$REPLICA_VM GCE_ZONE=$REPLICA_ZONE REPLICA_VM=<vm replica mới> GCE_REPLICA_ZONE=<zone mới> bash ops/ci-db-replication.sh
-     Script idempotent: tạo role/slot trên primary mới, pg_basebackup lên replica mới, kiểm streaming và lag.
+     TF_VAR_db_replica_zone khác $REPLICA_ZONE; workflow và Terraform staging cũ đã gỡ (13/10/2026) nên tạo VM tay.
+  3. Cho primary mới ($REPLICA_VM) và replica mới chạy replication bằng ops/ci-db-replication.sh lấy từ một commit
+     trước 13/10/2026 (script đã gỡ khỏi repo cùng staging cũ).
   4. Cập nhật PRIMARY_VM=$REPLICA_VM, ZONE=$REPLICA_ZONE, REPLICA_VM, REPLICA_ZONE cho lần failover kế tiếp, và biến GitHub
      GCE_DB_INSTANCE / GCE_DB_REPLICA_INSTANCE nếu CI dùng.
   Cụm Patroni (create_patroni = true) KHÔNG cần các bước này: node cũ tự vào lại, xem docs/guide/van-hanh-db-patroni.md.

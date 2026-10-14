@@ -59,7 +59,7 @@ ids). Ngưỡng nằm trong file baseline (`thresholds`) và ghi đè được b
 `--max-slice-drop`, `--min-slice-n`. Kết quả ghi `regress-baseline.{json,md}` vào thư mục run. `make recsys-*` cần môi trường của
 harness (`DATABASE_URL`, `EVAL_DATABASE_URL`, `WEAVIATE_URL` — khoá cache vector numpy); `.env` gốc có thể trỏ VM / cloud nên truyền
 `RECSYS_ENV=<file export …>`; Makefile không ghi DSN. Trên Windows với GnuWin32 make, truyền thêm `RECSYS_PYTHON=.venv/Scripts/python.exe`.
-CI hiện chỉ chạy test backend (`backend-ci-cd.yml`) và không có Postgres seed → regress thật chạy tay / máy dev; `make recsys-test` không
+CI hiện chỉ chạy test backend (`backend-ci.yml`) và không có Postgres seed → regress thật chạy tay / máy dev; `make recsys-test` không
 cần DB.
 
 **Khi nào phải chạy `make recsys-regress`** — sau mọi thay đổi chạm: `src/backend/app/domain/recommendation/**`,

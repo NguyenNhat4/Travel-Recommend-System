@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Đưa image backend và frontend (digest bất biến) vào MIG vota-ha-app qua Terraform root staging-ha.
-# Dùng bởi .github/workflows/staging-ha-cd.yml (triển khai và rollback). Không chạy migration DB ở đây.
+# Apply Terraform root staging-ha. Từ 2026-10-13 chỉ staging-ha-infra-cd.yml gọi: deploy ứng dụng không chạy Terraform
+# (image mong muốn nằm ở all-instances config của MIG). BACKEND_REF/FRONTEND_REF lấy từ last-good và chỉ là image dự
+# phòng của template. Không chạy migration DB ở đây.
 #
 # Biến môi trường (bắt buộc):
 #   BACKEND_REF   image@sha256:...   (ví dụ europe-.../vota-backend@sha256:...)
@@ -52,6 +53,8 @@ google_compute_instance_template.app|create,delete
 google_compute_instance_template.app|delete,create
 google_compute_region_instance_group_manager.app|update
 google_compute_region_autoscaler.app|update
+# Ngưỡng autoscaler lên 90% CPU/RAM (2026-10-13): alert "CPU trung bình > cpu_target" lấy threshold = var.cpu_target nên đổi theo.
+google_monitoring_alert_policy.group_at_max|update
 google_compute_instance.crawler[0]|create
 google_compute_firewall.patroni_clients[0]|update
 # Cảnh báo crawler (crawler_alerts_enabled = true, 2026-10-12): metric và policy đã có trong state.
@@ -60,6 +63,21 @@ google_logging_metric.crawler_catalog_late[0]|create
 google_monitoring_alert_policy.crawler_catalog_late[0]|create
 google_monitoring_alert_policy.crawler_run_failed[0]|update
 google_monitoring_alert_policy.crawler_silent[0]|update
+# Cảnh báo bộ nhớ và đĩa của từng VM app (2026-10-13): policy mới, không thay đổi policy nào khác.
+google_monitoring_alert_policy.group_memory_high|create
+google_monitoring_alert_policy.group_disk_high|create
+# Đổi tên hiển thị sang tiếng Việt (2026-10-13): chỉ đổi display_name, title, description, content; filter, ngưỡng và metric không đổi.
+google_monitoring_alert_policy.mute_job_failed|update
+google_monitoring_alert_policy.group_below_min|update
+google_monitoring_alert_policy.group_at_max|update
+google_monitoring_alert_policy.lb_5xx_ratio|update
+google_monitoring_alert_policy.lb_latency|update
+google_monitoring_uptime_check_config.lb_ready|update
+google_monitoring_alert_policy.patroni_no_replica[0]|update
+google_monitoring_alert_policy.patroni_no_leader[0]|update
+google_monitoring_alert_policy.patroni_probe_absent[0]|update
+google_logging_metric.patroni_no_replica[0]|update
+google_logging_metric.patroni_no_leader[0]|update
 # Patroni và dashboard (2026-10-12): startup-script có metrics_filter (f664124c), pg-a/pg-b đã ghi trực tiếp qua SSH.
 # Plan đã kiểm: chỉ metadata và dashboard_json đổi, không đổi machine_type/scheduling/status (không dừng VM DB).
 google_compute_instance.patroni["a"]|update
@@ -76,6 +94,12 @@ google_cloud_scheduler_job.app_autoscaler_on|delete
 google_cloud_scheduler_job.app_resize_zero|delete
 google_cloud_scheduler_job.crawler_extra_start[0]|delete
 google_cloud_scheduler_job.crawler_extra_stop[0]|delete
+# Alert runner CI không chạy (2026-10-13).
+google_monitoring_alert_policy.ci_runner_down|create
+# Chữ hiển thị tiếng Việt (c8e52d98) đổi display_name của alert runner sau khi alert đã được tạo.
+google_monitoring_alert_policy.ci_runner_down|update
+# cpu_target 0.55 -> 0.9 (commit 10aa9488): alert group_at_max dùng var.cpu_target làm ngưỡng nên chỉ đổi threshold.
+google_monitoring_alert_policy.group_at_max|update
 '
 unexpected="$(terraform show -json "$plan_file" | jq -r '
   .resource_changes[]

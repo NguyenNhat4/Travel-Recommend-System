@@ -1,11 +1,16 @@
 // @vitest-environment jsdom
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const api = vi.hoisted(() => ({ listDestinations: vi.fn() }));
+const api = vi.hoisted(() => ({ listDestinations: vi.fn(), listFlightAirports: vi.fn(), listProducts: vi.fn() }));
 const travel = vi.hoisted(() => ({ navigate: vi.fn() }));
-vi.mock('../../src/services/destinations', () => api);
+vi.mock('../../src/services/destinations', () => ({ listDestinations: api.listDestinations }));
+vi.mock('../../src/services/flights', () => ({ listFlightAirports: api.listFlightAirports }));
+vi.mock('../../src/services/catalog', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/services/catalog')>()),
+  listProducts: api.listProducts,
+}));
 vi.mock('../../src/context/TravelContext', () => ({ useTravel: () => travel }));
 
 import { LandingSearchSheet } from '../../src/features/catalog/landing/LandingSearchSheet';
@@ -15,11 +20,46 @@ import { addDaysIso, todayVN } from '../../src/features/search/tripContext';
 
 const tomorrow = () => addDaysIso(todayVN(), 1);
 const lastHref = () => new URL(travel.navigate.mock.calls.at(-1)![0], 'http://x');
+/** Để dữ liệu tải xong (danh sách sân bay, khách sạn nổi tiếng) hiện lên. */
+const flush = () => act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+
+// Sân bay hiện hành: số tuyến khác nhau để kiểm thứ tự "phổ biến" (spec §4.1).
+const AIRPORTS = [
+  { code: 'VCS', city: 'Côn Đảo', name: 'Sân bay Côn Đảo', routeCount: 2 },
+  { code: 'SGN', city: 'TP. Hồ Chí Minh', name: 'Sân bay quốc tế Tân Sơn Nhất', routeCount: 36 },
+  { code: 'HAN', city: 'Hà Nội', name: 'Sân bay quốc tế Nội Bài', routeCount: 31 },
+  { code: 'DAD', city: 'Đà Nẵng', name: 'Sân bay quốc tế Đà Nẵng', routeCount: 26 },
+  { code: 'CXR', city: 'Nha Trang', name: 'Sân bay quốc tế Cam Ranh', routeCount: 20 },
+  { code: 'PQC', city: 'Phú Quốc', name: 'Sân bay quốc tế Phú Quốc', routeCount: 20 },
+  { code: 'DLI', city: 'Đà Lạt', name: 'Sân bay Liên Khương', routeCount: 20 },
+];
+
+const hotel = (productId: string, name: string, destination: string) => ({
+  productId, name, taxonomy: 'hotel', destination, unitPrice: 2_000_000, currency: 'VND', priceUnit: 'PER_NIGHT',
+  available: true, imageUrl: `https://images.example/${productId}.jpg`, attributes: { level: 'property' },
+});
+const HOTELS = [
+  hotel('h1', 'Vinpearl Resort Nha Trang', 'Nha Trang'),
+  hotel('h2', 'Dalat Palace', 'Đà Lạt'),
+  hotel('h3', 'Muong Thanh Da Nang', 'Đà Nẵng'),
+];
 
 function renderSheet(id: keyof typeof VERTICALS, extra: Partial<React.ComponentProps<typeof LandingSearchSheet>> = {}) {
   const config = VERTICALS[id];
   return render(<LandingSearchSheet config={config} tab={resolveTab(config, undefined)} {...extra} />);
 }
+
+/** Gõ chữ vào một ô sân bay rồi rời ô: chữ khớp thì thành nhãn, không khớp thì bị xoá. */
+function typeAndLeave(field: string, text: string) {
+  const input = screen.getByLabelText(field) as HTMLInputElement;
+  fireEvent.focus(input);
+  fireEvent.change(input, { target: { value: text } });
+  fireEvent.blur(input);
+  return input;
+}
+
+const optionTexts = (listbox: HTMLElement) =>
+  within(listbox).getAllByRole('option').map((o) => o.textContent?.replace(/[A-Z]{3} - .*$/, ''));
 
 describe('LandingSearchSheet', () => {
   beforeEach(() => {
@@ -31,6 +71,10 @@ describe('LandingSearchSheet', () => {
     api.listDestinations.mockResolvedValue([
       { destination: 'Nha Trang', productCount: 120 }, { destination: 'Đà Nẵng', productCount: 75 },
     ]);
+    api.listFlightAirports.mockReset();
+    api.listFlightAirports.mockResolvedValue(AIRPORTS);
+    api.listProducts.mockReset();
+    api.listProducts.mockResolvedValue({ results: HOTELS, total: HOTELS.length, requestId: 'test' });
     window.localStorage.clear();
   });
   afterEach(() => {
@@ -54,10 +98,55 @@ describe('LandingSearchSheet', () => {
     expect(url.searchParams.get('children')).toBeNull();
   });
 
-  it('picking a suggested destination sends it as an exact filter', async () => {
+  it('hotels: clicking the location shows famous hotels in place of popular places', async () => {
     renderSheet('hotels');
     fireEvent.focus(screen.getByRole('combobox'));
-    fireEvent.click(await screen.findByRole('option', { name: 'Nha Trang' }));
+    const list = await screen.findByRole('listbox', { name: 'Gợi ý khách sạn nổi tiếng và điểm đến' });
+    await flush();
+
+    expect(within(list).getByRole('group', { name: 'Khách sạn nổi tiếng' })).toBeTruthy();
+    expect(screen.queryByText('Điểm đến phổ biến')).toBeNull();
+    expect(within(list).getAllByRole('option').map((o) => o.getAttribute('aria-label'))).toEqual([
+      'Vinpearl Resort Nha Trang, Nha Trang', 'Dalat Palace, Đà Lạt', 'Muong Thanh Da Nang, Đà Nẵng',
+    ]);
+    expect(api.listProducts).toHaveBeenCalledWith({ taxonomy: 'hotel', sort: 'popular', availableOnly: true, limit: 20 }, expect.anything());
+  });
+
+  it('hotels: a famous hotel opens its page with the dates and party already chosen', async () => {
+    renderSheet('hotels');
+    fireEvent.focus(screen.getByRole('combobox'));
+    const list = await screen.findByRole('listbox', { name: 'Gợi ý khách sạn nổi tiếng và điểm đến' });
+    await flush();
+    fireEvent.click(within(list).getByRole('option', { name: 'Vinpearl Resort Nha Trang, Nha Trang' }));
+
+    const url = lastHref();
+    expect(url.pathname).toBe('/product/h1');
+    expect(url.searchParams.get('checkIn')).toBe(tomorrow());
+    expect(url.searchParams.get('adults')).toBe('2');
+    expect(url.searchParams.get('rooms')).toBe('1');
+  });
+
+  it('hotels: typing filters famous hotels by name or city and offers matching destinations', async () => {
+    renderSheet('hotels');
+    const input = screen.getByRole('combobox');
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: 'da' } });
+    const list = await screen.findByRole('listbox', { name: 'Gợi ý khách sạn nổi tiếng và điểm đến' });
+    await flush();
+
+    expect(within(list).getAllByRole('option', { name: /Dalat Palace|Muong Thanh Da Nang/ })).toHaveLength(2);
+    expect(within(list).queryByRole('option', { name: /Vinpearl Resort Nha Trang/ })).toBeNull();
+    await waitFor(() => expect(within(list).getByRole('option', { name: 'Đà Nẵng' })).toBeTruthy());
+  });
+
+  it('hotels: a typed destination still searches by exact destination', async () => {
+    renderSheet('hotels');
+    const input = screen.getByRole('combobox');
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: 'nha' } });
+    const list = await screen.findByRole('listbox', { name: 'Gợi ý khách sạn nổi tiếng và điểm đến' });
+    await waitFor(() => expect(within(list).getByRole('option', { name: 'Nha Trang' })).toBeTruthy());
+    fireEvent.click(within(list).getByRole('option', { name: 'Nha Trang' }));
     expect((screen.getByRole('combobox') as HTMLInputElement).value).toBe('Nha Trang');
 
     fireEvent.click(screen.getByRole('button', { name: 'Tìm kiếm' }));
@@ -73,11 +162,20 @@ describe('LandingSearchSheet', () => {
     expect(lastHref().searchParams.get('destination')).toBeNull();
 
     await waitFor(() => expect(api.listDestinations).toHaveBeenCalled());
-    await screen.findByText('Điểm đến phổ biến').catch(() => undefined);
     await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
     fireEvent.change(input, { target: { value: 'da nang' } });
     fireEvent.click(screen.getByRole('button', { name: 'Tìm kiếm' }));
     expect(lastHref().searchParams.get('destination')).toBe('Đà Nẵng');
+  });
+
+  it('famous hotels: a failed load says so and keeps the place field usable', async () => {
+    api.listProducts.mockRejectedValue(new Error('down'));
+    renderSheet('hotels');
+    fireEvent.focus(screen.getByRole('combobox'));
+    expect(await screen.findByText('Chưa tải được khách sạn nổi tiếng. Bạn vẫn có thể gõ tên điểm đến.')).toBeTruthy();
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'resort yên tĩnh' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Tìm kiếm' }));
+    expect(lastHref().searchParams.get('q')).toBe('resort yên tĩnh');
   });
 
   it('prefills the location from ?destination= and sends it', () => {
@@ -86,6 +184,14 @@ describe('LandingSearchSheet', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Tìm kiếm' }));
     expect(lastHref().searchParams.get('destination')).toBe('Phú Quốc');
     expect(lastHref().searchParams.get('q')).toBe('vé tham quan');
+  });
+
+  it('experiences keep the popular destinations panel', async () => {
+    renderSheet('experiences');
+    fireEvent.focus(screen.getByRole('combobox'));
+    expect(await screen.findByText('Điểm đến phổ biến')).toBeTruthy();
+    expect(screen.queryByText('Khách sạn nổi tiếng')).toBeNull();
+    expect(api.listProducts).not.toHaveBeenCalled();
   });
 
   it('experiences: the golf tab searches /experiences with type=golf; combos go to /combos', () => {
@@ -146,125 +252,137 @@ describe('LandingSearchSheet', () => {
     expect((within(dialog).getByRole('button', { name: 'Tháng trước' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('flights: has an origin field, one-way by default, and adds a return date only for round trips', () => {
-    renderSheet('flights');
-    fireEvent.change(screen.getByLabelText('Điểm đi'), { target: { value: 'Hà Nội' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Tìm kiếm' }));
-    let url = lastHref();
-    expect(url.searchParams.get('type')).toBe('flight');
-    expect(url.searchParams.get('q')).toBe('Hà Nội');
-    expect(url.searchParams.get('checkOut')).toBeNull();
-    expect(url.searchParams.get('rooms')).toBeNull();
+  describe('flights: airports', () => {
+    const originBox = () => screen.getByLabelText('Điểm đi') as HTMLInputElement;
+    const destinationBox = () => screen.getByLabelText('Điểm đến') as HTMLInputElement;
 
-    fireEvent.click(screen.getByRole('button', { name: /Ngày đi/ }));
-    fireEvent.click(screen.getByRole('radio', { name: 'Khứ hồi' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Tìm kiếm' }));
-    url = lastHref();
-    expect(url.searchParams.get('checkOut')).toBe(addDaysIso(tomorrow(), 2));
-  });
-
-  it('flights: with a page handler, Tìm hands the values over instead of navigating', async () => {
-    const onFlightSearch = vi.fn();
-    renderSheet('flights', { onFlightSearch });
-    fireEvent.change(screen.getByLabelText('Điểm đi'), { target: { value: ' Hà Nội ' } });
-    fireEvent.focus(screen.getByRole('combobox', { name: /Điểm đến/ }));
-    fireEvent.click(await screen.findByRole('option', { name: 'Đà Nẵng' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Tìm kiếm' }));
-    expect(travel.navigate).not.toHaveBeenCalled();
-    expect(onFlightSearch).toHaveBeenCalledWith({
-      origin: ' Hà Nội ', location: 'Đà Nẵng', destination: 'Đà Nẵng',
-      trip: { checkIn: tomorrow(), checkOut: undefined, adults: 2, children: 0 },
-    });
-  });
-
-  it('flights: hands over incomplete input too, so the page can say what is missing', () => {
-    const onFlightSearch = vi.fn();
-    renderSheet('flights', { onFlightSearch });
-    fireEvent.change(screen.getByRole('combobox', { name: /Điểm đến/ }), { target: { value: 'xứ sở thần tiên' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Tìm kiếm' }));
-    expect(travel.navigate).not.toHaveBeenCalled();
-    expect(onFlightSearch).toHaveBeenCalledWith(expect.objectContaining({ origin: '', location: 'xứ sở thần tiên', destination: null }));
-  });
-
-  it('flights: shows the search in the URL (origin, dates, round trip, party) so it can be edited in place', () => {
-    const onFlightSearch = vi.fn();
-    renderSheet('flights', {
-      onFlightSearch,
-      initialDestination: 'Đà Nẵng',
-      initialSearch: { origin: 'Hà Nội', trip: { checkIn: '2026-10-20', checkOut: '2026-10-25', adults: 3, children: 1 } },
-    });
-    expect((screen.getByLabelText('Điểm đi') as HTMLInputElement).value).toBe('Hà Nội');
-    expect((screen.getByRole('combobox', { name: /Điểm đến/ }) as HTMLInputElement).value).toBe('Đà Nẵng');
-    expect(screen.getByText('3 người lớn, 1 trẻ em')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Tìm kiếm' }));
-    expect(onFlightSearch).toHaveBeenCalledWith({
-      origin: 'Hà Nội', location: 'Đà Nẵng', destination: 'Đà Nẵng',
-      trip: { checkIn: '2026-10-20', checkOut: '2026-10-25', adults: 3, children: 1 },
-    });
-  });
-
-  describe('flights: origin and history', () => {
-    const originBox = () => screen.getByRole('combobox', { name: /Điểm đi/ }) as HTMLInputElement;
-    const destinationBox = () => screen.getByRole('combobox', { name: /Điểm đến/ }) as HTMLInputElement;
-
-    it('the origin field suggests places as you type and moves on to the destination after a pick', async () => {
-      renderSheet('flights');
-      fireEvent.focus(originBox());
-      const list = await screen.findByRole('listbox', { name: 'Gợi ý điểm đi' });
-      expect(within(list).getAllByRole('option').map((o) => o.textContent)).toEqual(['Nha Trang', 'Đà Nẵng']);
-
-      fireEvent.change(originBox(), { target: { value: 'da n' } });
-      expect(within(screen.getByRole('listbox', { name: 'Gợi ý điểm đi' })).getAllByRole('option').map((o) => o.textContent)).toEqual(['Đà Nẵng']);
-
-      fireEvent.click(screen.getByRole('option', { name: 'Đà Nẵng' }));
-      expect(originBox().value).toBe('Đà Nẵng');
-      expect(document.activeElement).toBe(destinationBox());
-      expect(screen.getByRole('listbox', { name: 'Gợi ý điểm đến' })).toBeTruthy();
-      // Điểm đi đã chọn không được gợi ý lại làm điểm đến.
-      expect(screen.queryByRole('option', { name: 'Đà Nẵng' })).toBeNull();
-    });
-
-    it('arrow keys and Enter pick an origin suggestion; a free-typed origin still goes through', async () => {
+    it('one-way by default, and a return date only for round trips', async () => {
       const onFlightSearch = vi.fn();
       renderSheet('flights', { onFlightSearch });
+      await flush();
+      typeAndLeave('Điểm đi', 'Hà Nội');
+      typeAndLeave('Điểm đến', 'Đà Nẵng');
+      fireEvent.click(screen.getByRole('button', { name: 'Tìm kiếm' }));
+      expect(onFlightSearch.mock.calls[0][0].trip).toEqual({ checkIn: tomorrow(), checkOut: undefined, adults: 2, children: 0 });
+
+      fireEvent.click(screen.getByRole('button', { name: /Ngày đi/ }));
+      fireEvent.click(screen.getByRole('radio', { name: 'Khứ hồi' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Tìm kiếm' }));
+      expect(onFlightSearch.mock.calls[1][0].trip.checkOut).toBe(addDaysIso(tomorrow(), 2));
+      expect(travel.navigate).not.toHaveBeenCalled();
+    });
+
+    it('a typed place that is not a current airport is cleared when the field loses focus', async () => {
+      renderSheet('flights');
+      await flush();
+      expect(typeAndLeave('Điểm đi', 'xứ sở thần tiên').value).toBe('');
+    });
+
+    it('a typed city, code or label that matches a current airport becomes its label', async () => {
+      renderSheet('flights');
+      await flush();
+      expect(typeAndLeave('Điểm đi', 'ha noi').value).toBe('Hà Nội (HAN)');
+      expect(typeAndLeave('Điểm đến', 'sgn').value).toBe('TP. Hồ Chí Minh (SGN)');
+    });
+
+    it('focusing the origin lists airports: popular ones first, then the rest of the domestic list', async () => {
+      renderSheet('flights');
+      await flush();
       fireEvent.focus(originBox());
-      await screen.findByRole('option', { name: 'Nha Trang' });
+      const list = await screen.findByRole('listbox', { name: 'Gợi ý điểm đi' });
+      const groups = within(list).getAllByRole('group').map((g) => g.querySelector('p')?.textContent);
+      expect(groups).toEqual(['Sân bay phổ biến', 'Trong nước']);
+      const [popular, domestic] = within(list).getAllByRole('group');
+      expect(optionTexts(popular)).toEqual(['TP. Hồ Chí Minh', 'Hà Nội', 'Đà Nẵng', 'Đà Lạt', 'Nha Trang']);
+      expect(optionTexts(domestic)).toEqual(['Côn Đảo', 'Phú Quốc']);
+    });
+
+    it('arrow keys and Enter pick an airport, and the destination does not offer the chosen origin', async () => {
+      renderSheet('flights');
+      await flush();
+      fireEvent.focus(originBox());
+      await screen.findByRole('option', { name: /TP. Hồ Chí Minh/ });
       fireEvent.keyDown(originBox(), { key: 'ArrowDown' });
       fireEvent.keyDown(originBox(), { key: 'ArrowDown' });
       fireEvent.keyDown(originBox(), { key: 'Enter' });
-      expect(originBox().value).toBe('Đà Nẵng');
+      expect(originBox().value).toBe('Hà Nội (HAN)');
+      expect(document.activeElement).toBe(destinationBox());
 
-      fireEvent.change(originBox(), { target: { value: 'Cần Thơ' } });
-      fireEvent.click(screen.getByRole('button', { name: 'Tìm kiếm' }));
-      expect(onFlightSearch).toHaveBeenCalledWith(expect.objectContaining({ origin: 'Cần Thơ' }));
+      const destinations = await screen.findByRole('listbox', { name: 'Gợi ý điểm đến' });
+      expect(within(destinations).queryByRole('option', { name: /^Hà Nội/ })).toBeNull();
     });
 
-    it('a finished search is remembered for both fields, newest first, and offered again when the field is empty', async () => {
-      const { unmount } = renderSheet('flights', { onFlightSearch: vi.fn() });
-      fireEvent.change(originBox(), { target: { value: 'nha trang' } });
-      fireEvent.focus(destinationBox());
-      fireEvent.click(await screen.findByRole('option', { name: 'Đà Nẵng' }));
+    it('a search is handed over with the cities of the chosen airports, and remembered per field, newest first', async () => {
+      const onFlightSearch = vi.fn();
+      const { unmount } = renderSheet('flights', { onFlightSearch });
+      await flush();
+      typeAndLeave('Điểm đi', 'nha trang');
+      typeAndLeave('Điểm đến', 'da nang');
       fireEvent.click(screen.getByRole('button', { name: 'Tìm kiếm' }));
-      // Chuẩn hóa về nhãn của /destinations.
+      expect(onFlightSearch).toHaveBeenCalledWith(expect.objectContaining({ origin: 'Nha Trang', destination: 'Đà Nẵng', airportsReady: true }));
       expect(JSON.parse(window.localStorage.getItem('vota_flight_recent_origins')!)).toEqual(['Nha Trang']);
       expect(JSON.parse(window.localStorage.getItem('vota_flight_recent_destinations')!)).toEqual(['Đà Nẵng']);
       unmount();
 
       renderSheet('flights', { onFlightSearch: vi.fn() });
+      await flush();
       fireEvent.focus(originBox());
       const recent = await screen.findByRole('group', { name: 'Tìm gần đây' });
-      expect(within(recent).getAllByRole('option').map((o) => o.textContent)).toEqual(['Nha Trang']);
+      expect(optionTexts(recent)).toEqual(['Nha Trang']);
       // Mục đã có ở "Tìm gần đây" không lặp ở nhóm phổ biến.
-      expect(screen.getAllByRole('option', { name: 'Nha Trang' })).toHaveLength(1);
+      expect(screen.getAllByRole('option', { name: /^Nha Trang/ })).toHaveLength(1);
+    });
 
-      fireEvent.click(within(recent).getByRole('option', { name: 'Nha Trang' }));
-      expect(originBox().value).toBe('Nha Trang');
-      expect(within(await screen.findByRole('group', { name: 'Tìm gần đây' })).getAllByRole('option').map((o) => o.textContent)).toEqual(['Đà Nẵng']);
+    it('a typed invalid place is not sent as an airport: the page gets the raw text, and both boxes are cleared', async () => {
+      const onFlightSearch = vi.fn();
+      renderSheet('flights', { onFlightSearch });
+      await flush();
+      typeAndLeave('Điểm đi', 'Hà Nội');
+      fireEvent.focus(destinationBox());
+      fireEvent.change(destinationBox(), { target: { value: 'xứ sở' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Tìm kiếm' }));
+
+      expect(onFlightSearch).toHaveBeenCalledWith(expect.objectContaining({
+        origin: 'Hà Nội', destination: null, location: 'xứ sở', airportsReady: true,
+      }));
+      expect(destinationBox().value).toBe('');
+      expect(travel.navigate).not.toHaveBeenCalled();
+    });
+
+    it('when the airport list could not be loaded the search says so and guesses nothing', async () => {
+      api.listFlightAirports.mockRejectedValue(new Error('down'));
+      const onFlightSearch = vi.fn();
+      renderSheet('flights', { onFlightSearch });
+      await flush();
+      fireEvent.focus(originBox());
+      expect(await screen.findByText('Chưa tải được danh sách sân bay. Thử lại sau giây lát.')).toBeTruthy();
+      fireEvent.change(originBox(), { target: { value: 'Hà Nội' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Tìm kiếm' }));
+      expect(onFlightSearch).toHaveBeenCalledWith(expect.objectContaining({ origin: '', airportsReady: false }));
+    });
+
+    it('a search in the URL resolves to airports once loaded and is handed over again on submit', async () => {
+      const onFlightSearch = vi.fn();
+      renderSheet('flights', {
+        onFlightSearch,
+        initialDestination: 'Đà Nẵng',
+        initialSearch: { origin: 'Hà Nội', trip: { checkIn: '2026-10-20', checkOut: '2026-10-25', adults: 3, children: 1 } },
+      });
+      await flush();
+      expect(originBox().value).toBe('Hà Nội');
+      expect(destinationBox().value).toBe('Đà Nẵng');
+      expect(screen.getByText('3 người lớn, 1 trẻ em')).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Tìm kiếm' }));
+      expect(onFlightSearch).toHaveBeenCalledWith(expect.objectContaining({
+        origin: 'Hà Nội', destination: 'Đà Nẵng', airportsReady: true,
+        trip: { checkIn: '2026-10-20', checkOut: '2026-10-25', adults: 3, children: 1 },
+      }));
     });
 
     it('history is hidden while typing, capped at five, and can be cleared', async () => {
       window.localStorage.setItem('vota_flight_recent_origins', JSON.stringify(['Đà Nẵng', 'Nha Trang']));
       renderSheet('flights');
+      await flush();
       fireEvent.focus(originBox());
       expect(await screen.findByRole('group', { name: 'Tìm gần đây' })).toBeTruthy();
 
@@ -277,21 +395,22 @@ describe('LandingSearchSheet', () => {
       expect(window.localStorage.getItem('vota_flight_recent_origins')).toBeNull();
     });
 
-    it('history entries that are no longer in /destinations are not offered', async () => {
+    it('history entries that are no longer current airports are not offered', async () => {
       window.localStorage.setItem('vota_flight_recent_destinations', JSON.stringify(['Atlantis', 'Nha Trang']));
       renderSheet('flights');
+      await flush();
       fireEvent.focus(destinationBox());
       const recent = await screen.findByRole('group', { name: 'Tìm gần đây' });
-      expect(within(recent).getAllByRole('option').map((o) => o.textContent)).toEqual(['Nha Trang']);
+      expect(optionTexts(recent)).toEqual(['Nha Trang']);
     });
 
-    it('other categories keep no history', async () => {
-      renderSheet('hotels');
-      fireEvent.focus(screen.getByRole('combobox'));
-      await screen.findByRole('option', { name: 'Nha Trang' });
-      fireEvent.click(screen.getByRole('option', { name: 'Nha Trang' }));
-      fireEvent.click(screen.getByRole('button', { name: 'Tìm kiếm' }));
-      expect(window.localStorage.length).toBe(0);
+    it('closes an open airport list on Escape', async () => {
+      renderSheet('flights');
+      await flush();
+      fireEvent.focus(originBox());
+      expect(await screen.findByRole('listbox', { name: 'Gợi ý điểm đi' })).toBeTruthy();
+      fireEvent.keyDown(originBox(), { key: 'Escape' });
+      expect(screen.queryByRole('listbox', { name: 'Gợi ý điểm đi' })).toBeNull();
     });
   });
 

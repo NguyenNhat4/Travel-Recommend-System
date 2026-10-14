@@ -113,7 +113,7 @@ Giá trị hợp lệ:
 - `errorCode`: một mã trong enum `ErrorCode` của `src/shared/contracts/schemas/common.yaml`.
 - `missingFieldsInclude`: `destination`, `days`, `startDate`, `party`, `budget` (enum `missingFields` của
   `ItineraryNeedsClarification` trong contract).
-- Tên node: `intake`, `classify`, `extract`, `tool`, `evaluate`, `retry`, `converse`, `compose`, `clarify`,
+- Tên node: `intake`, `precheck`, `orchestrate`, `run_jobs`, `gatekeep`, `extract`, `tool`, `evaluate`, `retry`, `filter`, `converse`, `compose`, `clarify`, `apply_option`,
   `narrate`, `dead_letter`, `finalize`.
 - Tên tool (`toolsInclude`): `search_products`, `get_recommendations`, `get_similar_products`.
 
@@ -231,7 +231,7 @@ Sửa hoặc xoá case cũ vẫn làm trực tiếp trong file YAML. Sau khi lư
 ## 8. Khi case mới fail
 
 Biên bản `.md` liệt kê từng lượt fail kèm lý do. Trace trên LangSmith đặt tên `TC-01#1 <câu nhập>`,
-gắn tag `golden`, id case và category; mở node `classify` để xem nhãn phân luồng, node `extract` để xem LLM trích ra gì, node `tool` để xem
+gắn tag `golden`, id case và category; mở node `orchestrate` để xem quyết định của orchestrator, node `extract` để xem LLM trích ra gì, node `tool` để xem
 tool plan.
 
 Có ba khả năng:

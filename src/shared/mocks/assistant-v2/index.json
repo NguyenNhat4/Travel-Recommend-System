@@ -1,0 +1,71 @@
+{
+  "contract": "../../contracts/assistant-v2.openapi.yaml",
+  "description": "Contract-only fixtures. Product cards from the checked-in 50-product sample. Cost/timing values are deliberately illustrative, not catalog pricing/runtime evidence.",
+  "fixtures": [
+    {
+      "operationId": "createAssistantV2",
+      "method": "post",
+      "path": "/assistant/itineraries",
+      "status": 200,
+      "schema": "AssistantV2Final",
+      "file": "answer-30.json"
+    },
+    {
+      "operationId": "createAssistantV2",
+      "method": "post",
+      "path": "/assistant/itineraries",
+      "status": 200,
+      "schema": "AssistantV2Final",
+      "file": "answer.json"
+    },
+    {
+      "operationId": "createAssistantV2",
+      "method": "post",
+      "path": "/assistant/itineraries",
+      "status": 200,
+      "schema": "AssistantV2Final",
+      "file": "clarification.json"
+    },
+    {
+      "operationId": "createAssistantV2",
+      "method": "post",
+      "path": "/assistant/itineraries",
+      "status": 200,
+      "schema": "AssistantV2Final",
+      "file": "itinerary-over.json"
+    },
+    {
+      "operationId": "createAssistantV2",
+      "method": "post",
+      "path": "/assistant/itineraries",
+      "status": 200,
+      "schema": "AssistantV2Final",
+      "file": "itinerary-unknown.json"
+    },
+    {
+      "operationId": "createAssistantV2",
+      "method": "post",
+      "path": "/assistant/itineraries",
+      "status": 200,
+      "schema": "AssistantV2Final",
+      "file": "itinerary-zero.json"
+    },
+    {
+      "operationId": "createAssistantV2",
+      "method": "post",
+      "path": "/assistant/itineraries",
+      "status": 200,
+      "schema": "AssistantV2Final",
+      "file": "partial.json"
+    },
+    {
+      "operationId": "streamAssistantV2",
+      "method": "post",
+      "path": "/assistant/itineraries/stream",
+      "status": 200,
+      "schema": "AssistantV2Event",
+      "contentType": "text/event-stream",
+      "file": "stream.json"
+    }
+  ]
+}

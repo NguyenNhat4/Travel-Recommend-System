@@ -20,8 +20,9 @@ và câu hỏi cần trả lời trước khi thêm.
 Dùng giải pháp đơn giản nhất chạy được. Chuỗi bước cố định thì dễ kiểm hơn vòng lặp để LLM tự quyết.
 Nguồn: [Anthropic, Building effective agents](https://www.anthropic.com/engineering/building-effective-agents).
 
-- **Trong repo:** graph cố định (`agents/graph.py`). LLM chỉ ở `classify`, `extract`, lập tool plan, `clarify`, `converse`
-  và `narrate`. `compose` và `finalize` là luật.
+- **Trong repo:** graph cố định (`agents/graph.py`). Một LLM đầu mối (`orchestrate`) chọn hành động và việc chỉ đọc
+  trong giới hạn vòng, lời gọi tool và thời gian; code chạy việc và gác cổng (`gatekeep`). LLM còn ở `extract`, lập tool
+  plan, `filter`, `clarify` và `narrate`. `precheck`, `compose` và `finalize` là luật.
 - **Trước khi thêm lời gọi LLM:** việc này luật làm được không? Mỗi lời gọi LLM nối tiếp cộng thêm vài giây. Golden
   2026-09-24 đo được p50 6,0 s và p95 11,3 s, trong khi NFR-PERF-02 đặt tổng ≤ 4 s.
 
@@ -60,7 +61,7 @@ Nguồn: [OpenAI, A practical guide to building agents](https://cdn.openai.com/b
 
 - **Trong repo:**
   - tầng 1 bằng luật ở `agents/steps/guardrails.py` (NFR-SEC-04);
-  - `classify` từ chối ngoài phạm vi;
+  - orchestrator trả lời ngoài phạm vi (200, kèm việc gần nhất làm được);
   - `finalize` kiểm OpenAPI và grounding;
   - rate limit ở route.
 - **Trước khi thêm chặn mới:** chặn bằng luật được không, trước khi trả tiền cho một lời gọi LLM?

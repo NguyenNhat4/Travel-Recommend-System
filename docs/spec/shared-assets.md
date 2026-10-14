@@ -9,3 +9,8 @@ Chỉ chứa artifact trung lập công nghệ được dùng giữa các servic
 - `mocks/<domain>/<operationId>.<status>-<case>.json` — response mẫu; mọi file phải hợp lệ với schema response tương ứng trong `openapi.yaml`.
 
 Mô tả nghiệp vụ: `docs/spec/hop-dong-tich-hop-backend.md`, `docs/spec/hop-dong-tich-hop-frontend.md`, `docs/spec/hop-dong-tich-hop-itinerary-assistant.md`.
+
+- `contracts/assistant-v2.openapi.yaml` — contract assistant v2, FR-AGT-01–07, NFR-REL-01/NFR-MAINT-02.
+- `mocks/assistant-v2/index.json` — fixture index riêng theo entry v2, tránh dùng cùng path với v1.
+  Thẻ lấy từ sample 50 sản phẩm; số tiền/giờ fixture lập lịch minh họa phép kiểm, không là giá thật.
+  Kiểm schema không chứng minh tính khả thi thời gian hoặc grounding của model; runtime/eval có cổng riêng.

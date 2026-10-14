@@ -1,0 +1,98 @@
+name: Backend CI
+
+# CI backend. Chạy trên mọi PR vào nhánh deploy, và được staging-ha-app-cd.yml gọi lại (workflow_call) làm cổng trước khi
+# build và deploy commit đã merge. Không chạy riêng khi push: CD gọi đúng workflow này, nên một commit chỉ test một lần.
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+    branches:
+      - main
+      - release-mvp-v1
+      - release-mvp-v2
+      - release-mvp-v3
+    paths:
+      - '.github/workflows/backend-ci.yml'
+      - '.github/workflows/staging-ha-image-build.yml'
+      - '.dockerignore'
+      - 'Dockerfile.backend'
+      - 'src/backend/**'
+      - 'db/migrations/**'
+      - 'scripts/**'
+      - 'src/shared/contracts/**'
+      - 'src/shared/mocks/**'
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # PR: push mới huỷ run cũ cùng PR. Khi CD gọi: nhóm riêng theo run, không huỷ và không chặn CD.
+  group: ${{ github.event_name == 'pull_request' && format('backend-ci-{0}', github.ref) || format('backend-ci-run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  quality:
+    name: CI checks
+    runs-on: [self-hosted, vota-staging-ha]
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        if: ${{ runner.environment == 'github-hosted' }}
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install backend test dependencies
+        # Thư mục riêng theo hash requirements (không cài vào Python hệ thống dùng chung giữa các runner); torch bản CPU
+        # ghim đúng bản của image.
+        run: |
+          deps="$(bash scripts/ci/py-deps.sh backend --torch-cpu src/backend/requirements-embed.txt src/backend/requirements.txt)"
+          echo "PYTHONPATH=$deps" >> "$GITHUB_ENV"
+
+      - name: Validate contract
+        run: PYTHONDONTWRITEBYTECODE=1 python3 src/shared/contracts/tests/validate_contract.py
+
+      - name: Compile Python
+        run: PYTHONDONTWRITEBYTECODE=1 python3 -m compileall -q src/backend src/data_collection
+
+      - name: Run backend tests
+        run: PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -q src/backend/tests
+
+      - name: Check staging-ha deploy script syntax
+        run: |
+          for f in scripts/*.sh scripts/ci/*.sh infra/terraform/environments/staging-ha/slot-deploy.sh; do bash -n "$f"; done
+
+  build:
+    name: Build images
+    # Chỉ trên PR: kiểm Dockerfile.backend và làm nóng cache của builder cố định. Sau merge, staging-ha-app-cd.yml build
+    # (gần như toàn bộ từ cache) hoặc tái dùng image theo content key.
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: [self-hosted, vota-staging-ha]
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Persistent BuildKit builder
+        id: builder
+        run: bash scripts/ci/buildx-builder.sh
+
+      - name: Build Backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.backend
+          builder: ${{ steps.builder.outputs.name }}
+          push: false
+          tags: vota-backend-ci:${{ github.sha }}

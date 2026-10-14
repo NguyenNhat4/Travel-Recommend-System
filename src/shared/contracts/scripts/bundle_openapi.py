@@ -41,11 +41,13 @@ def bundle(entry=ENTRY):
                 node = node[part.replace('~1', '/').replace('~0', '~')]
             resolved = walk(node, target, (*stack, identity))
             if len(value) != 1:
-                raise ValueError(f'External ref siblings require explicit support: {ref}')
+                # OpenAPI 3.1 schema siblings constrain the referenced schema too.
+                siblings = walk({key: item for key, item in value.items() if key != '$ref'}, origin, stack)
+                return {'allOf': [resolved], **siblings} if set(siblings) <= {'description', 'title'} else {'allOf': [resolved, siblings]}
             return resolved
         # Discriminator mappings are URI strings, not $ref objects.
         return {key: ('#' + item.split('#', 1)[1]
-                      if isinstance(item, str) and item.startswith('../openapi.yaml#/')
+                      if isinstance(item, str) and item.startswith('../' + entry.name + '#/')
                       else walk(item, origin, stack)) for key, item in value.items()}
 
     return walk(read(entry), entry)

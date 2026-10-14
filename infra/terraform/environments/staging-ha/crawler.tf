@@ -1,5 +1,5 @@
 # VM job cào (crawler) của staging-ha. Một VM đơn, không thuộc MIG: job chạy bằng cron (scripts/install-vota-cron.sh),
-# được CD cài qua IAP SSH (.github/workflows/staging-ha-cd.yml). Chỉ một VM được phép ghi catalog, nên không có
+# được CD cài qua IAP SSH (.github/workflows/staging-ha-crawler-cd.yml). Chỉ một VM được phép ghi catalog, nên không có
 # bản sao thứ hai trong root này.
 # Tag `vota-crawler` là tag mà patroni.tf đã cho phép tới cổng 5432 của Postgres; đừng đổi tên mà không sửa patroni.tf.
 # Không có IP public: job cào gọi ra ngoài qua Cloud NAT (variables.tf create_nat).

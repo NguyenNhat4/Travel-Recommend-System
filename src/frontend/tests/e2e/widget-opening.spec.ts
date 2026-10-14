@@ -3,6 +3,32 @@ import completed from '../../../shared/mocks/itinerary-agent/completed.json' wit
 
 const openingPlaceholder = 'Mô tả chuyến đi bạn mong muốn…';
 
+for (const width of [390,1024]) {
+  test(`ten requested recommendations render without clipping at ${width}px`, async ({page}) => {
+    const {default:response}=await import('../../../shared/mocks/itinerary-agent/explore-ten.json',{with:{type:'json'}});
+    await page.setViewportSize({width,height:900});
+    const scope={intent:'more',scopeMode:'replace',requestedCount:10};
+    const progress={turnKind:'explore',steps:['understand','search','write'],completedStep:'write',
+      understood:{jobs:[{groupId:'job:1',kind:'hotel',scope}]},
+      searches:[{groupId:'job:1',kind:'hotel',status:'ok',scope,counts:{inScope:10,chosen:10}}]};
+    await page.route('**/api/v1/assistant/itineraries/stream', route => route.fulfill({contentType:'text/event-stream',
+      body:`event: node.completed\ndata: ${JSON.stringify({nodeId:'run_jobs',progress})}\n\nevent: run.completed\ndata: ${JSON.stringify({response})}\n\n`}));
+    await page.goto('/');
+    await page.getByRole('button',{name:'Mở trợ lý du lịch AI'}).click();
+    const dialog=page.getByRole('dialog',{name:'Trợ lý du lịch AI'});
+    await dialog.getByPlaceholder(openingPlaceholder).fill('Giới thiệu 10 khách sạn');
+    await dialog.getByRole('button',{name:'Gửi yêu cầu'}).click();
+    await expect(dialog.getByRole('button',{name:/^Xem chi tiết /})).toHaveCount(10);
+    await dialog.getByRole('button',{name:/Xem các bước/}).click();
+    await expect(dialog.getByText(/bỏ phạm vi thành phố cũ để tìm ở nhiều điểm đến/)).toBeVisible();
+    await expect(dialog.getByText(/Mục tiêu là 10 lựa chọn/)).toBeVisible();
+    expect(await dialog.evaluate(el => el.scrollWidth>el.clientWidth)).toBe(false);
+    await dialog.getByRole('button',{name:`Xem chi tiết ${response.searchResults.hotel[9].name}`,exact:true}).scrollIntoViewIfNeeded();
+    await expect(dialog.getByRole('button',{name:`Xem chi tiết ${response.searchResults.hotel[9].name}`,exact:true})).toBeVisible();
+    await dialog.screenshot({path:`/tmp/travel-ten-recommendations-${width}.png`,animations:'disabled'});
+  });
+}
+
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/auth/session', (route) => route.fulfill({ json: { state: 'anonymous' } }));
   await page.route('**/api/v1/products?**', (route) => route.fulfill({ json: { results: [], total: 0, limit: 10, offset: 0 } }));
@@ -97,6 +123,9 @@ test('keyboard submission switches to chat, preserves context, and resets to the
   await expect(dialog.getByPlaceholder(openingPlaceholder)).toHaveValue('');
   await expect(dialog.getByRole('heading', { name: 'Bạn muốn đi đâu tiếp theo?' })).toBeVisible();
   await expect(dialog.getByRole('textbox')).toBeFocused();
+  // useWidgetFocus đưa focus về textarea bằng requestAnimationFrame sau khi đóng lịch sử; chờ khung đó xong trước khi Shift+Tab,
+  // nếu không khung trễ sẽ kéo focus về textarea sau khi phím đã chuyển sang nút Đóng.
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
   await page.keyboard.press('Shift+Tab');
   await expect(dialog.getByRole('button', { name: 'Đóng', exact: true })).toBeFocused();
   await page.keyboard.press('Escape');
@@ -123,4 +152,84 @@ test('completed results still open the timeline and map after the widget split',
   await expect(page.getByRole('button', { name: 'Thanh toán tất cả', exact: true })).toHaveCount(0);
   await expect(page.getByRole('dialog', { name: 'Trợ lý du lịch AI' }).getByRole('textbox')).toHaveCount(1);
   expect(errors).toEqual([]);
+});
+
+for (const width of [390,1024]) {
+  test(`progress follows the stream and shows no product cards while waiting at ${width}px`, async ({page}) => {
+    const {default:events}=await import('../../../shared/mocks/itinerary-agent/stream-plan.json',{with:{type:'json'}});
+    await page.setViewportSize({width,height:900});
+    await page.addInitScript((frames) => {
+      const original=window.fetch;
+      window.fetch=async (input,init) => {
+        if (String(input).includes('/assistant/itineraries/stream')) {
+          const encoder=new TextEncoder();
+          return new Response(new ReadableStream({start(controller) {
+            frames.forEach((frame,index) => {
+              const send = () => {
+                controller.enqueue(encoder.encode(`event: ${frame.event}\ndata: ${JSON.stringify(frame.data)}\n\n`));
+                if (index===frames.length-1) controller.close();
+              };
+              if (index===frames.length-1) window.addEventListener('finish-progress-fixture',send,{once:true});
+              else window.setTimeout(send,index*300);
+            });
+          }}),{headers:{'Content-Type':'text/event-stream'}});
+        }
+        return original(input,init);
+      };
+    },events);
+    await page.goto('/');
+    await page.getByRole('button',{name:'Mở trợ lý du lịch AI'}).click();
+    const dialog=page.getByRole('dialog',{name:'Trợ lý du lịch AI'});
+    await dialog.getByPlaceholder(openingPlaceholder).fill('Lập lịch trình Nha Trang');
+    await dialog.getByRole('button',{name:'Gửi yêu cầu'}).click();
+    await expect(dialog.getByText(/tìm thấy 10/)).toBeVisible();
+    // AC-AGT-09: trong lúc chờ không hiện thẻ sản phẩm; thẻ chỉ có trong câu trả lời.
+    const productCards=dialog.getByRole('region',{name:'Sản phẩm đã chọn'});
+    await expect(productCards).toHaveCount(0);
+    await dialog.screenshot({path:`/tmp/travel-agent-progress-${width}.png`,animations:'disabled'});
+    const overflow=await dialog.evaluate((el)=>el.scrollWidth>el.clientWidth);
+    expect(overflow).toBe(false);
+    await page.evaluate(() => window.dispatchEvent(new Event('finish-progress-fixture')));
+    await expect(dialog.getByRole('button',{name:/Xem các bước/})).toBeVisible({timeout:5000});
+    await expect(productCards).toHaveCount(0);
+    await dialog.getByRole('button',{name:/Xem các bước/}).click();
+    await expect(dialog.getByRole('button',{name:/Thu gọn/})).toHaveAttribute('aria-expanded','true');
+  });
+}
+
+test('progress explains the current Hue request across turns without repeating a saved trip',async({page})=>{
+  const {default:fixture}=await import('../../../shared/mocks/itinerary-agent/stream-explore-jobs.json',{with:{type:'json'}});
+  let turn=0;
+  await page.setViewportSize({width:390,height:900});
+  await page.route('**/api/v1/assistant/itineraries/stream',async(route)=>{
+    turn+=1;
+    const frames=structuredClone(fixture) as Array<{event:string;data:Record<string,unknown>}>;
+    for(const frame of frames){
+      const p=frame.data.progress as Record<string,unknown>|undefined;
+      if(!p) continue;
+      const groups=(p.searches ?? []) as Array<{groupId:string;kind:'hotel'|'attraction';scope:Record<string,unknown>}>;
+      for(const group of groups){group.scope={destination:'Huế',intent:turn>1 ? 'more':'new'};if(group.groupId==='job:1')group.kind='attraction';}
+      for(const notice of (p.notices ?? []) as Array<{groupId?:string;kind?:string}>) if(notice.groupId==='job:1') notice.kind='attraction';
+      if(frame.data.nodeId==='orchestrate' || groups.length){
+        p.understood={intent:{destination:'Nha Trang',startDate:'2026-10-17',origin:'Nghệ An'},
+          jobs:[{groupId:'job:1',kind:'attraction',scope:{destination:'Huế',intent:turn>1?'more':'new'}},
+            {groupId:'job:2',kind:'hotel',scope:{destination:'Huế',intent:turn>1?'more':'new'}}]};
+      }
+    }
+    await route.fulfill({contentType:'text/event-stream',body:frames.map((f)=>`event: ${f.event}\ndata: ${JSON.stringify(f.data)}\n\n`).join('')});
+  });
+  await page.goto('/');
+  await page.getByRole('button',{name:'Mở trợ lý du lịch AI'}).click();
+  const dialog=page.getByRole('dialog',{name:'Trợ lý du lịch AI'});
+  await dialog.getByPlaceholder(openingPlaceholder).fill('Huế có gì chơi?');
+  await dialog.getByRole('button',{name:'Gửi yêu cầu'}).click();
+  await dialog.getByRole('button',{name:/Xem các bước/}).click();
+  await expect(dialog.getByText(/Bạn đang tìm điểm tham quan ở Huế/)).toBeVisible();
+  await expect(dialog.getByText(/Nha Trang|17\/10|Nghệ An/)).toHaveCount(0);
+  await dialog.getByRole('textbox').fill('Cho mình thêm gợi ý ở Huế');
+  await dialog.getByRole('button',{name:'Gửi yêu cầu'}).click();
+  await dialog.getByRole('button',{name:/Xem các bước/}).last().click();
+  await expect(dialog.getByText(/Bạn muốn xem thêm điểm tham quan ở Huế/)).toBeVisible();
+  await expect(dialog.getByText(/Nha Trang|17\/10|Nghệ An/)).toHaveCount(0);
+  await dialog.screenshot({path:'/tmp/travel-progress-hue-current-turn.png',animations:'disabled'});
 });

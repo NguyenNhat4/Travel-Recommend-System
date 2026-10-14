@@ -18,12 +18,19 @@ export function buildFlightResultsHref({ origin, destination, trip }: FlightSear
   return `${FLIGHTS_ROUTE}?${params.toString()}${query ? `&${query}` : ''}`;
 }
 
-/** Giá trị tấm tìm kiếm gửi lên khi bấm Tìm: điểm đến là nhãn chuẩn, hoặc null khi chưa nhập hay chưa chọn từ gợi ý. */
+/**
+ * Giá trị tấm tìm kiếm gửi lên khi bấm Tìm. `origin` và `destination` là tên thành phố của sân bay hiện hành đã khớp
+ * (spec ui-dia-diem-san-bay-va-khach-san-noi-tieng §4), hoặc rỗng/null khi chưa chọn sân bay nào.
+ */
 export interface FlightSearchInput {
   origin: string;
-  /** Chữ trong ô điểm đến (kể cả khi chưa khớp nhãn nào). */
+  /** Chữ trong ô điểm đến lúc gửi (kể cả khi không khớp sân bay nào, để báo đúng lỗi). */
   location: string;
   destination: string | null;
+  /** Chữ trong ô điểm đi lúc gửi; dùng để báo "Chưa nhận ra sân bay đi …". */
+  originText?: string;
+  /** false khi danh sách sân bay chưa tải được: không đoán được sân bay nên không tìm. Mặc định true. */
+  airportsReady?: boolean;
   trip: TripContext;
 }
 

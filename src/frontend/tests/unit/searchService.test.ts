@@ -275,7 +275,7 @@ describe('search groups', () => {
   });
 });
 
-describe('weak match rule with backgroundScore (contract 1.28.0)', () => {
+describe('weak match rule with backgroundScore (contract 1.30.0)', () => {
   const originalFetch = global.fetch;
   afterEach(() => { global.fetch = originalFetch; });
 

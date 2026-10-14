@@ -49,9 +49,9 @@ sequenceDiagram
 - Dòng di chuyển `TRANSFER` được viết lại đúng ghi chú, không thêm chi tiết chuyến bay.
 - [Lịch tham khảo](glossary.md#lich-tham-khao): câu mở đầu (ngày chưa mở bán, ngày gần nhất còn bán) do code viết; LLM chỉ
   kể chuyện từng nơi, không nói về ngày mở bán. `COMPLETED` có thể kèm tối đa 3 nút (ví dụ "Đi <nơi> <n> ngày từ ngày X").
-- **Không bịa giờ, giá.** Khám phá mà không tra ra nơi được hỏi: LLM được báo để tự nói là chưa kiểm được. Lượt trò chuyện
-  (`converse`) mà câu LLM nêu giờ, giá, vé không có dữ liệu: code thay bằng câu cố định. Câu trả lời vé do code viết hoàn
-  toàn.
+- **Không bịa giờ, giá.** Khám phá mà không tra ra nơi được hỏi: LLM được báo để tự nói là chưa kiểm được. Câu của
+  orchestrator có số (giá, giờ, ngày, điểm, khoảng cách) không đến từ placeholder thì `gatekeep` trả về sửa một lần, vẫn
+  sai thì dùng câu dự phòng (`gatekeeper.raw_violations`). Câu trả lời vé do code viết hoàn toàn.
 - Mọi câu trả lời (trừ chào hỏi, cảm ơn, chào tạm biệt khi người dùng không muốn đi nữa) mở đầu bằng **Tiêu đề** in đậm.
 
 ## Kiểm tra ở `finalize`

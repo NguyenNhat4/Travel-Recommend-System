@@ -48,7 +48,7 @@ def _route_from(routes: list[dict[str, Any]], city: str) -> dict[str, Any] | Non
 
 
 async def flight_options(tools: CatalogPort | None, intent: dict[str, Any], constraints: dict[str, Any],
-                         timeout_seconds: float, request_id: str = "unknown") -> dict[str, Any]:
+                         timeout_seconds: float, request_id: str = "unknown", *, notify=None, counts=None) -> dict[str, Any]:
     """`{"status": lý do | None, "origin": tên catalog, "outbound": [...], "return": [...]}` cho `choose_flights`."""
     reason = skip_reason(intent, constraints)
     if reason is not None:
@@ -56,6 +56,8 @@ async def flight_options(tools: CatalogPort | None, intent: dict[str, Any], cons
     if tools is None or not hasattr(tools, "list_products") or not getattr(tools, "supports_catalog", False):
         return {"status": UNAVAILABLE}
     origin, destination = canonical_city(intent["origin"]), intent["destination"]
+    if notify:
+        notify("SEARCHING_FLIGHTS", origin=origin, destination=destination, date=intent.get("startDate"))
     try:
         to_destination = await _all(tools, {"taxonomy": "flight", "destination": destination}, timeout_seconds)
         going = _route_from(to_destination, origin)
@@ -72,4 +74,12 @@ async def flight_options(tools: CatalogPort | None, intent: dict[str, Any], cons
         logger.warning("itinerary.flights.unavailable requestId=%s reason=%s", request_id,
                        getattr(exc, "code", type(exc).__name__))
         return {"status": UNAVAILABLE}
+    if counts is not None:
+        from src.backend.app.domain.itinerary import flights as rules
+        dates = rules.trip_dates(intent)
+        for pool, day in ((outbound, dates[0] if dates else None), (inbound, dates[1] if dates else None)):
+            for p in pool:
+                reason = ('PRODUCT_DROPPED_UNAVAILABLE' if not rules._bookable(p) else
+                          'PRODUCT_DROPPED_DATE' if rules.flight_date(p)!=day or (rules._is_round_trip(p) and dates and rules._return_date(p)!=dates[1]) else None)
+                counts.record(p['productId'], reason)
     return {"status": None, "origin": origin, "outbound": outbound, "return": inbound}

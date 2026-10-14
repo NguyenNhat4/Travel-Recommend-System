@@ -130,12 +130,12 @@ class GateBookingClaimTests(unittest.TestCase):
 class GateNoToolBeforeInfoTests(unittest.TestCase):
     def test_missing_fields_with_tool_node_flagged(self):
         response = {"status": "NEEDS_CLARIFICATION", "missingFields": ["destination"]}
-        events = [{"node": "intake"}, {"node": "classify"}, {"node": "tool"}]
+        events = [{"node": "intake"}, {"node": "precheck"}, {"node": "orchestrate"}, {"node": "extract"}, {"node": "tool"}]
         self.assertTrue(gate_no_tool_before_info(response, events))
 
     def test_missing_fields_without_tool_node_ok(self):
         response = {"status": "NEEDS_CLARIFICATION", "missingFields": ["destination"]}
-        events = [{"node": "intake"}, {"node": "classify"}, {"node": "clarify"}]
+        events = [{"node": "intake"}, {"node": "precheck"}, {"node": "orchestrate"}, {"node": "extract"}, {"node": "clarify"}]
         self.assertEqual(gate_no_tool_before_info(response, events), [])
 
     def test_constraint_clarification_without_missing_fields_ignored(self):
@@ -275,7 +275,7 @@ class DatasetFindingsTests(unittest.TestCase):
         self.assertEqual(findings, [])
 
     def test_nodes_exclude_violation(self):
-        events = [{"node": "intake"}, {"node": "classify"}, {"node": "tool"}]
+        events = [{"node": "intake"}, {"node": "precheck"}, {"node": "orchestrate"}, {"node": "extract"}, {"node": "tool"}]
         findings = dataset_findings({}, 200, events, {"nodesExclude": ["tool"]}, {})
         self.assertTrue(findings)
 

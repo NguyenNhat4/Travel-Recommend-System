@@ -259,7 +259,7 @@ class SearchProducts:
     duration_filter: bool = False        # F7 "3 ngày 2 đêm" → bỏ cụm khỏi câu BM25, khai queryPlan.duration (không lọc)
     poi_resolve: bool = False            # địa danh gazetteer ("Hồ Hoàn Kiếm" → Hà Nội) vào F1; hard.destinationSource = poi
     entity_filter: bool = False          # gate cứng: câu nêu điểm vui chơi → chỉ attraction/combo có tên chứa entity
-    # 13/10 (contract 1.28.0; plan docs/plan/2026-10-13-search-evidence-gate-no-answer.md): mặc định tắt → response như 1.27.0.
+    # 13/10 (contract 1.30.0; plan docs/plan/2026-10-13-search-evidence-gate-no-answer.md): mặc định tắt → response như 1.27.0.
     # Cổng bằng chứng theo cụm của nhánh lexical nằm trong `HybridConfig.evidence_gate`.
     duration_mask: bool = False          # thời lượng có vai trò gate → chỉ vé/combo đúng số ngày (cần parse F7, tự bật)
     embed_residual: bool = False         # dense embed câu đã bỏ span điều kiện; residual rỗng + gate thời lượng → chỉ-filter
@@ -375,7 +375,7 @@ class SearchProducts:
             # LLM fallback bật: dựng plan TRƯỚC embed để lượt gọi model (khi confidence thấp) chạy song song với embed
             plan = build_query_plan(nq, q, params, flags, self._gaz)
             pending = self._llm.begin(plan, nq, q, flags)
-        if plan is None and (flags.embed_residual or flags.unexplained):   # 1.28.0: câu embed / rỗng sớm phụ thuộc plan
+        if plan is None and (flags.embed_residual or flags.unexplained):   # 1.30.0: câu embed / rỗng sớm phụ thuộc plan
             plan = build_query_plan(nq, q, params, flags, self._gaz)
         # Câu không dấu → bộ ngưỡng riêng (nếu bật); khoá cache và vector không đổi, chỉ cổng vớt / cutoff đổi.
         profile = self._profile(q)
@@ -618,7 +618,7 @@ class SearchProducts:
         return out, diagnostics
 
     def _mode_diagnostics(self, cfg: HybridConfig | None) -> dict:
-        """Khối diagnostics của chế độ truy xuất (không phụ thuộc kết quả) — dùng chung cho đường rỗng sớm 1.28.0."""
+        """Khối diagnostics của chế độ truy xuất (không phụ thuộc kết quả) — dùng chung cho đường rỗng sớm 1.30.0."""
         if not self.hybrid_on:
             return dict(ANN_DIAGNOSTICS)
         cfg = cfg if cfg is not None else self.hybrid

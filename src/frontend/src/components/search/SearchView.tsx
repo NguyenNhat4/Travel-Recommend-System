@@ -11,9 +11,10 @@ import {
 import { loadSection, useLazySection } from '../../hooks/useLazySection';
 import { parseTripContext, serializeTripContext } from '../../features/search/tripContext';
 import { SearchBox } from '../common/SearchBox';
-import { Search, Loader2 } from 'lucide-react';
+import { SkeletonBlock, SkeletonStatus } from '../common/Skeleton';
+import { Search } from 'lucide-react';
 import { GroupResults } from './GroupResults';
-import { GroupShelf } from './GroupShelf';
+import { GroupShelf, ShelfTilesSkeleton } from './GroupShelf';
 import { SearchAssistantBanner } from './SearchAssistantBanner';
 
 const GROUP_TITLES: Record<SearchGroup | 'all', string> = {
@@ -23,6 +24,41 @@ const GROUP_TITLES: Record<SearchGroup | 'all', string> = {
   more: 'Gói Combo Du lịch Tiết Kiệm',
   flight: 'Vé máy bay & Chặng bay phổ biến',
 };
+
+/**
+ * Khung của cả trang khi `SearchView` chưa chạy được (fallback Suspense lúc trang mới tải, trước khi đọc được URL): ô tìm kiếm,
+ * tiêu đề và số kết quả, thanh tab, ba hàng nhóm của tab "Tất cả".
+ */
+export const SearchViewSkeleton: React.FC = () => (
+  <SkeletonStatus label="Đang tải trang tìm kiếm" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+    <div aria-hidden="true" className="space-y-3">
+      <SkeletonBlock className="h-14 w-full rounded-2xl" />
+      <div className="flex gap-2 overflow-hidden">
+        {['w-32', 'w-36', 'w-40', 'w-28', 'w-36'].map((w, i) => <SkeletonBlock key={i} className={`h-7 shrink-0 rounded-lg ${w}`} />)}
+      </div>
+    </div>
+    <div aria-hidden="true" className="space-y-3">
+      <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2">
+        <SkeletonBlock className="h-7 w-64 max-w-full rounded-lg" />
+        <SkeletonBlock className="h-4 w-44 rounded" />
+      </div>
+      <div className="flex items-center gap-1.5 overflow-hidden border-b border-slate-200 pb-2">
+        {['w-20', 'w-24', 'w-36', 'w-28'].map((w, i) => <SkeletonBlock key={i} className={`h-6 shrink-0 rounded ${w}`} />)}
+      </div>
+    </div>
+    <div aria-hidden="true" className="space-y-8">
+      {TAB_GROUPS.map((tab) => (
+        <div key={tab} className="space-y-3">
+          <div className="flex items-baseline justify-between gap-4">
+            <SkeletonBlock className="h-6 w-40 rounded-md" />
+            <SkeletonBlock className="h-5 w-24 rounded" />
+          </div>
+          <div className="flex gap-4 overflow-hidden"><ShelfTilesSkeleton /></div>
+        </div>
+      ))}
+    </div>
+  </SkeletonStatus>
+);
 
 export const SearchView: React.FC = () => {
   const { navigate } = useTravel();
@@ -91,7 +127,9 @@ export const SearchView: React.FC = () => {
           <h1 className="text-xl sm:text-2xl font-black text-slate-900">{headerTitle}</h1>
           {!isFlightMode && (
             <span className="text-xs font-semibold text-slate-500 flex items-center gap-1.5">
-              {overview.loading && <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-600" />}
+              {overview.loading && !overview.data && (
+                <SkeletonStatus label="Đang đếm kết quả"><SkeletonBlock className="h-4 w-44 rounded" /></SkeletonStatus>
+              )}
               {overview.data && (
                 <span>Tìm thấy {overview.data.total} dịch vụ phù hợp</span>
               )}

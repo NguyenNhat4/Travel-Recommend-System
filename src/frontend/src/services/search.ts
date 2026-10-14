@@ -61,7 +61,7 @@ export interface SearchResponse {
   /** Cosine cao nhất trong toàn bộ kết quả; null khi rỗng. */
   topScore: number | null;
   isWeakMatch: boolean;
-  /** Cụm khiến câu không có đáp án (`diagnostics.queryPlan.unexplained`, contract 1.28.0); [] khi không có. */
+  /** Cụm khiến câu không có đáp án (`diagnostics.queryPlan.unexplained`, contract 1.30.0); [] khi không có. */
   unexplained: string[];
 }
 
@@ -261,7 +261,7 @@ export interface SearchOverview {
   /** Tổng ba nhóm, không tính vé máy bay. */
   total: number;
   isWeakMatch: boolean;
-  /** Cụm khiến câu không có đáp án (contract 1.28.0); [] khi không có. */
+  /** Cụm khiến câu không có đáp án (contract 1.30.0); [] khi không có. */
   unexplained: string[];
 }
 

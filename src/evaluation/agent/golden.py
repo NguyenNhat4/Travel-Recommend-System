@@ -46,7 +46,7 @@ import httpx
 import yaml
 from pydantic import BaseModel, Field
 
-from src.backend.app.agents.runtime_dependencies import RuntimeAgentDependencies
+from src.backend.app.agents.runtime_dependencies import RuntimeAgentDependencies, orchestrator_budget
 from src.backend.app.agents.steps.classification import vietnam_today
 from src.backend.app.agents.tools.itinerary_gateway import ItineraryToolGateway
 from src.backend.app.application.itinerary.contracts import valid
@@ -56,7 +56,7 @@ from src.backend.app.domain.itinerary.planning import (
     MAX_ACTIVITIES_PER_DAY, SLOT_TAXONOMIES, STAY_TAXONOMY,
 )
 from src.backend.app.infrastructure.clients.itinerary_http_clients import ItineraryHttpClients
-from src.backend.app.infrastructure.llm import build_chat_model, chat_model_name
+from src.backend.app.infrastructure.llm import build_chat_model, build_orchestrator_model, chat_model_name
 from src.backend.app.infrastructure.persistence.conversation_store import InMemoryConversationStore
 from src.evaluation.agent.grounding import check_product_grounding, products_in_response
 
@@ -160,10 +160,17 @@ def build_runtime(http_client: httpx.AsyncClient):
     catalog = clients if getattr(clients, "supports_catalog", False) else None
     gateway = ItineraryToolGateway(clients, clients, catalog, recommendation_authorization=None, similar=clients)
     store = InMemoryConversationStore(ttl_seconds=settings.itinerary_conversation_ttl_seconds)
+    # Như composition root (`main.py`): model riêng của orchestrator, lỗi thì dùng model chung; cùng ngân sách thời gian.
+    try:
+        orchestrator_llm = build_orchestrator_model(settings, llm)
+    except Exception:
+        orchestrator_llm = llm
     runtime = RuntimeAgentDependencies(
         gateway, store, llm, authorization=None,
         tool_timeout_seconds=settings.itinerary_tool_timeout_seconds,
         llm_timeout_seconds=settings.itinerary_llm_timeout_seconds,
+        orchestrator_llm=orchestrator_llm,
+        orchestrator_budget_seconds=orchestrator_budget(settings.itinerary_request_timeout_seconds),
     )
     return runtime, settings
 

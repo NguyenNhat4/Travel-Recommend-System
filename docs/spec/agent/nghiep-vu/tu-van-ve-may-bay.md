@@ -1,6 +1,6 @@
 # Tư vấn vé máy bay
 
-Phục vụ FR-AGT-07, AC-AGT-05, AC-AGT-08, NFR-REL-01. Mô tả theo code tại 2026-10-11; khi lệch, PRD và contract thắng.
+Phục vụ FR-AGT-07, AC-AGT-05, AC-AGT-08, NFR-REL-01. Mô tả theo code tại 2026-10-13; khi lệch, PRD và contract thắng.
 
 ## Mục đích
 
@@ -8,8 +8,9 @@ Người dùng hỏi giá hay giờ vé máy bay ở bất kỳ lúc nào, trư�
 của catalog và **không lập lịch lại**. Đã có lịch thì lịch giữ nguyên. Khác với [ve-may-bay.md](ve-may-bay.md), là vé
 được chọn tự động khi lập lịch.
 
-**LLM chỉ hiểu câu hỏi, code viết câu trả lời.** LLM của `classify` đọc ra nơi đi, nơi đến, ngày, khung giờ, rẻ hay đắt nhất.
-Code tra chuyến và dựng câu trả lời.
+**LLM chỉ hiểu câu hỏi, code viết câu trả lời.** Orchestrator khai job vé (`fare`, `FareQuestion`): nơi đi, nơi đến, ngày,
+khung giờ, rẻ hay đắt nhất. `run_jobs` tra chuyến qua `fares.answer` và dựng câu trả lời. Tin chỉ hỏi vé dùng nguyên câu
+đó; tin hỏi vé và việc khác thì orchestrator chèn khối vé (`[[fare_block:n]]`) vào câu trả lời chung.
 
 ## Luồng chính
 
@@ -17,7 +18,7 @@ Code tra chuyến và dựng câu trả lời.
 flowchart TD
     Q([Câu hỏi vé]) --> N{Bấm nút vé<br/>của lượt trước?}
     N -- có --> A
-    N -- không --> L[LLM classify đọc ra<br/>FareQuestion]
+    N -- không --> L[Orchestrator khai job vé<br/>FareQuestion]
     L --> A{Chỉ nói 'vé',<br/>không rõ loại?}
     A -- có --> K[Hỏi: máy bay, khách sạn<br/>hay vé tham quan? + 3 nút]
     A -- không --> W{'Đi đâu cũng được'?}

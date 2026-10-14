@@ -169,64 +169,104 @@ agents -> application ports
 
 ## 3. Kiến Trúc Trợ Lý AI & Cơ Chế Grounding (AI Agent Architecture)
 
-Trợ lý lập lịch trình không phải là một chuỗi prompt đơn giản mà là một hệ thống tác tử có cấu trúc dựa trên **LangGraph**:
+Orc hiểu yêu cầu, tự chọn công cụ và tham số, chọn sản phẩm, phác lịch và soạn mọi câu trả lời nghiệp vụ.
+Sau mỗi batch công cụ, kết quả luôn quay về orc. Orc được trả lời/hỏi lại không gọi tool khi không cần dữ kiện mới.
+Code kiểm quyền, schema, nguồn, ràng buộc và ngân sách thực thi; không tự thêm truy vấn, tiếp trang, nhóm sản phẩm,
+thẻ hoặc chọn phương án thay orc. LangGraph thực thi vòng quyết định, không có chuỗi nghiệp vụ bắt buộc ở v2.
 
 ```mermaid
 stateDiagram-v2
     [*] --> Intake
-    Intake --> Rules
-    Rules --> Finalize: Guardrail, chọn phương án, nút vé, luật dừng
-    Rules --> Orchestrator: Tin cần hiểu
-    Orchestrator --> Gatekeep: Trả lời hoặc hỏi lại
-    Orchestrator --> RunJobs: Explore và fare có cấu trúc
-    RunJobs --> Orchestrator: Kết quả rút gọn, việc còn chờ
-    RunJobs --> Gatekeep: Chỉ vé, không việc còn chờ
-    Orchestrator --> AnalyzeIntent: Đồng ý lập lịch đã kiểm
-    AnalyzeIntent --> AskUser: Thiếu hoặc sai thông tin
-    AnalyzeIntent --> SearchCandidates: Đủ thông tin
-    SearchCandidates --> ValidateAvailability
-    ValidateAvailability --> FilterCandidates
-    FilterCandidates --> ComposeItinerary
-    ComposeItinerary --> SynthesizeResponse
-    AskUser --> Finalize
-    SynthesizeResponse --> Finalize
-    Gatekeep --> Finalize
+    Intake --> Precheck
+    Precheck --> Error: Auth, guardrail đầu vào
+    Precheck --> Orc
+    Orc --> Dispatch: execute, tên tool và arguments
+    Dispatch --> Orc: Kết quả kể cả partial và lỗi
+    Orc --> ValidateFinal: respond
+    ValidateFinal --> Orc: Lỗi sửa được, còn quota
+    ValidateFinal --> Finalize: Hợp lệ
+    Orc --> Error: Model lỗi, hết ngân sách không có final hợp lệ
+    Error --> [*]
     Finalize --> [*]
 ```
 
-**Một orchestrator (LLM) làm đầu mối hội thoại** (chốt 2026-10-12,
-`update-archive/2026-10-12-orchestrator-va-kham-pha-llm.md`). Mỗi vòng chọn `answer`, `ask`, `plan` hoặc `execute`.
-`plan` giữ nhánh lập lịch hiện tại (`extract` → hỏi lại hoặc `tool` → `evaluate` → `filter` → `compose` → `narrate`).
-`execute` khai loại việc, ý định `new|more|about_shown|cheaper|dearer`, mã thẻ, phạm vi, điều kiện và việc còn chờ.
-Code chạy các việc độc lập song song; việc phụ thuộc chạy vòng sau. Explore là nhóm tool chỉ đọc, không có LLM riêng;
-fare dùng logic vé hiện tại. Code giữ kết quả đầy đủ và con trỏ; LLM nhận mã `#n`, dữ kiện rút gọn, số mục chưa liệt kê
-và cờ nguồn còn trang. Tin chỉ hỏi vé, vòng đầu đúng một việc fare và không còn việc chờ, dùng nguyên câu vé không thêm
-lời gọi LLM. Phanh: tối đa 3 việc/vòng, 3 vòng thực thi/lượt, trần tool (khởi đầu 10), ngân sách thời gian và chặn việc trùng.
+### Công cụ, lập lịch và hai loại ngân sách
 
-**Gác cổng trước finalize:** thẻ/link chỉ tới sản phẩm đã tra và đã có trong bản rút gọn của lượt; số liệu LLM viết chỉ qua
-placeholder được code điền. Lặp theo ý định: muốn thêm loại thẻ đã hiện trong cả hội thoại theo điểm đến + loại; hỏi thẻ
-cũ tra lại đúng thẻ; rẻ/đắt hơn so giá mới và giữ điều kiện chưa đổi; câu hỏi mới được gặp lại thẻ cũ. Tối đa 3 điểm
-tham quan/tour, 2 khách sạn khi hỏi chung hoặc 4 khi hỏi riêng chỗ ở. Nhãn “nhất” do code tính. Mỗi lượt chỉ một câu hỏi,
-kể cả nhiều việc vé thiếu thông tin: các việc khác chờ đúng lượt sau. Chỉ thay câu hỏi vé khi việc sau khai thay và
-code xác nhận cùng yêu cầu vừa điền đúng trường thiếu; không thay khối đã trả lời hoặc yêu cầu độc lập.
-Đồng ý lập lịch kiểm từ trường cấu trúc: trả lời lời mời đang chờ, xin lập lịch, thông tin chuyến đã trích được, xin form.
-Từ chối/dừng xoá lời mời ngay lượt đó; chỉ câu mời được chèn tạo lời mời đang chờ, nút không tạo lại.
-**Đã xem chỉ ghi ở finalize theo response cuối**; tìm được mà chưa hiện chưa tính.
+- Năm tool nghiệp vụ: find_products (Search + Catalog list), recommend (Recommendation + Similar), get_products
+  (Detail tối đa 10 refs, kèm hạng phòng), lookup_flights và plan_itinerary. Tên điểm đến catalog đặt sẵn
+  trong system prompt, cache ngắn ngoài ngân sách lượt; không lấy được danh sách thì dùng tên khách nói.
+  Chỉ cung cấp tool có adapter hoạt động; từng tham số có mô tả, đơn vị, null/default, ví dụ và lỗi.
+  Danh tính do server lấy từ phiên; model không truyền userId, URL, secret hay quyền thực thi.
+- Có điểm đến vẫn được dùng Recommendation; strategy/because/diagnostics thể hiện rõ popular/fallback,
+  không gọi là cá nhân hóa khi không có căn cứ. Không đổi thuật toán Search/Rec trong chuyển đổi này.
+- Orc chọn refs, thứ tự và buổi trong ngày. plan_itinerary tính giờ từ thời lượng, giờ mở cửa và đệm sân bay,
+  số đêm, số phòng, tiền từng dòng; trả violations,
+  warnings, assumptions và changes. Không thêm, bỏ, thay sản phẩm; tối ưu giữ multiset refs và các mốc khóa.
+  Không gọi compose_plan để chọn thay orc. Có thể không lưu trú, 0 đêm, không chuyến bay, không combo.
+  Ngày trọn vẹn có 2–3 hoạt động, tối đa một sản phẩm mỗi buổi sáng/chiều/tối; hoạt động cả ngày dùng
+  cả sáng và chiều nhưng tính một sản phẩm. Ngày đến/về theo giờ bay có thể ít hơn. Thiếu thời lượng dùng
+  ước tính hai giờ có công bố; thiếu giờ mở/di chuyển thì feasibility provisional. Không tự đổi buổi hay sản phẩm.
+  Lưu trú tối đa số ngày − 1 đêm, trả phòng ngày cuối; có thể chia chặng khách sạn. Số phòng = ceil(tổng khách /
+  priceAdults); thiếu priceAdults dùng maxOccupancy kèm PRICE_CAPACITY_UNKNOWN. Số phòng khách nói rõ được giữ
+  và kiểm sức chứa, tối đa 9. Tiền phòng = giá/đêm × đêm × phòng. Combo gợi ý riêng ở thẻ, không vào lịch.
+- Giá theo số người/phòng, tối đa 9 phòng, ngày hợp lệ, tuyến/giờ bay và khoảng đệm sân bay 90/150 phút vẫn kiểm.
+  Tối ưu khoảng cách chỉ khi orc yêu cầu, trong tập refs gửi vào; không nói tối ưu toàn catalog.
+- Ngân sách chuyến đi là warning-only: vượt vẫn trả/lưu lịch, công bố tổng, ngân sách, số vượt và phạm vi tính.
+  Không tự chọn lịch rẻ nhất, không chặn chỉ vì vượt tiền. Giá chưa đủ: total/over_by null, known subtotal và
+  unpriced refs rõ; không tuyên bố trong ngân sách hay mức vượt chính xác khi thiếu tổng.
+- Ngân sách thực thi độc lập: baseline 3 batch execute, tối đa 3 calls/batch, 10 request nguồn vật lý,
+  5 model calls (4 quyết định + 1 repair). Chừa final sau batch cuối và thời gian theo timeout model hiện có;
+  không tăng deadline để hoàn tất. Retry transient tối đa một lần cùng arguments, cũng tính request nguồn.
+  Dành quota trước await; cache hit không tính request nguồn nhưng tính call logic. Batch giữ thứ tự call_id.
+  Thành công trùng fingerprint trả cached result; lỗi retryable không bị đánh dấu thành công.
 
-Orchestrator có model riêng (người dùng chọn GPT-6.1 Sol/OpenAI); các bước khác giữ model chung. Model ID/provider cấu
-hình tường minh, bỏ trống dùng chung; thiếu khoá hoặc dựng lỗi thì cảnh báo và dùng model chung. Nhiệt độ, reasoning,
-ngân sách thời gian đặt bằng số đo. Cờ mặc định tắt; chỉ chuyển sau bộ đo đạt ngưỡng.
+### Grounding, guardrail và commit hội thoại
 
-### Tiêu chuẩn Grounding (Chống Bịa Đặt):
-- **Không suy đoán dữ liệu sản phẩm:** LLM chỉ đóng vai trò phân tích ý định ngôn ngữ và sắp xếp lịch trình thời gian. LLM được chỉ ra cặp điểm tham quan trùng nhau trong danh sách ứng viên (chỉ thấy mã và tên, node `filter`); hệ thống chỉ nhận cặp gồm hai mã có trong danh sách và tự chọn giữ mã nào bằng luật; LLM lỗi hoặc quá giờ thì chỉ dùng phần lọc bằng luật. Mọi thông tin về `productId`, `title`, `price`, `imageUrl` bắt buộc phải được lấy nguyên trạng từ kết quả trả về của công cụ truy xuất (`ToolCatalogSearch`): Search, Recommendation, hoặc Similar (`getSimilarProducts`) khi đổi một sản phẩm đã hiển thị. Câu trả lời khám phá (FR-AGT-06) chỉ nêu sản phẩm có trong kết quả Search của chính lượt đó; LLM chọn thẻ trong kết quả tool của chính lượt đó, chỉ nhắc sản phẩm qua mã ngắn `#n`; code kiểm mã, luật lặp theo ý định, tính nhãn so sánh và điền số.
-- **Ranh giới trí nhớ:** không gọi tool chỉ nhắc tên đã gợi ý và lúc nào, không thẻ/link/số/dữ kiện sản phẩm. Thẻ, giá, đơn vị giá, tiện ích, địa chỉ, giờ mở, còn chỗ đều tra lại đúng sản phẩm ngay lượt này. Mọi số liệu sản phẩm trong lời LLM là placeholder của mã đã tra; so với một mốc phải ghi đúng việc (khoảng cách, chênh giá). Code chỉ điền khi xác định đúng một giá trị, không đoán khi mơ hồ. Khối vé code viết được chèn nguyên văn sau kiểm số và được miễn quét số.
-- **Vé máy bay** chỉ lấy từ chuyến bay thật của catalog; `compose` chọn chuyến bằng luật tất định (AC-AGT-02), LLM không chọn hay tạo chuyến. Câu trả lời vé máy bay (FR-AGT-07, AC-AGT-05, AC-AGT-08) do code viết từ chuyến bay của catalog tra ngay lượt đó; LLM của orchestrator chỉ hiểu câu hỏi (nơi đi, nơi đến, ngày, khung giờ, rẻ hay đắt nhất, hỏi lý do, hỏi ngày có chuyến), mọi tên nơi được đối chiếu với catalog trước khi dùng. Nút do code tạo cho câu trả lời vé đi thẳng nhánh vé, không qua LLM. Vị trí trình duyệt chỉ dùng ở Web để gợi ý nơi đi; toạ độ không vào state của agent (AC-AGT-03).
-- **Response phân biệt theo `status`:** `ItineraryResponse` là `oneOf` gồm `COMPLETED`, `NEEDS_CLARIFICATION`, `NO_RESULTS`, `FALLBACK` (`src/shared/contracts/schemas/itinerary-agent.yaml`). `NEEDS_CLARIFICATION` có `searchResults` tuỳ chọn cho thẻ của lượt khám phá (1.24.0) và thẻ chuyến bay của câu trả lời vé (`searchResults.flight`, tối đa 4, 1.25.0); `COMPLETED` có `suggestions` tuỳ chọn, tối đa 3 (1.25.0), ví dụ nút lập lại lịch từ ngày gần nhất còn bán khi lịch chỉ là lịch tham khảo. Trường cụ thể theo contract, không theo ví dụ trong PRD.
-- **Backend tự tính tổng tiền.** Điểm tham quan tự do — điểm tham quan hoặc golf có `ticketed = false`, hoặc không có giá — tính 0 đ vào tổng và hiển thị là "tham quan tự do", không hiển thị là có giá 0 đ. Mục khác thiếu giá (khách sạn, vé máy bay, combo...) thì tổng là `null` kèm cảnh báo, không coi thiếu giá là 0.
-- **LLM lỗi:** dùng fallback dựa trên luật hoặc trả `FALLBACK`/lỗi có kiểm soát.
-- **Lọc đầu vào trước LLM (NFR-SEC-04):** `ClassifyTurn` chạy luật tất định trước khi gọi LLM: mẫu chèn lệnh/đòi secret, rồi lọc tin nhắn rác (rỗng, ký tự lặp, tỉ lệ chữ thấp, gõ bậy, tục tĩu). Khớp thì trả câu cố định, không gọi LLM nào. Luật "gõ bậy" chỉ xét tin nhắn đầu của hội thoại; giữa hội thoại câu cụt được để LLM đọc. Giới hạn tần suất gửi tin nằm ở route API, trước khi graph chạy.
-- **Ngữ cảnh cho LLM:** mọi lượt gọi LLM (phân luồng, trích intent, chọn điểm đến, lập tool plan, viết câu trả lời) nhận cùng ngữ cảnh hội thoại: lịch sử gần nhất có giới hạn, chuyến đi đã chốt, sản phẩm đã cho xem và câu hỏi gần nhất của trợ lý. Ngữ cảnh là dữ liệu không tin cậy, không phải chỉ dẫn.
-- **Hội thoại** có hai tầng lưu: Redis giữ working memory 24 giờ (intent, ràng buộc, lịch sử gần nhất và sản phẩm vừa hiển thị); Postgres giữ lâu dài các lượt `user`/`assistant` của người dùng đã đăng nhập trong `app.conversations` và `app.conversation_messages`. Web cho phép user đã đăng nhập liệt kê, mở lại và tiếp tục hội thoại của chính mình. Ghi archive lỗi không làm hỏng lượt chat. Giá và tình trạng còn chỗ luôn được tải lại, không dùng bản lưu trong hội thoại; câu hỏi vé sau khi có lịch cũng tra lại chuyến theo tuyến của chuyến (AC-AGT-05). Working memory giữ thêm giai đoạn hội thoại (đã đồng ý lập lịch chưa, lời mời đang chờ, nơi bị chê, câu hỏi vé đang nói dở) để các lượt sau hiểu "ok", "chỗ đó", "ngày khác thì sao".
+- ProductId, tên, giá, ảnh, link, ngày và mọi facts lấy từ tool của chính lượt, ref do server cấp.
+  Registry giữ provenance và presented_to_orc; lịch sử chỉ nhận diện sản phẩm, phải refresh trước khi hiện lại.
+  Cùng sản phẩm hai nguồn dùng một ref; cursor opaque gắn owner/conversation/run/query fingerprint.
+- Bộ lọc miễn phí tìm điểm tham quan tự do: attraction/golf giá 0 hoặc ticketed=false là vào cửa tự do.
+  Attraction/golf không giá và không ghi ticketed=true được nhận theo quy ước tham quan tự do, tính 0 tiền
+  vào cửa kèm FREE_ENTRY_ASSUMED cần xác nhận; không khẳng định miễn phí đã xác minh, giá nguồn vẫn null.
+  Vé ghi ticketed=true nhưng không giá và hotel/flight/combo thiếu giá vẫn unknown, không tính 0.
+  Catalog lọc freeOnly trước phân trang, không tự đọc thêm trang hay chọn thẻ thay orc. entryPolicy tuỳ chọn
+  giữ căn cứ free/assumed_free/paid/unknown từ nguồn dù C2 lược bỏ attributes=false; không đổi C2.
+  Chat/nút/Think không kể về catalog, cursor, offset hay phân trang; chỉ nói giới hạn xác minh cho khách.
+  *(Chốt Nguyễn Minh Nhật 2026-10-13, `update-archive/2026-10-13-tham-quan-tu-do-trong-bo-loc-v2.md`.)*
+  Lịch điểm miễn phí không có nghĩa ăn uống/di chuyển miễn phí; công bố phạm vi chi phí đã biết.
+  Yêu cầu mới “không tốn tiền” không bị ngân sách cũ ghi đè; orc hỏi/nêu cách hiểu nếu phạm vi chưa rõ.
+- Final dùng refs/fact refs và disclosures được orc chọn; renderer hydrate thuần, không bù thẻ hoặc nút.
+  Sai schema/ref/fact/card limit/locked/time hoặc thiếu disclosure trả repair cho orc; không tự sửa lựa chọn.
+  Tối đa 10 sản phẩm khác nhau mỗi taxonomy trong hợp recommendations + alternatives toàn lượt;
+  không có trần tổng 20 và không cắt lịch nhiều ngày còn 10. Nút tối đa 3, nút sai trả repair.
+- Fatal: truy cập sai owner, tool ngoài quyền, lộ secret, đầu vào bị chặn theo NFR-SEC-04.
+  Warning: vượt tiền, giá/giờ unknown, partial coverage; final phải công bố cảnh báo bắt buộc của plan.
+  Lỗi một call không hủy các call độc lập thành công. Validator không gọi tool hay suy ý định bằng regex.
+- Giữ precheck trước LLM, auth/rate limit hiện có. Lỗi request/auth/rate limit, đầu vào bị chặn, model lỗi hoặc
+  hết ngân sách được trả thông báo hệ thống ngắn; không gắn sản phẩm mới hay sửa lịch đã lưu.
+  Catalog và lịch sử là dữ liệu không tin cậy, không phải system instruction. Không thêm LLM guardrail thứ hai.
+- shown/context/constraints/pending chỉ commit sau final hợp lệ, đúng một lần/run. planEffect=keep giữ lịch/revision;
+  replace cần plan_result_id hợp lệ do plan_itinerary của lượt này, người dùng đã cho phép lập/sửa lịch và revision khớp.
+  Tool thử lịch không commit. Restore legacy thiếu schema_version lấy intent/refs/lịch, đánh dấu refresh.
+- Redis working memory 24 giờ; archive Postgres cho user đăng nhập vẫn giữ quyền owner và lỗi archive không phá lượt.
+  Claim owner/conversation/clientTurnId nguyên tử ở store dùng chung, cùng request trả final đã có, đang chạy trả
+  TURN_IN_PROGRESS + Retry-After, ID giống nội dung khác trả IDEMPOTENCY_CONFLICT. Không thêm bảng DB.
+- Tiến trình theo công việc orc thực sự yêu cầu, có thể tìm nhiều vòng hoặc trả lời ngay. Code đếm riêng tìm thấy,
+  đủ điều kiện, orc chọn, thực sự hiện. Think là lời giải thích công khai ngắn trong quyết định có cấu trúc của orc, kiểm trước khi phát; Act từ call thật, Observe từ kết quả/lỗi thật. Không thêm model call, không prompt hay suy luận nội bộ (chốt Nguyễn Minh Nhật 2026-10-13, `update-archive/2026-10-13-giai-thich-quyet-dinh-agent-trong-tien-trinh.md`).
+  Không hiện thẻ sản phẩm trước câu trả lời (chốt Nguyễn Minh Nhật 2026-10-14, `update-archive/2026-10-14-bo-the-xem-truoc-trong-tien-trinh.md`).
+- Giữ model/provider/SDK cấu hình hiện có. Function calling với schema riêng từng tool, hội thoại trong lượt
+  nối thêm assistant/tool messages; không có args tự do. update_trip ghi trường ngữ cảnh được phép có bằng chứng
+  từ tin nhắn/nút/form; respond mang câu trả lời cấu trúc. Hai tool này không tính lượt nghiệp vụ.
+  Hết lượt chỉ bind respond; quá ba call nghiệp vụ thì call thừa trả TOO_MANY_CALLS, không thực thi. Mọi câu vé/đổi lịch/nút vé quay về orc, không shortcut final nghiệp vụ.
+
+### Chuyển phiên bản và nghiệm thu
+
+Assistant v2 có entrypoint OpenAPI riêng, request/response/SSE riêng (xem §6), còn v1 giữ hành vi cho client cũ.
+Đây là adapter version; không tạo lại classifier/explore/converse LLM hoặc cờ ITINERARY_ORCHESTRATOR đã gỡ.
+Web Next.js mặc định assistant v2 để người dùng kiểm thử từ 13/10/2026; không đặt NEXT_PUBLIC_ASSISTANT_API cũng dùng v2. Chỉ giá trị v1 tường minh mới chọn client tương thích cũ. Không chuyển Streamlit hoặc runner khác trong thay đổi này (chỉ đạo Nguyễn Minh Nhật 2026-10-13, `update-archive/2026-10-13-nextjs-mac-dinh-assistant-v2.md`). Nghiệm thu model/catalog thật E12 chưa được coi là đạt; thực hiện trước nghiệm thu phát hành. Kiểm inventory trước khi ngừng backend v1; không tự ngừng v1. Grounding/schema 100%, tool calling ≥95%, ca trọng yếu chạy ba lần;
+NFR-PERF-02 vẫn phải đo, tiến trình không tính là first text token. Scripted model không chứng minh tự chủ LLM.
+
+*(Chốt Nguyễn Minh Nhật 2026-10-13, `update-archive/2026-10-13-orc-tu-chu-goi-tool-va-chon-san-pham.md`.)*
 
 ---
 
@@ -249,7 +289,7 @@ ngân sách thời gian đặt bằng số đo. Cờ mặc định tắt; chỉ 
 
 ## 5. Các Ranh Giới Giao Tiếp & Giao Thức Tích Hợp
 
-1. **Frontend $\leftrightarrow$ Backend:** Giao tiếp qua giao thức HTTPS RESTful JSON, định dạng chuẩn hóa theo hợp đồng `src/shared/contracts/openapi.yaml`.
+1. **Frontend $\leftrightarrow$ Backend:** Giao tiếp qua giao thức HTTPS RESTful JSON, định dạng chuẩn hóa theo hợp đồng `src/shared/contracts/openapi.yaml` (v1) và `assistant-v2.openapi.yaml` (assistant v2).
 2. **Backend $\leftrightarrow$ CDP:**
    - Môi trường phát triển nội bộ: Giao tiếp qua `LocalCdpClient` ghi trực tiếp vào schema `cdp` bằng role riêng.
    - Môi trường mở rộng: Giao tiếp qua `HttpCdpClient` gọi REST API tới dịch vụ CDP tập trung.
@@ -292,6 +332,10 @@ src/
 
 Ngoài `src/`: `db/` (DDL, initdb, migration, verify), `docs/` (`prd/`, `spec/`, `plan/`, `guide/` — xem `AGENTS.md` §7; `guide/` chứa hướng dẫn cho người phát triển như cách đọc code, cách chạy, quy trình — không tạo quy tắc mới, khi lệch PRD, contract hoặc `AGENTS.md` thì các nguồn đó thắng), `history/`. Các thư mục cũ ở gốc `src/` (`src/agents`, `src/api`, `src/models`, `src/services`, `src/main.py`, `src/config.py`) đã bị xoá; không tạo lại. `src/__init__.py` được giữ để import dạng `src.backend.app…` chạy được.
 
+Assistant v2 bổ sung `src/shared/contracts/assistant-v2.openapi.yaml`, `paths/assistant-v2.yaml`,
+`schemas/assistant-v2.yaml`; validator kiểm cả v1/v2/CDP, frontend sinh `assistant-v2.gen.ts` riêng.
+API v2 đặt ở `api/v2/` cùng quy tắc layering §2; không thay semantics v1. *(Chốt Nguyễn Minh Nhật 2026-10-13, `update-archive/2026-10-13-orc-tu-chu-goi-tool-va-chon-san-pham.md`.)*
+
 ### 6.2. Quy tắc frontend
 
 - `app/` chỉ chứa route segment (`layout.tsx`, `page.tsx`, `route.ts`), ghép layout và feature; không chứa business rule.
@@ -314,3 +358,5 @@ Ngoài `src/`: `db/` (DDL, initdb, migration, verify), `docs/` (`prd/`, `spec/`,
 ### 6.4. Review chéo
 
 Thay đổi contract cần reviewer của Web và Backend. Thay đổi schema CDP/Insider hoặc port `CdpClient` cần reviewer của Data/Integration. Phân công workstream: [implementation-plan.md](implementation-plan.md).
+
+*(Bộ tool và luật lập lịch A–G chốt Nguyễn Minh Nhật 2026-10-13, `update-archive/2026-10-13-thiet-ke-lai-bo-tool-orc.md`.)*

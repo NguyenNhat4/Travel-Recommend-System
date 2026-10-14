@@ -4,7 +4,7 @@
 - Người đề xuất: tqanh123 / Claude Code soạn
 - Trạng thái: đã chốt (PRD đã cập nhật 2026-10-13; source chưa sửa — chuyển `update-archive/` khi plan làm xong)
 - Chốt bởi / ngày: tqanh123, 2026-10-13
-- PRD bị ảnh hưởng: `docs/prd/requirements.md` §1.2 (FR-SRC-03, FR-SRC-04); `docs/prd/deployment-plan.md` §2 (dòng `SEARCH_CUTOFF`, thêm các biến `SEARCH_*` mới); `docs/prd/architecture.md` §5 (index lexical, chỉ cho P1). Contract: định nghĩa R ở `src/shared/contracts/schemas/common.yaml` (1.28.0 additive).
+- PRD bị ảnh hưởng: `docs/prd/requirements.md` §1.2 (FR-SRC-03, FR-SRC-04); `docs/prd/deployment-plan.md` §2 (dòng `SEARCH_CUTOFF`, thêm các biến `SEARCH_*` mới); `docs/prd/architecture.md` §5 (index lexical, chỉ cho P1). Contract: định nghĩa R ở `src/shared/contracts/schemas/common.yaml` (1.30.0 additive).
 - Mã FR/NFR: FR-SRC-01, FR-SRC-03, FR-SRC-04, AC-SRC-01, NFR-PERF-01
 - Thay thế: `docs/prd/update-archive/2026-10-06-search-hybrid-min-coverage-rrf.md` (hạ `lexicalMinCoverage` 0,6 → 0,1 đi ngược hướng đề xuất này). Khi đề xuất này được chốt, đề xuất cũ chuyển sang `update-archive/` với trạng thái `từ chối (thay bằng 2026-10-13-search-evidence-gate-no-answer)`.
 - Plan chi tiết: `docs/plan/2026-10-13-search-evidence-gate-no-answer.md`
@@ -55,7 +55,7 @@ Thay bằng:
 
 ### 4. Contract (không phải PRD, ghi để người duyệt biết)
 
-Định nghĩa R trong `common.yaml` thêm nhánh "khi `evidenceGate` bật"; `emptyReason` thêm `unexplained`; `queryPlan` thêm `unexplained`, `unparsed`, `denseText`, `duration.role`; backend bắt đầu phát `backgroundScore` (đã khai từ trước). Contract 1.28.0, chỉ thêm; mọi cờ tắt thì response giữ nguyên như 1.27.0.
+Định nghĩa R trong `common.yaml` thêm nhánh "khi `evidenceGate` bật"; `emptyReason` thêm `unexplained`; `queryPlan` thêm `unexplained`, `unparsed`, `denseText`, `duration.role`; backend bắt đầu phát `backgroundScore` (đã khai từ trước). Contract 1.30.0, chỉ thêm; mọi cờ tắt thì response giữ nguyên như 1.27.0.
 
 ### 5. P1 — `docs/prd/architecture.md` §5 (chỉ khi làm P1)
 
@@ -64,7 +64,7 @@ Index lexical của Weaviate thêm các trường `nameTone`, `nameBigrams`, `al
 ## Thay đổi source sau khi chốt
 
 - Backend: `src/backend/app/domain/search/{lexical,hybrid,query_plan,constraints,normalize}.py`, `explain.py` (mới), `src/backend/app/domain/catalog/unit_attributes.py`, `src/backend/app/application/ports/unit_index.py`, `src/backend/app/application/search/use_cases.py`, `src/backend/app/core/config.py`, `src/backend/app/main.py`, test tương ứng.
-- Contract: `src/shared/contracts/schemas/search.yaml`, `common.yaml`, `openapi.yaml` (1.28.0); regen `src/frontend/src/types/api.gen.ts`.
+- Contract: `src/shared/contracts/schemas/search.yaml`, `common.yaml`, `openapi.yaml` (1.30.0); regen `src/frontend/src/types/api.gen.ts`.
 - Frontend: `src/frontend/src/services/search.ts`, `src/frontend/src/components/search/SearchView.tsx`.
 - Bench/gold: `src/evaluation/search_bench/{app_adapter.py,arms/,gold/,config/query_annotations.yaml}`; report `src/evaluation/reports/eval-2026-10-1x-search-evidence-gate.md`.
 - Spec: `docs/spec/hop-dong-tich-hop-search-recommendation.md`, `docs/spec/hop-dong-tich-hop-frontend.md`, `docs/spec/bench/arms.md`, `docs/spec/bench/kien_truc_search_ota_so_do_va_giai_doan.md`.

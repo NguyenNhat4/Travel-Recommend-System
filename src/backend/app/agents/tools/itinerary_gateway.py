@@ -88,7 +88,7 @@ class ItineraryToolGateway:
         """Chuyến bay cho chặng bay của lịch trình (AC-AGT-02). Như `get_product_detail`: application gọi, planner không thấy."""
         if self._catalog is None:
             raise ToolError("CATALOG_NOT_CONFIGURED")
-        allowed = {"parentProductId", "destination", "taxonomy", "availableOnly", "sort", "limit", "offset"}
+        allowed = {"parentProductId", "destination", "taxonomy", "availableOnly", "freeOnly", "sort", "limit", "offset"}
         if not set(params) <= allowed:
             raise ToolError("INVALID_ARGUMENTS")
         # Code gọi (không qua planner) nhưng vẫn là một span `tool` riêng, để trace thấy được catalog trả gì.

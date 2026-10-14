@@ -310,7 +310,7 @@ search:           { mode: HYBRID_CANDIDATE_SCORE, cutoff: 0.84, candidateK: 200,
                     llmFallback: off,                                                                        # 2026-10-06, §2.2 (contract 1.17.0)
                     durationFilter: false, poiResolve: false, entityFilter: false,                           # 2026-10-07, §2.2 (contract 1.18.0)
                     evidenceGate: false, durationMask: false, embedResidual: false, unexplainedEmpty: false,
-                    emitBackground: false,                     # 2026-10-13, plan 2026-10-13-search-evidence-gate-no-answer (contract 1.28.0)
+                    emitBackground: false,                     # 2026-10-13, plan 2026-10-13-search-evidence-gate-no-answer (contract 1.30.0)
                     logQueries: false }                                                                      # 2026-10-06, §7.3
 similar:          { mode: ANN_CANDIDATE_SCORE, topK: 20 }
 recommendations:  { mode: ANN_CANDIDATE_SCORE, candidateK: 200 }
@@ -1011,7 +1011,7 @@ Team Search cung cấp:
     `search("vé lẻ VinWonders Nam Hội An, không lấy combo")` (F3 bật) → `applied` có `mustNot` và `entity`, không có combo;
     `search("không lấy VinWonders, vé Safari")` → `hard.entity == ["safari"]`. Cả ba cờ tắt → response không có
     `queryPlan.duration` / `location` / `entity`, y như 1.17.0.
-10g. (13/10, contract 1.28.0; FR-SRC-03/04 chốt 13/10; plan `docs/plan/2026-10-13-search-evidence-gate-no-answer.md`)
+10g. (13/10, contract 1.30.0; FR-SRC-03/04 chốt 13/10; plan `docs/plan/2026-10-13-search-evidence-gate-no-answer.md`)
     Cờ `SEARCH_UNEXPLAINED_EMPTY`: `search("Nguyễn Khắc Tiệp")`, `search("khách sạn Nguyễn Khắc Tiệp")` → `total 0`,
     `queryPlan.emptyReason == "unexplained"`, `queryPlan.unexplained == ["Nguyễn Khắc Tiệp"]`, không gọi embed;
     `search("khách sạn Đà Lạt rẻ bèo")` vẫn có kết quả; `search("Nguyễn Khắc Tiệp gần biển")` → `unparsed == ["Nguyễn Khắc Tiệp"]`.

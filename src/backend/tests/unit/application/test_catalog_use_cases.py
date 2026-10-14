@@ -11,7 +11,7 @@ from src.backend.app.application.catalog.errors import (
 )
 from src.backend.app.application.catalog.use_cases import GetProductDetail, GetSimilarProducts, ListProducts
 from src.backend.app.application.search import SimilarProducts
-from src.backend.app.domain.catalog import ListingItem
+from src.backend.app.domain.catalog import ListingItem, filter_items, sort_items
 from src.backend.tests.conftest import ROWS, P
 from src.backend.tests.fakes.catalog import InMemoryProductQuery
 
@@ -99,6 +99,22 @@ def test_filters_and_pagination(products):
     assert set(ids(nha_trang_hotels)) == {"H1", "H2"}
     first, second = run(listing(sort="price_asc", limit=2)), run(listing(sort="price_asc", limit=2, offset=2))
     assert first["total"] == second["total"] and not set(ids(first)) & set(ids(second))
+
+
+def test_free_only_filters_before_paging_even_after_many_popular_paid_products():
+    rows = [P(f"paid{i}", f"Tour {i}", "attraction", "TP. Hồ Chí Minh", {}, price=100_000) for i in range(41)]
+    rows += [P("post-office", "Bưu điện", "attraction", "TP. Hồ Chí Minh", {}, price=None),
+             P("market", "Chợ Bến Thành", "attraction", "TP. Hồ Chí Minh", {"ticketed": False}, price=None),
+             P("paid-unknown", "Bảo tàng", "attraction", "TP. Hồ Chí Minh", {"ticketed": True}, price=None)]
+    listing = ListProducts(InMemoryProductQuery(rows))
+    first = run(listing(taxonomy="attraction", free_only=True, available_only=True, limit=1))
+    second = run(listing(taxonomy="attraction", free_only=True, available_only=True, limit=1, offset=1))
+    assert first["total"] == second["total"] == 2
+    assert set(ids(first) + ids(second)) == {"post-office", "market"}
+    assert all(p["unitPrice"] is None for p in first["results"] + second["results"])
+    policies = {p["productId"]: p["entryPolicy"] for p in first["results"] + second["results"]}
+    assert policies == {"post-office": "assumed_free", "market": "free"}
+    assert "ticketed" not in run(GetProductDetail(listing.products)("market"))["attributes"]  # C2 preserved
 
 
 @pytest.mark.parametrize("kwargs, field", [
@@ -194,3 +210,92 @@ def test_similar_when_recsys_is_down_is_retryable_503(products):
 def test_similar_limit_is_bounded(services, products):
     with pytest.raises(InvalidCatalogRequest):
         run(similar_use_case(services, products)("A1", limit=21))
+
+
+# --- sắp xếp sẵn và cache trang (kế hoạch cache và presort §2.2, §3, §4) --------------------------
+
+def _units(products, *pids):
+    return [ListingItem(products.by_id[pid]) for pid in pids]
+
+
+def test_cached_page_is_returned_for_the_same_query(products):
+    lp = ListProducts(products, _units(products, "A1", "G1", "C1"), response_cache_size=8)
+    first = run(lp(limit=2))
+    assert run(lp(limit=2)) is first and len(lp._cache) == 1
+
+
+def test_different_queries_do_not_share_a_page(products):
+    lp = ListProducts(products, _units(products, "A1", "G1", "C1"), response_cache_size=8)
+    a = run(lp(limit=2))
+    assert ids(run(lp(limit=2, offset=1))) != ids(a)
+    run(lp(limit=2, sort="price_desc"))
+    assert len(lp._cache) == 3
+
+
+def test_taxonomy_order_does_not_change_the_cache_key(products):
+    lp = ListProducts(products, _units(products, "A1", "H1", "G1"), response_cache_size=8)
+    first = run(lp(taxonomy=["hotel", "attraction"]))
+    assert run(lp(taxonomy=["attraction", "hotel"])) is first and len(lp._cache) == 1
+
+
+def test_zero_cache_size_disables_caching(products):
+    lp = ListProducts(products, _units(products, "A1", "G1"), response_cache_size=0)
+    first = run(lp())
+    assert run(lp()) is not first and not lp._cache
+
+
+def test_lru_evicts_the_least_recently_used_query(products):
+    lp = ListProducts(products, _units(products, "A1", "G1", "C1"), response_cache_size=2)
+    run(lp(limit=1))
+    run(lp(limit=2))
+    run(lp(limit=1))  # đưa limit=1 lên đầu
+    run(lp(limit=3))  # đẩy limit=2 ra
+    assert len(lp._cache) == 2
+    assert (None, None, False, "popular", 2, 0, None) not in lp._cache
+    assert (None, None, False, "popular", 1, 0, None) in lp._cache
+
+
+def test_invalid_request_is_not_cached(products):
+    lp = ListProducts(products, _units(products, "A1"), response_cache_size=8)
+    with pytest.raises(InvalidCatalogRequest):
+        run(lp(sort="khong-co"))
+    assert not lp._cache
+
+
+def test_parent_listing_and_database_path_are_not_cached(products):
+    lp = ListProducts(products, _units(products, "A1", "G1"), response_cache_size=8)
+    run(lp(parent_product_id="H1"))
+    assert not lp._cache
+    db_only = ListProducts(products, response_cache_size=8)
+    run(db_only())
+    assert not db_only._cache
+
+
+def test_rebuilt_listing_starts_with_an_empty_cache(products):
+    units = _units(products, "A1", "G1", "C1")
+    lp = ListProducts(products, units, response_cache_size=8)
+    before = ids(run(lp()))
+    assert len(lp._cache) == 1
+    rebuilt = ListProducts(products, units, response_cache_size=8)
+    assert not rebuilt._cache and ids(run(rebuilt())) == before
+
+
+def test_presorted_pages_match_sorting_after_filtering(products):
+    """Kết quả trang bằng đúng cách cũ (sort sau khi lọc) với nhiều tổ hợp tham số, có popularity và diversify."""
+    units = [ListingItem(p) for p in products.by_id.values()]
+    popularity = {"C1": 1.0, "G1": 0.5, "H2": 0.5}
+    lp = ListProducts(products, units, popularity, response_cache_size=0)
+    for destination in (None, "Nha Trang"):
+        for taxonomy in (None, ["attraction", "golf"]):
+            for available_only in (False, True):
+                for sort in ("popular", "price_asc", "price_desc"):
+                    expected = sort_items(
+                        filter_items(units, destination=destination,
+                                     taxonomy=None if taxonomy is None else set(taxonomy),
+                                     available_only=available_only),
+                        sort, popularity)
+                    for offset, limit in ((0, 3), (2, 50)):
+                        page = run(lp(destination=destination, taxonomy=taxonomy, available_only=available_only,
+                                      sort=sort, limit=limit, offset=offset))
+                        assert page["total"] == len(expected)
+                        assert ids(page) == [i.product.product_id for i in expected[offset: offset + limit]]

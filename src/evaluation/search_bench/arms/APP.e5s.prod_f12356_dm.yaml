@@ -1,9 +1,9 @@
-# 13/10 (contract 1.28.0; plan docs/plan/2026-10-13-search-evidence-gate-no-answer.md): mốc production 06/10 + thời lượng có vai trò gate/stay (duration_filter + duration_mask).
-# Cờ 1.28.0 là khoá TUỲ CHỌN của khối app (vắng ≡ false) — arm cha không đổi hash. Mặc định tắt ở production.
+# 13/10 (contract 1.30.0; plan docs/plan/2026-10-13-search-evidence-gate-no-answer.md): mốc production 06/10 + thời lượng có vai trò gate/stay (duration_filter + duration_mask).
+# Cờ 1.30.0 là khoá TUỲ CHỌN của khối app (vắng ≡ false) — arm cha không đổi hash. Mặc định tắt ở production.
 id: APP.e5s.prod_f12356_dm
 stage: APP
 parent: APP.e5s.prod_f12356
-description: "production 06/10 + thời lượng có vai trò gate/stay (duration_filter + duration_mask) (1.28.0)"
+description: "production 06/10 + thời lượng có vai trò gate/stay (duration_filter + duration_mask) (1.30.0)"
 composite: true
 engine: app
 app: {cutoff: 0.84, candidate_k: 200, hybrid: true, normalize: true, rrf_k: 60, lexical_k: 10, lexical_cutoff: 0.50, min_coverage: 0.6, lexical_candidate_k: 50,

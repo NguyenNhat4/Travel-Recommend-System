@@ -25,7 +25,7 @@ Hệ thống được thiết kế để vận hành trên ba cấp môi trườ
 
 ### 1.1. Tầng DB HA riêng cho `staging-ha`
 
-`staging-ha` là Terraform root và state riêng (`infra/staging-ha`), tách khỏi root/state `infra/staging`. Vì hai root có state khác nhau, thay đổi Patroni không làm thay đổi tài nguyên do workflow `infra-terraform-staging.yml` quản lý; các workflow CI/CD ứng dụng và crawler cũng không bị sửa trong phạm vi này.
+`staging-ha` là môi trường staging duy nhất, có Terraform root và state riêng (`infra/staging-ha`). Staging cũ đã ngừng ngày 2026-10-13: repo không còn Terraform, workflow CI/CD hay code monitoring của nó (`infra/terraform/environments/staging`, `infra/monitoring` dạng Terraform). Cùng ngày, monitoring cũ đã xoá khỏi GCP: 18 alert policy (15 gắn VM cũ đã nghỉ hoặc probe đã hỏng, 3 policy VM do Compute Engine tự tạo), 4 log-metric, dashboard, uptime check và exclusion log `vota-staging-debug-and-health-ok`. Còn lại trên GCP, chưa có code quản lý: 8 alert policy toàn project và log-metric `vota-staging_*` của chúng, kênh email `vota-staging email alerts`, metric descriptor `custom.googleapis.com/vota/container/*` (dashboard staging-ha dùng), IP tĩnh `34.142.132.251` (bastion dùng), và hai state `infra/staging`, `monitoring/staging`, state này đã lệch so với GCP nên không chạy plan hay apply. Muốn dọn phần còn lại thì import vào root staging-ha trước (task riêng). *(Theo `update-archive/2026-10-13-xoa-monitoring-staging-cu.md`.)*
 
 Khi được bật có chủ đích bằng `create_patroni = true`, staging-ha tạo hai node PostgreSQL + Patroni ở hai zone, một witness etcd ở zone thứ ba và một ILB private. ILB chỉ gửi kết nối ghi tới node trả HTTP `200` ở `/primary`; Patroni tự bầu leader khi mất node. `create_patroni = false` vẫn là mặc định, nên việc merge mã không tự dựng cụm.
 
@@ -45,7 +45,6 @@ Hệ thống phân tách ranh giới bảo mật bằng các chuỗi kết nối
 | `INSIDER_BASE_URL` | URL kết nối dịch vụ Insider Clone | Tất cả | Giao tiếp qua HTTP REST |
 | `INSIDER_REQUEST_TOKEN`| Token xác thực gọi sang Insider | Staging / Prod | Bí mật, không commit vào repository |
 | `LLM_API_KEY` | Khóa xác thực mô hình AI (OpenAI / Claude) | Tất cả | Bí mật, quản lý qua Vault hoặc Secret Manager |
-| `ITINERARY_ORCHESTRATOR` | `off` (mặc định) hoặc `on`; giữ đường cũ tới bộ đo đạt ngưỡng | Tất cả | Không bí mật |
 | `ITINERARY_ORCHESTRATOR_MODEL` / `ITINERARY_ORCHESTRATOR_PROVIDER` | Model riêng và provider `gemini|openai|anthropic`; bỏ trống dùng model chung; lựa chọn GPT-6.1 Sol/OpenAI | Tất cả | Không bí mật; dùng khoá provider hiện có |
 | `ITINERARY_ORCHESTRATOR_REASONING_EFFORT` | Mức reasoning tuỳ chọn; chọn theo số đo, không gửi khi để trống | Tất cả | Không bí mật |
 | `ITINERARY_DATA_MODE` | Nguồn dữ liệu cho tool của trợ lý: `fixture` (dữ liệu mẫu, mặc định dev/test), `inprocess` (gọi engine trong cùng tiến trình; dùng khi chạy dữ liệu thật), `http` (gọi qua HTTP tới `ITINERARY_SERVICE_BASE_URL`; tuỳ chọn, để hoàn tác hoặc khi tách agent thành service riêng), `disabled` | Tất cả | Không bí mật. Không đặt thì ngoài dev/test là `disabled`, nên staging/production phải đặt tường minh |
@@ -146,7 +145,7 @@ Hệ thống cung cấp các endpoint kiểm tra trạng thái sức khỏe đ�
   - Kết nối tới Weaviate (`WEAVIATE_URL`) và sự tồn tại của collection `Product`.
   - Model embedding e5-small đã tải và embed thử được một câu.
 - **Metrics Endpoint (`GET /metrics`):** Xuất các chỉ số độ trễ API, tỷ lệ lỗi HTTP 5xx và thời gian xử lý của Trợ lý AI.
-- **Xem DB trên monitor job cào (tab "DB"):** danh sách schema / bảng kèm số dòng; xem từng bảng có phân trang, lọc, sắp xếp; xem một dòng kèm **liên kết** theo khoá ngoại: bấm sang dòng được trỏ tới (vd. `booking_items.product_id` → sản phẩm) và xem các dòng trỏ về nó (vd. sản phẩm → `booking_items`, `cart_items`, `booking_draft_items`, `combo_items`; hồ sơ CDP → `events`, `users`, `bookings`). Quan hệ lấy từ khoá ngoại khai báo trong PostgreSQL (tự theo migration mới), cộng hai quan hệ theo quy ước không có khoá ngoại: `attributes.parentProductId` (vé / phòng → tuyến / khách sạn) và `demo:business:<sourceRef>` (vé mô phỏng → vé gốc). Dùng kết nối DB sẵn có của job, mỗi yêu cầu trong transaction chỉ đọc, `statement_timeout` 5 giây. Chỉ database `vota`; database `insider` không có (monitor không có kết nối tới nó). Monitor chưa có đăng nhập: trong lúc chờ, nên giới hạn IP nguồn cổng 8765.
+- **Xem DB trên monitor job cào (tab "DB"):** danh sách schema / bảng kèm số dòng; **ô tìm nhanh chung cho cả database**: gõ là hiện kết quả (không cần chọn bảng, không cần bấm), không phân biệt hoa thường và dấu tiếng Việt; mã dạng UUID khớp đúng ở mọi cột UUID của mọi bảng (sản phẩm, người dùng, đơn, hồ sơ và sự kiện CDP…); chuỗi khác tìm trong các cột chữ ngắn của từng bảng (tên, điểm đến, `source_ref`, email, mã đơn…), mỗi bảng tối đa 10 kết quả, mỗi bảng chịu riêng giới hạn 5 giây (bảng quá giờ báo "quá giờ", bảng khác vẫn hiện); bấm một kết quả mở dòng đó kèm liên kết như dưới đây *(chốt 2026-10-13, đề xuất `update-archive/2026-10-13-tim-nhanh-tab-db-monitor.md`)*. Xem từng bảng có phân trang, lọc (ô lọc của bảng cũng không phân biệt dấu và tìm khi đang gõ), sắp xếp; xem một dòng kèm **liên kết** theo khoá ngoại: bấm sang dòng được trỏ tới (vd. `booking_items.product_id` → sản phẩm) và xem các dòng trỏ về nó (vd. sản phẩm → `booking_items`, `cart_items`, `booking_draft_items`, `combo_items`; hồ sơ CDP → `events`, `users`, `bookings`). Quan hệ lấy từ khoá ngoại khai báo trong PostgreSQL (tự theo migration mới), cộng hai quan hệ theo quy ước không có khoá ngoại: `attributes.parentProductId` (vé / phòng → tuyến / khách sạn) và `demo:business:<sourceRef>` (vé mô phỏng → vé gốc). Dùng kết nối DB sẵn có của job, mỗi yêu cầu trong transaction chỉ đọc, `statement_timeout` 5 giây. Chỉ database `vota`; database `insider` không có (monitor không có kết nối tới nó). Monitor chưa có đăng nhập: trong lúc chờ, nên giới hạn IP nguồn cổng 8765.
 - **Sơ đồ và hoạt động DB realtime trên monitor (tab "DB"):**
   - *Sơ đồ quan hệ:* mỗi bảng / view của `cdp`, `catalog`, `app` là một ô (nhóm theo schema) kèm số dòng; đường nối là khoá ngoại (nét liền) và quan hệ quy ước (nét đứt: sản phẩm cha–con, vé mô phỏng–vé gốc); bấm ô mở bảng.
   - *Luồng dữ liệu:* ai đọc / ghi bảng nào — job cào → `cdp.products`, `catalog.combo_items`; backend nạp catalog vào bộ nhớ (chu kỳ `CATALOG_REFRESH_SECONDS`) → web / agent; agent → công cụ backend → catalog trong bộ nhớ + Weaviate; web / agent → giỏ, đơn nháp, đơn, thanh toán, đăng nhập, hội thoại (`app.*`); sự kiện hành vi qua `CdpClient` → `cdp.events`, `cdp.profiles`. Bảng ánh xạ đọc / ghi giữ trong một file khai báo của monitor, đối chiếu code backend.
@@ -159,12 +158,21 @@ Hệ thống cung cấp các endpoint kiểm tra trạng thái sức khỏe đ�
 
 ### 6.1. Quy trình phát hành phiên bản mới (Release Process)
 ```
-[Code Push] ──> [CI: Lint & Tests] ──> [DB Migration] ──> [Deploy Backend] ──> [Deploy Frontend] ──> [Smoke Test]
+[PR: CI] ──> [Merge] ──> [CD: CI gate] ──> [Build (nếu key đổi)] ──> [DB Migration] ──> [Prepare mọi VM] ──> [Switch: canary → còn lại] ──> [Verify + Smoke]
 ```
-1. Xác nhận toàn bộ automated tests và contract validation đều PASS trên CI.
-2. Thực thi migration cơ sở dữ liệu bằng `db/migrations/run.py`.
-3. Triển khai phiên bản Backend mới. Staging-HA cập nhật image không gián đoạn: trên mỗi VM chạy bản mới (slot blue/green) song song bản cũ, đợi `/health/ready` của bản mới, đổi proxy cục bộ (cổng 3000) sang bản mới rồi rút bản cũ sau khi drain; bản mới không sẵn sàng thì bản cũ vẫn phục vụ. Terraform chỉ đổi template (MIG `OPPORTUNISTIC`, không thay VM). Mỗi lần chỉ một deploy chạy (khoá concurrency `staging-ha-app` và `flock` trên VM). Cổng sẵn sàng là LB báo đủ VM HEALTHY và `/health/ready` qua public endpoint đạt 6 lần liên tiếp. Quyết định này áp dụng cho staging-HA; production chưa có quyết định riêng. *(Thay quyết định 2026-10-09 "chấp nhận downtime" của `update-archive/2026-10-09-rut-ngan-cd-chap-nhan-downtime.md`; cập nhật 2026-10-12 theo chỉ đạo trực tiếp, chi tiết vận hành ở `docs/guide/van-hanh-cd-staging-ha.md`.)*
-4. Triển khai phiên bản Frontend mới tương ứng.
+1. CI chạy trên mọi PR. Sau khi merge, CD gọi lại đúng CI đó (`workflow_call`) làm cổng: CI đỏ thì không build và không deploy.
+2. Thực thi migration cơ sở dữ liệu bằng `db/migrations/run.py`. Migration phải tương thích ngược với bản đang chạy (expand trước, contract ở lần phát hành sau), vì bản cũ và bản mới cùng chạy trong lúc roll.
+3. Triển khai backend và frontend trong **một** luồng CD (`staging-ha-app-cd.yml`):
+   - CD so *content key* của từng thành phần (hash các thư mục đầu vào của image) với bản đang chạy (last-good). Chỉ thành phần đổi mới qua CI và build. Image có key đã tồn tại thì không build lại.
+   - Run mới nhất luôn chứa trọn mọi thay đổi chưa deploy, nên run đang chờ bị thay thế mà không mất thay đổi nào. Khoá `concurrency: staging-ha-app` đặt ở mức workflow và giữ `flock` trên VM.
+   - Image mong muốn được ghi vào *all-instances config* của MIG (metadata `vota-backend-image`, `vota-frontend-image`), để VM do autoscaler hoặc autohealing tạo khởi động đúng bản. Deploy ứng dụng **không chạy Terraform**; Terraform chỉ chạy ở `staging-ha-infra-cd.yml`.
+   - Roll theo hai pha. Pha `prepare` chạy song song trên mọi VM: dựng slot mới, đợi `/health/ready`, chép `/_next/static` vào kho tĩnh của proxy. Pha `switch`: đổi proxy trên VM đầu trước (canary), rồi các VM còn lại song song.
+   - Kho tĩnh giữ asset của các phiên bản gần đây, để trình duyệt đang chạy bản cũ không bị 404 chunk.
+   - Cổng sẵn sàng: mọi VM chạy đúng image đích, LB báo đủ VM HEALTHY, và `/health/ready` qua public endpoint đạt 3 lần liên tiếp (cách 5 s).
+   - Lỗi hoặc run bị huỷ thì đưa image mong muốn và các VM về last-good.
+
+   Quyết định này áp dụng cho staging-HA; production chưa có quyết định riêng. *(Theo `update-archive/2026-10-13-cd-staging-ha-mot-luong-hai-pha.md`, thay mô tả ngày 2026-10-12; chi tiết vận hành ở `docs/guide/van-hanh-cd-staging-ha.md`.)*
+4. Frontend đi cùng luồng ở bước 3; không còn CD frontend riêng.
 5. Thực hiện kịch bản Smoke Test trên Staging/Production để xác nhận luồng tìm kiếm và đặt hàng hoạt động bình thường.
 
 ### 6.2. Kế hoạch hoàn tác khi phát sinh sự cố (Rollback Strategy)
@@ -188,4 +196,4 @@ gcloud dns record-sets update db.vota.internal. \
   --rrdatas=<old-primary-private-ip>
 ```
 
-Không chạy `terraform apply` của root `infra/terraform/environments/staging` để rollback Patroni; hai state có ranh giới riêng.
+Không dùng state `infra/staging` của staging cũ (đã gỡ khỏi repo) để rollback Patroni; hai state có ranh giới riêng.

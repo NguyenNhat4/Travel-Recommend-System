@@ -53,7 +53,7 @@ class BuildChatModelTests(unittest.TestCase):
         mock, calls = fake_sdk("langchain_google_genai", "ChatGoogleGenerativeAI")
         with mock:
             llm = build_chat_model(settings(gemini_api_key="g", openai_api_key="o", anthropic_api_key="a"))
-        self.assertEqual(llm.provider, "ChatGoogleGenerativeAI")
+        self.assertEqual(llm.model.provider, "ChatGoogleGenerativeAI")
         self.assertEqual(calls[0]["google_api_key"], "g")
         self.assertEqual(calls[0]["model"], "gemini-2.5-flash")
 
@@ -61,14 +61,14 @@ class BuildChatModelTests(unittest.TestCase):
         mock, calls = fake_sdk("langchain_openai", "ChatOpenAI")
         with mock:
             llm = build_chat_model(settings(openai_api_key="o", anthropic_api_key="a"))
-        self.assertEqual(llm.provider, "ChatOpenAI")
+        self.assertEqual(llm.model.provider, "ChatOpenAI")
         self.assertEqual(calls[0]["api_key"], "o")
 
     def test_anthropic_is_the_last_resort(self):
         mock, calls = fake_sdk("langchain_anthropic", "ChatAnthropic")
         with mock:
             llm = build_chat_model(settings(anthropic_api_key="a"))
-        self.assertEqual(llm.provider, "ChatAnthropic")
+        self.assertEqual(llm.model.provider, "ChatAnthropic")
         self.assertEqual(calls[0]["api_key"], "a")
 
     def test_openai_uses_its_default_then_honours_itinerary_llm_model(self):
@@ -107,12 +107,12 @@ if __name__ == "__main__":
 class OrchestratorModelTests(unittest.TestCase):
     def build(self, **overrides):
         from src.backend.app.infrastructure.llm import build_orchestrator_model
-        return build_orchestrator_model(settings(itinerary_orchestrator="on", **overrides), "shared")
+        return build_orchestrator_model(settings(**overrides), "shared")
 
-    def test_off_or_blank_model_reuses_shared_model(self):
+    def test_disabled_llm_or_blank_model_reuses_shared_model(self):
         from src.backend.app.infrastructure.llm import build_orchestrator_model
-        self.assertEqual(build_orchestrator_model(settings(itinerary_orchestrator="off", itinerary_orchestrator_model="gpt-6.1-sol"), "shared"), "shared")
         self.assertEqual(self.build(itinerary_orchestrator_model=None), "shared")
+        self.assertEqual(build_orchestrator_model(settings(itinerary_use_llm=False, itinerary_orchestrator_model="gpt-6.1-sol"), "shared"), "shared")
 
     def test_explicit_openai_provider_wins_even_when_common_provider_is_gemini(self):
         mock, calls = fake_sdk("langchain_openai", "ChatOpenAI")
@@ -136,21 +136,61 @@ class OrchestratorModelTests(unittest.TestCase):
                            itinerary_orchestrator_provider="openai", itinerary_orchestrator_reasoning_effort=effort)
 
     def test_openai_uses_native_schema_without_function_tools(self):
-        from src.backend.app.infrastructure.llm.client import StructuredOrchestratorModel
         from unittest.mock import Mock
+
+        from src.backend.app.infrastructure.llm.client import (
+            StructuredOrchestratorModel,
+        )
         inner = Mock()
         adapter = StructuredOrchestratorModel(inner)
         adapter.with_structured_output("schema")
         inner.with_structured_output.assert_called_once_with("schema", method="json_schema", strict=True)
 
-    def test_empty_optional_env_fields_are_none_and_rollout_defaults_off(self):
+    def test_empty_optional_env_fields_are_none(self):
         value = settings(itinerary_orchestrator_model="", itinerary_orchestrator_provider="", itinerary_orchestrator_reasoning_effort="")
-        self.assertEqual(value.itinerary_orchestrator, "off")
         self.assertIsNone(value.itinerary_orchestrator_model)
         self.assertIsNone(value.itinerary_orchestrator_provider)
         self.assertIsNone(value.itinerary_orchestrator_reasoning_effort)
 
-    def test_orchestrator_does_not_bind_function_tools(self):
-        from src.backend.app.infrastructure.llm.client import StructuredOrchestratorModel
-        with self.assertRaises(RuntimeError):
-            StructuredOrchestratorModel(None).bind_tools([], tool_choice="any")
+    def test_orchestrator_binds_function_tools(self):
+        from unittest.mock import Mock
+
+        from src.backend.app.infrastructure.llm.client import (
+            StructuredOrchestratorModel,
+        )
+        inner = Mock()
+        StructuredOrchestratorModel(inner).bind_tools([], tool_choice="required", strict=True, parallel_tool_calls=True)
+        inner.bind_tools.assert_called_once_with([], tool_choice="required", strict=True, parallel_tool_calls=True)
+
+
+def test_openai_reasoning_function_binding_clones_transport_only():
+    from unittest.mock import Mock
+
+    from src.backend.app.infrastructure.llm.client import FunctionCallingModel
+    inner=Mock(); inner.model_name='gpt-6-luna'; clone=inner.model_copy.return_value
+    FunctionCallingModel(inner,'openai').bind_tools([],tool_choice='required',strict=True,parallel_tool_calls=True)
+    inner.model_copy.assert_called_once_with(update={'use_responses_api':True})
+    clone.bind_tools.assert_called_once_with([],tool_choice='required',strict=True,parallel_tool_calls=True)
+    inner.bind_tools.assert_not_called()
+
+
+def test_provider_tool_options_do_not_send_openai_strict_to_other_providers():
+    from unittest.mock import Mock
+
+    from src.backend.app.infrastructure.llm.client import FunctionCallingModel
+    for provider in ('gemini','anthropic'):
+        inner=Mock()
+        FunctionCallingModel(inner,provider).bind_tools([],tool_choice='required',strict=True,parallel_tool_calls=True)
+        kwargs={'tool_choice':'any', **({'parallel_tool_calls':True} if provider=='anthropic' else {})}
+        inner.bind_tools.assert_called_once_with([],**kwargs)
+
+
+def test_legacy_plain_tool_definitions_keep_provider_defaults():
+    from unittest.mock import Mock
+
+    from src.backend.app.infrastructure.llm.client import FunctionCallingModel
+    inner=Mock()
+    definitions=[{'name':'search_products','description':'Search','parameters':{'type':'object'}}]
+    FunctionCallingModel(inner,'openai').bind_tools(definitions,tool_choice='any')
+    inner.bind_tools.assert_called_once_with(definitions,tool_choice='any')
+    inner.model_copy.assert_not_called()

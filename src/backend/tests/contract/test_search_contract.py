@@ -141,10 +141,10 @@ def test_contract_declares_every_domain_constant():
     assert combo_flags == set(qp["mustNot"]["properties"]["flags"]["items"]["enum"])
     scored = DOC["components"]["schemas"]["ScoredProduct"]["allOf"][1]["properties"]
     assert scored["matchedChildren"]["maxItems"] == 5
-    assert DOC["info"]["version"] == app.version == "1.28.0"
+    assert DOC["info"]["version"] == app.version == "1.30.0"
 
 
-# --- 1.28.0 (plan docs/plan/2026-10-13-search-evidence-gate-no-answer.md): mọi cờ mới bật --------------------------------
+# --- 1.30.0 (plan docs/plan/2026-10-13-search-evidence-gate-no-answer.md): mọi cờ mới bật --------------------------------
 V128_CASES = ("Nguyễn Khắc Tiệp", "khách sạn Nguyễn Khắc Tiệp", "xkcd qwzt plorb", "2 ngày 1 đêm", "khách sạn Đà Lạt 2 ngày 1 đêm",
               "Nguyễn Khắc Tiệp gần biển", "khách sạn Đà Lạt rẻ bèo", "Trần Thị Mai", "cho dem da lat", "đảo gần biển 2 ngày")
 

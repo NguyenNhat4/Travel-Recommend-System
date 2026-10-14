@@ -177,7 +177,7 @@ def narration_input(state: dict) -> list:
                       for slot in day.get("slots", [])]})
     if reference_note(state, response) is not None:
         # Lịch tham khảo (vé chưa mở bán cho ngày đi): LLM kể chuyện từng nơi nên cần mô tả catalog của nó.
-        from .exploration import about  # import muộn: exploration dùng product_link của module này
+        from .replies import about  # import muộn: replies nạp messages, messages nạp narration
         candidates = state.get("candidates") or {}
         for day in view["days"]:
             for item in day["items"]:

@@ -107,6 +107,13 @@ class RecommendationCache:
                 return cached, "hit"
             token = self._new_token()
             leader = self.store.try_lock(lock, token, self.policy.lock_ttl_ms)
+            if leader:
+                # Người giữ khoá trước có thể vừa ghi kết quả và nhả khoá giữa lúc đọc ở trên và lúc giữ khoá này: đọc lại
+                # trước khi tính, nếu không sẽ tính trùng.
+                cached = self._load(key)
+                if cached is not None:
+                    self._release(lock, token)
+                    return cached, "hit"
         except RecommendationCacheUnavailable:
             return compute(), "error"
         if leader:
@@ -121,6 +128,10 @@ class RecommendationCache:
                 if cached is not None:
                     return cached, "wait_hit"
                 if self.store.try_lock(lock, token, self.policy.lock_ttl_ms):   # người giữ đã nhả không ghi, hoặc hết hạn
+                    cached = self._load(key)   # người giữ trước vừa ghi xong và nhả khoá giữa lúc đọc và lúc giữ khoá
+                    if cached is not None:
+                        self._release(lock, token)
+                        return cached, "wait_hit"
                     return self._lead(key, lock, token, compute)
             except RecommendationCacheUnavailable:
                 return compute(), "error"
@@ -132,10 +143,13 @@ class RecommendationCache:
             result = compute()
             return result, self._store(key, result, ok="miss")
         finally:
-            try:
-                self.store.unlock(lock, token)
-            except RecommendationCacheUnavailable:
-                pass   # khoá tự hết hạn sau lock_ttl_ms
+            self._release(lock, token)
+
+    def _release(self, lock: str, token: str) -> None:
+        try:
+            self.store.unlock(lock, token)
+        except RecommendationCacheUnavailable:
+            pass   # khoá tự hết hạn sau lock_ttl_ms
 
     def _load(self, key: str) -> dict | None:
         raw = self.store.get(key)

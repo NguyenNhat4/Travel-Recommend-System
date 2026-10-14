@@ -85,7 +85,7 @@ export function convertItineraryCompletedToGroundedPlan(
       product: adaptProductSummaryToProduct(stay.product),
       nights,
       fromNight,
-      rooms: stay.rooms ?? 1,
+      rooms: stay.rooms,
       dayRange: lastNight > fromNight ? `Đêm ${fromNight}–${lastNight}` : `Đêm ${fromNight}`,
       note: stay.note ?? '',
       source: (stay.source as any) || 'search',

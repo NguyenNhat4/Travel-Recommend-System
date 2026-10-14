@@ -2,7 +2,7 @@
 <html lang="vi">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>V-OTA · Fresh catalog</title>
+<title>Sota · Fresh catalog</title>
 <style>
 :root{--bg:#f3f6fa;--panel:#fff;--ink:#15233b;--muted:#637187;--line:#dae2ed;--brand:#215aca;--good:#12714b;--bad:#ac2939;--warn:#825400;--soft:#eef3fa;--code:#102037;--codeink:#d8e6fb}
 *{box-sizing:border-box}
@@ -110,7 +110,7 @@ details{margin:10px 0}summary{cursor:pointer}
 .facts{display:flex;gap:6px 18px;flex-wrap:wrap;margin:8px 0}.facts span small{margin-right:4px}
 @media(max-width:700px){header{padding:14px 16px}main{padding:0 12px}.field,.live-row{grid-template-columns:1fr}th,td{padding:6px}.card{padding:13px}
  .graph{display:flex;flex-direction:column;align-items:stretch;min-width:0;gap:6px}.graph svg{display:none}.ghead{margin-top:10px}}
-.dbgrid{display:grid;gap:16px;grid-template-columns:minmax(0,1fr) minmax(0,4fr);align-items:start}.dbgrid>.card{min-width:0}@media (max-width:900px){.dbgrid{grid-template-columns:minmax(0,1fr)}}
+#dbSearchCard input[type=search]{width:100%;max-width:760px;font-size:16px;padding:9px 12px}#dbSearchCard mark{background:#fff0a6;color:inherit;padding:0 1px;border-radius:2px}#dbSearchCard h3{margin:14px 0 4px;font-size:14px}.dbgrid{display:grid;gap:16px;grid-template-columns:minmax(0,1fr) minmax(0,4fr);align-items:start}.dbgrid>.card{min-width:0}@media (max-width:900px){.dbgrid{grid-template-columns:minmax(0,1fr)}}
 .rt td{white-space:nowrap}
 #dbDiagram svg{display:block;font:12px system-ui,sans-serif}#dbDiagram .tbl{cursor:pointer}#dbDiagram .tbl rect.box{fill:var(--panel);stroke:var(--line);stroke-width:1.2}
 #dbDiagram .tbl.view rect.box{stroke-dasharray:4 3}#dbDiagram .tbl:hover rect.box,#dbDiagram .tbl.on rect.box{stroke:var(--brand);stroke-width:2}
@@ -120,7 +120,7 @@ details{margin:10px 0}summary{cursor:pointer}
 </style>
 </head>
 <body>
-<header><h1>V-OTA <span class="muted">/ Fresh catalog</span></h1><p>Theo dõi cào → chuẩn hoá → nạp Postgres → embed/index Weaviate</p><div id="connection" aria-live="polite">Đang kết nối…</div>
+<header><h1>Sota <span class="muted">/ Fresh catalog</span></h1><p>Theo dõi cào → chuẩn hoá → nạp Postgres → embed/index Weaviate</p><div id="connection" aria-live="polite">Đang kết nối…</div>
 <nav aria-label="Điều hướng"><button data-view="overview" aria-current="true">Tổng quan</button><button data-view="runs">Lịch sử</button><button data-view="system">Hệ thống</button><button data-view="storage">Dung lượng</button><button data-view="settings">Cấu hình</button><button data-view="db">DB</button><button data-view="realtime">Realtime</button></nav>
 <div id="controls" class="actions" aria-label="Điều khiển lượt"><button type="button" class="primary" data-action="start" data-args='{"mode":"auto"}' title="full hoặc daily theo chu kỳ trong Cấu hình">Chạy theo chu kỳ</button><button type="button" data-action="start" data-args='{"mode":"full"}'>Cào lớn</button><button type="button" data-action="start" data-args='{"mode":"daily"}'>Làm mới Trip</button><button type="button" data-action="start" data-args='{"mode":"index"}'>Bảo trì và index</button><button type="button" class="danger" data-action="stop" data-args='{}'>Dừng lượt đang chạy</button><span id="controlState"></span></div>
 </header>
@@ -198,7 +198,7 @@ async function system(){const [d,h]=await Promise.all([api('/api/overview'),api(
  main.innerHTML=targetsCard(d.targets)+
   card('Biến kết nối',`<div class="badge-row">${Object.entries(d.env).map(([key,value])=>`<span class="status">${esc(key)}: ${typeof value==='boolean'?(value?'đã đặt':'chưa đặt'):esc(value)}</span>`).join('')}</div>`)+
   card('Dữ liệu giữ lại',`<p><strong>${esc(bytes(d.diskBytes))}</strong> <small class="muted">raw, interim, catalog và báo cáo của các lượt còn giữ (Cấu hình → Lưu trữ và log)</small></p>`)+
-  card('Log runner',table(['File','Cập nhật','Mã thoát'],d.runnerLogs.map(r=>[button(r.name,'runnerlog',{name:r.name},'link'),esc(when(r.modifiedAt)),esc(r.exitCode)])))+
+  card('Log chạy',table(['File','Cập nhật','Mã thoát'],d.runnerLogs.map(r=>[button(r.name,'runnerlog',{name:r.name},'link'),esc(when(r.modifiedAt)),esc(r.exitCode)])))+
   (h.error?card('Khách sạn Trip · xoay vòng',`<p class="muted">${esc(h.error)}</p>`):hotelsCard(h,d.tripHotelIds))}
 // UI5: nút chạy / dừng lượt luôn ở thanh trên; trạng thái lấy từ /api/live mỗi 5 giây ở mọi trang
 function setControls(running){S.globalRunning=running;document.querySelectorAll('#controls [data-action=start]').forEach(b=>b.disabled=!!running);const stop=$('#controls [data-action=stop]');if(stop)stop.disabled=!running||running.starting;
@@ -274,11 +274,11 @@ function panelHead(){const n=currentNode(),views=nodeViews(n),st=n&&stepOf(n.id)
   `<div class="tabs" role="tablist">${views.map(v=>`<button type="button" data-tab="${v}" aria-current="${v===S.tab}">${esc(VIEW_LABELS[v])}</button>`).join('')}</div></section>`}
 async function loadLive(){S.live=S.runData?.status==='running'?await api('/api/live').catch(()=>null):null}
 // UI3: URL giữ trạng thái (#run=…&node=…&view=… hoặc #page=…): tải lại trang hay gửi link mở đúng chỗ
-function stateHash(){const p=new URLSearchParams();if(S.view==='run'&&S.run){p.set('run',S.run);if(S.node)p.set('node',S.node);if(S.tab)p.set('view',S.tab)}else if(S.view&&S.view!=='overview'){p.set('page',S.view);if(S.view==='db'&&S.db?.mode==='diagram')p.set('mode','diagram');else if(S.view==='db'&&S.db?.table)p.set('table',S.db.table)}return p.toString()}
+function stateHash(){const p=new URLSearchParams();if(S.view==='run'&&S.run){p.set('run',S.run);if(S.node)p.set('node',S.node);if(S.tab)p.set('view',S.tab)}else if(S.view&&S.view!=='overview'){p.set('page',S.view);if(S.view==='db'&&S.db?.mode==='diagram')p.set('mode','diagram');else if(S.view==='db'&&S.db?.table)p.set('table',S.db.table);if(S.view==='db'&&S.db?.search)p.set('q',S.db.search)}return p.toString()}
 function writeHash(){const h=stateHash();if(location.hash.slice(1)!==h)history.pushState(null,'',h?'#'+h:location.pathname)}
 async function applyHash(){const p=new URLSearchParams(location.hash.slice(1));
  if(p.get('run'))return openRun(p.get('run'),p.get('view'),null,p.get('node')).catch(async e=>{await navigate('overview');fail(e)});  // link cũ: lượt đã bị xoá
- if(p.get('page')==='db')S.db={table:p.get('table')||null,filters:{},offset:0,mode:p.get('mode')==='diagram'?'diagram':'list'};
+ if(p.get('page')==='db')S.db={table:p.get('table')||null,filters:{},offset:0,mode:p.get('mode')==='diagram'?'diagram':'list',search:p.get('q')||''};
  return navigate(['overview','runs','hotels','settings','system','storage','db','realtime'].includes(p.get('page'))?p.get('page'):'overview',false)}
 addEventListener('popstate',()=>{if(location.hash.slice(1)!==stateHash())applyHash().catch(fail)});
 async function renderPanel(){const p=$('#panel');if(!p)return;stopLive();await loadLive();writeHash();
@@ -471,7 +471,7 @@ async function tabDb(){try{await showList({kind:'db',run:S.run})}catch(e){const 
  $('#tab').innerHTML=card('Nạp DB',`<p class="muted">${esc(e.message)}</p>${why?`<p class="muted">${esc(why)}</p>`:''}${r.error?`<p class="muted">${kindBadge(r.errorKind)} ${esc(r.error)}</p>`:''}`)}}
 async function tabEmbed(){const t=$('#tab');const idx=S.runData.index;let d=null,err='';try{d=await api('/api/embed',{run:S.run,limit:1})}catch(e){err=e.message}
  const r=d?.report||idx||{};const a=d?.actions||{};
- t.innerHTML=`<div class="grid">${[['Model · text builder',r.modelVersion||'—','tiền tố passage: khi nạp'],['Search unit',num(r.searchUnits),'sản phẩm is_search_unit trong DB đích'],['Nhúng mới lượt này',num(a.embedded??r.embedded),Object.entries(d?.reasons||{}).map(([k,v])=>`${reasons[k]||k}: ${v}`).join(' · ')||'embed e5-small'],['Giữ nguyên',num(a.unchanged??r.unchanged),'text + model không đổi'],['Xoá vector mồ côi',num(a.deleted??a.orphan??r.deletedOrphans),'không còn trong DB'],['Độ dài text (ký tự)',d?.chars?`${d.chars.median}`:'—',d?.chars?`min ${d.chars.min} · max ${d.chars.max}`:'']].map(([l,v,s])=>`<div class="card kpi"><small>${esc(l)}</small><strong class="${String(v).length>16?'long':''}">${esc(v)}</strong><small>${esc(s)}</small></div>`).join('')}</div>`+
+ t.innerHTML=`<div class="grid">${[['Model · bộ tạo text',r.modelVersion||'—','tiền tố passage: khi nạp'],['Đơn vị tìm kiếm',num(r.searchUnits),'sản phẩm is_search_unit trong DB đích'],['Nhúng mới lượt này',num(a.embedded??r.embedded),Object.entries(d?.reasons||{}).map(([k,v])=>`${reasons[k]||k}: ${v}`).join(' · ')||'embed e5-small'],['Giữ nguyên',num(a.unchanged??r.unchanged),'text + model không đổi'],['Xoá vector mồ côi',num(a.deleted??a.orphan??r.deletedOrphans),'không còn trong DB'],['Độ dài text (ký tự)',d?.chars?`${d.chars.median}`:'—',d?.chars?`min ${d.chars.min} · max ${d.chars.max}`:'']].map(([l,v,s])=>`<div class="card kpi"><small>${esc(l)}</small><strong class="${String(v).length>16?'long':''}">${esc(v)}</strong><small>${esc(s)}</small></div>`).join('')}</div>`+
  (err?card('Chi tiết embed',`<p class="muted">${esc(err)}</p>`):'')+
  card('Thử truy vấn trên collection đích',`<form id="queryForm" class="actions"><input name="q" type="search" required maxlength="500" placeholder="vd. resort gần biển cho gia đình ở Nha Trang" style="min-width:min(460px,100%)" aria-label="Câu truy vấn"><select name="k" aria-label="Số kết quả">${[5,10,20,50].map(k=>`<option ${k===10?'selected':''}>${k}</option>`).join('')}</select><label><input type="checkbox" name="refresh"> Đọc lại vector</label><button class="primary" type="submit">Tìm</button></form><p class="muted">Embed bằng e5-small (tiền tố query:) rồi xếp hạng cosine trên mọi vector của collection (đọc qua REST, giữ trong bộ nhớ 2 phút).</p><div id="queryOut"></div>`)+
  (d?card('Text đem embed từng sản phẩm',`<p class="muted">Đúng chuỗi mà bước index đưa vào model e5-small (build_text của backend). Bấm tên để xem toàn văn và vector.</p>`+button('Mở danh sách','list',{kind:'embed',run:S.run},'primary')+' '+button('Chỉ sản phẩm nhúng mới','list',{kind:'embed',run:S.run,action:'embedded'})):'')}
@@ -525,7 +525,31 @@ async function dbRefresh(){if(S.view!=='db'){clearInterval(S.dbTimer);S.dbTimer=
  if(document.hidden||$('#detail').open||(a&&main.contains(a)&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)))return;
  const keep=[...main.querySelectorAll('.scroll')].map(x=>[x.scrollLeft,x.scrollTop]);await dbPage();
  main.querySelectorAll('.scroll').forEach((x,i)=>{if(keep[i])[x.scrollLeft,x.scrollTop]=keep[i]})}
-document.addEventListener('change',e=>{if(e.target.id==='dbAuto'){S.dbAuto=e.target.checked;dbSchedule()}});
+document.addEventListener('change',e=>{if(e.target.id==='dbAuto'){S.dbAuto=e.target.checked;dbSchedule()}
+ if(e.target.id==='dbDeep'){S.db.deep=e.target.checked;S.db.offset=0;dbPage().catch(fail)}});
+// Tìm nhanh cả database (chốt 2026-10-13): gõ là tìm (chờ 250 ms sau phím cuối), không phân biệt hoa thường / dấu.
+const dbFold=s=>[...String(s)].map(ch=>ch==='đ'||ch==='Đ'?'d':ch.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase()||ch).join('');
+function dbMark(v,q){if(v===null||v===undefined)return '<span class="muted">NULL</span>';const t=typeof v==='object'?JSON.stringify(v):String(v);const s=t.length>90?t.slice(0,90)+'…':t;
+ const chars=[...s],fs=chars.map(dbFold),f=fs.join(''),on=chars.map(()=>false);if(fs.some(x=>x.length!==1))return esc(s);  // tô sáng mọi từ của chuỗi tìm
+ for(const w of dbFold(q).trim().split(/\s+/).filter(Boolean)){let i=f.indexOf(w);while(i>=0){for(let j=i;j<i+w.length;j++)on[j]=true;i=f.indexOf(w,i+w.length)}}
+ return chars.map((c,i)=>(on[i]&&!on[i-1]?'<mark>':'')+esc(c)+(on[i]&&!on[i+1]?'</mark>':'')).join('')}
+function dbSearchHtml(){const D=S.db||{},r=D.searchResult;if(D.searchBusy&&!r)return '<p class="muted">Đang tìm…</p>';
+ if(!r)return '<p class="muted">Gõ ít nhất 2 ký tự: tên, điểm đến, mã đơn, email, source_ref, UUID… Không phân biệt hoa thường, không cần dấu ("da nang" ra "Đà Nẵng").</p>';
+ const found=r.groups.some(g=>g.rows.length);
+ return `<p class="muted">${found?'':'Không thấy kết quả cho “'+esc(r.q)+'”. '}Đã tìm ${num(r.tables)} bảng trong ${num(r.ms)} ms${D.searchBusy?' · đang tìm lại…':''}</p>`+
+  r.groups.map(g=>`<h3>${esc(g.table)} <span class="muted">· ${g.error?esc(g.error):(g.more?num(g.rows.length)+'+':num(g.rows.length))+' kết quả'}</span> ${g.error?'':button('Mở bảng, lọc theo chuỗi này','dbTableSearch',{table:g.table,q:r.q},'small')}</h3>`+
+   (g.rows.length?table(g.columns,g.rows.map(x=>g.columns.map((c,i)=>i===0&&x.key?button(String(x.values[c]??'').slice(0,40),'dbRow',{table:g.table,key:x.key},'link'):
+    x.matched.includes(c)?dbMark(x.values[c],r.q):dbShort(x.values[c])))):'')).join('')}
+const dbSearchCard=()=>card('Tìm nhanh trong cả database',`<input id="dbSearch" type="search" value="${esc(S.db?.search||'')}" placeholder="Tên, điểm đến, mã đơn, email, source_ref, UUID… (không cần dấu)" autocomplete="off" spellcheck="false" aria-label="Tìm nhanh trong cả database"><div id="dbSearchOut" aria-live="polite">${dbSearchHtml()}</div>`,'id="dbSearchCard"');
+let dbSearchSeq=0,dbSearchTimer=null,dbFilterTimer=null;
+async function dbSearchRun(q){const D=S.db=S.db||{table:null,filters:{},offset:0};D.search=q;history.replaceState(null,'','#'+stateHash());const seq=++dbSearchSeq,paint=()=>{const o=$('#dbSearchOut');if(o)o.innerHTML=dbSearchHtml()};
+ if(dbFold(q).trim().length<2){D.searchResult=null;D.searchBusy=false;return paint()}
+ D.searchBusy=true;paint();try{const r=await api('/api/dbx/search',{q});if(seq===dbSearchSeq)D.searchResult=r}catch(e){if(seq===dbSearchSeq){D.searchResult=null;fail(e)}}
+ finally{if(seq===dbSearchSeq){D.searchBusy=false;paint()}}}
+document.addEventListener('input',e=>{const t=e.target;
+ if(t.id==='dbSearch'){clearTimeout(dbSearchTimer);dbSearchTimer=setTimeout(()=>dbSearchRun(t.value).catch(fail),250);return}
+ if(t.name==='q'&&t.closest('#dbForm')){S.db.qTyping=t.value;clearTimeout(dbFilterTimer);dbFilterTimer=setTimeout(async()=>{S.db.q=S.db.qTyping;S.db.offset=0;await dbPage();
+  const i=document.querySelector('#dbForm input[name=q]');if(i){i.value=S.db.qTyping??i.value;i.focus();i.setSelectionRange(i.value.length,i.value.length)}},400)}});
 async function dbPage(){const D=S.db=S.db||{table:null,filters:{},offset:0};writeHash();
  const modes=`<div class="tabs" role="tablist">${[['list','Bảng dữ liệu'],['diagram','Sơ đồ quan hệ']].map(([m,l])=>`<button type="button" data-action="dbMode" data-args='{"mode":"${m}"}' aria-current="${(D.mode||'list')===m}">${l}</button>`).join('')}</div>`+
   `<div class="actions">${button('Tải lại','dbReload',{},'small')}<label><input type="checkbox" id="dbAuto" ${dbAutoOn()?'checked':''}> Tự làm mới mỗi 10 giây</label><small class="muted">số liệu lúc ${esc(when(new Date().toISOString()))}</small></div>`;
@@ -533,13 +557,14 @@ async function dbPage(){const D=S.db=S.db||{table:null,filters:{},offset:0};writ
  const groups={};for(const t of list.tables)(groups[t.schema]=groups[t.schema]||[]).push(t);
  const side=Object.entries(groups).map(([sc,ts])=>`<h3>${esc(sc)}</h3>`+ts.map(t=>button(`${t.table}${t.view?' (view)':''} · ${num(t.rows)}`,'dbTable',{table:t.name},t.name===D.table?'primary':'')).join(' ')).join('');
  let body='<p class="muted">Chọn một bảng. Chỉ đọc; cột bí mật (password / token / secret / hash) hiện "(ẩn)". Bấm ô khoá (id) để xem dòng và các bảng liên kết.</p>';
- if(D.table){const d=D.children?await api('/api/dbx/children',{id:D.children,offset:D.offset}):await api('/api/dbx/rows',{table:D.table,q:D.q,sort:D.sort,desc:D.desc?'1':'',offset:D.offset,limit:50,...Object.fromEntries(Object.entries(D.filters||{}).map(([k,v])=>['f.'+k,v===null?'\\N':v]))});
+ if(D.table){const d=D.children?await api('/api/dbx/children',{id:D.children,offset:D.offset}):await api('/api/dbx/rows',{table:D.table,q:D.q,deep:D.deep?'1':'',sort:D.sort,desc:D.desc?'1':'',offset:D.offset,limit:50,...Object.fromEntries(Object.entries(D.filters||{}).map(([k,v])=>['f.'+k,v===null?'\\N':v]))});
   const chips=[...Object.entries(D.filters||{}).map(([k,v])=>`${k} = ${v===null?'NULL':v}`),...(D.children?[`attributes.parentProductId = ${D.children}`]:[])];
-  body=`<form id="dbForm" class="actions"><input name="q" value="${esc(D.q||'')}" placeholder="Tìm trong mọi cột (không gồm cột bí mật)" style="min-width:320px"><button class="primary">Tìm</button>${chips.length?`<span class="muted">Lọc: ${esc(chips.join(' · '))}</span> `+button('Bỏ lọc','dbClear',{}):''}</form>
-   <p class="muted">${esc(d.table)} · ${num(d.total)} dòng · hiển thị ${num(d.total?d.offset+1:0)}–${num(Math.min(d.offset+d.rows.length,d.total))}${d.fks?.length?` · khoá ngoại: ${esc(d.fks.map(f=>f.columns.join('+')+' → '+f.target).join(', '))}`:''}</p>`+
+  body=`<form id="dbForm" class="actions"><input name="q" value="${esc(D.q||'')}" placeholder="Lọc trong bảng (không cần dấu, gõ là lọc)" style="min-width:320px" autocomplete="off"><button class="primary">Lọc</button><label title="Mặc định bỏ qua cột JSON và cột chữ dài (mô tả, URL…) để lọc nhanh"><input type="checkbox" id="dbDeep" ${D.deep?'checked':''}> Tìm cả mô tả và JSON (chậm hơn)</label>${chips.length?`<span class="muted">Lọc: ${esc(chips.join(' · '))}</span> `+button('Bỏ lọc','dbClear',{}):''}</form>
+   <p class="muted">${esc(d.table)} · ${d.totalCapped?'hơn ':''}${num(d.total)} dòng · hiển thị ${num(d.total?d.offset+1:0)}–${num(Math.min(d.offset+d.rows.length,d.total))}${d.fks?.length?` · khoá ngoại: ${esc(d.fks.map(f=>f.columns.join('+')+' → '+f.target).join(', '))}`:''}</p>`+
    `<div class="scroll"><table><thead><tr>${d.columns.map(c=>`<th>${button(c+(D.sort===c?(D.desc?' ↓':' ↑'):''),'dbSort',{col:c},'link')}</th>`).join('')}</tr></thead><tbody>${d.rows.map(r=>`<tr>${d.columns.map(c=>`<td>${dbCell(d,r,c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`+
    `<div class="actions">${d.offset>0?button('← Trước','dbOffset',{offset:Math.max(0,d.offset-d.limit)}):''}${d.offset+d.rows.length<d.total?button('Sau →','dbOffset',{offset:d.offset+d.limit}):''}</div>`}
- main.innerHTML=modes+`<div class="dbgrid">${card('Bảng',side)}${card(D.table||'Database',body)}</div>`;dbSchedule()}
+ main.innerHTML=modes+dbSearchCard()+`<div class="dbgrid">${card('Bảng',side)}${card(D.table||'Database',body)}</div>`;dbSchedule();
+ if(D.search&&!D.searchResult&&!D.searchBusy)dbSearchRun(D.search).catch(fail)}
 // Sơ đồ: mỗi bảng một ô (đủ cột, khoá chính / ngoại, số dòng), cột theo schema; cạnh khoá ngoại nét liền, quy ước nét đứt.
 function dbDiagram(g){const W=270,RH=17,HH=34,GAP=26,CG=110,TOP=30;const by={};for(const t of g.tables)(by[t.schema]=by[t.schema]||[]).push(t);
  const order=['cdp','catalog','app'].filter(k=>by[k]).concat(Object.keys(by).filter(k=>!['cdp','catalog','app'].includes(k)));
@@ -637,13 +662,14 @@ async function action(name,args){notice('');
   case 'livePause':return liveSend(args.key,{paused:args.paused});
   case 'nextSave':{const input=document.querySelector(`[data-next="${args.key}"]`);await api('/api/settings',{},{values:{[args.key]:Number(input.value)}});notice('Đã lưu vào Cấu hình, áp từ lượt sau.',true);return refreshFlow(true)}
   case 'tripBudget':for(const [key,value] of Object.entries({'tripHotels.initialPerCity':30,'tripHotels.newPerCity':10,'tripHotels.dailyHotels':180}))main.querySelector(`[data-key="${key}"]`).value=value;return notice('Đã điền ngân sách Trip. Bấm Lưu thay đổi để áp dụng.',true);
-  case 'dbTable':S.db={table:args.table,filters:{},offset:0,mode:'list'};return dbPage();
+  case 'dbTable':S.db={table:args.table,filters:{},offset:0,mode:'list',search:S.db?.search,searchResult:S.db?.searchResult};return dbPage();
+  case 'dbTableSearch':S.db={...S.db,table:args.table,filters:{},offset:0,q:args.q,qTyping:args.q,mode:'list',children:null};return dbPage();
   case 'dbMode':S.db={...S.db,mode:args.mode};return dbPage();
   case 'dbReload':return dbPage();
   case 'dbZoom':S.db.fit=!S.db.fit;return dbPage();
   case 'dbOffset':S.db.offset=args.offset;return dbPage();
   case 'dbSort':S.db.desc=S.db.sort===args.col?!S.db.desc:false;S.db.sort=args.col;S.db.offset=0;return dbPage();
-  case 'dbClear':S.db={table:S.db.table,filters:{},offset:0};return dbPage();
+  case 'dbClear':S.db={table:S.db.table,filters:{},offset:0,search:S.db.search,searchResult:S.db.searchResult};return dbPage();
   case 'dbRow':return dbRow(args.table,args.key);
   case 'dbList':$('#detail').close();S.db={table:args.table,filters:args.filters,offset:0};await navigate('db');return;
   case 'dbChildren':$('#detail').close();S.db={table:'cdp.products',filters:{},children:args.id,offset:0};await navigate('db');return;

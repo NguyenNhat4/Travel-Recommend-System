@@ -22,6 +22,60 @@ def render(turn, rows=None, codes=None, **extra):
 
 
 class GatekeeperTests(unittest.TestCase):
+    def test_requested_count_replaces_default_and_continuation_does_not_double_it(self):
+        cards = [product(f"s{i}", "attraction") for i in range(12)]
+        codes = {f"#{i + 1}": p["productId"] for i, p in enumerate(cards)}
+        spec = {"taxonomy": "attraction", "requested_count": 10}
+        rows = [row(products=cards, refs=list(codes), spec=spec),
+                row(2, products=cards, refs=list(codes), spec=spec, source_job=1)]
+        # Even when the model lists fewer, remaining cards must still be grounded in the current brief.
+        result = render({"cards": ["#1"]}, rows, codes)
+        self.assertEqual(len(result["searchResults"]["attraction"]), 10)
+        self.assertFalse(result["shortfalls"])
+        spec["requested_count"] = 1
+        self.assertEqual(len(render({"cards": list(codes)}, rows, codes)["searchResults"]["attraction"]), 1)
+
+    def test_requested_counts_still_obey_total_twenty_and_report_missing(self):
+        cards = [product(f"s{i}", "attraction") for i in range(20)] + [product(f"h{i}") for i in range(20)]
+        codes = {f"#{i + 1}": p["productId"] for i, p in enumerate(cards)}
+        rows = [row(products=cards[:20], refs=list(codes)[:20], spec={"taxonomy": "attraction", "requested_count": 20}),
+                row(2, products=cards[20:], refs=list(codes)[20:], spec={"taxonomy": "hotel", "requested_count": 20})]
+        result = render({"cards": list(codes)}, rows, codes)
+        self.assertEqual(sum(map(len, result["searchResults"].values())), 20)
+        self.assertEqual(result["shortfalls"][0]["selected"], 0)
+        self.assertEqual(result["shortfalls"][0]["requested"], 20)
+
+    def test_explicit_count_keeps_fare_cards_within_the_shared_twenty_slots(self):
+        cards = [product(f"s{i}", "attraction") for i in range(20)] + [product("flight", "flight")]
+        codes = {f"#{i + 1}": p["productId"] for i, p in enumerate(cards)}
+        rows = [row(products=cards[:20], refs=list(codes)[:20], spec={"taxonomy": "attraction", "requested_count": 20}),
+                row(2, products=cards[20:], refs=["#21"], kind="fare", status="answered",
+                    fare_block="[Chuyến bay](product:flight)")]
+        result = render({"cards": list(codes)[:20]}, rows, codes)
+        self.assertEqual(sum(map(len, result["searchResults"].values())), 20)
+        self.assertEqual(len(result["searchResults"]["flight"]), 1)
+        self.assertEqual(len(result["searchResults"]["attraction"]), 19)
+        self.assertEqual(result["shortfalls"][0]["selected"], 19)
+
+    def test_requested_count_cannot_include_seen_or_unlisted_products(self):
+        cards = [product(f"s{i}", "attraction") for i in range(5)]
+        codes = {f"#{i + 1}": p["productId"] for i, p in enumerate(cards)}
+        jobs = [row(products=cards, refs=["#1", "#2", "#3"], intent="more",
+                    spec={"taxonomy": "attraction", "requested_count": 10})]
+        result = gate.render({"cards": list(codes)}, jobs, codes, language="vi",
+                             seen={"items": [{"productId": "s0", "taxonomy": "attraction", "place": "Hà Nội"}]})
+        self.assertEqual([p["productId"] for p in result["searchResults"]["attraction"]], ["s1", "s2"])
+        self.assertEqual(result["shortfalls"][0]["selected"], 2)
+
+    def test_per_job_destination_exclusion_is_checked_again_before_render(self):
+        cards = [product("a", "attraction"), product("b", "attraction", "Đà Nẵng")]
+        job = row(products=cards, refs=["#1", "#2"], spec={"taxonomy": "attraction",
+                  "destination": None, "excluded_destinations": ["ha noi"]})
+        result = render({"cards": ["#1", "#2"], "message": "[Nơi a](#1)\n[Nơi b](#2)"},
+                        [job], {"#1": "a", "#2": "b"})
+        self.assertEqual([p["productId"] for p in result["searchResults"]["attraction"]], ["b"])
+        self.assertNotIn("product:a", result["body"])
+
     def test_a_fare_lookup_does_not_authorize_raw_old_hotel_price(self):
         turn = {"action": "answer", "message": "Khách sạn lúc nãy 1.200.000 ₫, [[fare_block:1]]"}
         self.assertIn("raw_product_number", inspect(turn, [row(kind="fare", status="answered")])["violations"])

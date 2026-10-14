@@ -8,7 +8,8 @@ Bắt đầu tại [openapi.yaml](../../src/shared/contracts/openapi.yaml). File
 
 | Phần | Endpoint: nhận/trả gì, HTTP status | Schema: cấu trúc từng trường |
 |---|---|---|
-| Itinerary Agent | [paths/itinerary-agent.yaml](../../src/shared/contracts/paths/itinerary-agent.yaml) | [schemas/itinerary-agent.yaml](../../src/shared/contracts/schemas/itinerary-agent.yaml) |
+| Assistant v2 (orc tự chủ) | [paths/assistant-v2.yaml](../../src/shared/contracts/paths/assistant-v2.yaml) | [schemas/assistant-v2.yaml](../../src/shared/contracts/schemas/assistant-v2.yaml), entry riêng [assistant-v2.openapi.yaml](../../src/shared/contracts/assistant-v2.openapi.yaml) |
+| Itinerary Agent v1 | [paths/itinerary-agent.yaml](../../src/shared/contracts/paths/itinerary-agent.yaml) | [schemas/itinerary-agent.yaml](../../src/shared/contracts/schemas/itinerary-agent.yaml) |
 | Search | [paths/search.yaml](../../src/shared/contracts/paths/search.yaml) | [schemas/search.yaml](../../src/shared/contracts/schemas/search.yaml) |
 | Catalog / sản phẩm | [paths/catalog.yaml](../../src/shared/contracts/paths/catalog.yaml) | [schemas/catalog.yaml](../../src/shared/contracts/schemas/catalog.yaml) |
 | Recommendation | [paths/recommendations.yaml](../../src/shared/contracts/paths/recommendations.yaml) | [schemas/recommendations.yaml](../../src/shared/contracts/schemas/recommendations.yaml) |
@@ -42,6 +43,10 @@ Nếu công cụ sinh client hoặc xem tài liệu cần một file YAML duy nh
 python3 src/shared/contracts/scripts/bundle_openapi.py --output /tmp/travel-openapi.yaml
 ```
 
-Dùng `/tmp/travel-openapi.yaml` làm đầu vào công cụ. CDP clone có base URL riêng nên có entry riêng; Web **không** sinh client cho nó. Hàm `bundle()` nhận đường dẫn entry, script validate kiểm tra cả hai. Nghiệp vụ tích hợp CDP: [hop-dong-tich-hop-cdp.md](hop-dong-tich-hop-cdp.md). Đây là bản sinh tự động; chỉnh sửa tại `paths/` hoặc `schemas/`, rồi tạo bundle lại. Script chỉ hỗ trợ local refs và bố cục contract của repo, không tải tài liệu qua mạng.
+Dùng `/tmp/travel-openapi.yaml` làm đầu vào công cụ. CDP clone có base URL riêng nên có entry riêng; Web **không** sinh client cho nó. Hàm `bundle()` nhận đường dẫn entry, script validate kiểm tra v1, assistant v2 và CDP. Nghiệp vụ tích hợp CDP: [hop-dong-tich-hop-cdp.md](hop-dong-tich-hop-cdp.md). Đây là bản sinh tự động; chỉnh sửa tại `paths/` hoặc `schemas/`, rồi tạo bundle lại. Script chỉ hỗ trợ local refs và bố cục contract của repo, không tải tài liệu qua mạng.
 
 Fixture Agent: [../mocks/itinerary-agent](../../src/shared/mocks/itinerary-agent/README.md). Quyết định nghiệp vụ và phần chờ xác nhận: [baseline](contract-baseline-v1.1.md).
+
+Assistant v2 có endpoint runtime `/api/v2/assistant/itineraries` và `/stream` (mô tả nghiệp vụ: spec Itinerary §4.7). Fixtures riêng tại
+`src/shared/mocks/assistant-v2/index.json`; các giá/giờ minh họa chỉ kiểm shape, không là chứng cứ catalog.
+Thẻ giữ ProductSummary nguồn v1; semantics lịch/gợi ý/plan effect theo v2. Mã FR-AGT-01–07, NFR-MAINT-02.

@@ -133,7 +133,7 @@ Ký hiệu auth: **—** không gửi JWT · **tùy** gửi nếu có · **bắt
 | Khu vực | Endpoint | Auth | Trường Web đọc | Khi lỗi / rỗng |
 |---|---|---|---|---|
 | Lời chào | `GET /auth/me` (khi khôi phục phiên) | bắt buộc | `fullName` (`AuthUser`) | Không có phiên → lời chào chung |
-| ① Gợi ý cá nhân hóa | `GET /recommendations?k=4` | tùy | `strategy`, `nextVertical`, `destination`, `recommendations[]` (`rank`, `productId`, `name`, `taxonomy`, `destination`, `unitPrice`, `currency`, `available`, `imageUrl`, `attributes`, `score`, `because[]`), `diagnostics.excludedVerticals`, `diagnostics.coldStart` | 5xx / timeout > 10 giây (`RECOMMENDATION_TIMEOUT_MS`, §6.4) → ẩn ①, hiện dòng "Chưa tải được gợi ý · Thử lại". Chưa có kết quả thì chưa hiện khối, không hiện bản cũ. Khách vãng lai → không gọi, hiện banner đăng nhập |
+| ① Gợi ý cá nhân hóa | `GET /recommendations?k=4` | tùy | `strategy`, `nextVertical`, `destination`, `recommendations[]` (`rank`, `productId`, `name`, `taxonomy`, `destination`, `unitPrice`, `currency`, `available`, `imageUrl`, `attributes`, `score`, `because[]`), `diagnostics.excludedVerticals`, `diagnostics.coldStart` | 5xx / timeout > 10 giây (`RECOMMENDATION_TIMEOUT_MS`, §6.4) → ẩn ①, hiện dòng "Chưa tải được gợi ý · Thử lại". Đang tải mà chưa có thẻ (lần đầu, sau "Thử lại") → khung chờ 4 thẻ đứng chỗ khối (product.md §4.1.5); đã có thẻ thì giữ thẻ, mờ đi khi tải lại; không hiện gợi ý của tài khoản trước. Trả về rỗng → ẩn khối. Khách vãng lai → không gọi, hiện banner đăng nhập |
 | ② Đã xem gần đây | — | — | — | **Bỏ section** (D13) |
 | ③ Thẻ trợ lý | dùng lại response ① | — | `destination` | Không có → câu chung |
 | ④ Phổ biến | `GET /products?sort=popular&availableOnly=true&limit=8`, thêm theo tab (contract 1.27.0): Tất cả `diversify=taxonomy`; Khách sạn / Vé máy bay / Combo `taxonomy=<loại>`; Vé tham quan `taxonomy=attraction,golf` | — | `results[]` (`ProductSummary`) | **Luôn render**. Một carousel có tab Tất cả · Khách sạn · Vé máy bay · Vé tham quan (gồm sân golf, không có tab Golf riêng) · Combo; **chỉ tab đang chọn gọi API**, mỗi tab một request. Tab Tất cả do Backend trộn theo nhóm loại (2 ô mỗi nhóm trong 8 ô khi đủ hàng) và là kệ duy nhất hiện nhãn loại trên thẻ (`TaxonomyBadge`); các tab khác không có nhãn. Lỗi → "Chưa tải được · Thử lại" cục bộ |
@@ -201,7 +201,7 @@ Quy tắc:
 | Tab **Tất cả**: hàng theo nhóm | `POST /search` một lần cho mỗi taxonomy của nhóm (hotel · attraction + golf · combo), `limit: 6` | tùy | `results[]`, `total`, `topScore` | Lỗi → "Chưa tải được nhóm này · Thử lại" ngay hàng; nhóm 0 kết quả bị ẩn; tất cả 0 → EmptyState |
 | Số kết quả các tab và dòng "Tìm thấy N dịch vụ phù hợp" | **cùng các request của hàng ở trên** (cùng khóa bộ đệm, không gọi thêm); ở tab nhóm vẫn gọi để có số cho cả bốn tab | tùy | `total` của từng nhóm (Tour và trải nghiệm = attraction + golf); Tất cả = tổng ba nhóm | Lỗi ở bất kỳ nhóm nào → tab không hiện số; tab 0 kết quả vẫn hiện |
 | Tab nhóm: danh sách đầy đủ | như hàng, `limit: 20`, `offset += 20`; tab Lưu trú gửi thêm `starRatingMin` / `priceMax` khi có bộ lọc | tùy | `results[]` (`ProductSummary` + `score`), `total` | Lỗi → "Thử lại"; rỗng do lọc → "Xóa bộ lọc" |
-| Băng "kết quả yếu" | response của các hàng | — | `topScore` cao nhất của các nhóm (+ `backgroundScore`, `diagnostics.filteredCount`, `filterOnly` của chính request đó, contract 1.28.0) | `topScore < 0.35`, hoặc khi backend phát `backgroundScore`: `topScore − backgroundScore < 0.058` **và** `topScore < 0.88` **và** `filteredCount ≥ 20` (giá trị tạm, chốt trên dev — plan 2026-10-13 §2.7) → băng "Kết quả gần nhất"; `filterOnly` hoặc mọi nhóm `null` → không hiện. Trang rỗng có `queryPlan.unexplained` → "Không có sản phẩm nào khớp “…”" |
+| Băng "kết quả yếu" | response của các hàng | — | `topScore` cao nhất của các nhóm (+ `backgroundScore`, `diagnostics.filteredCount`, `filterOnly` của chính request đó, contract 1.30.0) | `topScore < 0.35`, hoặc khi backend phát `backgroundScore`: `topScore − backgroundScore < 0.058` **và** `topScore < 0.88` **và** `filteredCount ≥ 20` (giá trị tạm, chốt trên dev — plan 2026-10-13 §2.7) → băng "Kết quả gần nhất"; `filterOnly` hoặc mọi nhóm `null` → không hiện. Trang rỗng có `queryPlan.unexplained` → "Không có sản phẩm nào khớp “…”" |
 
 Quy tắc:
 - **Một nguồn đếm** (sửa 2026-10-12): số trên tab, số trên hàng ("N kết quả", "Còn N · Xem tất cả N"), mẫu số "Xem thêm (x/N)" và dòng "Tìm thấy N" đều là `total` của request lọc theo taxonomy. **Không** đếm tab bằng `facets.taxonomy` của một request không lọc taxonomy: backend tính tập kết quả trên tập đã lọc của từng request (top-K dense, 10 suất vớt BM25 dùng chung cho mọi loại kể cả vé máy bay; hợp đồng Search §2.2), nên facets đó thường nhỏ hơn `total` của request lọc theo loại — đo trên backend local ngày 12/10, câu "Nha Trang": tab 14 / 9 / 5 / 0, trong khi các hàng ra 13 / 12 / 9. Số không kèm dấu "+": ở hybrid `totalExact` luôn `false`, dấu này không mang thông tin.
@@ -399,6 +399,7 @@ Prop của component dùng **đúng tên schema** trong OpenAPI. Không có lớ
 | `ActivityNote` | `slot` | `ItinerarySlot` với `product: null` | Không giá, không nút, không ảnh |
 | `ItineraryProductCard` | `slot` | `ItinerarySlot` với `product` khác `null` | `ProductCard` compact + `note` + nhãn "Hợp với bạn" khi `source = RECOMMENDATION`. Trong khung chat: `ProductCard` compact đặt sau dòng đầu tiên nhắc `[Tên](product:id)`, mỗi sản phẩm một lần; id không có trong `itinerary`/`searchResults` thì không render |
 | `ErrorState` | `error` | `ErrorResponse.error` | `retryable: true` → nút "Thử lại" |
+| `Skeleton` (`components/common/Skeleton.tsx`: `SkeletonBlock`, `SkeletonStatus`, `ProductCardSkeleton`, `ProductRowSkeleton`; khung riêng của thẻ đặt cạnh thẻ: `RoomCardSkeleton`, `FlightCardSkeleton`, `BookingCardSkeleton`) | — | — | Mọi vùng đang chờ dữ liệu (trang, khối, danh sách) hiện khung giữ đúng hình nội dung thật (product.md §4.0), không dùng vòng xoay hay dòng chữ "Đang tải…". Trang đọc URL bằng `useSearchParams` (`/search`, `/checkout`, `/profile/booking_history`) dùng khung trang làm fallback Suspense, không để `null`. Vùng chờ là một `role="status"` có tên; các khối bên trong `aria-hidden`. Vòng xoay chỉ còn ở chỗ báo một việc đang chạy chứ không giữ chỗ nội dung: nút đang gửi (Lưu, Thêm vào giỏ, Thanh toán…), tiến trình của trợ lý, màn chờ xác nhận thanh toán và dòng "Đang tìm chuyến chiều về…" khi khách còn ở bước chiều đi |
 
 Không component nào nhận `priceString`, `price{}`, `category`, `bookingUrl` hoặc `semanticScore` — các trường đó không tồn tại trong v1.
 
@@ -736,7 +737,7 @@ Không đạt → không render thẻ; hiển thị dòng mờ "Mục này hiệ
 - Khi tải lại trang, Web chờ phiên đăng nhập được khôi phục rồi nạp transcript và response gần nhất qua `GET /assistant/conversations/{conversationId}` cho người dùng đã đăng nhập. Chỉ ID được giữ trong browser storage; khách không nạp archive lâu dài. Response lịch sử đến muộn sau khi tạo cuộc mới, gửi tin, đổi tài khoản hoặc rời trang bị bỏ qua. Lỗi tạm thời giữ ID và cho thử tải lại; hội thoại không còn tồn tại thì xóa ID.
 - Khi đã đăng nhập, Web hiển thị nút **Lịch sử**, tải danh sách từ backend và cho chọn một hội thoại để nạp transcript. Khách không thấy lịch sử lâu dài.
 - Kế hoạch không tự cập nhật giá. Giỏ và Checkout luôn dùng giá mới nhất.
-- Tiến độ: Web đọc stream SSE và đánh ✓ 3 bước (hiểu yêu cầu → tìm sản phẩm → sắp xếp lịch trình) chỉ theo sự kiện `node.completed` thật; nhánh trò chuyện hay hỏi lại không có ✓ giả. `message` của sự kiện là chuỗi debug, không hiển thị (`docs/spec/product.md` §6.1). Đang chạy thì nút gửi thành nút Dừng (Esc cũng dừng); đã dừng thì có nút Gửi lại.
+- Tiến độ (AC-AGT-09, contract 1.27.0): theo loại lượt do server gửi — lập lịch 4 bước, khám phá 3, vé 2, trò chuyện/hỏi lại 1, bị chặn không ✓. `node.activity` hiện việc đang làm; `node.completed.progress` có dữ kiện và số đếm thật. Nhóm thay theo `groupId`, thông báo thay theo `(code, groupId, date)`, không cộng số; ẩn nhóm `superseded`. Không hiện `message`, tên node/tool hay tổng nguồn. Khi xong thu gọn ở đầu lời đáp, mở lại xem bằng nút có `aria-expanded`. Preview sau compose tối đa 6 thẻ, chỉ xem, hiện từ giây 5 nếu lượt chưa kết thúc; bấm mở panel chi tiết. Tiến trình không lưu ở server nên lịch sử không có tóm tắt. Nút gửi đổi thành Dừng, dừng thì có Gửi lại. Shift+D có thông tin request, node, activity, số đếm và mốc preview/kết quả.
 
 ---
 
@@ -804,7 +805,7 @@ Ca biên bắt buộc để dựng đủ 8 màn hình:
 | # | Nội dung | Mặc định Web trong lúc chờ |
 |---|---|---|
 | D3 | Endpoint ghi `product_view` | **Đã chốt** — `POST /api/v1/events`, xem §4.3 |
-| D9 | SSE cho trợ lý | Không stream; spinner chung, không ✓ giả |
+| D9 | SSE cho trợ lý | Đã có contract 1.27.0: node.activity, node.completed.progress (run.preview không còn phát từ 2026-10-14); ✓ chỉ từ bước đã hoàn thành |
 | D10 | Shape `ItineraryResponse` | Code theo §9; mock theo §9. Nếu Agent từ chối, chỉ `features/itinerary` và fixture phải đổi |
 | D13 | "Đã xem gần đây" | Bỏ section ② Home |
 | A1 | Agent duyệt §10 | Như D10 |
@@ -829,3 +830,11 @@ Ca biên bắt buộc để dựng đủ 8 màn hình:
 ## 14. Definition of Done
 
 > Team Web dựng cả tám màn hình và mọi ca biên chỉ bằng type sinh từ `openapi.yaml` và fixture trong `src/shared/mocks/`, rồi đổi sang backend thật mà không sửa tầng `services`; Team Backend và Team Agent chạy contract test trên cùng file OpenAPI và cùng bộ fixture.
+
+### Tiến trình assistant v2 (AC-AGT-09, chốt 2026-10-13)
+
+V2 hiển thị Think/Act/Observe theo stream thực tế, không chuyển sang understand/search/write của v1. Think đọc explanation đã kiểm; Act từ activity, Observe từ tool-completed có outcome phân biệt empty/error/needs_input và found/eligible/selected/displayed. Thay hàng cùng phase/groupId để cập nhật số, giữ thứ tự; parser lọc sequence trùng và sai runId. Giao diện không in nhãn Think/Act/Observe: Think là một câu thường; Act và Observe cùng groupId gộp thành một dòng viết liền mạch (đang chạy “Đang tìm khách sạn ở Vũng Tàu…”, xong “Tìm khách sạn ở Vũng Tàu” + số phù hợp/chọn). Sự kiện đến dồn vẫn hiện lần lượt từng dòng (cách nhau ~0,45 giây, chỉ là nhịp hiển thị, không đổi trạng thái thật); khi chưa có dòng nào đang chạy thì có dòng chờ “Đang đọc yêu cầu…”/“Đang cân nhắc bước tiếp theo…”. Bản thu gọn liệt kê tối đa hai việc đã làm. Xong thu gọn và mở xem lại; không lưu tiến trình ở server. V1 tiếp tục dùng hình thức cũ cho client cũ.
+
+Phòng v2 chưa biết rooms thì giữ trạng thái chưa xác định khi chuyển sang widget, không tự nhân giá cho số người hoặc mặc định số phòng. Giờ hoạt động v2 là nguồn của nhãn buổi; không dồn hoạt động chiều về sáng.
+
+Next.js mặc định v2 từ 2026-10-13 theo chỉ đạo người dùng để kiểm thử; thiếu NEXT_PUBLIC_ASSISTANT_API cũng dùng v2, v1 chỉ khi đặt tường minh. Thẻ phương án từ hội thoại v1 trên web v2 gửi lựa chọn bằng tin nhắn cho orc v2 để tra lại, không gọi mutation v1. Không chuyển Streamlit; E12 và lưu/khôi phục lịch sử v2 chưa được chứng minh bởi đổi mặc định này.

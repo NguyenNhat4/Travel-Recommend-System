@@ -4,15 +4,15 @@ from __future__ import annotations
 import asyncio
 from copy import deepcopy
 import json
-from time import time
 
 from src.backend.app.application.ports.itinerary_tools import ToolError
 from src.backend.app.domain.itinerary import exploration as rules
 from src.backend.app.domain.itinerary.geo import coords, haversine_km
 from src.backend.app.domain.itinerary.normalization import fold
 
+from .. import clock
 from ..models import FareQuestion, Job
-from . import fares, shown
+from . import fares, limits, shown, progress
 from .classification import vietnam_today
 
 MAX_TOOL_CALLS = 10
@@ -29,13 +29,24 @@ class BudgetTools:
         self.supports_catalog = bool(tools and getattr(tools, "supports_catalog", False))
 
     async def _call(self, name, *args):
-        remaining = self.deadline - time()
+        remaining = self.deadline - clock.now()
         if self.tools is None:
             raise ToolError("CATALOG_NOT_CONFIGURED")
         if self.count >= MAX_TOOL_CALLS or remaining <= 0:
-            raise ToolError("JOB_BUDGET_EXHAUSTED")
+            progress.lookup_failed()
+            raise ToolError("JOB_BUDGET_EXHAUSTED",
+                            reason=limits.TOOL_LIMIT if self.count >= MAX_TOOL_CALLS else limits.TIME_LIMIT)
         self.count += 1
-        return await asyncio.wait_for(getattr(self.tools, name)(*args), min(self.timeout, remaining))
+        try:
+            return await asyncio.wait_for(getattr(self.tools, name)(*args), min(self.timeout, remaining))
+        except TimeoutError as exc:
+            progress.lookup_failed()
+            # Giữ nguyên kiểu lỗi cho nơi gọi; chỉ gắn nguyên nhân để job ghi lại được.
+            exc.reason = limits.TOOL_TIMEOUT
+            raise
+        except Exception:
+            progress.lookup_failed()
+            raise
 
     async def execute(self, call):
         return await self._call("execute", call)
@@ -63,20 +74,30 @@ def _scope_items(state: dict, job: dict) -> list[dict]:
 
 
 def inherited(state: dict, job: dict) -> dict:
-    """Keep scope/query/near/sort from the job which actually produced the referenced cards."""
-    if job.get("kind") != "explore" or job.get("intent") not in ("more", "cheaper", "dearer"):
+    """Inherit only shared search conditions, never the city of an arbitrarily last card."""
+    if job.get("kind") != "explore" or job.get("intent") not in ("more", "cheaper", "dearer") \
+            or job.get("scope_mode") == "replace":
         return deepcopy(job)
     rows = _scope_items(state, job)
-    previous = (rows[-1].get("via") or {}) if rows else {}
-    result = {**previous, **{key: value for key, value in job.items() if value is not None}}
+    previous = {}
+    for key in ("destination", "taxonomy", "query", "near", "sort", "excluded_destinations"):
+        values = []
+        for row in rows:
+            via = row.get("via") or {}
+            # Legacy cards have no via. An explicit null in via means an unrestricted search.
+            fallback = row.get("place") if key == "destination" else row.get("taxonomy") if key == "taxonomy" else None
+            values.append(via[key] if key in via else fallback)
+        if values and all(value == values[0] for value in values):
+            previous[key] = values[0]
+    result = deepcopy(job)
     # Default relevance does not silently remove a previous ordering.
     if job.get("sort") == "relevance" and previous.get("sort"):
         result["sort"] = previous["sort"]
     for key in ("destination", "taxonomy", "query", "near"):
-        result[key] = job.get(key) or previous.get(key)
-    if rows:
-        result["destination"] = result.get("destination") or rows[-1].get("place")
-        result["taxonomy"] = result.get("taxonomy") or rows[-1].get("taxonomy")
+        if job.get(key) is None:
+            result[key] = previous.get(key)
+    if not job.get("excluded_destinations") and previous.get("excluded_destinations"):
+        result["excluded_destinations"] = deepcopy(previous["excluded_destinations"])
     return result
 
 
@@ -108,16 +129,52 @@ async def _page(row: dict, tools: BudgetTools) -> dict:
     products = [item.get("product", item) for item in payload.get("results", []) if isinstance(item, dict)]
     row["offset"] = offset + len(products)
     row["source_more"] = bool(products) and row["offset"] < int(payload.get("total", len(products)))
+    # Count through the same successive filters without changing their output.
+    root = row.get('source_job', row['job'])
+    actual_kinds = {p.get('taxonomy') for p in products}
+    counted_kind = job.get('taxonomy') or (next(iter(actual_kinds)) if len(actual_kinds)==1 else None)
+    counted = progress.group(f'job:{root}', counted_kind, job)
+    received = list(products)
+    if counted:
+        counted['counter'].source_total = payload.get('total')
+        counted['counter'].source_more = row['source_more']
+    def mark(before, after, reason, outside=False):
+        if counted:
+            kept = {p.get('productId') for p in after}
+            for p in before:
+                if p.get('productId') not in kept:
+                    counted['counter'].record(p.get('productId'), reason, outside=outside)
     # Request filters are checked again; an upstream fallback must not widen the user's scope.
     products = [product for product in products if product.get("productId")
                 and (not job.get("destination") or fold(product.get("destination")) == fold(job["destination"]))
+                and fold(product.get("destination")) not in {fold(name) for name in job.get("excluded_destinations") or []}
                 and (not job.get("taxonomy") or product.get("taxonomy") == job["taxonomy"])
                 and product.get("taxonomy") != "flight"
                 and (product.get("taxonomy") != "hotel" or product.get("available") is True)]
+    if counted:
+        kept = {p.get('productId') for p in products}
+        for p in received:
+            pid = p.get('productId')
+            if pid in kept:
+                continue
+            reason = ('DESTINATION' if (job.get('destination') and fold(p.get('destination')) != fold(job['destination']))
+                      or fold(p.get('destination')) in {fold(name) for name in job.get('excluded_destinations') or []} else
+                      'TAXONOMY' if job.get('taxonomy') and p.get('taxonomy') != job['taxonomy'] else
+                      'FLIGHT' if p.get('taxonomy') == 'flight' else 'PRODUCT_DROPPED_UNAVAILABLE')
+            if reason == 'PRODUCT_DROPPED_UNAVAILABLE' and job.get('near'):
+                location = row.get('near_product') or row.get('anchor_product')
+                if not location or coords(location) is None or (job.get('taxonomy')=='hotel' and not rules.within_km([p],location,1.5)):
+                    reason = 'DISTANCE'
+            counted['counter'].record(pid, reason, outside=reason != 'PRODUCT_DROPPED_UNAVAILABLE')
+    before = products
     if "query_ids" in row:
         products = [product for product in products if product["productId"] in row["query_ids"]]
+    mark(before, products, 'QUERY', True)
+    before = products
     if job.get("intent") == "more":
         products = [product for product in products if product["productId"] not in row.get("excluded", [])]
+    mark(before, products, 'SEEN')
+    before = products
     anchor = row.get("anchor_product")
     if job.get("near"):
         location = row.get("near_product") or anchor
@@ -127,13 +184,21 @@ async def _page(row: dict, tools: BudgetTools) -> dict:
             products = rules.within_km(products, location, 1.5)
         else:
             products = [card["product"] for card in rules.near_cards(products, location, len(products))]
+    mark(before, products, 'DISTANCE', True)
+    before = products
     if job.get("intent") in ("cheaper", "dearer"):
         base = rules.price(anchor or {})
         products = [product for product in products if base is not None and rules.price(product) is not None
                     and product.get("priceUnit") == anchor.get("priceUnit")
                     and product.get("currency") == anchor.get("currency")
                     and (rules.price(product) < base if job["intent"] == "cheaper" else rules.price(product) > base)]
+    mark(before, products, 'PRICE_COMPARISON', True)
+    before = products
     products = rules.distinct_places(products)
+    mark(before, products, 'DUPLICATE')
+    if counted:
+        for p in products:
+            counted['counter'].record(p['productId'])
     existing = {product["productId"] for product in row["products"]}
     row["products"].extend(product for product in products if product["productId"] not in existing)
     return row
@@ -157,6 +222,8 @@ async def _explore(state: dict, spec: dict, number: int, tools: BudgetTools) -> 
     if spec.get("destination") and destination is None:
         return {**row, "status": "empty", "note": "điểm đến không có trong catalog"}
     spec["destination"] = destination
+    spec["excluded_destinations"] = list(dict.fromkeys(place for name in spec.get("excluded_destinations") or []
+                                                      if (place := fares._place(name, names))))
     if destination in (state.get("rejected_destinations") or []):
         return {**row, "status": "empty", "note": "điểm đến đã bị chê trong hội thoại"}
     if not destination and not spec.get("query") and not spec.get("near"):
@@ -251,6 +318,14 @@ async def _fare(state: dict, spec: dict, number: int, tools: BudgetTools) -> dic
     update = await fares.answer({**state, "fare_ask": ask, "other_questions": []}, tools=tools,
                                supported=state.get("supported_destinations"), timeout_seconds=tools.timeout,
                                today=vietnam_today())
+    counted = progress.current_group()
+    if counted:
+        pending_scope = update.get('pending_fare') or {}
+        counted['scope'].update({key:pending_scope[key] for key in ('origin','destination') if pending_scope.get(key)})
+        if ask.get('day') or ask.get('time_of_day'):
+            # These answers can deliberately include nearby dates or other hours. A single group cannot
+            # describe both scopes reliably; do not manufacture a count or a false chosen/eligible ratio.
+            counted['counter'] = None
     body = (update.get("response") or {}).get("question", "")
     pending = update.get("pending_fare") or {}
     status = "asked" if pending.get("chips") and not pending.get("answered") else "answered"
@@ -264,7 +339,13 @@ async def _fare(state: dict, spec: dict, number: int, tools: BudgetTools) -> dic
             "offset": 0, "source_more": False, "anchor": None}
 
 
-async def _one(state: dict, spec: dict, number: int, tools: BudgetTools, previous: list[dict]) -> dict:
+async def _one_job(state: dict, spec: dict, number: int, tools: BudgetTools, previous: list[dict]) -> dict:
+    root = spec.get('continue_from') or number
+    if spec.get('continue_from'):
+        old = next((r for r in previous if r['job']==spec['continue_from']), {})
+        root = old.get('source_job', root)
+    counted = progress.group(f'job:{root}', 'flight' if spec['kind']=='fare' else spec.get('taxonomy'), spec.get('fare') if spec['kind']=='fare' else spec)
+    progress.notify('SEARCHING_FLIGHTS' if spec['kind']=='fare' else 'READING_SHOWN' if spec['intent']=='about_shown' else 'SEARCHING', node_id='run_jobs', groupId=f'job:{root}', kinds=[counted['kind']] if counted else None, destination=spec.get('destination') or (spec.get('fare') or {}).get('destination'), origin=(spec.get('fare') or {}).get('origin'))
     try:
         if spec.get("continue_from"):
             old = next((row for row in previous if row["job"] == spec["continue_from"] and row["kind"] == "explore"), None)
@@ -288,9 +369,20 @@ async def _one(state: dict, spec: dict, number: int, tools: BudgetTools, previou
                       else _explore(state, spec, number, tools))
     except Exception as exc:
         # Never propagate upstream text/credentials to state or the model.
-        return {"job": number, "kind": spec["kind"], "intent": spec["intent"], "spec": spec,
+        source = next((row for row in previous if row["job"] == spec.get("continue_from")), None)
+        failure = {"source_job": source.get("source_job", source["job"])} if source else {}
+        failed_spec = deepcopy(source["spec"]) if source else spec
+        return {**failure, "job": number, "kind": failed_spec["kind"], "intent": failed_spec["intent"], "spec": failed_spec,
                 "status": "failed", "products": [], "listed": [], "note": "không tra được dữ liệu",
-                "error": exc.code if isinstance(exc, ToolError) else "JOB_FAILED"}
+                "error": exc.code if isinstance(exc, ToolError) else "JOB_FAILED",
+                "reason": getattr(exc, "reason", None)}
+
+
+async def _one(state, spec, number, tools, previous):
+    old = next((row for row in previous if row['job']==spec.get('continue_from')), {})
+    root = old.get('source_job', old.get('job', number))
+    with progress.job_context(f'job:{root}'):
+        return await _one_job(state, spec, number, tools, previous)
 
 
 def _codes(state: dict, products: list[dict], codes: dict[str, str], seq: int) -> int:
@@ -345,6 +437,10 @@ def _brief(row: dict, codes: dict[str, str], max_chars: int) -> dict:
               "scope": " · ".join(str(spec[key]) for key in ("destination", "taxonomy", "query") if spec.get(key))[:120],
               "anchor": row.get("anchor"), "items": [], "unlisted": len(products) - cursor,
               "source_more": row.get("source_more", False), "note": str(row.get("note") or "")[:80] or None}
+    if spec.get("excluded_destinations"):
+        result["scope"] = (result["scope"] + " · ngoài " + ", ".join(spec["excluded_destinations"]))[:120]
+    if spec.get("requested_count") is not None:
+        result["requested_count"] = spec["requested_count"]
     if row["kind"] == "fare":
         block = row.get("fare_block", "")
         # The full block remains in code. If too long, its insertion token is sufficient for the model.
@@ -381,7 +477,7 @@ async def execute(state: dict, specs: list[Job | dict], *, tools, timeout_second
                   budget_seconds: float) -> dict:
     previous = deepcopy(state.get("turn_jobs") or [])
     counter = BudgetTools(tools, state.get("turn_tool_calls", 0),
-                          state.get("started_at", time()) + budget_seconds, timeout_seconds)
+                          state.get("started_at", clock.now()) + budget_seconds, timeout_seconds)
     codes = deepcopy(state.get("turn_codes") or {})
     seq = max(state.get("turn_seq", 0), shown.current(state).get("seq", 0))
     seen = set(state.get("turn_signatures") or [])
@@ -395,6 +491,17 @@ async def execute(state: dict, specs: list[Job | dict], *, tools, timeout_second
         work.append((spec, len(previous) + len(work) + 1))
     results = await asyncio.gather(*(_one(state, spec, number, counter, previous) for spec, number in work))
     for row in results:
+        root = row.get('source_job', row['job'])
+        kinds = {p.get('taxonomy') for p in row.get('products') or []}
+        kind = 'flight' if row['kind']=='fare' else row['spec'].get('taxonomy') or (next(iter(kinds)) if len(kinds)==1 else None)
+        counted = progress.group(f'job:{root}', kind)
+        if counted:
+            counted['status'] = 'failed' if counted.get('lookup_failed') else row['status']
+            if row['kind']=='fare' and (counted['counter'] is None or not counted['counter'].rows):
+                counted['counter'] = None
+            elif row['intent']=='about_shown':
+                for p in row.get('products') or []:
+                    counted['counter'].record(p['productId'])
         seq = _codes(state, row.get("products") or [], codes, seq)
     briefs = [_previous_brief(row) for row in previous if "brief" in row]
     available_for_previous = ROUND_CHARS - 360 * len(results) - 10
@@ -422,6 +529,9 @@ async def execute(state: dict, specs: list[Job | dict], *, tools, timeout_second
             old = next((item for item in [*previous, *results] if item["job"] == row["spec"]["replaces"]), None)
             if old and old["job"] < row["job"] and can_replace(old, row):
                 old["status"] = "superseded"
+                counted = progress.group(f"job:{old['job']}", 'flight')
+                if counted:
+                    counted['status'] = 'superseded'
                 old["brief"]["status"] = "superseded"
             else:
                 row["replace_rejected"] = True
