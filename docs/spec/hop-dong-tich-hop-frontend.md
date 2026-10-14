@@ -805,7 +805,7 @@ Ca biên bắt buộc để dựng đủ 8 màn hình:
 | # | Nội dung | Mặc định Web trong lúc chờ |
 |---|---|---|
 | D3 | Endpoint ghi `product_view` | **Đã chốt** — `POST /api/v1/events`, xem §4.3 |
-| D9 | SSE cho trợ lý | Đã có contract 1.27.0: node.activity, node.completed.progress, run.preview; ✓ chỉ từ bước đã hoàn thành |
+| D9 | SSE cho trợ lý | Đã có contract 1.27.0: node.activity, node.completed.progress (run.preview không còn phát từ 2026-10-14); ✓ chỉ từ bước đã hoàn thành |
 | D10 | Shape `ItineraryResponse` | Code theo §9; mock theo §9. Nếu Agent từ chối, chỉ `features/itinerary` và fixture phải đổi |
 | D13 | "Đã xem gần đây" | Bỏ section ② Home |
 | A1 | Agent duyệt §10 | Như D10 |

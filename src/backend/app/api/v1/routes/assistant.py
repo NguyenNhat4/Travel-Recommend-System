@@ -177,9 +177,7 @@ async def stream_itinerary(payload: ItineraryRequestModel, request: Request,
                     mode, state = chunk if isinstance(chunk, tuple) else ('state', chunk)
                     if mode == 'event':
                         event_name, data = state.get('event'), dict(state.get('data') or {})
-                        if event_name in ('node.activity', 'run.preview'):
-                            if event_name == 'run.preview':
-                                data['runId'] = run_id
+                        if event_name == 'node.activity':
                             yield _sse(event_name, data)
                         continue
                     final_state = state

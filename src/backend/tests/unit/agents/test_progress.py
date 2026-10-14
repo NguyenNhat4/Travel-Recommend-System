@@ -45,13 +45,6 @@ class ProgressTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(counts['eligible'], 1)
         self.assertEqual(counts['chosen'], 1)
 
-    def test_preview_requires_completed_and_all_sources(self):
-        p = product('a')
-        response = dict(status='COMPLETED',itinerary={'days':[{'slots':[{'product':p}]}]})
-        self.assertIsNone(progress.preview({}, {'response':response}))
-        self.assertEqual(progress.preview({'sources':{'a':'search'}}, {'response':response})['products'], [p])
-        self.assertIsNone(progress.preview({'sources':{'a':'search'}}, {'response':{**response,'status':'FALLBACK'}}))
-
     def test_no_progress_outside_stream_and_no_context_leak(self):
         update={'events':[{'node':'tool'}]}
         self.assertIs(progress.completed('tool',{},update), update)

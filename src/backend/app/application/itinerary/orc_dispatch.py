@@ -6,22 +6,27 @@ request tới nguồn tốn một suất ngân sách; lỗi tạm thời thử l
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
 import json
 import logging
+from collections.abc import Callable
+from datetime import datetime, timedelta, timezone
 from time import monotonic
-from typing import Any, Callable
+from typing import Any
 
 from src.backend.app.application.ports.itinerary_tools import ToolError
-from src.backend.app.domain.itinerary.draft_validation import check_draft, cost_mode
+from src.backend.app.domain.itinerary.draft_validation import (
+    available_on,
+    cost_mode,
+    plan_slots,
+)
 
 from .flight_lookup import lookup_flights
-from .orc_contracts import TOOLS
+from .orc_contracts import TOOLS, tool_errors
 from .product_registry import ProductRegistry
 
 logger = logging.getLogger(__name__)
 VIETNAM = timezone(timedelta(hours=7))
-CATALOG_TOOLS = ("get_product_detail", "list_destinations", "list_products", "lookup_flights")
+CATALOG_TOOLS = ("get_products", "lookup_flights")
 
 
 class SourceBudget:
@@ -46,21 +51,39 @@ class OrcToolDispatcher:
         self.plans: dict[str, dict[str, Any]] = {}     # plan_result_id (= call_id) → lịch đã kiểm
         self.results: dict[str, dict[str, Any]] = {}   # call_id → kết quả, để tra dữ kiện orc trích
         self._cache: dict[str, Any] = {}
-        available = {definition["name"] for definition in tools.definitions()} | {"build_itinerary"}
+        definitions = {definition["name"] for definition in tools.definitions()}
+        available = {"plan_itinerary"}
+        if "search_products" in definitions or getattr(tools, "supports_catalog", False):
+            available.add("find_products")
+        if {"get_recommendations", "get_similar_products"} & definitions:
+            available.add("recommend")
         if getattr(tools, "supports_catalog", False):
             available |= set(CATALOG_TOOLS)
         self.allowed = [name for name in TOOLS if name in available]
 
-    async def run(self, call: dict[str, Any]) -> dict[str, Any]:
+    async def run(self, call: dict[str, Any], *, context: dict | None = None) -> dict[str, Any]:
         """Một lời gọi đã qua kiểm schema. Lỗi của lời gọi này không ảnh hưởng các lời gọi khác cùng lượt."""
         result = {"call_id": call["call_id"], "tool": call["name"], "status": "ok", "refs": [], "coverage": None,
                   "data": None, "error": None}
         try:
             if call["name"] not in self.allowed:
                 raise ToolError("TOOL_NOT_ALLOWED")
-            await getattr(self, "_" + call["name"])(call["arguments"], result)
+            errors = tool_errors(call["name"], call["arguments"])
+            if errors:
+                raise ToolError("INVALID_ARGUMENTS")
+            args = {key: value for key, value in call["arguments"].items() if value is not None and key != "why"}
+            if call["name"] == "plan_itinerary":
+                # Latest explicit constraints persist even if model omits them in a subsequent tool call.
+                for key, source in (("free_only", "free_only"), ("budget_vnd", "trip_budget_vnd")):
+                    if source in (context or {}):
+                        args[key] = context[source]
+            await getattr(self, "_" + call["name"])(args, result)
+            if call["name"] == "plan_itinerary":
+                result["data"]["commit_allowed"] = bool((context or {}).get("planning_consent")) and not (context or {}).get("stopped")
+                result["data"]["needs_update_trip"] = [] if result["data"]["commit_allowed"] else ["planning_consent"]
         except ToolError as exc:
-            result.update(status="error", refs=[], error={"code": exc.code, "retryable": exc.retryable})
+            result.update(status="error", refs=[], error={"code": exc.code, "retryable": exc.retryable,
+                          **({"reason": exc.reason} if exc.reason else {})})
         except Exception:
             logger.exception("itinerary.v2.tool_failed tool=%s", call["name"])
             result.update(status="error", refs=[], error={"code": "TOOL_FAILED", "retryable": False})
@@ -122,64 +145,154 @@ class OrcToolDispatcher:
         if not result["refs"]:
             result["status"] = "empty"
 
-    async def _search_products(self, args: dict, result: dict) -> None:
-        travel = {"checkIn": args["check_in"], "checkOut": args["check_out"],
-                  "guests": {"adults": args["guests"]} if args["guests"] else None}
-        params = {"query": args["query"], "destination": args["destination"], "taxonomy": args["taxonomy"],
-                  "priceMin": args["price_min"], "priceMax": args["price_max"],
-                  "starRatingMin": args["star_rating_min"], "limit": args["limit"] or 20, "offset": self._offset(args),
-                  "travelContext": {key: value for key, value in travel.items() if value is not None} or None}
-        data = await self.source("search_products", {key: value for key, value in params.items() if value is not None})
-        self._page(result, args, data["results"], data.get("total"), params["offset"])
 
-    async def _get_recommendations(self, args: dict, result: dict) -> None:
-        params = {key: value for key, value in (("k", args["k"]), ("destination", args["destination"]))
-                  if value is not None}
-        data = await self.source("get_recommendations", params)
-        result["refs"] = [self.registry.add(product) for product in data["recommendations"]]
-        result["coverage"] = {"checked": len(result["refs"]), "total": None, "next_cursor": None}
-        result["data"] = {"strategy": data["strategy"],
-                          "because": {ref: product.get("because") or []
-                                      for ref, product in zip(result["refs"], data["recommendations"])}}
+    @staticmethod
+    def _filters(product: dict, args: dict, *, room=False) -> bool:
+        from datetime import date
+        if product.get("available") is False and cost_mode(product) != "free":
+            return False
+        if args.get("price_max") is not None and (product.get("unitPrice") is None or product["unitPrice"] > args["price_max"]):
+            return False
+        stars = product.get("starRating") or (product.get("attributes") or {}).get("starRating")
+        if args.get("star_rating_min") is not None and (stars is None or stars < args["star_rating_min"]):
+            return False
+        if args.get("check_in"):
+            start = date.fromisoformat(args["check_in"])
+            end = date.fromisoformat(args.get("check_out") or args["check_in"])
+            count = max(1, (end - start).days) if room else 1
+            if any(available_on(product, start + timedelta(days=n)) is False for n in range(count)):
+                return False
+        return True
+
+    async def _rooms(self, refs: list[str], args: dict, result: dict) -> None:
+        rooms, coverage, errors = {}, {}, {}
+        for ref in refs:
+            product = self.registry.product(ref)
+            if product["taxonomy"] != "hotel" or (product.get("attributes") or {}).get("parentProductId"):
+                continue
+            try:
+                data = await self.source("list", {"parentProductId": product["productId"], "taxonomy": "hotel",
+                                                 "availableOnly": True, "sort": "price_asc", "limit": 20, "offset": 0})
+                # No continuation unless orc explicitly requests parent_ref + cursor.
+                rows = [p for p in data["results"] if self._filters(p, {**args, "star_rating_min": None}, room=True)]
+                rooms[ref] = [self.registry.add(p) for p in rows]
+                coverage[ref] = {"checked": len(data["results"]), "total": data.get("total"),
+                                 "complete": len(data["results"]) >= data.get("total", len(data["results"]))}
+            except ToolError as exc:
+                errors[ref] = exc.code
+            except Exception as exc:  # noqa: BLE001 - room lookup failure must preserve retrieved hotel cards
+                logger.warning("itinerary.v2.rooms_failed reason=%s", type(exc).__name__)
+                errors[ref] = "TOOL_FAILED"
+        result["data"] = {**(result.get("data") or {}), "rooms": rooms, "room_errors": errors}
+        result["coverage"] = {**(result.get("coverage") or {}), "rooms": coverage}
+        if errors or any(not row["complete"] for row in coverage.values()):
+            result["status"] = "partial"
+
+    async def _find_products(self, args: dict, result: dict) -> None:
+        args = {"cursor": None, "exclude_refs": [], "free_only": False, "destination": None,
+                "parent_ref": None, "sort": "popular", "limit": 10, **args}
+        if args.get("check_out") and (not args.get("check_in") or args["check_out"] <= args["check_in"]):
+            raise ToolError("INVALID_STAY_DATES")
+        offset = self._offset(args)
+        if args.get("parent_ref"):
+            params = {"parentProductId": self.registry.identify(args["parent_ref"]), "availableOnly": True,
+                      "sort": "price_asc" if args["sort"] == "relevance" else args["sort"],
+                      "limit": args["limit"], "offset": offset,
+                      **({"freeOnly": True} if args["free_only"] else {})}
+            data = await self.source("list", params)
+        elif args.get("query"):
+            params = {"query": args["query"], "taxonomy": args["taxonomy"], "limit": args["limit"], "offset": offset,
+                      **({"destination": args["destination"]} if args["destination"] else {})}
+            for key, target in (("price_max", "priceMax"), ("star_rating_min", "starRatingMin")):
+                if args.get(key) is not None:
+                    params[target] = args[key]
+            data = await self.source("search_products", params)
+        else:
+            if not getattr(self.tools, "supports_catalog", False):
+                raise ToolError("CATALOG_UNAVAILABLE")
+            data = await self.source("list", {"taxonomy": args["taxonomy"], "availableOnly": True,
+                 "sort": "popular" if args["sort"] == "relevance" else args["sort"],
+                 "limit": args["limit"], "offset": offset,
+                 **({"freeOnly": True} if args["free_only"] else {}),
+                 **({"destination": args["destination"]} if args["destination"] else {})})
+        raw = data["results"]
+        rows = [p for p in raw if self._filters(p, args, room=bool(args["parent_ref"]))]
+        if args.get("query") and args["sort"] in ("price_asc", "price_desc"):
+            known = [p for p in rows if p.get("unitPrice") is not None]
+            unknown = [p for p in rows if p.get("unitPrice") is None]
+            rows = sorted(known, key=lambda p: p["unitPrice"], reverse=args["sort"] == "price_desc") + unknown
+        self._page(result, args, rows, None, offset)
+        more = bool(raw) and data.get("total") is not None and offset + len(raw) < data["total"]
+        result["coverage"] = {"checked": len(raw), "total": data.get("total"),
+            "scope": "search_page" if args.get("query") else "catalog_page",
+            "filtered": len(raw) - len(rows),
+            "next_cursor": self.registry.issue_cursor(args, offset + len(raw)) if more else None}
+        if args["taxonomy"] == "hotel" and not args["parent_ref"] and getattr(self.tools, "supports_catalog", False):
+            await self._rooms(result["refs"], args, result)
+
+    async def _get_products(self, args: dict, result: dict) -> None:
+        refs = list(dict.fromkeys(args["refs"]))
+        async def fetch(ref):
+            try:
+                return await self.source("detail", self.registry.identify(ref))
+            except ToolError as exc:
+                return exc.code
+            except Exception as exc:  # noqa: BLE001 - one adapter failure must not cancel other product refreshes
+                logger.warning("itinerary.v2.detail_failed reason=%s", type(exc).__name__)
+                return "TOOL_FAILED"
+        rows = await asyncio.gather(*(fetch(ref) for ref in refs))
+        errors = {}
+        for ref, row in zip(refs, rows):
+            if isinstance(row, str):
+                errors[ref] = row
+            else:
+                result["refs"].append(self.registry.add(row))
+        result["coverage"] = {"checked": len(refs), "total": len(refs), "next_cursor": None}
+        result["data"] = {"errors": errors}
+        if errors:
+            result["status"] = "partial" if result["refs"] else "error"
+            if not result["refs"]:
+                result["error"] = {"code": "PRODUCT_REFRESH_FAILED", "retryable": False}
+        if args.get("include_rooms"):
+            await self._rooms(result["refs"], {}, result)
+
+    async def _recommend(self, args: dict, result: dict) -> None:
+        if args.get("like_ref"):
+            data = await self.source("get_similar_products", {"productId": self.registry.identify(args["like_ref"]),
+                                                              "limit": args.get("k", 5)})
+            products = data["results"]
+            result["data"] = {"strategy": "similar"}
+        else:
+            data = await self.source("get_recommendations", {key: args[key] for key in ("k", "destination") if args.get(key) is not None})
+            products = data["recommendations"]
+            result["data"] = {"strategy": data["strategy"]}
+        excluded = {self.registry.identify(ref) for ref in args.get("exclude_refs") or []}
+        eligible = [p for p in products if p["productId"] not in excluded and
+                    (not args.get("taxonomy") or p["taxonomy"] == args["taxonomy"]) and
+                    (not args.get("destination") or p.get("destination") == args["destination"])]
+        result["refs"] = [self.registry.add(p) for p in eligible]
+        result["data"]["because"] = {ref: p.get("because") or [] for ref, p in zip(result["refs"], eligible)}
+        result["coverage"] = {"checked": len(products), "total": None, "next_cursor": None,
+                              "filtered": len(products) - len(eligible)}
         if not result["refs"]:
             result["status"] = "empty"
-
-    async def _get_similar_products(self, args: dict, result: dict) -> None:
-        data = await self.source("get_similar_products",
-                                 {"productId": self.registry.identify(args["product_ref"]), "limit": args["limit"] or 8})
-        result["refs"] = [self.registry.add(product) for product in data["results"]]
-        result["coverage"] = {"checked": len(result["refs"]), "total": None, "next_cursor": None}
-        if not result["refs"]:
-            result["status"] = "empty"
-
-    async def _get_product_detail(self, args: dict, result: dict) -> None:
-        product = await self.source("detail", self.registry.identify(args["product_ref"]))
-        result["refs"] = [self.registry.add(product)]
-
-    async def _list_destinations(self, args: dict, result: dict) -> None:
-        data = await self.source("destinations", None)
-        result["data"] = {"destinations": [row["destination"] for row in data["destinations"]]}
-
-    async def _list_products(self, args: dict, result: dict) -> None:
-        params = {"destination": args["destination"], "taxonomy": args["taxonomy"], "sort": args["sort"],
-                  "parentProductId": self.registry.identify(args["parent_ref"]) if args["parent_ref"] else None,
-                  "availableOnly": args["available_only"], "limit": args["limit"] or 20, "offset": self._offset(args)}
-        data = await self.source("list", {key: value for key, value in params.items() if value is not None})
-        self._page(result, args, data["results"], data["total"], params["offset"])
 
     async def _lookup_flights(self, args: dict, result: dict) -> None:
-        await lookup_flights(self, args, result)
+        values = {key: None for key in ("origin", "destination", "date", "time_of_day", "sort", "limit")}
+        await lookup_flights(self, {**values, **args}, result)
 
-    async def _build_itinerary(self, args: dict, result: dict) -> None:
-        """Kiểm lịch orc phác với dữ kiện tra trong lượt; ref chỉ có trong lịch sử thì STALE_REF (phải tra lại)."""
-        refs = list(dict.fromkeys([a["product_ref"] for day in args["plan_days"] for a in day["activities"]]
-                                  + [stay["product_ref"] for stay in args["stays"]]
-                                  + [flight["product_ref"] for flight in args["flights"]]))
+    async def _plan_itinerary(self, args: dict, result: dict) -> None:
+        refs = list(dict.fromkeys([ref for day in args["schedule"] for slot in ("morning", "afternoon", "evening")
+                                   for ref in [day.get(slot)] if ref]
+                                 + [stay["room_ref"] for stay in args.get("stays") or []]
+                                 + [ref for ref in (args.get("flights") or {}).values() if ref]))
         products = {ref: self.registry.product(ref) for ref in refs}
-        checked = check_draft(args, products)
-        self.plans[result["call_id"]] = {"plan_result_id": result["call_id"], "draft": args, "products": products,
-                                         **checked}
+        checked = plan_slots(args, products, self.registry.fetched())
+        logger.info("itinerary.v2.plan_checked call=%s feasibility=%s violations=%s", result["call_id"],
+                    checked["feasibility"], ",".join(issue["code"] for issue in checked["violations"]))
+        self.plans[result["call_id"]] = {"plan_result_id": result["call_id"], "products": products, **checked}
         result["refs"] = refs
         result["data"] = {"plan_result_id": result["call_id"], "feasibility": checked["feasibility"],
-                          "nights": checked["nights"], "violations": checked["violations"],
-                          "warnings": checked["warnings"], "changes": checked["changes"], **checked["costs"]}
+            "nights": checked["nights"], "days": checked["plan_days"], "stays": checked["stays"],
+            "violations": checked["violations"], "warnings": checked["warnings"],
+            "savings": checked["savings"], "costs": checked["costs"], **checked["costs"]}

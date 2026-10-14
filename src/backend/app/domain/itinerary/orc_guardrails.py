@@ -5,11 +5,12 @@ Vượt ngân sách không phải vấn đề: chỉ cần công bố cảnh bá
 """
 from __future__ import annotations
 
-from collections import Counter
 import re
-from typing import Any, Callable
+from collections import Counter
+from collections.abc import Callable
+from typing import Any
 
-from .draft_validation import cost_mode
+from .draft_validation import cost_mode, entry_mode
 from .normalization import fold
 
 FATAL = {"SECRET_EXPOSURE"}
@@ -21,6 +22,11 @@ _NUMBER_TEXT = re.compile(
     re.IGNORECASE)
 _BOOKING_CLAIM = re.compile(r"đã đặt|đã thanh toán|đặt thành công|booking confirmed", re.IGNORECASE)
 _SECRET = re.compile(r"sk-[a-zA-Z0-9]{10,}|bearer\s+[a-zA-Z0-9._-]{10,}|AIzaSy[a-zA-Z0-9_-]{10,}", re.IGNORECASE)
+_INTERNAL_DETAILS = re.compile(
+    r"\b(?:catalog(?:ue)?|cursor|offset|registry|taxonomy|toolmessage)\b"
+    r"|\b(?:find_products|get_products|plan_itinerary|lookup_flights|update_trip|free_only)\b"
+    r"|phân trang|trang (?:kết quả|hiện tại|vừa kiểm|đã kiểm|kế tiếp)"
+    r"|(?:còn|các|những) trang (?:chưa|khác|kết quả|tiếp)", re.IGNORECASE)
 
 
 def _issue(code: str, field: str, refs: list[str] | None = None) -> dict[str, Any]:
@@ -29,21 +35,45 @@ def _issue(code: str, field: str, refs: list[str] | None = None) -> dict[str, An
 
 def public_explanation(text: str | None) -> str | None:
     """Public decision summary, omitted when it contains unchecked figures, links or secrets."""
-    if not text or len(text) > 400 or _SECRET.search(text) or _NUMBER_TEXT.search(text):
+    if not text or len(text) > 400 or _SECRET.search(text) or _NUMBER_TEXT.search(text) or _INTERNAL_DETAILS.search(text):
         return None
     return text.strip() or None
 
 
+def _compact(text: str) -> str:
+    return re.sub(r"\s+", "", text).lower()
+
+
 def final_issues(decision: dict[str, Any], *, products: dict[str, dict[str, Any]], fact: Callable[[str, str], Any],
-                 plans: dict[str, dict[str, Any]], consent: bool, free_only: bool) -> list[dict[str, Any]]:
+                 plans: dict[str, dict[str, Any]], consent: bool, free_only: bool,
+                 user_message: str = "") -> list[dict[str, Any]]:
     """Vấn đề của quyết định respond.
 
     `products`: sản phẩm tra trong lượt (ref → sản phẩm); `fact(ref, field)`: giá trị server có, None khi không có;
     `plans`: lịch build_itinerary trả trong lượt (plan_result_id → kết quả); `consent`: khách đã đồng ý lập lịch.
+    `user_message`: tin nhắn hiện tại của khách. Câu trả lời không nhắc sản phẩm/dữ kiện nào (vd. từ chối việc ngoài
+    du lịch) được nhắc lại con số chính khách vừa viết; có sản phẩm thì không, để số khách nói không thành dữ kiện
+    sản phẩm (NFR-REL-01).
     """
     issues = []
     seen: set[str] = set()
     per_taxonomy: Counter[str] = Counter()
+    grounded = (any(segment["type"] != "text" for segment in decision["answer"])
+                or any(decision["cards"].values()) or bool(decision["alternatives"]))
+    said = "" if grounded else _compact(user_message)
+
+    def unchecked_number(text: str) -> bool:
+        return any(not said or _compact(match.group()) not in said for match in _NUMBER_TEXT.finditer(text))
+
+    def check_public_text(text: str | None, field: str) -> None:
+        if text and _INTERNAL_DETAILS.search(text):
+            issues.append(_issue("INTERNAL_IMPLEMENTATION_DETAILS", field))
+
+    check_public_text(decision.get("explanation"), "explanation")
+    for index, suggestion in enumerate(decision["suggestions"]):
+        check_public_text(suggestion["label"], f"suggestions.{index}.label")
+    for index, alternative in enumerate(decision["alternatives"]):
+        check_public_text(alternative["disclosure"], f"alternatives.{index}.disclosure")
 
     def card(ref: str, field: str, taxonomy: str | None = None) -> dict | None:
         if ref in seen:
@@ -87,10 +117,16 @@ def final_issues(decision: dict[str, Any], *, products: dict[str, dict[str, Any]
             continue
         if _SECRET.search(segment["text"]):
             issues.append(_issue("SECRET_EXPOSURE", field))
-        if _NUMBER_TEXT.search(segment["text"]):
+        if unchecked_number(segment["text"]):
             issues.append(_issue("NUMBER_WITHOUT_FACT", field))
         if _BOOKING_CLAIM.search(segment["text"]):
             issues.append(_issue("FALSE_BOOKING_CLAIM", field))
+        check_public_text(segment["text"], field)
+
+    presented = seen | {segment["ref"] for segment in decision["answer"] if segment["type"] == "product"}
+    assumed = [ref for ref in presented if ref in products and entry_mode(products[ref]) == "assumed_free"]
+    if assumed and "FREE_ENTRY_ASSUMED" not in decision["disclosures"]:
+        issues.append(_issue("MISSING_DISCLOSURE", "disclosures", sorted(assumed)))
 
     replace = decision["plan_effect"] == "replace"
     if replace != (decision["turn_kind"] == "itinerary"):

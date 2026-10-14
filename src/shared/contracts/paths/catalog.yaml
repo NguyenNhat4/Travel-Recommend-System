@@ -47,6 +47,16 @@
       schema:
         type: boolean
         default: false
+    - name: freeOnly
+      in: query
+      required: false
+      description: >-
+        Chỉ điểm tham quan/golf vào cửa tự do, lọc trước sort và phân trang; total là số điểm phù hợp.
+        entryPolicy=free hoặc assumed_free (điểm không giá, không ghi ticketed=true; cần xác nhận phí vào cửa).
+        Không gửi/false giữ hành vi cũ. Không tự suy hotel/flight/combo thiếu giá thành miễn phí.
+      schema:
+        type: boolean
+        default: false
     - name: sort
       in: query
       schema:

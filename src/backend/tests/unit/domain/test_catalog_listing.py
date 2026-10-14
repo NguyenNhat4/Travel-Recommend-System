@@ -80,6 +80,18 @@ def test_filter_by_destination_taxonomy_and_availability():
     assert ids(filter_items(items)) == ["a1", "a2", "g1", "a3"]
 
 
+def test_free_only_retains_source_evidence_or_disclosed_assumption():
+    items = [ListingItem(p) for p in (
+        product("priced"), product("zero", 0), product("public", None),
+        product("not-ticketed", 90, ticketed=False), product("ticketed-unknown", None, ticketed=True),
+        product("room", None, taxonomy="hotel"), product("package", None, taxonomy="combo"),
+    )]
+    assert ids(filter_items(items, free_only=True)) == ["zero", "public", "not-ticketed"]
+    assert items[2].product.entry_policy == "assumed_free"
+    assert items[3].product.entry_policy == "free"
+    assert items[4].product.entry_policy == "unknown"
+
+
 def test_price_sorts_put_unpriced_last_both_ways():
     items = [ListingItem(product("free", None)), ListingItem(product("cheap", 1)), ListingItem(product("dear", 9))]
     assert ids(sort_items(items, "price_asc")) == ["cheap", "dear", "free"]

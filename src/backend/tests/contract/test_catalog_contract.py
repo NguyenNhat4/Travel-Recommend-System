@@ -117,6 +117,14 @@ def test_listing_query_parameters_are_declared_in_contract():
     taxonomy, diversify = params["taxonomy"], params["diversify"]
     assert (taxonomy["style"], taxonomy["explode"], taxonomy["schema"]["type"]) == ("form", False, "array")
     assert diversify["schema"]["enum"] == ["taxonomy"]
+    assert params["freeOnly"]["schema"] == {"type": "boolean", "default": False}
+
+
+def test_free_entry_filter_and_evidence_match_the_public_contract(client):
+    page = assert_contract(client.get("/api/v1/products", params={"freeOnly": True, "limit": 1}), "/products", "get")
+    assert page["total"] == 1 and page["results"][0]["productId"] == "A2"
+    assert page["results"][0]["entryPolicy"] == "free"
+    assert "ticketed" not in page["results"][0]["attributes"]
 
 
 def test_diversified_listing_matches_contract(client, state):

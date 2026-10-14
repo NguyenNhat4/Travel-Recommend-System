@@ -101,6 +101,22 @@ def test_filters_and_pagination(products):
     assert first["total"] == second["total"] and not set(ids(first)) & set(ids(second))
 
 
+def test_free_only_filters_before_paging_even_after_many_popular_paid_products():
+    rows = [P(f"paid{i}", f"Tour {i}", "attraction", "TP. Hồ Chí Minh", {}, price=100_000) for i in range(41)]
+    rows += [P("post-office", "Bưu điện", "attraction", "TP. Hồ Chí Minh", {}, price=None),
+             P("market", "Chợ Bến Thành", "attraction", "TP. Hồ Chí Minh", {"ticketed": False}, price=None),
+             P("paid-unknown", "Bảo tàng", "attraction", "TP. Hồ Chí Minh", {"ticketed": True}, price=None)]
+    listing = ListProducts(InMemoryProductQuery(rows))
+    first = run(listing(taxonomy="attraction", free_only=True, available_only=True, limit=1))
+    second = run(listing(taxonomy="attraction", free_only=True, available_only=True, limit=1, offset=1))
+    assert first["total"] == second["total"] == 2
+    assert set(ids(first) + ids(second)) == {"post-office", "market"}
+    assert all(p["unitPrice"] is None for p in first["results"] + second["results"])
+    policies = {p["productId"]: p["entryPolicy"] for p in first["results"] + second["results"]}
+    assert policies == {"post-office": "assumed_free", "market": "free"}
+    assert "ticketed" not in run(GetProductDetail(listing.products)("market"))["attributes"]  # C2 preserved
+
+
 @pytest.mark.parametrize("kwargs, field", [
     ({"sort": "newest"}, "sort"), ({"taxonomy": "cruise"}, "taxonomy"),
     ({"limit": 0}, "limit"), ({"limit": 51}, "limit"), ({"offset": -1}, "offset"),
