@@ -133,6 +133,19 @@ class Alerts(unittest.TestCase):
         self.assertIn("ALIGN_PERCENTILE_95", body)
         self.assertIn("var.alert_p95_latency_ms", body)
 
+    def test_latency_alert_needs_enough_requests_to_trust_p95(self):
+        # p95 trên vài request là nhiễu (03:19 UTC 14/10: 78–127 request/phút, p95 nhảy tới 3,2 s). Điều kiện tổng request là AND với p95.
+        body = policy("lb_latency")
+        self.assertIn('combiner              = "AND"', body)
+        self.assertEqual(body.count("condition_threshold"), 2)
+        self.assertIn("ALIGN_SUM", body)
+        self.assertIn("REDUCE_SUM", body)
+        self.assertIn("local.lb_rule_filter_prefix", body)
+        self.assertIn("var.alert_p95_min_requests", body)
+        variables = (D / "variables.tf").read_text()
+        default = float(re.search(r'variable "alert_p95_min_requests" \{.*?default\s*=\s*([\d.]+)', variables, re.S).group(1))
+        self.assertGreaterEqual(default, 50)   # dưới 50 request/10 phút thì không đủ mẫu cho p95
+
     def test_uptime_check_probes_readiness_through_the_load_balancer(self):
         uptime = re.search(r'resource "google_monitoring_uptime_check_config" "lb_ready" \{(.*?)\n\}\n', MON, re.S).group(1)
         self.assertIn('"/health/ready"', uptime)

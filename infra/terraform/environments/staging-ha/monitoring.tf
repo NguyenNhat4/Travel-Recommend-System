@@ -266,8 +266,9 @@ resource "google_monitoring_alert_policy" "lb_5xx_ratio" {
 
 # 4. Độ trễ backend p95.
 resource "google_monitoring_alert_policy" "lb_latency" {
-  display_name          = "${var.name_prefix} HA: p95 độ trễ backend cao"
-  combiner              = "OR"
+  display_name = "${var.name_prefix} HA: p95 độ trễ backend cao"
+  # AND: p95 chỉ kêu khi đủ mẫu (tổng request trong 10 phút). Dưới ngưỡng này p95 dựa trên vài request, một request chậm đủ làm p95 vọt.
+  combiner              = "AND"
   notification_channels = local.alert_channels
 
   conditions {
@@ -286,12 +287,28 @@ resource "google_monitoring_alert_policy" "lb_latency" {
     }
   }
 
+  conditions {
+    display_name = "Tổng request LB trong 10 phút > ${var.alert_p95_min_requests} (đủ mẫu để tính p95)"
+    condition_threshold {
+      filter          = local.lb_rule_filter_prefix
+      comparison      = "COMPARISON_GT"
+      threshold_value = var.alert_p95_min_requests
+      duration        = "600s"
+
+      aggregations {
+        alignment_period     = "600s"
+        per_series_aligner   = "ALIGN_SUM"
+        cross_series_reducer = "REDUCE_SUM"
+      }
+    }
+  }
+
   alert_strategy {
     auto_close = "1800s"
   }
 
   documentation {
-    content   = "p95 độ trễ backend vượt ${var.alert_p95_latency_ms} ms trong 10 phút (NFR hiệu năng của search)."
+    content   = "p95 độ trễ backend vượt ${var.alert_p95_latency_ms} ms trong 10 phút, và có ít nhất ${var.alert_p95_min_requests} request trong 10 phút (dưới mức đó p95 không đủ mẫu). Số request gồm cả probe của kiểm tra uptime. NFR hiệu năng search là p95 ≤ 250 ms (NFR-PERF-01), ngưỡng này áp cho mọi route, gồm cả SSE."
     mime_type = "text/markdown"
   }
 }
