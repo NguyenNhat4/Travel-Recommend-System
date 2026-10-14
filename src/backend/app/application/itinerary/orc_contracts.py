@@ -204,7 +204,14 @@ FIND = _parameters(
     "Tìm catalog: có query thì Search theo độ khớp; bỏ query thì duyệt theo sort. Khách sạn trả kèm hạng phòng. "
     "Mỗi khách sạn kèm phòng tốn thêm một request nguồn; coverage.rooms cho biết phần chưa đọc được.",
     ["why", "taxonomy"], why=WHY, taxonomy={**TAXONOMY, "enum": ["hotel", "attraction", "combo", "golf"]},
-    destination=_opt(DESTINATION), query=_opt(SEARCH["properties"]["query"]),
+    destination=_opt(_str("Phạm vi tìm của lượt này, không phải điểm đến lịch đã lưu. null = mọi nơi. "
+                         "Khách nói ngoài Phan Thiết: null và excluded_destinations=[Phan Thiết].")),
+    query=_opt(SEARCH["properties"]["query"]),
+    name_contains=_opt(_str("Cụm tên riêng phải có nguyên cụm trong tên kết quả, bỏ qua dấu/hoa thường. "
+                           "Ví dụ Le Phan: nhận Khách sạn Lê Phan, không nhận Le Aqua. Không dùng cho chủ đề.",
+                           minLength=1, maxLength=200)),
+    excluded_destinations=_opt(_list(DESTINATION, "Các điểm đến khách loại trong lần tìm này; không đổi lịch. "
+                                   "Không đồng nghĩa ngoài trời.", maxItems=20)),
     sort=_opt(_str("Có query: relevance giữ thứ tự Search; price_asc/desc chỉ sắp trang đã tìm, không cả catalog. "
                   "Không query: popular/price_asc/price_desc theo Catalog.",
                   enum=["relevance", "popular", "price_asc", "price_desc"])),
@@ -246,10 +253,10 @@ UPDATE_TRIP["required"] = ["evidence"]
 # budget_vnd là tên tool; working memory giữ trip_budget_vnd để tương thích hội thoại đã lưu.
 UPDATE_TRIP["properties"]["budget_vnd"] = UPDATE_TRIP["properties"].pop("trip_budget_vnd")
 FINAL = optional_fields(RESPOND)
-for field in ("action", "context_patch"):
-    FINAL["properties"].pop(field)
-    if field in FINAL["required"]:
-        FINAL["required"].remove(field)
+FINAL["properties"].pop("action")
+FINAL["required"].remove("action")
+# Clarification can save the new trip fields atomically with its answer, including in the final-only round.
+# Same evidence/schema checks and commit boundary as update_trip; omitted/null fields preserve prior context.
 FLIGHT_PARAMETERS = optional_fields(FLIGHTS)
 FLIGHT_PARAMETERS["properties"]["why"] = WHY
 FLIGHT_PARAMETERS["required"].append("why")

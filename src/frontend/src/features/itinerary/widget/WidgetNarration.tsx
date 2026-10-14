@@ -55,7 +55,12 @@ export function narrationBlocks(
       continue;
     }
     if (!buffer.length && blocks[blocks.length - 1]?.kind !== 'text' && blocks.length && !line.trim()) continue;
-    buffer.push(line);
+    // A product-only heading repeats the name on its card. Keep meaningful sentences and unknown refs.
+    const references = parts.filter((part) => part.kind === 'product');
+    const cardTitleOnly = references.length === 1 && isKnown(references[0].productId)
+      && !shown.has(references[0].productId) && !fareIds.has(references[0].productId)
+      && parts.every((part) => part.kind === 'product' || !part.text.replace(/[\s*#•\-–—:.,()]/g, ''));
+    if (!cardTitleOnly) buffer.push(line);
     const fresh: NarrationBlock[] = [];
     for (const part of parts) {
       if (part.kind !== 'product' || shown.has(part.productId) || slotIds.has(part.productId) || !isKnown(part.productId)) continue;

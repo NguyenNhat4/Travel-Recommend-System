@@ -756,6 +756,17 @@ Entry riêng `src/shared/contracts/assistant-v2.openapi.yaml`, prefix `/api/v2`;
   (AC-AGT-07). Khách xin lịch trình mà thiếu ngày đi: `clarification`, hỏi gộp một câu, không phác lịch theo ngày bằng
   chữ (AC-AGT-01). Điểm `free`/`assumed_free` được giới thiệu là điểm tham quan tự do; câu lưu ý
   `FREE_ENTRY_ASSUMED` do code viết một lần, orc không lặp ở từng điểm.
+- Lịch mới (`itinerary`/`replace`) kể theo ngày như wireframe PRD `user-flow.md` §4.2: tiêu đề `**Ngày N — dd/mm**`,
+  mỗi buổi một câu nhắc đúng sản phẩm của buổi đó (thẻ ngay dưới), rồi nơi nghỉ; orc không viết lại nội dung
+  `warnings`. Code tách tiêu đề đậm đứng đầu đoạn/sau dấu kết câu/sau link sản phẩm thành dòng riêng, vì widget chỉ coi
+  dòng chỉ có `**…**` là tiêu đề. Trẻ em không bắt buộc (mặc định 0, không hỏi riêng); câu cụt ngay sau câu hỏi của
+  trợ lý là câu trả lời cho câu hỏi đó, không phải dừng.
+- Khách né câu hỏi thông tin chuyến ("ko biết", "tùy bạn"): orc đề xuất lựa chọn phổ biến cho mọi trường còn thiếu,
+  hỏi một câu có/không kèm một nút đồng ý nêu đủ giá trị; không form, không lặp câu cũ (AC-AGT-07, chốt 14/10/2026,
+  `../prd/update-archive/2026-10-14-de-xuat-lua-chon-pho-bien-khi-khach-khong-tra-loi.md`). Code kiểm: lịch chỉ lưu
+  khi `destination`, `start_date`, `days`, `adults` của lịch trùng ngữ cảnh đã lưu (giá trị có căn cứ từ tin khách);
+  thiếu thì `plan_itinerary` trả trường đó trong `needs_update_trip` và `respond` replace bị trả
+  `TRIP_FIELD_UNCONFIRMED` (`domain/itinerary/orc_guardrails.py::unconfirmed_trip_fields`).
 - SSE: `start` → Think (`activity.kind=think`, `explanation` công khai đã kiểm) → Act (`activity` của tool) → Observe (`tool-completed`, `outcome` và số đếm thật) → Think tiếp theo hoặc `final`/`error`. Các call độc lập chạy song song; Observe phát khi từng call xong. Cập nhật số chọn/hiển thị của cùng group thay số cũ, không thêm vòng giả. `preview` không còn phát (bỏ thẻ xem trước, chốt 2026-10-14, `../prd/update-archive/2026-10-14-bo-the-xem-truoc-trong-tien-trinh.md`). Mất kết nối không huỷ lượt. Không thêm model call để viết tiến trình.
 - Lỗi theo §4.6: `LLM_UNAVAILABLE` 503 (model lỗi, hết giới hạn lượt), `ITINERARY_VALIDATION_FAILED` 500 (câu trả lời
   vẫn sai sau một lần sửa), `VALIDATION_ERROR` 400 (đầu vào bị chặn, NFR-SEC-04) hoặc 422 (request sai).
@@ -968,3 +979,38 @@ Khách muốn phương án tiết kiệm hơn khi đã có lịch: orc tra lại
 tra), tìm ứng viên rẻ hơn cho dòng tốn nhất (khách sạn price_asc dưới giá đang dùng, hoạt động free_only/price_asc),
 rồi plan_itinerary thay dòng đó, giữ ngày, số khách và ref đã khoá; trả itinerary/replace với chi phí mới qua fact.
 Một tra cứu lỗi không chặn dựng lịch bằng ứng viên đã có; không rẻ hơn được thì nói lý do và giữ lịch.
+Vé máy bay là phần tuỳ chọn như khách sạn (AC-AGT-01 nơi đi không bắt buộc, AC-AGT-02 công bố phạm vi): lookup_flights
+empty/`route_found=false` (ví dụ Phan Thiết không có sân bay) vẫn dựng lịch không flights, trả itinerary/replace kèm một
+câu chưa tìm thấy chuyến bay; không bịa phương tiện khác. Khách nói nơi đi sau khi đã có lịch: tra vé cùng tra lại ref
+của lịch, rồi plan_itinerary giữ schedule/stays cũ (kèm flights nếu có) để lịch hiện lại cùng kết quả vé. Lập lịch
+tra cả điểm tham quan tự do (free_only) vì nhiều nơi tour trả phí kéo dài cả ngày, không vừa buổi; thiếu ứng viên
+thì để trống buổi, không lặp điểm. Lượt tool cuối mà chưa có lịch hợp lệ dùng để dựng lịch với ứng viên đã có.
+
+### Hội thoại tiếp nối và tư vấn trải nghiệm v2 (chốt 2026-10-14)
+
+Phục vụ FR-AGT-01/02/04/06, AC-AGT-01/06/07, NFR-REL-01; đề xuất đã áp dụng
+`../prd/update-archive/2026-10-14-sua-hoi-thoai-thu-luc-mot-gio.md`.
+
+- `respond.context_patch` là tham số function nội bộ, không đổi response HTTP/SSE. Lượt hỏi lại ghi ngay ngày,
+  số khách, số ngày vừa hiểu cùng final; `update_trip` vẫn dùng khi cần cập nhật trước tool nghiệp vụ. Cả hai
+  kiểm evidence từ tin nhắn/nút/form hiện tại. Bỏ trường/null giữ giá trị cũ; chỉ commit sau final hợp lệ. Guard
+  repair/hết lượt chỉ còn respond vẫn có thể lưu phần bổ sung, không cần thêm model call hoặc classifier.
+- Ví dụ ngày hiện tại Việt Nam 14/10/2026: “t6 tuần này” → 16/10; “3 người lớn” giữ ngày, chỉ thêm adults;
+  “đi 2 ngày” giữ ngày và khách, bổ sung days rồi lập lịch nếu đã đủ điều kiện. Kiểm code qua runtime + store
+  với model viết sẵn; hiểu đúng ngôn ngữ phải kiểm riêng bằng model thật.
+- `find_products.name_contains` là bộ lọc cụm tên theo ranh giới từ, không phân biệt dấu/hoa thường; “Le Phan”
+  nhận “Khách sạn Lê Phan”, không nhận “Le Aqua” hay “Le Phanorama”. Đây không phải chứng nhận danh tính cơ sở.
+  `excluded_destinations` loại điểm đến đúng tên catalog (không dấu/hoa thường), chỉ trong lời gọi này. Lọc trước
+  cấp ref, không áp tên property lên tên phòng con. Coverage/cursor vẫn theo trang nguồn, không giả hết kết quả
+  khi một trang bị lọc rỗng; orc tự quyết định tra tiếp trong quota. Cursor đổi điều kiện bị từ chối.
+- “Tìm ngoài Phan Thiết” sau câu hỏi khách sạn giữ đối tượng khách sạn và cụm tên, tìm toàn danh mục và loại Phan
+  Thiết; không hiểu thành “ngoài trời”, không đổi điểm đến lịch. Bỏ khách sạn khỏi lịch không cấm hỏi địa chỉ
+  khách sạn. Không thấy đúng tên thì nói chưa thấy, không giới thiệu kết quả khác tên như một kết quả đúng.
+- Khám phá chung ưu tiên điểm tham quan tự do phổ biến qua tool hiện có; không ghi thành `context.free_only`
+  trừ yêu cầu rõ “chỉ miễn phí”. Recommendation được dùng nhưng độ phổ biến không thay thế căn cứ entryPolicy.
+  Cảnh báo assumed_free giữ nguyên; dịch vụ trả phí cụ thể vẫn được tìm theo nhu cầu.
+- Giọng hướng dẫn mô tả trải nghiệm bằng dữ kiện, không quảng cáo hay suy giờ mở cửa từ cửa sổ bán. Widget lược
+  dòng chỉ có tham chiếu tên ngay trước thẻ (kể cả bọc đậm), giữ câu có nghĩa, tên lạ và thao tác mở chi tiết.
+- “Không muốn đi chơi” được chuyển sang vài ý tưởng nghỉ nhẹ, hỏi một câu khu vực nếu chưa biết; không tự coi
+  điểm đến cũ là nơi đang ở, không bịa cơ sở/dịch vụ. Lượt ý tưởng không cần tool vẫn đánh dấu đã khơi gợi một
+  lần. Dừng rõ hoặc từ chối tiếp thì không gợi ý/nút/thẻ/câu hỏi, consent lập lịch được hủy, lịch cũ giữ nguyên.

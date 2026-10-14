@@ -3,8 +3,13 @@ import asyncio
 
 import pytest
 
-from src.backend.app.application.itinerary.v2_use_cases import RunAssistantV2, V2TurnError
-from src.backend.app.infrastructure.persistence.assistant_v2_store import InMemoryAssistantV2Store
+from src.backend.app.application.itinerary.v2_use_cases import (
+    RunAssistantV2,
+    V2TurnError,
+)
+from src.backend.app.infrastructure.persistence.assistant_v2_store import (
+    InMemoryAssistantV2Store,
+)
 
 
 def request(turn="t1", **fields):
@@ -73,4 +78,45 @@ def test_unknown_conversation_and_forged_button_are_rejected():
         await case.run(request("t3", conversationId=first["conversationId"], message=None, uiAction=clicked),
                        owner="o")
         assert seen[-1]["ui_action"] == {"id": "a1", "type": "fare_query", "label": "Đắt nhất?", "query": {}}
+    asyncio.run(run())
+
+
+def test_date_party_duration_survive_real_runtime_and_store_between_turns():
+    """Exercise actual final patch validation and persistence, without claiming LLM interpretation coverage."""
+    import json
+
+    from langchain_core.messages import AIMessage
+
+    from src.backend.app.agents.orc_v2 import OrcV2Runtime
+    from src.backend.tests.fakes.orc_tools import FakeTools, ScriptedModel, respond
+
+    async def run():
+        turns = [
+            ('Lên kế hoạch Hà Nội', {'destination': 'Hà Nội', 'planning_consent': True}),
+            ('t6 tuần này', {'start_date': '2026-10-16'}),
+            ('3 người lớn', {'adults': 3}),
+            ('đi 2 ngày', {'days': 2}),
+        ]
+        models = []
+        def factory(**kw):
+            message, values = turns[len(models)]
+            args = {k: v for k, v in respond('Mình đã ghi nhận.', turn_kind='clarification').items() if k != 'action'}
+            args['context_patch'] = {**values, 'evidence': message}
+            model = ScriptedModel([AIMessage(content='', tool_calls=[{'id': 'r', 'name': 'respond', 'args': args}])])
+            models.append(model)
+            return OrcV2Runtime(tools=FakeTools(), llm=model, known_refs=kw['known_refs'],
+                                request_timeout_seconds=60, tool_timeout_seconds=1, model_timeout_seconds=10)
+        store = InMemoryAssistantV2Store()
+        case = RunAssistantV2(store, factory)
+        cid = None
+        for i, (message, _) in enumerate(turns):
+            final = await case.run(request(str(i), message=message, **({'conversationId': cid} if cid else {})), owner='o')
+            cid = final['conversationId']
+        saved = await store.load('o', cid)
+        assert saved['context'] == {'destination': 'Hà Nội', 'planning_consent': True,
+                                    'start_date': '2026-10-16', 'adults': 3, 'days': 2}
+        last = json.loads(models[-1].payloads[0][1].content)
+        assert last['context']['start_date'] == '2026-10-16'
+        assert last['context']['adults'] == 3
+        assert [t['user'] for t in last['history']][-2:] == ['t6 tuần này', '3 người lớn']
     asyncio.run(run())

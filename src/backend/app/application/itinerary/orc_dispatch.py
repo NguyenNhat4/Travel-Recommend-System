@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from time import monotonic
@@ -19,6 +20,8 @@ from src.backend.app.domain.itinerary.draft_validation import (
     cost_mode,
     plan_slots,
 )
+from src.backend.app.domain.itinerary.normalization import fold
+from src.backend.app.domain.itinerary.orc_guardrails import unconfirmed_trip_fields
 
 from .flight_lookup import lookup_flights
 from .orc_contracts import TOOLS, tool_errors
@@ -79,8 +82,11 @@ class OrcToolDispatcher:
                         args[key] = context[source]
             await getattr(self, "_" + call["name"])(args, result)
             if call["name"] == "plan_itinerary":
-                result["data"]["commit_allowed"] = bool((context or {}).get("planning_consent")) and not (context or {}).get("stopped")
-                result["data"]["needs_update_trip"] = [] if result["data"]["commit_allowed"] else ["planning_consent"]
+                consent = bool((context or {}).get("planning_consent")) and not (context or {}).get("stopped")
+                # Trường bắt buộc khách chưa nói (hoặc khác giá trị đã lưu) thì chưa được lưu lịch (AC-AGT-01).
+                missing = unconfirmed_trip_fields(args, context or {})
+                result["data"]["needs_update_trip"] = ([] if consent else ["planning_consent"]) + missing
+                result["data"]["commit_allowed"] = not result["data"]["needs_update_trip"]
         except ToolError as exc:
             result.update(status="error", refs=[], error={"code": exc.code, "retryable": exc.retryable,
                           **({"reason": exc.reason} if exc.reason else {})})
@@ -149,6 +155,17 @@ class OrcToolDispatcher:
     @staticmethod
     def _filters(product: dict, args: dict, *, room=False) -> bool:
         from datetime import date
+        if not room:
+            excluded = {fold(place) for place in args.get("excluded_destinations") or []}
+            if fold(product.get("destination") or "") in excluded:
+                return False
+            name = args.get("name_contains")
+            if name:
+                def words(text: str) -> str:
+                    return " ".join(re.findall(r"\w+", fold(text)))
+                needle = words(name)
+                if not needle or f" {needle} " not in f" {words(product.get('name') or '')} ":
+                    return False
         if product.get("available") is False and cost_mode(product) != "free":
             return False
         if args.get("price_max") is not None and (product.get("unitPrice") is None or product["unitPrice"] > args["price_max"]):

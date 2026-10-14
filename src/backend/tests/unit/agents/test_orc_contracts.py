@@ -80,3 +80,14 @@ def test_schedule_three_slots_and_no_manual_room_dates():
     assert set(day["properties"]) == {"day", "morning", "afternoon", "evening"}
     assert schema["properties"]["stays"]["items"]["properties"]["rooms"]["maximum"] == 9
     assert "check_out" not in schema["properties"]["stays"]["items"]["properties"]
+
+
+def test_final_accepts_evidenced_partial_context_even_when_only_final_is_available():
+    from src.backend.tests.fakes.orc_tools import respond
+    final = {k: v for k, v in respond().items() if k != 'action'}
+    final['context_patch'] = {'start_date': '2026-10-16', 'evidence': 't6 tuần này'}
+    assert tool_errors('respond', final) == []
+    strict = strict_parameters(CONTROL_TOOLS['respond'])
+    assert 'context_patch' in strict['required']
+    final['context_patch'] = {'start_date': '2026-10-16'}
+    assert tool_errors('respond', final)  # No unchecked update via the final-only path.
