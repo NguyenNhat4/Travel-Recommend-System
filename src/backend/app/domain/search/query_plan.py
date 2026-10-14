@@ -58,6 +58,7 @@ APPLIED_DURATION, APPLIED_ENTITY = "duration", "entity"
 #: Vai trò entity (`queryPlan.entity.role`): gate = lọc chỉ còn attraction/combo có tên chứa entity; location = chỉ định vị.
 ROLE_GATE, ROLE_LOCATION = "gate", "location"
 ROLE_STAY = "stay"                     # thời lượng của câu lưu trú: chỉ khai, không lọc (plan 2026-10-13 §2.3)
+ROLE_SOFT = "soft"                     # câu còn nội dung ngoài thời lượng: chỉ khai + bỏ cụm, không lọc (chốt 14/10)
 EMPTY_UNEXPLAINED = "unexplained"      # residual chỉ là tên lạ / câu vô nghĩa (FR-SRC-04 chốt 13/10)
 APPLIED_DATE = "date"          # travelContext.checkIn/checkOut — chỉ từ tham số request, không suy từ câu
 EMPTY_DESTINATION, EMPTY_PARAM = "destination", "param"
@@ -501,6 +502,25 @@ def _fallback_reasons(text: str, nq: NormalizedQuery | None, params: PlanParams,
     return tuple(reasons)
 
 
+def _understood_spans(text, nq, gaz, numeric, party, duration, negation, roles, *,
+                      names_are_content: bool = False) -> list[tuple[int, int]]:
+    """Span "đã hiểu" của câu (1.28.0): số / số khách / thời lượng / phủ định / tuyến bay / điểm đến / địa danh / entity / mọi cue
+    loại — tính cả khi cờ lọc của họ đó tắt (bench 14/10: "combo 3N2Đ" khi F7 tắt, "ks gần hồ gươm" khi POI tắt từng bị coi là
+    chữ lạ → rỗng nhầm). `names_are_content`: tên điểm vui chơi / entity (VinWonders, Safari…) KHÔNG tính là điều kiện — dùng khi
+    xét câu "chỉ có thời lượng" ("VinWonders 3 ngày 2 đêm" còn nội dung → không lọc cứng)."""
+    duration_spans = duration.spans or parse_duration(text, protected=(*numeric.spans, *party.spans)).spans
+    cond: list[tuple[int, int]] = [*numeric.spans, *party.spans, *duration_spans, *negation.spans,
+                                   *((a, b) for a, b, _ in nq.destination_spans),
+                                   *(sp for _, sp in vertical_cue_spans(text)
+                                     if not (names_are_content and fold(text[sp[0]:sp[1]]) in POI_BRAND_CUES))]
+    if roles is not None:
+        cond.extend(roles.spans)
+    cond.extend((s, e) for s, e, _ in gaz.place_hits(text, nq.destination_spans, excluded=tuple(negation.spans)))
+    if not names_are_content:
+        cond.extend(gaz.entity_spans(text))
+    return cond
+
+
 def build_query_plan(nq: NormalizedQuery | None, raw_query: str, params: PlanParams, flags: PlanFlags,
                      gaz: PlanGazetteers | None = None) -> QueryPlan:
     gaz = gaz or PlanGazetteers()
@@ -632,7 +652,15 @@ def build_query_plan(nq: NormalizedQuery | None, raw_query: str, params: PlanPar
     # thời lượng cố định); còn lại → gate (chỉ vé / combo đúng số ngày).
     duration_role = None
     if flags.duration_mask and duration_source:
-        duration_role = ROLE_STAY if HOTEL in vertical.verticals else ROLE_GATE
+        # Chốt 14/10 (bench gold_v7: gate cứng làm mất vé VinWonders không ghi số ngày ở "VinWonders 3 ngày 2 đêm"): chỉ lọc cứng
+        # khi câu CHỈ có thời lượng (ngoài điểm đến, cue loại, số…); câu còn nội dung → soft (không lọc); câu lưu trú → stay.
+        if HOTEL in vertical.verticals:
+            duration_role = ROLE_STAY
+        elif nq is not None and has_content(text, _understood_spans(text, nq, gaz, numeric, party, duration, negation,
+                                                                     roles, names_are_content=True)):
+            duration_role = ROLE_SOFT
+        else:
+            duration_role = ROLE_GATE
 
     unexplained: tuple[str, ...] = ()
     unparsed: tuple[str, ...] = ()
@@ -640,16 +668,7 @@ def build_query_plan(nq: NormalizedQuery | None, raw_query: str, params: PlanPar
     filter_only = False
     if (flags.unexplained or flags.embed_residual) and nq is not None:
         # phần "điều kiện" của câu: số / số khách / thời lượng / phủ định / tuyến bay / điểm đến / địa danh / mọi cue loại
-        # Span "đã hiểu" tính cả khi cờ lọc của họ đó tắt (bench 14/10: "combo 3N2Đ" khi F7 tắt, "ks gần hồ gươm" khi POI tắt
-        # từng bị coi là chữ lạ → rỗng nhầm): thời lượng, địa danh gazetteer, entity luôn được parse ở đây để giải thích câu.
-        duration_spans = duration.spans or parse_duration(text, protected=(*numeric.spans, *party.spans)).spans
-        cond: list[tuple[int, int]] = [*numeric.spans, *party.spans, *duration_spans, *negation.spans,
-                                       *((a, b) for a, b, _ in nq.destination_spans),
-                                       *(sp for _, sp in vertical_cue_spans(text))]
-        if roles is not None:
-            cond.extend(roles.spans)
-        cond.extend((s, e) for s, e, _ in gaz.place_hits(text, nq.destination_spans, excluded=tuple(negation.spans)))
-        cond.extend(gaz.entity_spans(text))
+        cond = _understood_spans(text, nq, gaz, numeric, party, duration, negation, roles)
         unparsed_spans: tuple[tuple[int, int], ...] = ()
         if flags.unexplained and gaz.vocab is not None:
             # "có điều kiện" = có filter đang áp hoặc câu nêu điểm đến catalog (kể cả khi F1 tắt); cue loại một mình không tính

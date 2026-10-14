@@ -33,6 +33,26 @@ Weaviate p95 (ms): base 124 · _ev 110 · _dm 111 · _er 106 · _ue 105 · _rs 1
 | _rs | +0.01 TIE | +0.63 TIE | — | abbrev_typo +3.3, duration_false_positive +8.8 (test) |
 | _all | +2.08 **LOSE** (luật slice) | +1.60 TIE | duration_false_positive −25.6 / −7.0; multi_constraint −3.7 (dev); parent_child −7.9 (test) | duration_only +48.5 / +40.3; poi_resolution +20.9 / +13.0 |
 
+## r3 — thời lượng chỉ lọc cứng khi câu chỉ có thời lượng (chốt 14/10)
+
+Run `2026-10-14-gold-v7-r3`, cùng gold/split/catalog; luật mới: câu còn nội dung ngoài thời lượng (kể cả tên điểm vui chơi
+"VinWonders") → role `soft`, không lọc.
+
+| arm | nDCG@10 toàn gold | duration_only | duration_false_positive | dev Δ nDCG | test Δ nDCG | slice tụt ≥ 3 |
+|---|---:|---:|---:|---|---|---|
+| base | 0.693 | 0.271 | 0.703 | — | — | — |
+| _dm | 0.705 | 0.558 | 0.707 | +1.39 TIE | +0.99 TIE | dev duration_false_positive −5.66 |
+| _er | 0.711 | 0.715 | 0.707 | +1.57 TIE | +2.03 [+0.07, +4.77] (nhãn LOSE: Δndcg ≥ 2 mà recall không có ý nghĩa thống kê — luật `metrics.py:859-867`) | dev duration_false_positive −5.66 |
+| _all | 0.721 | 0.715 | 0.720 | +3.13 [+0.45, +6.33] (nhãn LOSE, cùng lý do + slice) | +2.35 (nhãn LOSE) | dev duration_false_positive −5.55, multi_constraint −3.67; test parent_child −7.86 |
+
+So với r2 (gate cứng): duration_false_positive dev −25.66 → −5.66, test −7.01 → +8.00.
+
+## Quyết định bật cờ (người dùng chốt 14/10)
+
+- Bật mặc định production: `SEARCH_EVIDENCE_GATE=true`, `SEARCH_UNEXPLAINED_EMPTY=true`, `SEARCH_NO_DIACRITICS_MODE=restore`.
+- Giữ tắt: `SEARCH_DURATION_MASK`, `SEARCH_EMBED_RESIDUAL` (duration_false_positive dev còn −5.66, n 4–5), `SEARCH_EMIT_BACKGROUND`
+  (ngưỡng banner chưa đo được bằng bench).
+
 ## Câu âm (r2, tỉ lệ trả rỗng; Forbidden@10)
 
 | slice | n | base | _ev | _ue | _all |

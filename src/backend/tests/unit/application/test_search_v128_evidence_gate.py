@@ -157,3 +157,10 @@ def test_accent_restore_declares_profile_without_relaxed_cutoff(cat):
 def test_derive_plan_false_disables_new_families(cat):
     r = _engine(cat, **NEW_FLAGS)("Nguyễn Khắc Tiệp", derive_plan=False)
     assert r["diagnostics"].get("queryPlan", {}).get("emptyReason") != "unexplained"
+
+
+def test_duration_with_other_content_is_soft_not_filtered(cat):
+    # chốt 14/10: câu còn nội dung ngoài thời lượng → không lọc (vé VinWonders không ghi số ngày vẫn còn)
+    r = _engine(cat, **NEW_FLAGS)("VinWonders 3 ngày 2 đêm")
+    assert r["diagnostics"]["queryPlan"]["duration"]["role"] == "soft"
+    assert "A1" in _ids(r) and r["diagnostics"]["queryPlan"].get("emptyReason") is None

@@ -49,12 +49,17 @@ def test_production_defaults_restored(data_dir):
     assert (s.search_dest_filter, s.search_negation_filter, s.search_route_filter, s.search_numeric_filter) == (
         True, True, True, True)
     assert s.search_taxonomy_filter is False
-    assert (s.search_no_diacritics_mode, s.search_no_diacritics_cutoff) == ("relax", 0.80)
+    # 14/10 (bench gold_v7, plan 2026-10-13): câu không dấu phục hồi dấu thay vì nới cutoff; cổng bằng chứng + câu không giải
+    # thích được bật; thời lượng / embed residual / backgroundScore vẫn tắt.
+    assert (s.search_no_diacritics_mode, s.search_no_diacritics_cutoff) == ("restore", 0.80)
+    assert (s.search_evidence_gate, s.search_unexplained_empty) == (True, True)
+    assert (s.search_duration_mask, s.search_embed_residual, s.search_emit_background) == (False, False, False)
     assert (s.search_llm_fallback, s.search_llm_fallback_min_confidence, s.search_llm_fallback_timeout_ms) == (
         "off", 0.75, 1500)
     assert (engine.dest_filter, engine.negation_filter, engine.route_filter, engine.numeric_filter) == (
         True, True, True, True)
-    assert engine.taxonomy_filter is False and engine.no_diacritics is not None and engine.no_diacritics_cutoff == 0.80
+    assert engine.taxonomy_filter is False and engine.no_diacritics is None and engine.no_diacritics_cutoff is None
+    assert engine.no_diacritics_restore and engine.unexplained_empty and engine.hybrid.evidence_gate
     assert engine.llm_fallback == "off" and engine.hypothesizer is None and engine._llm is None
     # Chuỗi rỗng từ .env = "không đặt" cho cutoff câu không dấu (Settings._OPTIONAL_BLANK_IS_NONE).
     assert Settings(_env_file=None, search_no_diacritics_cutoff="").search_no_diacritics_cutoff is None

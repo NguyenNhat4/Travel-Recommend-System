@@ -1372,10 +1372,10 @@ export interface components {
                     /** @enum {string} */
                     source?: "query";
                     /**
-                     * @description (1.28.0) Chỉ khi SEARCH_DURATION_MASK bật.
+                     * @description (1.28.0) Chỉ khi SEARCH_DURATION_MASK bật. gate = câu chỉ có thời lượng → lọc vé / combo đúng số ngày; soft = câu còn nội dung khác → chỉ khai và bỏ cụm, không lọc; stay = câu lưu trú → không lọc.
                      * @enum {string}
                      */
-                    role?: "gate" | "stay";
+                    role?: "gate" | "soft" | "stay";
                 };
                 /** @description (1.18.0) Điểm vui chơi trong gazetteer repo (domain/search/gazetteer.py: vinwonders, safari, grand_world, …) nhận ra trong câu (bỏ cụm trong scope phủ định), chỉ khi SEARCH_ENTITY_FILTER bật. role = gate: câu chỉ nêu entity hoặc kèm cue attraction / combo → chỉ giữ unit attraction / combo có TÊN chứa entity (HARD, không nới; "entity" vào applied); location: câu có cue loại khác (khách sạn / vé máy bay / golf, kể cả cue yếu) hoặc nêu từ hai loại → entity chỉ định vị, không lọc. Tham số taxonomy của request không đổi role, chỉ giao với mask (tab Web có thể 0 → emptyReason entity). Thương hiệu khách sạn (Vinpearl, Meliá) không phải entity. */
                 entity?: {

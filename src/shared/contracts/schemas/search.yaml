@@ -562,8 +562,10 @@ EngineDiagnostics:
               enum: [query]
             role:
               type: string
-              enum: [gate, stay]
-              description: (1.28.0) Chỉ khi SEARCH_DURATION_MASK bật.
+              enum: [gate, soft, stay]
+              description: >-
+                (1.28.0) Chỉ khi SEARCH_DURATION_MASK bật. gate = câu chỉ có thời lượng → lọc vé / combo đúng số ngày;
+                soft = câu còn nội dung khác → chỉ khai và bỏ cụm, không lọc; stay = câu lưu trú → không lọc.
         entity:
           type: object
           additionalProperties: false
