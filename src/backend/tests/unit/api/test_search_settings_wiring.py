@@ -28,10 +28,10 @@ def test_defaults_are_off_and_identity(data_dir):
 
 def test_v118_flags_defaults_and_reach_the_engine(data_dir):
     """07/10 (contract 1.18.0): ba cờ được truyền tới engine; tắt thì không parse (response y hệt 1.17.0). Từ 14/10 thời lượng và
-    địa danh bật mặc định, entity còn tắt (chờ Web xác nhận)."""
+    địa danh bật mặc định; entity bật (team Web chốt 14/10)."""
     s, engine = _build(data_dir)
-    assert (s.search_duration_filter, s.search_poi_resolve, s.search_entity_filter) == (True, True, False)
-    assert (engine.duration_filter, engine.poi_resolve, engine.entity_filter) == (True, True, False)
+    assert (s.search_duration_filter, s.search_poi_resolve, s.search_entity_filter) == (True, True, True)
+    assert (engine.duration_filter, engine.poi_resolve, engine.entity_filter) == (True, True, True)
     _, off = _build(data_dir, search_duration_filter=False, search_poi_resolve=False, search_entity_filter=False,
                     search_duration_mask=False)
     r = off("VinWonders 3 ngày 2 đêm", limit=50)
@@ -58,8 +58,8 @@ def test_production_defaults_restored(data_dir):
     assert (s.search_no_diacritics_mode, s.search_no_diacritics_cutoff) == ("restore", 0.80)
     assert (s.search_evidence_gate, s.search_unexplained_empty) == (True, True)
     assert (s.search_duration_mask, s.search_embed_residual, s.search_emit_background) == (True, True, False)
-    # 14/10: địa danh gazetteer + thời lượng bật; entity gate chờ Web xác nhận (đổi số đếm tab).
-    assert (s.search_poi_resolve, s.search_duration_filter, s.search_entity_filter) == (True, True, False)
+    # 14/10: địa danh gazetteer + thời lượng + entity gate bật (team Web chốt).
+    assert (s.search_poi_resolve, s.search_duration_filter, s.search_entity_filter) == (True, True, True)
     assert (s.search_llm_fallback, s.search_llm_fallback_min_confidence, s.search_llm_fallback_timeout_ms) == (
         "off", 0.75, 1500)
     assert (engine.dest_filter, engine.negation_filter, engine.route_filter, engine.numeric_filter) == (

@@ -198,7 +198,7 @@ class Settings(BaseSettings):
     search_embed_residual: bool = True         # production 14/10 (bench r3). dense embed câu đã bỏ span điều kiện; residual rỗng + gate thời lượng → chỉ-filter
     search_unexplained_empty: bool = True      # production 14/10: residual chỉ là tên lạ / vô nghĩa → rỗng (unexplained)
     search_emit_background: bool = False       # phát backgroundScore (trung vị cosine top-K trong F) + diagnostics.saturated
-    search_entity_filter: bool = False         # entity gate CỨNG: câu nêu điểm vui chơi (VinWonders…) → chỉ attraction/combo có tên
+    search_entity_filter: bool = True          # production 14/10 (Web đã chốt). entity gate CỨNG: câu nêu điểm vui chơi (VinWonders…) → chỉ attraction/combo có tên
     #                                            chứa entity; đổi số đếm tab của Web khi bật — cần Web xác nhận (như F4)
     # Kênh fuzzy tên gần đúng (trigram cửa sổ, domain/search/fuzzy.py): 0 = tắt. Bật thì unit có rank fuzzy ≤ K, độ giống
     # ≥ MIN_SIM (0.6 vớt cả tên chung chung — đo 06/10) và cosine ≥ SEARCH_LEXICAL_CUTOFF được vớt vào R. Chỉ ở hybrid.
