@@ -83,6 +83,16 @@ def _price_key(item: ListingItem, descending: bool) -> tuple:
     return (0, -price if descending else price, item.product.name)
 
 
+def precompute_orders(items: Sequence[ListingItem],
+                      popularity: Mapping[str, float] | None = None) -> dict[str, list[ListingItem]]:
+    """Thứ tự của từng sắp xếp cấp sản phẩm (không tầng con), tính một lần khi nạp catalog.
+
+    `sort(filter(items))` và `filter(sort(items))` cho cùng danh sách: sắp xếp ổn định và lọc không đổi thứ tự tương
+    đối. Vì vậy request chỉ cần lọc danh sách đã sắp xếp sẵn, không gọi `sort_items` lần nào.
+    """
+    return {sort: sort_items(items, sort, popularity) for sort in PRODUCT_SORTS}
+
+
 def sort_items(items: Sequence[ListingItem], sort: str, popularity: Mapping[str, float] | None = None,
                *, variants: bool = False) -> list[ListingItem]:
     """popular: lượt mua nhiều trước, rồi sản phẩm gợi ý/đặt được, rồi giá có trước, rồi tên.

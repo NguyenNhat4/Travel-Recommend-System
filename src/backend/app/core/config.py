@@ -130,6 +130,8 @@ class Settings(BaseSettings):
     # Cosine e5 dồn ở 0,85–0,92; 0,84 hiệu chỉnh trên gold_v4 (PRD deployment-plan §2).
     search_cutoff: float = 0.84
     search_max_limit: int = 50
+    # Số trang /products đã trả nhớ trong mỗi worker (LRU, khoá theo truy vấn). 0 = tắt. Chọn theo RSS đo được trên VM.
+    catalog_response_cache_size: int = Field(default=256, ge=0)
     search_candidate_k: int = Field(default=200, ge=1)
     recommend_candidate_k: int = 200
     # Ô khám phá khi có chuyến mở (FR-REC-02, chốt 09/10/2026). False = rollback về list trước PR-A, không cần redeploy.

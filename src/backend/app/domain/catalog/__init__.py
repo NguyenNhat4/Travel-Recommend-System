@@ -7,6 +7,7 @@ from .listing import (
     VariantSummary,
     filter_items,
     interleave_by_taxonomy,
+    precompute_orders,
     sort_items,
     summarize_variants,
 )
@@ -19,5 +20,5 @@ __all__ = [
     "DIVERSIFY_GROUPS", "DIVERSIFY_MODES", "PRODUCT_SORTS", "ListingItem", "Product", "StayDates", "TAXONOMIES",
     "TEXT_BUILDER_VERSION", "UnitAttributes", "VariantSummary",
     "build_text", "enrich", "fare_classes_by_product", "filter_items", "interleave_by_taxonomy", "is_fare_variant",
-    "sort_items", "summarize_variants",
+    "precompute_orders", "sort_items", "summarize_variants",
 ]

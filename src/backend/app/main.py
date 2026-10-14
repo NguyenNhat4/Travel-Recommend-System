@@ -152,7 +152,7 @@ def build_catalog(settings, state) -> dict:
         "get_product_detail": GetProductDetail(products),
         "list_products": ListProducts(
             products, getattr(state, "listing_units", None), getattr(state, "product_popularity", None) or {},
-            max_limit=settings.search_max_limit),
+            max_limit=settings.search_max_limit, response_cache_size=settings.catalog_response_cache_size),
         "get_similar_products": GetSimilarProducts(products, getattr(state, "similar", None)),
     }
 
