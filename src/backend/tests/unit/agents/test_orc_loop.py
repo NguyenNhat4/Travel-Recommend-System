@@ -89,20 +89,20 @@ def test_catalog_details_are_repaired_and_not_emitted_in_public_think():
     assert all("Trang" not in data["explanation"] for data in thinks)
 
 
-def test_three_tool_rounds_then_only_respond_is_offered():
-    rounds = [execute(call("find_products", f"c{i}", query=f"Huế {i}", taxonomy="hotel")) for i in range(1, 4)]
+def test_four_tool_rounds_then_only_respond_is_offered():
+    rounds = [execute(call("find_products", f"c{i}", query=f"Huế {i}", taxonomy="hotel")) for i in range(1, 5)]
     outcome, model, tools = run([*rounds, respond("Đây là các lựa chọn.", hotel=["p1"])])
-    assert len([c for c in tools.calls if c[0] == "search_products"]) == 3
-    assert outcome["final"] and len(model.schemas) == 4
+    assert len([c for c in tools.calls if c[0] == "search_products"]) == 4
+    assert outcome["final"] and len(model.schemas) == 5
     assert [tool["function"]["name"] for tool in model.schemas[-1]] == ["respond"]
 
 
 def test_transient_model_error_is_retried_then_fails_short_without_cards():
     recovered, model, _ = run([ConnectionError(), respond("Xin chào!")])
     assert recovered["final"]["message"] == "Xin chào!" and len(model.payloads) == 2
-    outcome, model, tools = run([TimeoutError()] * 5)
+    outcome, model, tools = run([TimeoutError()] * 6)
     assert outcome["failure"] == "LLM_UNAVAILABLE" and outcome["final"] is None and tools.calls == []
-    assert len(model.payloads) == 5
+    assert len(model.payloads) == 6
 
 
 def test_junk_and_blocked_input_never_reach_the_model():
@@ -288,13 +288,14 @@ def test_append_only_messages_do_not_repeat_product_payload_after_plan():
     assert len([m for m in model.payloads[-1] if isinstance(m, AIMessage)]) == 2
 
 
-def test_over_three_calls_run_first_three_and_return_error_for_excess():
+def test_one_round_runs_every_call_the_orc_sends():
     from langchain_core.messages import AIMessage
     raw=AIMessage(content='',tool_calls=[{'id':str(i),'name':'find_products','args':
-        {'why':'Tra dữ liệu.','taxonomy':'attraction','query':f'điểm {i}'}} for i in range(4)])
-    outcome, model, tools = run([raw, respond('Đã tra phần có thể thực hiện.')])
-    assert outcome['final'] and len(tools.calls)==3
-    assert 'TOO_MANY_CALLS' in model.payloads[1][-1].content
+        {'why':'Tra dữ liệu.','taxonomy':'attraction','query':f'điểm {i}'}} for i in range(5)])
+    outcome, model, tools = run([raw, respond('Đã tra xong.')])
+    assert outcome['final'] and len(tools.calls)==5
+    assert 'TOO_MANY_CALLS' not in model.payloads[1][-1].content
+    assert '"tool_rounds": 3' in model.payloads[1][-1].content
 
 
 def test_update_trip_does_not_spend_tool_round_and_requires_current_evidence():
@@ -303,7 +304,8 @@ def test_update_trip_does_not_spend_tool_round_and_requires_current_evidence():
         {'evidence':'một mình','adults':1,'children':0}}])
     outcome, model, _ = run([update,respond('Đã ghi nhận.')],message='mình đi một mình')
     assert outcome['patch']['adults']==1 and outcome['patch']['children']==0
-    assert '"tool_rounds": 3' in model.payloads[1][-1].content
+    assert '"tool_rounds": 4' in model.payloads[1][-1].content
+    assert 'source_requests' not in model.payloads[1][-1].content
 
 
 def test_free_text_or_malformed_function_is_repaired_without_execution():

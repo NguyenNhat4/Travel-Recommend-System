@@ -33,16 +33,16 @@ CATALOG_TOOLS = ("get_products", "lookup_flights")
 
 
 class SourceBudget:
-    """Tối đa `limit` request tới nguồn, và không request nào sau `deadline` (giây monotonic)."""
+    """Không request nào sau `deadline` (giây monotonic); `limit` là trần số request, None là không giới hạn."""
 
-    def __init__(self, *, deadline: float, limit: int = 10):
+    def __init__(self, *, deadline: float, limit: int | None = None):
         self.deadline, self.limit, self.used = deadline, limit, 0
 
     def take(self) -> None:
         # Không có await giữa kiểm và tăng, nên các lời gọi chạy song song không vượt được trần.
         if monotonic() >= self.deadline:
             raise ToolError("TIME_LIMIT")
-        if self.used >= self.limit:
+        if self.limit is not None and self.used >= self.limit:
             raise ToolError("TOOL_LIMIT")
         self.used += 1
 
