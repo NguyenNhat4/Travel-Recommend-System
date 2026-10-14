@@ -20,7 +20,7 @@ Yêu cầu bổ sung trong phiên: xóa nút DEBUG.
 
 ## File thay đổi
 
-- `src/frontend/src/components/common/DebugPanel.tsx` — sửa: bỏ nút "DEBUG (Shift+D)" theo yêu cầu, bỏ import `Bug` không còn dùng. Phím Shift+D (`TravelContext`) vẫn bật/tắt panel.
+- `src/frontend/src/components/common/DebugPanel.tsx` — sửa: bỏ nút "DEBUG (Shift+D)" theo yêu cầu, bỏ import `Bug` không còn dùng. Phím Shift+D (`TravelContext`) vẫn bật/tắt panel. Sau đó toàn bộ `DebugPanel` đã được comment (commit `3d6a3658`, xem `history/2026-10-14-comment-out-debug-panel.md`).
 - `src/frontend/src/components/common/Header.tsx` — sửa: `aria-label` logo thành `Sota Resorts & Hotels, về trang chủ` để chứa đủ chữ hiển thị.
 - `src/frontend/src/components/common/ProductCard.tsx` — sửa: số đánh giá `text-slate-400` → `text-slate-500` (ba chỗ). Tương phản `#90a1b9`/`#f8fafc` = 2,51; `#62748e`/`#f8fafc` = 4,55.
 - `src/frontend/src/components/common/PriceTag.tsx` — sửa: `Intl.NumberFormat('vi-VN')` dựng một lần ở module thay vì mỗi lần render.
@@ -37,13 +37,14 @@ Commit `40a80048` (ảnh hero srcset và lazy panorama) là bản cherry-pick c�
 - **Vấn đề 1:** CPU profile trên lab cho thấy chunk `7323` (`PriceTag`, `ProductCard`, helper ngày) tốn 1916 ms, trong đó hàm `PriceTag` và helper ngày chiếm phần lớn vì tạo `Intl.*Format` mỗi lần gọi. Hoist ra module-level, không đổi kết quả hiển thị. Phần còn lại (`4bd1` React, `3794` router Next) không sửa trong entry này.
 - **Vấn đề 3:** Hai nguyên nhân của `target-size` là nút DEBUG và widget nổi đè lên tab bar dưới. Xóa nút DEBUG và nâng widget trên mobile, không ẩn widget vì `user-flow.md` §3 yêu cầu widget ở mọi trang trừ `/checkout`.
 - **Vấn đề 4:** Favicon là quyết định tạm thời. Đề xuất `docs/prd/update/2026-10-12-doi-logo-du-sota.md` (câu hỏi 3, favicon) còn chờ chốt; nếu đổi logo thì cập nhật lại `icon.svg`. Cookie `__cf_bm` và `_cfuvid` do Cloudflare set qua ảnh từ `booking-static.vinpearl.com`, không sửa được trong repo.
-- **Vấn đề 5:** `Cache-Control` 4 giờ của file `public/` do cache rule Cloudflare đặt (xem `history/2026-10-13-cloudflare-cache-rule-catalog.md`), nằm ngoài repo. Lighthouse chỉ đạt khi thời gian cache khoảng 110 ngày trở lên; đây là quyết định chính sách cache, chưa sửa.
+- **Vấn đề 5:** `Cache-Control` 4 giờ của file `public/` do cache rule Cloudflare đặt (xem `history/2026-10-13-cloudflare-cache-rule-catalog.md`), nằm ngoài repo. Người vận hành đã đổi Browser TTL của các đường dẫn `trust_badge_*`, `mascot_*` và `placeholders/*` thành 186 ngày (`max-age=16070400`). Lighthouse dùng công thức nội suy và bỏ qua tài nguyên khi xác suất cache > 0,925, tức khoảng 97 ngày trở lên. Repo không đổi cấu hình này; file đổi nội dung cần đổi tên vì trình duyệt giữ bản cũ đến khi hết hạn.
+- **Comment DebugPanel:** phần nút DEBUG ở trên đã được mở rộng thành comment toàn bộ `DebugPanel`, xem `history/2026-10-14-comment-out-debug-panel.md`.
 
 ## Kiểm tra
 
 - `npx tsc --noEmit`: pass.
 - `npx eslint` trên các file TS/TSX đã sửa: pass (cảnh báo về `icon.svg` là bình thường).
-- `npx vitest run tests/unit`: 81 file, 874 test pass.
+- `npx vitest run tests/unit`: 81 file, 874 test pass (trước khi comment DebugPanel). Sau đó: 80 file pass và 1 file todo, 872 test pass và 1 todo.
 - `npm run build:web`: pass.
 - Lighthouse 12 mobile trên lab local (build production, API proxy tới staging, cùng cấu hình trước và sau):
 
@@ -58,13 +59,15 @@ Commit `40a80048` (ảnh hero srcset và lazy panorama) là bản cherry-pick c�
 
 Số trước đã gồm PR #207 (commit `40a80048`), nên LCP không đổi ở đây là đúng. Lab không tương đương staging: staging đo Performance 69 và LCP 4,0 s, nên không so trực tiếp với số trên.
 
-- Kiểm tra trên staging ở viewport 375×812: nút DEBUG đè "Trang chủ"; widget nổi đè "Trợ lý", "Giỏ hàng", "Tài khoản". Sau thay đổi, cần deploy để kiểm lại.
+- Kiểm tra trên staging ở viewport 375×812 (trước thay đổi): nút DEBUG đè "Trang chủ"; widget nổi đè "Trợ lý", "Giỏ hàng", "Tài khoản". Cần deploy để kiểm lại các thay đổi mã.
+- Cache trên staging sau khi người vận hành đổi rule (14/10): `curl -sI` trả `cache-control: public, max-age=16070400` và `cf-cache-status: HIT` cho bốn file `trust_badge_booking.webp`, `trust_badge_ecosystem.webp`, `mascot_welcome.webp`, `placeholders/combo.svg`. Lighthouse 12 mobile (performance) trên staging: Performance 64; `uses-long-cache-ttl` không còn cảnh báo cho bốn file này.
 
 ## Còn lại / rủi ro
 
 - Vấn đề 1: còn chunk React (`4bd1`) và router Next (`3794`); chưa có giải pháp trong entry này.
 - Vấn đề 2: LCP là ảnh hero Unsplash, chọn cỡ 960 px trên mobile. Ảnh sản phẩm từ `ak-d.tripcdn.com` và `booking-static.vinpearl.com` chưa resize (bên thứ ba).
-- Vấn đề 4: cookie bên thứ ba và `inspector-issues` còn lỗi; cần quyết định với chủ host ảnh `booking-static` hoặc chấp nhận.
-- Vấn đề 5: cần người vận hành quyết định TTL cache Cloudflare cho file `public/` (kèm đánh đổi ảnh cũ trong thời gian dài).
+- Vấn đề 4: cookie `__cf_bm` và `_cfuvid` (cùng `inspector-issues`) vẫn còn. Đã chấp nhận như known issue; phương án loại bỏ (đưa ảnh qua server, hoặc chủ host tắt cookie) cần thảo luận riêng.
+- Vấn đề 5: đã xử lý ở Cloudflare cho bốn file. Còn các mục ngoài repo: `beacon.min.js` (Cloudflare Web Analytics, 1 ngày), `email-decode.min.js` (Cloudflare chèn), và ảnh đối tác từ `ak-d.tripcdn.com`, `cf.bstatic.com`, `booking-static.vinpearl.com` (khoảng 21–31 ngày). Các mục này không thuộc quyền sửa của repo.
+- Vấn đề 1: còn chunk React (`4bd1`) và router Next (`3794`).
 - Favicon và chỉnh `aria-label` logo cần đối chiếu với đề xuất logo "Dự Sota" đang chờ chốt.
-- Chưa deploy staging; số Lighthouse trên staging sau thay đổi chưa đo.
+- Code chưa deploy staging nên số Lighthouse của các thay đổi mã trên staging chưa đo. Riêng rule Cloudflare đã có hiệu lực.
