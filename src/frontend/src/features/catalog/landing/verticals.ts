@@ -43,7 +43,7 @@ export interface VerticalConfig {
   route: string;
   title: string;
   subtitle: string;
-  /** Mã ảnh Unsplash (phần sau `photo-`); LandingHero dựng srcSet từ mã này. */
+  /** Mã ảnh Unsplash (tên file trong `public/images/unsplash/`); LandingHero đọc ảnh từ mã này. */
   heroPhoto: string;
   tabs: VerticalTab[];
   sheet: SheetConfig;
