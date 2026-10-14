@@ -3,7 +3,7 @@
 - Ngày: 2026-10-14
 - Tác giả: Khoa15 (yêu cầu) / Claude Code (agent)
 - Nhánh: khoa/monitor-tach-dashboard-ten-vm (PR riêng vào release-mvp-v2)
-- Trạng thái: dang dở (code và test xong, plan đã kiểm; chưa apply; xem mục "Còn lại")
+- Trạng thái: hoàn thành (đã apply lên GCP; xem mục "Đã apply")
 - Phạm vi: infra (staging-ha), scripts (allowlist CD), docs (guide vận hành)
 - Liên quan: `2026-10-14-canh-bao-tai-nguyen-db-va-crawler.md` (PR #211, đã merge), `2026-10-14-p95-lb-them-tong-request.md` (commit `261bbe36`, `c073262b` trên nhánh này)
 
@@ -52,6 +52,12 @@ Ba yêu cầu cùng lúc:
   - `group_at_max`: chỉ đổi chữ mô tả (có chủ đích, trỏ tới dashboard mới).
   - `lb_latency`: **GCP đã có điều kiện "tổng request LB > 100 trong 10 phút" (AND)**, nhưng `release-mvp-v2` chưa có. Điều kiện này nằm ở `261bbe36` và `c073262b` trên nhánh này, đã apply lên GCP lúc 11:47 (giờ Việt Nam). Nhánh này phải mang theo hai commit đó; nếu không, apply sẽ gỡ điều kiện đó.
 
+## Đã apply
+
+- Plan đã kiểm trên nhánh đã gộp (có `261bbe36`, `c073262b`): `Plan: 5 to add, 10 to change, 0 to destroy`. `lb_latency` không còn trong danh sách đổi.
+- Apply đúng plan đã lưu: `Apply complete! Resources: 5 added, 10 changed, 0 destroyed.`
+- Đọc lại từ API: 6 dashboard `vota-ha HA: …`; trang cảnh báo có 21 `alertChart`; `lb_latency` vẫn có hai điều kiện, kết hợp AND; 8 policy nhóm theo `metadata.system_labels.name` (và `metric.label.device`) hoặc `metric.label.instance_name`; không dashboard nào nhóm theo `resource.labels.instance_id`.
+
 ## Kiểm tra
 
 - Test staging-ha: `test_dashboard.py` 20 OK; `test_alerts.py` OK; `test_slot_deploy.py` 2 lỗi `mapfile` có sẵn trên nhánh gốc (bash 3.2 của macOS), không liên quan.
@@ -61,7 +67,6 @@ Ba yêu cầu cùng lúc:
 
 ## Còn lại
 
-- Chưa apply tại thời điểm viết; sẽ cập nhật mục này sau khi apply và kiểm lại trên API.
 - Dashboard cảnh báo chưa có 8 cảnh báo `vota-staging:` (staging cũ, chưa đưa vào Terraform). Xem `infra/monitoring/README.md`.
 - Cảnh báo `vota-staging: lượt cào hoàn thành một phần` lọc `exit_code=3`, nhưng lượt partial hiện ghi `exit_code=0`. Rule chết; chưa sửa.
 - Hai state Terraform cũ (`monitoring/staging`, `infra/staging`) vẫn còn trên GCS; chưa xử lý.
