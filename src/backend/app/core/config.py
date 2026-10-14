@@ -189,13 +189,13 @@ class Settings(BaseSettings):
     # 07/10 (contract 1.18.0; spec docs/spec/bench/tong-hop-chinh-sua-luong-search-ota.md; plan docs/plan/2026-10-07-search-duration-
     # entity-poi.md): ba họ mới, mặc định tắt — TẮT thì không parse, không khai (response y như 1.17.0); bật mới parse + khai ở
     # queryPlan. Bật ở production chỉ sau khi bench WIN/TIE + Forbidden@10 = 0 (plan §Bước 9).
-    search_duration_filter: bool = False       # F7: "3 ngày 2 đêm" / "3N2Đ" → queryPlan.duration; bỏ cụm khỏi câu BM25 (không lọc)
-    search_poi_resolve: bool = False           # địa danh gazetteer repo ("Hồ Hoàn Kiếm" → Hà Nội) vào F1; hard.destinationSource = poi
+    search_duration_filter: bool = True        # production 14/10. F7: "3 ngày 2 đêm" / "3N2Đ" → queryPlan.duration; bỏ cụm khỏi câu BM25 (không lọc)
+    search_poi_resolve: bool = True            # production 14/10. địa danh gazetteer repo ("Hồ Hoàn Kiếm" → Hà Nội) vào F1; hard.destinationSource = poi
     # 13/10 (contract 1.30.0; plan docs/plan/2026-10-13-search-evidence-gate-no-answer.md; PRD FR-SRC-03/04 chốt 13/10):
     # mặc định tắt → response như 1.27.0. Bật từng cờ chỉ sau khi bench đạt cổng ở plan §4.
     search_evidence_gate: bool = True          # production 14/10 (bench gold_v7 r2): BM25 chỉ vớt theo cụm giữ dấu
-    search_duration_mask: bool = False         # thời lượng vai trò gate → chỉ vé/combo đúng số ngày; câu lưu trú → stay (không lọc)
-    search_embed_residual: bool = False        # dense embed câu đã bỏ span điều kiện; residual rỗng + gate thời lượng → chỉ-filter
+    search_duration_mask: bool = True          # production 14/10 (bench r3). thời lượng vai trò gate → chỉ vé/combo đúng số ngày; câu lưu trú → stay (không lọc)
+    search_embed_residual: bool = True         # production 14/10 (bench r3). dense embed câu đã bỏ span điều kiện; residual rỗng + gate thời lượng → chỉ-filter
     search_unexplained_empty: bool = True      # production 14/10: residual chỉ là tên lạ / vô nghĩa → rỗng (unexplained)
     search_emit_background: bool = False       # phát backgroundScore (trung vị cosine top-K trong F) + diagnostics.saturated
     search_entity_filter: bool = False         # entity gate CỨNG: câu nêu điểm vui chơi (VinWonders…) → chỉ attraction/combo có tên
