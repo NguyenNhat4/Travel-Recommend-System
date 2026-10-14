@@ -247,5 +247,56 @@ class DbAndCrawlerResourceAlerts(unittest.TestCase):
             self.assertLess(self.default(name), 100, name)
 
 
+class ContainerAndLogAlerts(unittest.TestCase):
+    """Cảnh báo container, log, job cào: tên và mô tả tiếng Việt, nêu rõ lỗi, nêu đúng VM, đi qua kênh chung, có trong allowlist CD."""
+
+    CONT = (D / "container_monitoring.tf").read_text()
+    POLICIES = ["container_oom", "container_dung", "container_disk", "docker_watcher", "error_logs", "crawler_container_fail", "log_spike"]
+    METRICS = ["container_oom", "container_dung", "container_disk", "docker_watcher", "crawler_container_fail", "error_logs"]
+    ALLOW = (D.parents[3] / "scripts" / "deploy-staging-ha-app.sh").read_text()
+
+    def test_every_policy_is_named_in_vietnamese_for_the_ha_group(self):
+        for name in self.POLICIES:
+            body = block(self.CONT, "google_monitoring_alert_policy", name)
+            self.assertIn('display_name          = "${var.name_prefix} ', body, name)
+            self.assertRegex(body, r'display_name\s+= "\$\{var\.name_prefix\} [^"]*[À-ỹ]', name)   # có chữ có dấu tiếng Việt
+
+    def test_every_policy_describes_the_error_with_cause_check_and_fix(self):
+        for name in self.POLICIES:
+            doc = block(self.CONT, "google_monitoring_alert_policy", name).split("documentation {")[1]
+            for section in ("Lỗi:", "Kiểm tra:", "Xử lý:"):
+                self.assertIn(section, doc, f"{name} thiếu mục {section}")
+
+    def test_every_policy_notifies_through_the_shared_channels(self):
+        for name in self.POLICIES:
+            self.assertIn("notification_channels = local.alert_channels", block(self.CONT, "google_monitoring_alert_policy", name), name)
+
+    def test_log_metrics_label_the_vm_from_the_log_resource_name(self):
+        # docker_watcher không có nhãn vm: cảnh báo của nó là vắng mặt trên cả nhóm (không có VM để nêu tên).
+        for name in [m for m in self.METRICS if m != "docker_watcher"]:
+            body = block(self.CONT, "google_logging_metric", name)
+            self.assertIn('compute.googleapis.com/resource_name', body, name)   # nhãn vm để email nêu đúng VM
+
+    def test_policies_group_by_vm_label_so_each_incident_names_its_vm(self):
+        for name in ("container_oom", "container_dung", "container_disk", "error_logs", "crawler_container_fail"):
+            self.assertIn("metric.label.vm", block(self.CONT, "google_monitoring_alert_policy", name), name)
+
+    def test_watcher_alert_says_which_alerts_go_silent_without_it(self):
+        doc = block(self.CONT, "google_monitoring_alert_policy", "docker_watcher").split("documentation {")[1]
+        self.assertIn("OOM", doc)
+        self.assertIn("container dừng", doc)
+
+    def test_log_spike_threshold_default_is_a_quarter_gib_per_hour(self):
+        variables = (D / "variables.tf").read_text()
+        default = int(re.search(r'variable "alert_log_spike_bytes_per_hour" \{.*?default\s*=\s*(\d+)', variables, re.S).group(1))
+        self.assertEqual(default, 256 * 1024 * 1024)
+
+    def test_allowlist_covers_every_new_resource(self):
+        for name in self.METRICS:
+            self.assertIn(f"google_logging_metric.{name}|create", self.ALLOW, name)
+        for name in self.POLICIES:
+            self.assertIn(f"google_monitoring_alert_policy.{name}|create", self.ALLOW, name)
+
+
 if __name__ == "__main__":
     unittest.main()
