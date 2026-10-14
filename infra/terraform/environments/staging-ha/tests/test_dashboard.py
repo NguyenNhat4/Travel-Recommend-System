@@ -43,7 +43,7 @@ class Dashboard(unittest.TestCase):
     def test_memory_chart_has_no_fake_vm_name_label(self):
         # metric memory của Ops Agent không mang instance_name; chỉ group theo instance_id.
         self.assertIn('groupByFields = ["resource.labels.instance_id"]', DASH)
-        self.assertNotIn("metric.labels.instance_name", DASH.split("RAM đã dùng")[1])
+        self.assertNotIn("metric.labels.instance_name", DASH.split("RAM đã dùng")[1].split("CPU từng container")[0])
 
     def test_ram_by_state_chart_splits_each_vm_by_state(self):
         # Use case: RAM của từng VM tách theo nhãn state (used/cached/buffered); VM đã xoá thì đường của nó dừng lại.
@@ -82,6 +82,29 @@ class Dashboard(unittest.TestCase):
     def test_dashboard_url_is_an_output(self):
         self.assertIn('output "ha_dashboard_url"', OUT)
         self.assertIn("google_monitoring_dashboard.ha.id", OUT)
+
+    def test_disk_chart_is_split_per_vm_and_device(self):
+        # Ô đĩa theo VM: mọi VM có Ops Agent (app, máy cào, DB); tách theo mã instance và thiết bị, không theo tên.
+        self.assertEqual(DASH.count("Đĩa đã dùng từng VM"), 1)
+        block = DASH.split("Đĩa đã dùng từng VM")[1].split("      ]")[0]   # ô đĩa là ô cuối của danh sách tile
+        self.assertIn("agent.googleapis.com/disk/percent_used", block)
+        self.assertIn('groupByFields = ["resource.labels.instance_id", "metric.labels.device"]', block)
+        self.assertNotIn("instance_name", block)
+        self.assertIn("var.alert_db_disk_percent", block)     # ngưỡng vẽ đúng với alert đĩa của DB và máy cào
+
+    def test_cpu_chart_covers_db_nodes_and_crawler_by_name(self):
+        # CPU của pg-a, pg-b, pg-w (tiền tố tên) và của máy cào (tên VM), cùng một ô, tách theo tên VM.
+        self.assertEqual(DASH.count("CPU từng node DB và máy cào"), 1)
+        block = DASH.split("CPU từng node DB và máy cào")[1].split("Đĩa đã dùng từng VM")[0]
+        self.assertIn("local.db_cpu_filter", block)
+        self.assertIn("local.crawler_cpu_filter", block)
+        self.assertEqual(block.count('groupByFields = ["metric.labels.instance_name"]'), 2)
+        self.assertIn("var.alert_db_cpu_percent / 100", block)
+        self.assertIn("var.alert_crawler_cpu_percent / 100", block)   # CPU là phân số 0-1 như cpu_target
+
+    def test_header_tells_how_to_map_instance_ids_to_vm_names(self):
+        # Ô RAM và đĩa chỉ có mã instance; ghi cách đối chiếu ngay trong ô mô tả đầu trang.
+        self.assertIn("gcloud compute instances list --project=${var.project_id}", DASH)
 
 
 if __name__ == "__main__":

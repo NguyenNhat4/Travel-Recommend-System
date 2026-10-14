@@ -147,5 +147,79 @@ class Alerts(unittest.TestCase):
         self.assertIn("starts_with", code)
 
 
+class DbAndCrawlerResourceAlerts(unittest.TestCase):
+    """RAM, đĩa, CPU của cụm DB (pg-a, pg-b, pg-w) và VM job cào. Số liệu đỉnh 7 ngày: xem history/2026-10-14-canh-bao-tai-nguyen-db-va-crawler.md."""
+
+    PAT = (D / "patroni_monitoring.tf").read_text()
+    CRA = (D / "crawler_monitoring.tf").read_text()
+    VARS = (D / "variables.tf").read_text()
+
+    def default(self, name: str) -> float:
+        return float(re.search(rf'variable "{name}" \{{.*?default\s*=\s*([\d.]+)', self.VARS, re.S).group(1))
+
+    def local_value(self, text: str, name: str) -> str:
+        return re.search(rf"{name}\s*=\s*(.*)", text).group(1)
+
+    def test_db_policies_notify_through_the_shared_channels_and_need_the_patroni_cluster(self):
+        for name in ("db_memory_high", "db_disk_high", "db_cpu_high"):
+            body = block(self.PAT, "google_monitoring_alert_policy", name)
+            self.assertIn("notification_channels = local.alert_channels", body, name)   # chịu lịch mute ban đêm như các alert HA
+            self.assertIn("count                 = var.create_patroni ? 1 : 0", body, name)
+
+    def test_crawler_policies_notify_and_exist_only_with_the_crawler_vm(self):
+        for name in ("crawler_memory_high", "crawler_disk_high", "crawler_cpu_sustained"):
+            body = block(self.CRA, "google_monitoring_alert_policy", name)
+            self.assertIn("notification_channels = local.alert_channels", body, name)
+            self.assertIn("count                 = local.crawler_enabled ? 1 : 0", body, name)
+
+    def test_db_memory_and_disk_select_only_the_two_db_nodes_with_the_agent(self):
+        # pg-w (witness) không có Ops Agent; lọc theo nhãn role=patroni để không có node "không có dữ liệu" giả.
+        for name in ("db_memory_filter", "db_disk_filter"):
+            value = self.local_value(self.PAT, name)
+            self.assertIn('metadata.user_labels.\\"role\\"=\\"patroni\\"', value, name)
+            self.assertIn('metadata.user_labels.\\"component\\"=\\"database\\"', value, name)
+            self.assertNotIn("etcd-witness", value, name)
+
+    def test_db_cpu_covers_all_three_nodes_by_name_prefix(self):
+        value = self.local_value(self.PAT, "db_cpu_filter")
+        self.assertIn('starts_with(\\"${var.name_prefix}-pg-\\")', value)   # gồm pg-w: CPU đo từ hypervisor
+
+    def test_db_policies_name_the_node_in_the_incident(self):
+        memory = block(self.PAT, "google_monitoring_alert_policy", "db_memory_high")
+        cpu = block(self.PAT, "google_monitoring_alert_policy", "db_cpu_high")
+        disk = block(self.PAT, "google_monitoring_alert_policy", "db_disk_high")
+        self.assertIn('group_by_fields      = ["resource.label.instance_id"]', memory)
+        self.assertIn('group_by_fields      = ["resource.label.instance_id"]', cpu)
+        self.assertIn('group_by_fields      = ["resource.label.instance_id", "metric.label.device"]', disk)
+
+    def test_db_memory_and_disk_alarm_when_the_agent_goes_silent(self):
+        for name in ("db_memory_high", "db_disk_high"):
+            self.assertIn("condition_absent", block(self.PAT, "google_monitoring_alert_policy", name), name)
+
+    def test_crawler_filters_follow_the_vm_instance_id_not_a_name_guess(self):
+        # Tham chiếu instance_id của chính VM: không cần thêm nhãn vào VM đang chạy. try() để không lỗi khi tắt VM.
+        for name in ("crawler_memory_filter", "crawler_disk_filter"):
+            value = self.local_value(self.CRA, name)
+            self.assertIn("resource.labels.instance_id", value, name)
+            self.assertIn('try(google_compute_instance.crawler[0].instance_id, "")', self.CRA, name)
+        self.assertIn('metric.labels.instance_name=\\"${local.crawler_name}\\"', self.local_value(self.CRA, "crawler_cpu_filter"))
+
+    def test_crawler_cpu_waits_longer_than_one_daily_crawl(self):
+        # Lượt cào bình thường chạm gần 100% CPU khoảng 1 giờ (quanh 09:00 giờ Việt Nam). Alert chỉ được kêu sau lâu hơn thế.
+        body = block(self.CRA, "google_monitoring_alert_policy", "crawler_cpu_sustained")
+        self.assertIn('duration        = "${var.alert_crawler_cpu_minutes * 60}s"', body)
+        self.assertGreaterEqual(self.default("alert_crawler_cpu_minutes"), 120)
+
+    def test_default_thresholds_sit_above_the_observed_seven_day_peaks(self):
+        # Đỉnh đo 2026-10-14 (theo giờ): DB RAM 66,6; DB đĩa 19,5; DB CPU 12,6; máy cào RAM 57,8; máy cào đĩa 77,7.
+        self.assertGreater(self.default("alert_db_memory_percent"), 66.6)
+        self.assertGreater(self.default("alert_db_disk_percent"), 19.5)
+        self.assertGreater(self.default("alert_db_cpu_percent"), 12.6)
+        self.assertGreater(self.default("alert_crawler_memory_percent"), 57.8)
+        self.assertGreater(self.default("alert_crawler_disk_percent"), 77.7)
+        for name in ("alert_db_memory_percent", "alert_db_disk_percent", "alert_db_cpu_percent", "alert_crawler_memory_percent", "alert_crawler_disk_percent", "alert_crawler_cpu_percent"):
+            self.assertLess(self.default(name), 100, name)
+
+
 if __name__ == "__main__":
     unittest.main()

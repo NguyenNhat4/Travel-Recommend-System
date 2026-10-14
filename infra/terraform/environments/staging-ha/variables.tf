@@ -260,6 +260,50 @@ variable "alert_disk_percent" {
   default     = 90
 }
 
+# Ngưỡng RAM, đĩa, CPU của cụm DB và job cào. Mức đặt trên đỉnh đo được 7 ngày gần nhất (2026-10-14), xem
+# history/2026-10-14-canh-bao-tai-nguyen-db-va-crawler.md.
+variable "alert_db_memory_percent" {
+  description = "RAM đã dùng (%) trên một node DB (pg-a, pg-b) vượt mức này trong 10 phút thì báo. Đỉnh 7 ngày: 66,6%."
+  type        = number
+  default     = 85
+}
+
+variable "alert_db_disk_percent" {
+  description = "Đĩa đã dùng (%) trên một thiết bị của một node DB vượt mức này trong 5 phút thì báo. Đỉnh 7 ngày: 19,5%."
+  type        = number
+  default     = 80
+}
+
+variable "alert_db_cpu_percent" {
+  description = "CPU (%) của một node DB (pg-a, pg-b, pg-w) trung bình vượt mức này trong 15 phút thì báo. Đỉnh 7 ngày: 12,6%."
+  type        = number
+  default     = 70
+}
+
+variable "alert_crawler_memory_percent" {
+  description = "RAM đã dùng (%) của VM job cào vượt mức này trong 10 phút thì báo. Đỉnh 7 ngày: 57,8%."
+  type        = number
+  default     = 85
+}
+
+variable "alert_crawler_disk_percent" {
+  description = "Đĩa boot (%) của VM job cào vượt mức này trong 5 phút thì báo. Đĩa 15 GB, một image crawler khoảng 3 GB; đỉnh 7 ngày: 77,7%, nên mức 80% sát đỉnh."
+  type        = number
+  default     = 80
+}
+
+variable "alert_crawler_cpu_percent" {
+  description = "CPU (%) của VM job cào vượt mức này liên tục trong alert_crawler_cpu_minutes phút thì báo. Mỗi lượt cào chạy khoảng 1 giờ ở gần 100%, nên ngưỡng thời gian phải dài hơn lượt bình thường."
+  type        = number
+  default     = 95
+}
+
+variable "alert_crawler_cpu_minutes" {
+  description = "Số phút CPU của VM job cào phải liên tục trên alert_crawler_cpu_percent thì báo. Đặt 180: lượt cào bình thường chỉ kéo dài khoảng 1 giờ ở đỉnh."
+  type        = number
+  default     = 180
+}
+
 # --- Tầng DB tự failover (Patroni) -------------------------------------------------------------------------------
 variable "create_patroni" {
   description = "Tạo cụm DB Patroni 2 node ở 2 zone + witness etcd ở zone thứ ba + load balancer nội bộ. Mặc định tắt: bật khi đã có image Patroni và secret."
