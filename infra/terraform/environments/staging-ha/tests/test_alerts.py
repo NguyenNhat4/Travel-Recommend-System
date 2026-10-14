@@ -188,9 +188,22 @@ class DbAndCrawlerResourceAlerts(unittest.TestCase):
         memory = block(self.PAT, "google_monitoring_alert_policy", "db_memory_high")
         cpu = block(self.PAT, "google_monitoring_alert_policy", "db_cpu_high")
         disk = block(self.PAT, "google_monitoring_alert_policy", "db_disk_high")
-        self.assertIn('group_by_fields      = ["resource.label.instance_id"]', memory)
-        self.assertIn('group_by_fields      = ["resource.label.instance_id"]', cpu)
-        self.assertIn('group_by_fields      = ["resource.label.instance_id", "metric.label.device"]', disk)
+        # Nhóm theo tên VM (metadata.system_labels.name) để incident nêu đúng VM; CPU dùng nhãn instance_name của Compute Engine.
+        self.assertIn('group_by_fields      = ["metadata.system_labels.name"]', memory)
+        self.assertIn('group_by_fields      = ["metric.label.instance_name"]', cpu)
+        self.assertIn('group_by_fields      = ["metadata.system_labels.name", "metric.label.device"]', disk)
+
+    def test_app_memory_and_disk_alerts_name_the_vm_in_the_incident(self):
+        memory = block(MON, "google_monitoring_alert_policy", "group_memory_high")
+        disk = block(MON, "google_monitoring_alert_policy", "group_disk_high")
+        self.assertIn('group_by_fields      = ["metadata.system_labels.name"]', memory)
+        self.assertIn('group_by_fields      = ["metadata.system_labels.name", "metric.label.device"]', disk)
+
+    def test_crawler_alerts_name_the_vm_in_the_incident(self):
+        crawler = (D / "crawler_monitoring.tf").read_text()
+        self.assertIn('group_by_fields      = ["metadata.system_labels.name"]', block(crawler, "google_monitoring_alert_policy", "crawler_memory_high"))
+        self.assertIn('group_by_fields      = ["metadata.system_labels.name", "metric.label.device"]', block(crawler, "google_monitoring_alert_policy", "crawler_disk_high"))
+        self.assertIn('group_by_fields      = ["metric.label.instance_name"]', block(crawler, "google_monitoring_alert_policy", "crawler_cpu_sustained"))
 
     def test_db_memory_and_disk_alarm_when_the_agent_goes_silent(self):
         for name in ("db_memory_high", "db_disk_high"):

@@ -163,11 +163,11 @@ Thay thành viên etcd (witness hỏng): với etcd 3 thành viên, mất 1 vẫ
 
 ## 8. Cảnh báo RAM, đĩa, CPU của node DB
 
-Ba cảnh báo tài nguyên, tách theo từng node (email nêu mã instance; đối chiếu bằng `gcloud compute instances list --project=vinpearl-508801 --format='table(name,id,zone)'`). Ngưỡng đặt trên đỉnh đo được 7 ngày (2026-10-14), xem `history/2026-10-14-canh-bao-tai-nguyen-db-va-crawler.md`.
+Ba cảnh báo tài nguyên, tách theo từng node (email nêu tên VM; các ô trên dashboard `vota-ha HA: DB và máy cào` và `vota-ha HA: cảnh báo`). Ngưỡng đặt trên đỉnh đo được 7 ngày (2026-10-14), xem `history/2026-10-14-canh-bao-tai-nguyen-db-va-crawler.md`.
 
 | Cảnh báo | Ngưỡng | Việc đầu tiên |
 |---|---|---|
-| RAM một node DB cao | RAM đã dùng > 85% trong 10 phút | Ô RAM trên dashboard HA; `docker logs vota-patroni` trên node đó. RAM cao kéo dài có thể làm Postgres bị OOM-kill |
+| RAM một node DB cao | RAM đã dùng > 85% trong 10 phút | Ô RAM trên dashboard `vota-ha HA: DB và máy cào`; `docker logs vota-patroni` trên node đó. RAM cao kéo dài có thể làm Postgres bị OOM-kill |
 | Đĩa một node DB đầy | Một thiết bị > 80% trong 5 phút | `du -sh /mnt/disks/pgdata` trên node đó; không xoá dữ liệu Postgres khi chưa đối chiếu mục này |
 | CPU một node DB cao | CPU trung bình > 70% trong 15 phút | Truy vấn đang chạy và autovacuum trong Postgres. pg-w là witness etcd: CPU cao ở đó không liên quan dữ liệu |
 | Không node DB nào gửi RAM hoặc đĩa | Vắng dữ liệu 5–10 phút | Ops Agent trên cả hai node DB có chạy không. Cảnh báo RAM và đĩa không kêu khi không có dữ liệu |
