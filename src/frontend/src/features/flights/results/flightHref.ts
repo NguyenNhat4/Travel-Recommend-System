@@ -4,6 +4,9 @@
  */
 import { parseTripContext, serializeTripContext, todayVN, type TripContext } from '../../search/tripContext';
 
+// Dựng một lần: mỗi thẻ chuyến bay gọi hàm này khi render.
+const VN_DAY_ISO = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' });
+
 export const FLIGHTS_ROUTE = '/flights';
 
 export interface FlightSearch {
@@ -65,8 +68,7 @@ export function flightProductHref(
   const trip = parseTripContext(new URLSearchParams(tripQuery));
   const departure = text(a.departureAt);
   if (!trip.checkIn && departure && !Number.isNaN(Date.parse(departure))) {
-    const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' })
-      .format(new Date(departure));
+    const day = VN_DAY_ISO.format(new Date(departure));
     if (day >= todayVN()) return withFare(buildFlightResultsHref({ origin, destination, trip: { ...trip, checkIn: day } }));
   }
   return withFare(buildFlightResultsHref({ origin, destination, trip }));
