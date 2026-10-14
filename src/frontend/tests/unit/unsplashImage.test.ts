@@ -1,28 +1,35 @@
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { UNSPLASH_DEFAULT_WIDTH, unsplashSrcSet, unsplashUrl } from '../../src/lib/unsplash';
+import { coverFor } from '../../src/features/catalog/landing/destinationCovers';
+import { VERTICAL_LIST } from '../../src/features/catalog/landing/verticals';
+import { unsplashPath } from '../../src/lib/unsplash';
 
 const PHOTO = '1582719508461-905c673771fd';
+/** Nhãn điểm đến có ảnh bìa (destinationCovers.ts). */
+const COVERED_DESTINATIONS = ['Nha Trang', 'Phú Quốc', 'Đà Nẵng', 'Hội An', 'TP. Hồ Chí Minh', 'Hạ Long', 'Quy Nhơn', 'Đà Lạt', 'Hà Nội', 'Huế'];
 
-describe('unsplashUrl', () => {
-  it('dựng URL theo chiều rộng yêu cầu, giữ tham số chất lượng và định dạng tự động', () => {
-    expect(unsplashUrl(PHOTO, 960)).toBe(
-      `https://images.unsplash.com/photo-${PHOTO}?q=80&w=960&auto=format&fit=crop`,
-    );
+/** Đường dẫn ảnh trong `src` phải có file tương ứng trong `public/`, nếu không trình duyệt nhận 404. */
+const publicFile = (src: string) => path.join(process.cwd(), 'public', src);
+
+describe('unsplashPath', () => {
+  it('trỏ tới file WebP trong public/images/unsplash, không tới images.unsplash.com', () => {
+    expect(unsplashPath(PHOTO)).toBe(`/images/unsplash/${PHOTO}.webp`);
   });
 });
 
-describe('unsplashSrcSet', () => {
-  it('liệt kê các cỡ từ nhỏ đến lớn, mỗi cỡ kèm đơn vị w để trình duyệt chọn theo viewport', () => {
-    const entries = unsplashSrcSet(PHOTO).split(', ');
-    expect(entries.map((entry) => entry.split(' ')[1])).toEqual(['640w', '960w', '1280w', '1920w']);
-    expect(entries[0]).toBe(`${unsplashUrl(PHOTO, 640)} 640w`);
+describe('ảnh Unsplash hard-code đã có trong public', () => {
+  it('mọi ảnh hero của danh mục có file', () => {
+    for (const config of VERTICAL_LIST) {
+      expect(existsSync(publicFile(unsplashPath(config.heroPhoto))), config.heroPhoto).toBe(true);
+    }
   });
 
-  it('không có cỡ nào lớn hơn 2000 px, tức là không còn ảnh w=2000 mặc định cho mọi màn hình', () => {
-    expect(unsplashSrcSet(PHOTO)).not.toContain('w=2000');
-  });
-
-  it('cỡ mặc định của src nằm trong srcSet', () => {
-    expect(unsplashSrcSet(PHOTO)).toContain(`${unsplashUrl(PHOTO, UNSPLASH_DEFAULT_WIDTH)} ${UNSPLASH_DEFAULT_WIDTH}w`);
+  it('mọi ảnh bìa điểm đến có file', () => {
+    for (const destination of COVERED_DESTINATIONS) {
+      const src = coverFor(destination);
+      expect(src, destination).not.toBeNull();
+      expect(existsSync(publicFile(src as string)), destination).toBe(true);
+    }
   });
 });

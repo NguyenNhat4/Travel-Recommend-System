@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { HelpCircle, Search } from 'lucide-react';
 import { useTravel } from '../../context/TravelContext';
 import { fetchRecommendations } from '../../services/recsys';
@@ -18,7 +19,7 @@ import { CatalogShelf } from '../../features/catalog/landing/ProductShelf';
 import { DestinationTiles } from '../../features/catalog/landing/DestinationTiles';
 import { InstantSearchPanel } from '../../features/search/instant/InstantSearchPanel';
 import { useInstantSearchBox } from '../../features/search/instant/useInstantSearchBox';
-import { UNSPLASH_DEFAULT_WIDTH, unsplashSrcSet, unsplashUrl } from '../../lib/unsplash';
+import { unsplashPath } from '../../lib/unsplash';
 
 /** Gợi ý cá nhân hóa quá 10 giây thì ẩn khối và hiện dòng "Thử lại" (frontend §6.4 RECOMMENDATION_TIMEOUT_MS). */
 const RECOMMENDATION_TIMEOUT_MS = 10000;
@@ -169,15 +170,13 @@ export const HomeView: React.FC = () => {
       {/* HERO: tìm kiếm AI là lối vào chính (FR-SRC-01); header nổi (fixed) đè lên phần đầu nên chừa pt-28 */}
       <section className="relative flex min-h-[560px] items-center justify-center px-4 pb-16 pt-28 sm:px-6 lg:min-h-[600px]">
         <div className="absolute inset-0 overflow-hidden bg-slate-800">
-          <img
-            src={unsplashUrl(HERO_PHOTO_ID, UNSPLASH_DEFAULT_WIDTH)}
-            srcSet={unsplashSrcSet(HERO_PHOTO_ID)}
+          <Image
+            src={unsplashPath(HERO_PHOTO_ID)}
+            fill
             sizes="100vw"
             alt=""
-            fetchPriority="high"
-            loading="eager"
-            decoding="async"
-            className="h-full w-full object-cover object-center"
+            priority
+            className="object-cover object-center"
           />
           <div className="absolute inset-0 bg-gradient-to-b from-slate-900/60 via-slate-900/30 to-slate-950/80" />
         </div>
@@ -366,14 +365,12 @@ export const HomeView: React.FC = () => {
         <section className="relative py-20 overflow-hidden mt-6">
           {/* Panoramic Background with Light Gradient Overlay */}
           <div className="absolute inset-0 z-0">
-            <img
-              src={unsplashUrl(PANORAMA_PHOTO_ID, UNSPLASH_DEFAULT_WIDTH)}
-              srcSet={unsplashSrcSet(PANORAMA_PHOTO_ID)}
+            <Image
+              src={unsplashPath(PANORAMA_PHOTO_ID)}
+              fill
               sizes="100vw"
-              loading="lazy"
-              decoding="async"
               alt="Coastal paradise panoramic"
-              className="w-full h-full object-cover filter brightness-[0.85]"
+              className="object-cover filter brightness-[0.85]"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-white/90 via-transparent to-white/70"></div>
           </div>

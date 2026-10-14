@@ -2,6 +2,7 @@
 
 import React, { useId } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useInView } from '../../../hooks/useInView';
 import { coverFor } from './destinationCovers';
 import { topDestinations, useDestinations } from './useDestinations';
@@ -47,13 +48,12 @@ export function DestinationTiles({ title = 'Bạn muốn đi đâu?', route, que
                 className="group relative h-64 w-44 shrink-0 overflow-hidden rounded-xl bg-gradient-to-br from-brand-700 to-brand-900 shadow-md transition-shadow hover:shadow-2xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 sm:w-52 lg:w-[calc((100%-64px)/5)]"
               >
                 {cover && (
-                  <img
+                  <Image
                     src={cover}
+                    fill
+                    sizes="176px"
                     alt=""
-                    loading="lazy"
-                    decoding="async"
-                    referrerPolicy="no-referrer"
-                    className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
+                    className="object-cover transition-transform duration-700 group-hover:scale-110"
                   />
                 )}
                 <div className="absolute inset-0 bg-gradient-to-t from-slate-950/85 via-slate-950/15 to-transparent" />
