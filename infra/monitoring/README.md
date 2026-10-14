@@ -4,10 +4,10 @@ Thư mục này chỉ còn các file chạy **trên VM**. `infra/terraform/envir
 
 Terraform giám sát của staging cũ (state `monitoring/staging`) đã gỡ khỏi repo ngày 2026-10-13. Cùng ngày, các alert, log-metric, dashboard và uptime check gắn VM cũ đã xoá khỏi GCP (`docs/prd/update-archive/2026-10-13-xoa-monitoring-staging-cu.md`). **Không chạy plan hay apply** trên state `monitoring/staging` hay `infra/staging`: state đã lệch so với GCP.
 
-Còn trên GCP, không có code quản lý:
+Còn trên GCP, không có code quản lý, và staging-ha đang dựa vào một phần:
 
-- Log-metric `vota-staging_*` (6 cái: container OOM, container dừng, container disk, Docker watcher heartbeat, error logs, crawler failure). **Không còn policy nào dùng.** Đã xoá toàn bộ 7 alert policy `vota-staging` ngày 2026-10-14 (policy "crawler partial run" xoá trước đó cùng ngày, lọc `exit_code=3` đã lỗi thời). Hệ quả: staging-ha **không còn** cảnh báo OOM, container dừng, log lỗi, mất watcher hay đĩa container; cần policy `vota-ha` thay thế (việc còn lại).
-- Kênh email `vota-staging email alerts`: không policy nào dùng.
+- Bảy alert policy toàn project (container OOM, service container stopped, container disk, Docker watcher absent, error logs, crawler failed, log ingestion spike) và log-metric `vota-staging_*` của chúng. Policy "crawler partial run" đã xoá (2026-10-14): lọc `exit_code=3`, mà bản crawler hiện tại không còn phát. Cảnh báo crawler của staging-ha (`crawler_monitoring.tf`) chỉ bổ sung cho `crawler failed`, không thay thế nó.
+- Kênh email `vota-staging email alerts`, mà tám policy trên dùng.
 - Metric descriptor `custom.googleapis.com/vota/container/{cpu_percent,memory_bytes,memory_percent}`, mà dashboard staging-ha vẽ. Không xoá: GCP chặn tạo lại cùng tên trong 24 giờ.
 - IP tĩnh `34.142.132.251`, mà bastion staging-ha đang dùng.
 
