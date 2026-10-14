@@ -72,6 +72,20 @@ google_monitoring_alert_policy.group_below_min|update
 google_monitoring_alert_policy.group_at_max|update
 google_monitoring_alert_policy.lb_5xx_ratio|update
 google_monitoring_alert_policy.lb_latency|update
+# Cảnh báo container, log và job cào (2026-10-14), thay cho 7 policy vota-staging đã xoá: 6 log-metric và 7 policy mới.
+google_logging_metric.container_oom|create
+google_logging_metric.container_dung|create
+google_logging_metric.container_disk|create
+google_logging_metric.docker_watcher|create
+google_logging_metric.crawler_container_fail|create
+google_logging_metric.error_logs|create
+google_monitoring_alert_policy.container_oom|create
+google_monitoring_alert_policy.container_dung|create
+google_monitoring_alert_policy.container_disk|create
+google_monitoring_alert_policy.docker_watcher|create
+google_monitoring_alert_policy.error_logs|create
+google_monitoring_alert_policy.crawler_container_fail|create
+google_monitoring_alert_policy.log_spike|create
 google_monitoring_uptime_check_config.lb_ready|update
 google_monitoring_alert_policy.patroni_no_replica[0]|update
 google_monitoring_alert_policy.patroni_no_leader[0]|update

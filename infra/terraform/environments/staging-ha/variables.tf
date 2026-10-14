@@ -431,3 +431,15 @@ variable "origin_key_secret" {
   type        = string
   default     = "praxis-origin-key"
 }
+
+variable "alert_container_disk_bytes" {
+  description = "Dung lượng đĩa của một container (byte, p99 trong 10 phút) vượt mức này thì cảnh báo. Mặc định 5 GiB."
+  type        = number
+  default     = 5368709120
+}
+
+variable "alert_log_spike_bytes_per_hour" {
+  description = "Lượng log nạp vào Cloud Logging trong 1 giờ (byte, cả project) vượt mức này thì cảnh báo. Mặc định 0,25 GiB."
+  type        = number
+  default     = 268435456
+}
