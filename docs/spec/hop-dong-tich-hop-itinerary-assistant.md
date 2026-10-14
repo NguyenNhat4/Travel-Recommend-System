@@ -940,6 +940,18 @@ Ba schema được tham chiếu từ `src/shared/contracts/openapi.yaml`. Fronte
 
 ### Tương tác và phòng trong assistant v2 (chốt 2026-10-13)
 
+Thứ tự hiểu phủ định trong prompt v2 (làm rõ FR-AGT-01/06, AC-AGT-01/07, 14/10/2026):
+
+- Yêu cầu ngừng tư vấn rõ ràng ưu tiên cả khi đang hỏi thông tin: `stop`, giữ lịch, hủy consent, không gọi tool
+  nghiệp vụ, thẻ/phương án/nút/câu hỏi. Trạng thái được ghi cùng `respond.context_patch` có evidence.
+- `ko`/`không`/`k` theo câu hỏi ngay trước: hỏi trẻ em thì ghi `children=0`, giữ thông tin và consent, đủ điều kiện
+  thì lập lịch; hỏi muốn lập lịch thì chỉ hủy lời mời, không tự chuyển sang dừng toàn bộ tư vấn. Lượt từ chối lời mời
+  không tra thêm, không hỏi thông tin chuyến hay lặp lời mời/nút lập lịch. `k` sau câu hỏi mở không tự là số 0.
+- “Chán quá, không muốn đi nữa” là mất hứng, không tự là lệnh ngừng tư vấn. Ngừng lập lịch, giữ lịch đã có; có thể
+  khơi gợi một lần theo giới hạn trên. Sau lần đó, từ chối tiếp thì dừng; bổ sung đúng thông tin được hỏi không phải
+  từ chối tiếp. Quy tắc nghỉ nhẹ “không muốn đi chơi” vẫn giữ; yêu cầu dừng rõ luôn ưu tiên.
+- Hiểu câu vẫn do model; không thêm bộ phân loại hoặc bảng từ khóa vào code. Kiểm model thật tách khỏi unit test.
+
 FR-AGT-01/06, AC-AGT-01/04/07/09: context_patch.engagement phân biệt rekindle (mất hứng, khơi tò mò một lần), stop (dừng rõ/từ chối tiếp), continue (chủ động khám phá tiếp). Khi dừng, consent lập lịch bị hủy; khám phá tiếp không tự cấp lại consent. curiosity_offered chỉ commit sau final hợp lệ. Một lần khơi tò mò tối đa một sản phẩm đã tra, một nút; prompt giới hạn hai câu, không tạo classifier/agent riêng. Khách chưa biết gì được gợi mở từ catalog/recommendation.
 
 Giá lưu trú dùng priceAdults theo PRD; maxOccupancy được kiểm riêng cho cả người lớn/trẻ em, không lấy sức chứa thay số khách giá đã gồm. V2 plan_itinerary: số phòng = ceil(tổng khách/priceAdults); thiếu priceAdults dùng maxOccupancy kèm PRICE_CAPACITY_UNKNOWN. Thiếu cả hai thì rooms=null và tổng tiền unknown; không ghi “tính tạm một phòng”. V1 giữ luật cũ. Thiếu maxOccupancy có cảnh báo ROOM_CAPACITY_UNKNOWN; vượt sức chứa là violation ROOM_CAPACITY_EXCEEDED để orc chọn lại. Giờ sáng/chiều giữ qua response/UI; prompt phác lịch trọn ngày theo cửa sổ thực tế và giải thích khi chỉ có sáng. Chất lượng model thật do người dùng eval sau kiểm kỹ thuật.
