@@ -134,7 +134,7 @@ class Alerts(unittest.TestCase):
         self.assertIn("var.alert_p95_latency_ms", body)
 
     def test_latency_alert_needs_enough_requests_to_trust_p95(self):
-        # p95 trên vài request là nhiễu (03:19 UTC 14/10: 78–127 request/phút, p95 nhảy tới 3,2 s). Điều kiện tổng request là AND với p95.
+        # p95 trên rất ít request (cửa sổ 10 phút dưới 100) không đáng tin. Điều kiện tổng request là AND với p95; không chặn được nhiễu ở tải bình thường.
         body = policy("lb_latency")
         self.assertIn('combiner              = "AND"', body)
         self.assertEqual(body.count("condition_threshold"), 2)

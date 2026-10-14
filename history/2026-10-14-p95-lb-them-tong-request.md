@@ -14,7 +14,7 @@ Cảnh báo "p95 độ trễ backend cao" (LB, ngưỡng 800 ms trong 10 phút) 
 ## Số liệu căn cứ (chỉ đọc, 14/10 UTC)
 
 - 02:24–02:25: p95 16,7 s và 14,2 s với khoảng 1.300 request/phút. Đây là sự cố thật, và điều kiện mới không chặn nó.
-- 03:19–03:20: chỉ 78–127 request/phút nhưng p95 nhảy tới 3.168 ms. Đây là nhiễu do quá ít mẫu: vài request chậm đủ làm p95 vọt.
+- 03:19–03:20: 78–127 request/phút (khoảng 1.000 request trong 10 phút), p95 nhảy tới 3.168 ms nhưng không kéo dài 10 phút (03:21 đã 420 ms). **Điều kiện mới không chặn ca này**: ngưỡng chỉ chặn cửa sổ rất thấp tải (ban đêm), không chặn nhiễu ở tải bình thường.
 - 72 giờ, cửa sổ 10 phút: trung vị 175 request, 5% cửa sổ thấp nhất dưới 46, 234/432 cửa sổ dưới 300.
 
 Ngưỡng 100 request/10 phút: đủ để p95 dựa trên ít nhất 100 mẫu. Thấp hơn 50 thì p95 không còn ý nghĩa.
