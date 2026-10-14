@@ -26,7 +26,7 @@ locals {
   group_by_vm      = ["metadata.system_labels.name"]
   align_per_vm     = "300s"
   align_lb         = "60s"
-  dashboard_prefix = "${var.name_prefix} HA"
+  dashboard_prefix = "sota HA"
 }
 
 # Độ trễ API của backend, mỗi dòng log http.request là một mẫu. Loại /health/* (probe) và /stream (SSE kéo dài theo LLM;
@@ -554,7 +554,7 @@ resource "google_monitoring_dashboard" "ha_logs" {
         {
           yPos = 2, width = 12, height = 4
           widget = {
-            title = "Lỗi mọi service (mức ERROR trở lên)"
+            title = "SOTA: lỗi mọi service (mức ERROR trở lên)"
             logsPanel = {
               filter        = local.log_filter_all_errors
               resourceNames = ["projects/${var.project_id}"]
@@ -564,7 +564,7 @@ resource "google_monitoring_dashboard" "ha_logs" {
         {
           yPos = 6, width = 6, height = 5
           widget = {
-            title = "Backend (mọi mức)"
+            title = "SOTA: backend (mọi mức)"
             logsPanel = {
               filter        = local.log_filter_backend
               resourceNames = ["projects/${var.project_id}"]
@@ -574,7 +574,7 @@ resource "google_monitoring_dashboard" "ha_logs" {
         {
           xPos = 6, yPos = 6, width = 6, height = 5
           widget = {
-            title = "Frontend (mọi mức)"
+            title = "SOTA: frontend (mọi mức)"
             logsPanel = {
               filter        = local.log_filter_frontend
               resourceNames = ["projects/${var.project_id}"]
@@ -584,7 +584,7 @@ resource "google_monitoring_dashboard" "ha_logs" {
         {
           yPos = 11, width = 6, height = 5
           widget = {
-            title = "Job cào (mọi mức)"
+            title = "SOTA: job cào (mọi mức)"
             logsPanel = {
               filter        = local.log_filter_crawler
               resourceNames = ["projects/${var.project_id}"]
@@ -594,7 +594,7 @@ resource "google_monitoring_dashboard" "ha_logs" {
         {
           xPos = 6, yPos = 11, width = 6, height = 5
           widget = {
-            title = "Container khác (proxy, pgbouncer, Patroni: stdout/stderr thô)"
+            title = "SOTA: container khác (proxy, pgbouncer, Patroni: stdout/stderr thô)"
             logsPanel = {
               filter        = local.log_filter_raw_containers
               resourceNames = ["projects/${var.project_id}"]
@@ -604,7 +604,7 @@ resource "google_monitoring_dashboard" "ha_logs" {
         {
           yPos = 16, width = 6, height = 5
           widget = {
-            title = "Cụm DB Patroni (dòng probe mỗi phút)"
+            title = "SOTA: cụm DB Patroni (dòng probe mỗi phút)"
             logsPanel = {
               filter        = local.log_filter_patroni
               resourceNames = ["projects/${var.project_id}"]
@@ -614,7 +614,7 @@ resource "google_monitoring_dashboard" "ha_logs" {
         {
           xPos = 6, yPos = 16, width = 6, height = 5
           widget = {
-            title = "Sự kiện container: dừng đột ngột / OOM (không tính helper)"
+            title = "SOTA: sự kiện container: dừng đột ngột / OOM (không tính helper)"
             logsPanel = {
               filter        = local.log_filter_container
               resourceNames = ["projects/${var.project_id}"]
@@ -624,7 +624,7 @@ resource "google_monitoring_dashboard" "ha_logs" {
         {
           yPos = 21, width = 6, height = 5
           widget = {
-            title = "Request chậm > 1 s (backend)"
+            title = "SOTA: request chậm > 1 s (backend)"
             logsPanel = {
               filter        = local.log_filter_slow
               resourceNames = ["projects/${var.project_id}"]

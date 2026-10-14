@@ -43,6 +43,10 @@ class DashboardLayout(unittest.TestCase):
         self.assertIn('output "ha_dashboard_url"', OUT)
         self.assertIn("google_monitoring_dashboard.ha.id", OUT)
 
+    def test_visible_dashboard_prefix_is_sota(self):
+        self.assertIn('dashboard_prefix = "sota HA"', DASH)
+        self.assertNotIn('dashboard_prefix = "${var.name_prefix} HA"', DASH)
+
     def test_each_dashboard_opens_with_a_text_tile(self):
         for name in NAMES:
             self.assertIn("text = {", dashboard_block(name), name)
@@ -120,6 +124,12 @@ class DashboardContents(unittest.TestCase):
                 self.assertNotIn("logsPanel", dashboard_block(name), name)
         for name in ["log_filter_all_errors", "log_filter_backend", "log_filter_frontend", "log_filter_crawler", "log_filter_raw_containers", "log_filter_patroni", "log_filter_container", "log_filter_slow"]:
             self.assertIn(f"local.{name}", logs, name)
+
+    def test_log_widget_titles_use_sota_prefix(self):
+        body = dashboard_block("ha_logs")
+        titles = re.findall(r'title = "([^"]+)"', body)
+        self.assertEqual(len(titles), 8)
+        self.assertTrue(all(title.startswith("SOTA: ") for title in titles), titles)
 
     def test_logs_dashboard_covers_every_service_at_all_levels(self):
         # Mỗi service có khung riêng, mọi mức (không lọc severity), để không thiếu service nào trên trang nhật ký.
