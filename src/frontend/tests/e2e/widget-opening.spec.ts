@@ -155,7 +155,7 @@ test('completed results still open the timeline and map after the widget split',
 });
 
 for (const width of [390,1024]) {
-  test(`progress and preview follow the stream at ${width}px`, async ({page}) => {
+  test(`progress follows the stream and shows no product cards while waiting at ${width}px`, async ({page}) => {
     const {default:events}=await import('../../../shared/mocks/itinerary-agent/stream-plan.json',{with:{type:'json'}});
     await page.setViewportSize({width,height:900});
     await page.addInitScript((frames) => {
@@ -183,15 +183,15 @@ for (const width of [390,1024]) {
     await dialog.getByPlaceholder(openingPlaceholder).fill('Lập lịch trình Nha Trang');
     await dialog.getByRole('button',{name:'Gửi yêu cầu'}).click();
     await expect(dialog.getByText(/tìm thấy 10/)).toBeVisible();
-    const preview=dialog.getByRole('region',{name:'Sản phẩm đã chọn'});
-    await expect(preview).toBeVisible({timeout:7000});
-    await expect(preview.getByRole('button',{name:/Thêm|Đặt ngay/})).toHaveCount(0);
+    // AC-AGT-09: trong lúc chờ không hiện thẻ sản phẩm; thẻ chỉ có trong câu trả lời.
+    const productCards=dialog.getByRole('region',{name:'Sản phẩm đã chọn'});
+    await expect(productCards).toHaveCount(0);
     await dialog.screenshot({path:`/tmp/travel-agent-progress-${width}.png`,animations:'disabled'});
     const overflow=await dialog.evaluate((el)=>el.scrollWidth>el.clientWidth);
     expect(overflow).toBe(false);
     await page.evaluate(() => window.dispatchEvent(new Event('finish-progress-fixture')));
     await expect(dialog.getByRole('button',{name:/Xem các bước/})).toBeVisible({timeout:5000});
-    await expect(preview).toHaveCount(0);
+    await expect(productCards).toHaveCount(0);
     await dialog.getByRole('button',{name:/Xem các bước/}).click();
     await expect(dialog.getByRole('button',{name:/Thu gọn/})).toHaveAttribute('aria-expanded','true');
   });
