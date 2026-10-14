@@ -50,6 +50,13 @@ CASES = {
     "short-unknown": ["lên lịch đi Đà Lạt từ thứ 7 này, 2 người lớn", "ko biết", "ok"],
     "short-whatever": ["lên lịch đi Đà Nẵng", "tùy bạn", "ok"],
     "short-k": ["lên lịch đi Nha Trang 3 ngày", "k", "ok"],
+    # Chat 14/10: đã có lịch, khách muốn tiết kiệm rồi thêm vé; trợ lý phải tự dựng lại/dời hoạt động, không xin phép
+    # khách bấm nút sửa (FR-AGT-02, AC-AGT-02 "violations cho orc sửa").
+    "save-then-flight": ["Lập lịch Đà Nẵng 4 ngày từ 16/10, 2 người lớn", "lịch trình tiết kiệm thôi",
+                         "thêm vé máy bay đi từ hcm"],
+    # Như trên nhưng ngày catalog local có chuyến cả hai chiều (HCM → Đà Nẵng 17/10, về 19/10).
+    "save-then-flight-17": ["Lập lịch Đà Nẵng 3 ngày từ 17/10, 2 người lớn", "lịch trình tiết kiệm thôi",
+                            "thêm vé máy bay đi từ hcm"],
     "fare-after-plan": ["Lập lịch Hà Nội đi Đà Nẵng 3 ngày từ 28/10, 2 người lớn", "Vé chiều về rẻ nhất là chuyến nào?"],
     "fare": ["vé sg ra hn bao nhiêu"],
     "over-budget": ["Lập lịch Đà Nẵng 2 ngày từ 26/10 cho 2 người lớn, ngân sách 500 nghìn"],

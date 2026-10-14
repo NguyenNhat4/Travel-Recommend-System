@@ -962,8 +962,10 @@ plan `../plan/2026-10-13-orc-function-calling-va-tool-lap-lich.md`.
 Năm function nghiệp vụ: find_products, get_products, recommend, lookup_flights, plan_itinerary; hai function điều khiển
 update_trip (evidence) và respond. Response và SSE v2 giữ nguyên; kind vẫn search/recommend/detail/flights/itinerary.
 Trong một lượt, các message chỉ nối thêm, ToolMessage gắn đúng provider call id và có mã cN do server cấp cho fact/plan.
-Quá ba call nghiệp vụ: chỉ chạy tối đa ba call, trả TOO_MANY_CALLS cho call thừa. Hết ba lượt chỉ còn respond;
-respond sai schema hoặc guard cũng chỉ được sửa một lần. Model vẫn tối đa năm lần, nguồn vật lý tối đa mười request.
+Một lượt chạy mọi call nghiệp vụ orc gửi; request nguồn sau deadline lượt trả TIME_LIMIT. Hết bốn lượt chỉ còn respond;
+respond sai schema hoặc guard cũng chỉ được sửa một lần. Model tối đa sáu lần, không trần request nguồn, chỉ deadline lượt (mỗi ref của get_products một request)
+(chốt 2026-10-14, `../prd/update-archive/2026-10-14-orc-4-luot-tool-khong-tran-call-moi-luot.md`,
+`../prd/update-archive/2026-10-14-bo-tran-request-nguon.md`).
 Khách sạn kèm phòng vẫn tính request nguồn mỗi trang phòng; báo rõ room_errors/coverage nếu đọc thiếu, không nhận đã
 có đủ phòng. Get nhiều refs báo lỗi từng sản phẩm và giữ kết quả thành công. Không tự tiếp trang.
 

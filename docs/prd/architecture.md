@@ -214,8 +214,10 @@ stateDiagram-v2
 - Ngân sách chuyến đi là warning-only: vượt vẫn trả/lưu lịch, công bố tổng, ngân sách, số vượt và phạm vi tính.
   Không tự chọn lịch rẻ nhất, không chặn chỉ vì vượt tiền. Giá chưa đủ: total/over_by null, known subtotal và
   unpriced refs rõ; không tuyên bố trong ngân sách hay mức vượt chính xác khi thiếu tổng.
-- Ngân sách thực thi độc lập: baseline 3 batch execute, tối đa 3 calls/batch, 10 request nguồn vật lý,
-  5 model calls (4 quyết định + 1 repair). Chừa final sau batch cuối và thời gian theo timeout model hiện có;
+- Ngân sách thực thi độc lập: baseline 4 batch execute, không giới hạn số call trong một batch, không trần số request
+  nguồn (chặn bằng deadline lượt), 6 model calls (5 quyết định + 1 repair). *(Chốt Nguyễn Minh Nhật 2026-10-14,
+  `update-archive/2026-10-14-orc-4-luot-tool-khong-tran-call-moi-luot.md`,
+  `update-archive/2026-10-14-bo-tran-request-nguon.md`.)* Chừa final sau batch cuối và thời gian theo timeout model hiện có;
   không tăng deadline để hoàn tất. Retry transient tối đa một lần cùng arguments, cũng tính request nguồn.
   Dành quota trước await; cache hit không tính request nguồn nhưng tính call logic. Batch giữ thứ tự call_id.
   Thành công trùng fingerprint trả cached result; lỗi retryable không bị đánh dấu thành công.
@@ -257,7 +259,7 @@ stateDiagram-v2
 - Giữ model/provider/SDK cấu hình hiện có. Function calling với schema riêng từng tool, hội thoại trong lượt
   nối thêm assistant/tool messages; không có args tự do. update_trip ghi trường ngữ cảnh được phép có bằng chứng
   từ tin nhắn/nút/form; respond mang câu trả lời cấu trúc. Hai tool này không tính lượt nghiệp vụ.
-  Hết lượt chỉ bind respond; quá ba call nghiệp vụ thì call thừa trả TOO_MANY_CALLS, không thực thi. Mọi câu vé/đổi lịch/nút vé quay về orc, không shortcut final nghiệp vụ.
+  Hết lượt chỉ bind respond. Một batch chạy mọi call nghiệp vụ orc gửi; request nguồn sau deadline trả TIME_LIMIT, không thực thi. Mọi câu vé/đổi lịch/nút vé quay về orc, không shortcut final nghiệp vụ.
 
 ### Chuyển phiên bản và nghiệm thu
 

@@ -107,16 +107,16 @@ POST /api/v2/assistant/itineraries hoặc /stream
                                       khoá lượt (clientTurnId), nút server đã cấp, ghi đúng một lần
   -> agents/orc_v2.py                  OrcV2Runtime + graph: precheck → decide ⇄ dispatch → guard; PROMPT
        decide   bind_tools + assistant/tool messages nối thêm trong lượt; schema từng function tại orc_contracts.py
-       dispatch application/itinerary/orc_dispatch.py: chạy đúng tool orc gọi, ngân sách 10 request nguồn,
+       dispatch application/itinerary/orc_dispatch.py: chạy đúng tool orc gọi, không trần request nguồn (chỉ deadline),
                 lookup_flights ở flight_lookup.py, plan_itinerary tính/kiểm buổi bằng domain/itinerary/draft_validation.py
        guard    domain/itinerary/orc_guardrails.py kiểm câu trả lời; v2_final.py dựng response theo contract v2
   -> infrastructure/persistence/assistant_v2_store.py  working memory 24h (memory/Redis), mở tiếp hội thoại v1
 ```
 
-Giới hạn mỗi lượt: 3 lượt gọi tool nghiệp vụ (1–3 tool mỗi lượt), 10 request nguồn, 5 lần gọi model, sửa câu trả lời 1 lần.
+Giới hạn mỗi lượt: 4 lượt gọi tool nghiệp vụ (không giới hạn số tool mỗi lượt), không trần request nguồn (chỉ deadline), 6 lần gọi model, sửa câu trả lời 1 lần.
 Năm tool: find_products (có query Search, không query Catalog, khách sạn kèm refs phòng), get_products (tối đa 10 refs,
 lỗi từng ref trả riêng), recommend (like_ref gọi Similar), lookup_flights, plan_itinerary. update_trip cần evidence và
-respond là final có cấu trúc, không tính lượt nghiệp vụ. Hết lượt chỉ bind respond. Thừa call trả TOO_MANY_CALLS.
+respond là final có cấu trúc, không tính lượt nghiệp vụ. Hết lượt chỉ bind respond. Request nguồn sau deadline trả TIME_LIMIT.
 OpenAI reasoning dùng Responses API cho function tools, giữ JSON-schema v1; Gemini/Anthropic ép any và kiểm local.
 ToolMessage chỉ gửi view sản phẩm mới/thay đổi; remaining báo quota, request vé tối đa năm. Ngày hiện tại ở payload,
 không đổi prefix system. Chuyến N ngày tối đa N−1 đêm; số phòng theo tổng khách/priceAdults hoặc sức chứa có cảnh báo.
