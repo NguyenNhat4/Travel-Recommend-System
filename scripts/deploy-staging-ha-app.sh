@@ -100,6 +100,13 @@ google_monitoring_alert_policy.ci_runner_down|create
 google_monitoring_alert_policy.ci_runner_down|update
 # cpu_target 0.55 -> 0.9 (commit 10aa9488): alert group_at_max dùng var.cpu_target làm ngưỡng nên chỉ đổi threshold.
 google_monitoring_alert_policy.group_at_max|update
+# Cảnh báo RAM, đĩa, CPU của cụm DB và job cào (2026-10-14): sáu policy mới, không đổi policy nào khác. Dashboard đã có ở trên.
+google_monitoring_alert_policy.db_memory_high[0]|create
+google_monitoring_alert_policy.db_disk_high[0]|create
+google_monitoring_alert_policy.db_cpu_high[0]|create
+google_monitoring_alert_policy.crawler_memory_high[0]|create
+google_monitoring_alert_policy.crawler_disk_high[0]|create
+google_monitoring_alert_policy.crawler_cpu_sustained[0]|create
 '
 unexpected="$(terraform show -json "$plan_file" | jq -r '
   .resource_changes[]
