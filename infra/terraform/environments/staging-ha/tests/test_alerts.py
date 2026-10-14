@@ -133,6 +133,19 @@ class Alerts(unittest.TestCase):
         self.assertIn("ALIGN_PERCENTILE_95", body)
         self.assertIn("var.alert_p95_latency_ms", body)
 
+    def test_latency_alert_needs_enough_requests_to_trust_p95(self):
+        # p95 trên rất ít request (cửa sổ 10 phút dưới 100) không đáng tin. Điều kiện tổng request là AND với p95; không chặn được nhiễu ở tải bình thường.
+        body = policy("lb_latency")
+        self.assertIn('combiner              = "AND"', body)
+        self.assertEqual(body.count("condition_threshold"), 2)
+        self.assertIn("ALIGN_SUM", body)
+        self.assertIn("REDUCE_SUM", body)
+        self.assertIn("local.lb_rule_filter_prefix", body)
+        self.assertIn("var.alert_p95_min_requests", body)
+        variables = (D / "variables.tf").read_text()
+        default = float(re.search(r'variable "alert_p95_min_requests" \{.*?default\s*=\s*([\d.]+)', variables, re.S).group(1))
+        self.assertGreaterEqual(default, 50)   # dưới 50 request/10 phút thì không đủ mẫu cho p95
+
     def test_uptime_check_probes_readiness_through_the_load_balancer(self):
         uptime = re.search(r'resource "google_monitoring_uptime_check_config" "lb_ready" \{(.*?)\n\}\n', MON, re.S).group(1)
         self.assertIn('"/health/ready"', uptime)
@@ -188,9 +201,22 @@ class DbAndCrawlerResourceAlerts(unittest.TestCase):
         memory = block(self.PAT, "google_monitoring_alert_policy", "db_memory_high")
         cpu = block(self.PAT, "google_monitoring_alert_policy", "db_cpu_high")
         disk = block(self.PAT, "google_monitoring_alert_policy", "db_disk_high")
-        self.assertIn('group_by_fields      = ["resource.label.instance_id"]', memory)
-        self.assertIn('group_by_fields      = ["resource.label.instance_id"]', cpu)
-        self.assertIn('group_by_fields      = ["resource.label.instance_id", "metric.label.device"]', disk)
+        # Nhóm theo tên VM (metadata.system_labels.name) để incident nêu đúng VM; CPU dùng nhãn instance_name của Compute Engine.
+        self.assertIn('group_by_fields      = ["metadata.system_labels.name"]', memory)
+        self.assertIn('group_by_fields      = ["metric.label.instance_name"]', cpu)
+        self.assertIn('group_by_fields      = ["metadata.system_labels.name", "metric.label.device"]', disk)
+
+    def test_app_memory_and_disk_alerts_name_the_vm_in_the_incident(self):
+        memory = block(MON, "google_monitoring_alert_policy", "group_memory_high")
+        disk = block(MON, "google_monitoring_alert_policy", "group_disk_high")
+        self.assertIn('group_by_fields      = ["metadata.system_labels.name"]', memory)
+        self.assertIn('group_by_fields      = ["metadata.system_labels.name", "metric.label.device"]', disk)
+
+    def test_crawler_alerts_name_the_vm_in_the_incident(self):
+        crawler = (D / "crawler_monitoring.tf").read_text()
+        self.assertIn('group_by_fields      = ["metadata.system_labels.name"]', block(crawler, "google_monitoring_alert_policy", "crawler_memory_high"))
+        self.assertIn('group_by_fields      = ["metadata.system_labels.name", "metric.label.device"]', block(crawler, "google_monitoring_alert_policy", "crawler_disk_high"))
+        self.assertIn('group_by_fields      = ["metric.label.instance_name"]', block(crawler, "google_monitoring_alert_policy", "crawler_cpu_sustained"))
 
     def test_db_memory_and_disk_alarm_when_the_agent_goes_silent(self):
         for name in ("db_memory_high", "db_disk_high"):

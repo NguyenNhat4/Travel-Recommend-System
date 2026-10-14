@@ -136,7 +136,7 @@ resource "google_monitoring_alert_policy" "patroni_probe_absent" {
 # --- Tài nguyên node DB: RAM, đĩa, CPU -------------------------------------------------------------------------------
 # Node witness pg-w (etcd) không cài Ops Agent (patroni-node.sh.tftpl: khối cài nằm trong nhánh role=db), nên không có
 # RAM và đĩa. Lọc RAM và đĩa theo nhãn role=patroni để chỉ lấy hai node DB. CPU lấy theo tiền tố tên và gồm cả pg-w,
-# vì CPU đo từ hypervisor và không cần Ops Agent. Mỗi policy tách theo mã instance để email nêu đúng node.
+# vì CPU đo từ hypervisor và không cần Ops Agent. Mỗi policy tách theo tên VM để email nêu đúng node.
 locals {
   db_memory_filter = "resource.type=\"gce_instance\" metric.type=\"agent.googleapis.com/memory/percent_used\" metric.labels.state=\"used\" metadata.user_labels.\"component\"=\"database\" metadata.user_labels.\"role\"=\"patroni\""
   db_disk_filter   = "resource.type=\"gce_instance\" metric.type=\"agent.googleapis.com/disk/percent_used\" metric.labels.state=\"used\" metadata.user_labels.\"component\"=\"database\" metadata.user_labels.\"role\"=\"patroni\""
@@ -161,7 +161,7 @@ resource "google_monitoring_alert_policy" "db_memory_high" {
         alignment_period     = "60s"
         per_series_aligner   = "ALIGN_MEAN"
         cross_series_reducer = "REDUCE_MAX"
-        group_by_fields      = ["resource.label.instance_id"]
+        group_by_fields      = ["metadata.system_labels.name"]
       }
     }
   }
@@ -185,7 +185,7 @@ resource "google_monitoring_alert_policy" "db_memory_high" {
   }
 
   documentation {
-    content   = "Một node DB (pg-a hoặc pg-b) dùng quá ${var.alert_db_memory_percent}% RAM trong 10 phút. RAM cao kéo dài có thể làm Postgres bị OOM-kill; khi đó Patroni failover và cụm mất replica. Xem ô RAM trên dashboard HA, rồi docker logs vota-patroni trên node đó (docs/guide/van-hanh-db-patroni.md §6). Mã instance trong alert đối chiếu bằng gcloud compute instances list. Node pg-w không có Ops Agent nên không xuất hiện ở đây."
+    content   = "Một node DB (pg-a hoặc pg-b) dùng quá ${var.alert_db_memory_percent}% RAM trong 10 phút. RAM cao kéo dài có thể làm Postgres bị OOM-kill; khi đó Patroni failover và cụm mất replica. Xem ô RAM trên dashboard `vota-ha HA: DB và máy cào`, rồi docker logs vota-patroni trên node đó (docs/guide/van-hanh-db-patroni.md §6). Tên VM nằm trong incident. Node pg-w không có Ops Agent nên không xuất hiện ở đây."
     mime_type = "text/markdown"
   }
 }
@@ -208,7 +208,7 @@ resource "google_monitoring_alert_policy" "db_disk_high" {
         alignment_period     = "60s"
         per_series_aligner   = "ALIGN_MEAN"
         cross_series_reducer = "REDUCE_MAX"
-        group_by_fields      = ["resource.label.instance_id", "metric.label.device"]
+        group_by_fields      = ["metadata.system_labels.name", "metric.label.device"]
       }
     }
   }
@@ -232,7 +232,7 @@ resource "google_monitoring_alert_policy" "db_disk_high" {
   }
 
   documentation {
-    content   = "Một thiết bị đĩa của node DB đầy quá ${var.alert_db_disk_percent}% trong 5 phút. Postgres ngừng ghi khi đĩa dữ liệu đầy. Kiểm thiết bị nào trong alert, rồi du -sh /mnt/disks/pgdata trên node đó và log Postgres. Không xoá dữ liệu của Postgres khi chưa đối chiếu với docs/guide/van-hanh-db-patroni.md. Mã instance trong alert đối chiếu bằng gcloud compute instances list."
+    content   = "Một thiết bị đĩa của node DB đầy quá ${var.alert_db_disk_percent}% trong 5 phút. Postgres ngừng ghi khi đĩa dữ liệu đầy. Kiểm thiết bị nào trong alert, rồi du -sh /mnt/disks/pgdata trên node đó và log Postgres. Không xoá dữ liệu của Postgres khi chưa đối chiếu với docs/guide/van-hanh-db-patroni.md. Tên VM nằm trong incident."
     mime_type = "text/markdown"
   }
 }
@@ -255,7 +255,7 @@ resource "google_monitoring_alert_policy" "db_cpu_high" {
         alignment_period     = "60s"
         per_series_aligner   = "ALIGN_MEAN"
         cross_series_reducer = "REDUCE_MAX"
-        group_by_fields      = ["resource.label.instance_id"]
+        group_by_fields      = ["metric.label.instance_name"]
       }
     }
   }

@@ -242,6 +242,13 @@ variable "alert_p95_latency_ms" {
   default = 800
 }
 
+# Mẫu tối thiểu cho p95: chỉ chặn cửa sổ rất thấp tải (ban đêm). Ca 03:19 UTC 14/10 (p95 3,2 s) có khoảng 1.000 request trong 10 phút nên không bị chặn.
+variable "alert_p95_min_requests" {
+  description = "Tổng request LB trong 10 phút phải lớn hơn mức này thì mới cảnh báo p95 độ trễ. Đo 72 giờ: trung vị 175 request/10 phút, 5% cửa sổ thấp nhất dưới 46. Ngưỡng chỉ chặn cửa sổ tải rất thấp, không chặn nhiễu ở tải bình thường."
+  type        = number
+  default     = 100
+}
+
 variable "alert_5xx_ratio" {
   description = "Fraction of LB requests answered 5xx (over 5 minutes) that raises an alert."
   type        = number

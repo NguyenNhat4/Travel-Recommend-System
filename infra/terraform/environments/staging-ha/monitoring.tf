@@ -121,7 +121,7 @@ resource "google_monitoring_alert_policy" "group_at_max" {
   }
 
   documentation {
-    content   = "Nhóm đã ở trần ${var.max_replicas} VM và CPU trung bình vẫn trên ${var.cpu_target} trong 15 phút: autoscaler hết chỗ co giãn. Xem dashboard HA (ô CPU từng VM và p95), cân nhắc nâng max_replicas hoặc machine_type (xem ngưỡng p95 và 5xx trước khi quyết)."
+    content   = "Nhóm đã ở trần ${var.max_replicas} VM và CPU trung bình vẫn trên ${var.cpu_target} trong 15 phút: autoscaler hết chỗ co giãn. Xem dashboard `vota-ha HA: tổng quan nhóm app` (ô CPU từng VM) và `vota-ha HA: độ trễ API` (p95), cân nhắc nâng max_replicas hoặc machine_type (xem ngưỡng p95 và 5xx trước khi quyết)."
     mime_type = "text/markdown"
   }
 }
@@ -142,10 +142,12 @@ resource "google_monitoring_alert_policy" "group_memory_high" {
       threshold_value = var.alert_memory_percent
       duration        = "300s"
 
+      # Nhóm theo tên VM để incident nêu đúng VM (metadata.system_labels.name của Ops Agent).
       aggregations {
         alignment_period     = "60s"
         per_series_aligner   = "ALIGN_MEAN"
         cross_series_reducer = "REDUCE_MAX"
+        group_by_fields      = ["metadata.system_labels.name"]
       }
     }
   }
@@ -169,7 +171,7 @@ resource "google_monitoring_alert_policy" "group_memory_high" {
   }
 
   documentation {
-    content   = "Một VM của ${local.vm_name_prefix} dùng quá ${var.alert_memory_percent}% bộ nhớ trong 5 phút. Autoscaler co giãn theo memory ở ${var.memory_target_percent}%, nên mức này là co giãn không kịp hoặc rò rỉ bộ nhớ. Xem ô memory của từng VM trên dashboard HA; kiểm container nào tăng (docker stats, log container_oom)."
+    content   = "Một VM của ${local.vm_name_prefix} dùng quá ${var.alert_memory_percent}% bộ nhớ trong 5 phút. Autoscaler co giãn theo memory ở ${var.memory_target_percent}%, nên mức này là co giãn không kịp hoặc rò rỉ bộ nhớ. Xem ô RAM từng VM trên dashboard `vota-ha HA: tài nguyên VM app`; kiểm container nào tăng (docker stats, log container_oom)."
     mime_type = "text/markdown"
   }
 }
@@ -189,10 +191,12 @@ resource "google_monitoring_alert_policy" "group_disk_high" {
       threshold_value = var.alert_disk_percent
       duration        = "300s"
 
+      # Nhóm theo tên VM và thiết bị: incident nêu đúng VM và đĩa.
       aggregations {
         alignment_period     = "60s"
         per_series_aligner   = "ALIGN_MEAN"
         cross_series_reducer = "REDUCE_MAX"
+        group_by_fields      = ["metadata.system_labels.name", "metric.label.device"]
       }
     }
   }
@@ -262,8 +266,9 @@ resource "google_monitoring_alert_policy" "lb_5xx_ratio" {
 
 # 4. Độ trễ backend p95.
 resource "google_monitoring_alert_policy" "lb_latency" {
-  display_name          = "${var.name_prefix} HA: p95 độ trễ backend cao"
-  combiner              = "OR"
+  display_name = "${var.name_prefix} HA: p95 độ trễ backend cao"
+  # AND: p95 chỉ kêu khi đủ mẫu (tổng request trong 10 phút). Dưới ngưỡng này p95 dựa trên vài request, một request chậm đủ làm p95 vọt.
+  combiner              = "AND"
   notification_channels = local.alert_channels
 
   conditions {
@@ -282,12 +287,28 @@ resource "google_monitoring_alert_policy" "lb_latency" {
     }
   }
 
+  conditions {
+    display_name = "Tổng request LB trong 10 phút > ${var.alert_p95_min_requests} (đủ mẫu để tính p95)"
+    condition_threshold {
+      filter          = local.lb_rule_filter_prefix
+      comparison      = "COMPARISON_GT"
+      threshold_value = var.alert_p95_min_requests
+      duration        = "600s"
+
+      aggregations {
+        alignment_period     = "600s"
+        per_series_aligner   = "ALIGN_SUM"
+        cross_series_reducer = "REDUCE_SUM"
+      }
+    }
+  }
+
   alert_strategy {
     auto_close = "1800s"
   }
 
   documentation {
-    content   = "p95 độ trễ backend vượt ${var.alert_p95_latency_ms} ms trong 10 phút (NFR hiệu năng của search)."
+    content   = "p95 độ trễ backend vượt ${var.alert_p95_latency_ms} ms trong 10 phút, và có ít nhất ${var.alert_p95_min_requests} request trong 10 phút (dưới mức đó p95 không đủ mẫu). Số request gồm cả probe của kiểm tra uptime. NFR hiệu năng search là p95 ≤ 250 ms (NFR-PERF-01), ngưỡng này áp cho mọi route, gồm cả SSE."
     mime_type = "text/markdown"
   }
 }

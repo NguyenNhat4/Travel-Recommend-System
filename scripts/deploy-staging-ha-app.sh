@@ -107,6 +107,21 @@ google_monitoring_alert_policy.db_cpu_high[0]|create
 google_monitoring_alert_policy.crawler_memory_high[0]|create
 google_monitoring_alert_policy.crawler_disk_high[0]|create
 google_monitoring_alert_policy.crawler_cpu_sustained[0]|create
+# Tách dashboard HA thành năm trang theo chủ đề, thêm dashboard cảnh báo, và nhóm alert theo tên VM (2026-10-14).
+# Dashboard tổng quan giữ địa chỉ cũ (update); bốn trang mới và trang cảnh báo là create. Policy chỉ đổi aggregation (group_by).
+google_monitoring_dashboard.ha_latency|create
+google_monitoring_dashboard.ha_vm_app|create
+google_monitoring_dashboard.ha_db_crawler|create
+google_monitoring_dashboard.ha_logs|create
+google_monitoring_dashboard.ha_alerts|create
+google_monitoring_alert_policy.group_memory_high|update
+google_monitoring_alert_policy.group_disk_high|update
+google_monitoring_alert_policy.db_memory_high[0]|update
+google_monitoring_alert_policy.db_disk_high[0]|update
+google_monitoring_alert_policy.db_cpu_high[0]|update
+google_monitoring_alert_policy.crawler_memory_high[0]|update
+google_monitoring_alert_policy.crawler_disk_high[0]|update
+google_monitoring_alert_policy.crawler_cpu_sustained[0]|update
 '
 unexpected="$(terraform show -json "$plan_file" | jq -r '
   .resource_changes[]

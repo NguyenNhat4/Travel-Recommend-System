@@ -169,6 +169,7 @@ resource "google_monitoring_alert_policy" "crawler_memory_high" {
         alignment_period     = "60s"
         per_series_aligner   = "ALIGN_MEAN"
         cross_series_reducer = "REDUCE_MAX"
+        group_by_fields      = ["metadata.system_labels.name"]
       }
     }
   }
@@ -215,7 +216,7 @@ resource "google_monitoring_alert_policy" "crawler_disk_high" {
         alignment_period     = "60s"
         per_series_aligner   = "ALIGN_MEAN"
         cross_series_reducer = "REDUCE_MAX"
-        group_by_fields      = ["metric.label.device"]
+        group_by_fields      = ["metadata.system_labels.name", "metric.label.device"]
       }
     }
   }
@@ -262,6 +263,7 @@ resource "google_monitoring_alert_policy" "crawler_cpu_sustained" {
         alignment_period     = "60s"
         per_series_aligner   = "ALIGN_MEAN"
         cross_series_reducer = "REDUCE_MAX"
+        group_by_fields      = ["metric.label.instance_name"]
       }
     }
   }
