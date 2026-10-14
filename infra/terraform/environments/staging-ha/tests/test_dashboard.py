@@ -140,6 +140,15 @@ class AlertsDashboard(unittest.TestCase):
         self.assertIn("try(google_monitoring_alert_policy.db_memory_high[0].name", ALERTS)
         self.assertIn("alertChart", body + ALERTS)
 
+    def test_alert_dashboard_matches_the_shape_the_api_stores(self):
+        # API bỏ tọa độ 0 và lưu style = {} cho ô text; viết khác thì plan báo "đổi" mỗi lần chạy.
+        self.assertIn("style   = {}", ALERTS)
+        self.assertNotRegex(ALERTS.split("tiles = concat(")[1].split("[for i, p")[0], r"xPos\s*=\s*0")
+
+    def test_five_xx_title_does_not_print_float_noise(self):
+        # 0.02 * 100 ra 1.9999… trong tiêu đề; phải định dạng.
+        self.assertIn('format("%.0f", var.alert_5xx_ratio * 100)', ALERTS)
+
     def test_alert_dashboard_states_the_mute_window_and_the_legacy_gap(self):
         self.assertIn("23:55–08:35", ALERTS)
         self.assertIn("vota-staging:", ALERTS)   # nói rõ cảnh báo staging cũ chưa có ở đây

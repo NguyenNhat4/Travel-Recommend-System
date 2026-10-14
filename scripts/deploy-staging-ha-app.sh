@@ -114,6 +114,8 @@ google_monitoring_dashboard.ha_vm_app|create
 google_monitoring_dashboard.ha_db_crawler|create
 google_monitoring_dashboard.ha_logs|create
 google_monitoring_dashboard.ha_alerts|create
+# Sửa dashboard cảnh báo (2026-10-14): cấu hình khớp dạng API lưu lại và tiêu đề 5xx "2%" (trước là 1.9999…). Thay đổi thật một lần.
+google_monitoring_dashboard.ha_alerts|update
 google_monitoring_alert_policy.group_memory_high|update
 google_monitoring_alert_policy.group_disk_high|update
 google_monitoring_alert_policy.db_memory_high[0]|update
