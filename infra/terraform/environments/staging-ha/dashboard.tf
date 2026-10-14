@@ -66,16 +66,17 @@ resource "google_monitoring_dashboard" "ha" {
       columns = 12
       tiles = [
         {
-          xPos = 0, yPos = 0, width = 12, height = 3
+          width = 12, height = 3
           widget = {
             text = {
               format  = "MARKDOWN"
+              style   = {}
               content = "## Nhóm HA `${local.vm_name_prefix}`\nTrang tổng quan. Chi tiết: **độ trễ API**, **tài nguyên VM app**, **DB và máy cào**, **nhật ký** (các dashboard `${local.dashboard_prefix}: …`).\nNgưỡng: autoscaler CPU ${var.cpu_target} (vàng); alert p95 LB ${var.alert_p95_latency_ms} ms (đỏ). Đối chiếu VM ↔ MIG: `gcloud compute instance-groups managed list-instances ${local.vm_name_prefix} --region=${var.region}`."
             }
           }
         },
         {
-          xPos = 0, yPos = 3, width = 3, height = 3
+          yPos = 3, width = 3, height = 3
           widget = {
             title = "Sẵn sàng qua LB (tỷ lệ đạt)"
             scorecard = {
@@ -85,7 +86,7 @@ resource "google_monitoring_dashboard" "ha" {
                   aggregation = { alignmentPeriod = "300s", perSeriesAligner = "ALIGN_FRACTION_TRUE", crossSeriesReducer = "REDUCE_MEAN" }
                 }
               }
-              gaugeView  = { lowerBound = 0, upperBound = 1 }
+              gaugeView  = { upperBound = 1 }
               thresholds = [{ value = 0.99, color = "RED", direction = "BELOW" }]
             }
           }
@@ -110,12 +111,13 @@ resource "google_monitoring_dashboard" "ha" {
           widget = {
             text = {
               format  = "MARKDOWN"
+              style   = {}
               content = "**Log (mở trong Logs Explorer; khung log nằm ở dashboard `${local.dashboard_prefix}: nhật ký`):**\n- [Backend, mọi VM](${local.logs_url_base}${replace(urlencode(local.log_filter_backend), "+", "%20")}?project=${var.project_id}) — cột `labels.\"compute.googleapis.com/resource_name\"` là tên VM\n- [Lỗi backend (ERROR)](${local.logs_url_base}${replace(urlencode(local.log_filter_errors), "+", "%20")}?project=${var.project_id})"
             }
           }
         },
         {
-          xPos = 0, yPos = 6, width = 6, height = 4
+          yPos = 6, width = 6, height = 4
           widget = {
             title = "Request theo mã trạng thái (LB, mỗi phút)"
             xyChart = {
@@ -126,7 +128,8 @@ resource "google_monitoring_dashboard" "ha" {
                     aggregation = { alignmentPeriod = local.align_lb, perSeriesAligner = "ALIGN_RATE", crossSeriesReducer = "REDUCE_SUM", groupByFields = ["metric.labels.response_code_class"] }
                   }
                 }
-                plotType = "LINE"
+                targetAxis = "Y1"
+                plotType   = "LINE"
               }]
               yAxis = { scale = "LINEAR" }
             }
@@ -144,7 +147,8 @@ resource "google_monitoring_dashboard" "ha" {
                     aggregation = { alignmentPeriod = local.align_per_vm, perSeriesAligner = "ALIGN_MEAN", crossSeriesReducer = "REDUCE_MEAN", groupByFields = ["metric.labels.instance_name"] }
                   }
                 }
-                plotType = "LINE"
+                targetAxis = "Y1"
+                plotType   = "LINE"
               }]
               thresholds = [{ label = "cpu_target (autoscaler)", value = var.cpu_target, targetAxis = "Y1" }]
               yAxis      = { scale = "LINEAR" }
@@ -164,16 +168,17 @@ resource "google_monitoring_dashboard" "ha_latency" {
       columns = 12
       tiles = [
         {
-          xPos = 0, yPos = 0, width = 12, height = 3
+          width = 12, height = 3
           widget = {
             text = {
               format  = "MARKDOWN"
+              style   = {}
               content = "**Cách đọc độ trễ**\n- *API theo VM / theo route*: đo trong backend (`duration_ms` của log `http.request`), không tính `/health/*` và `/stream`. Tên VM là nhóm của biểu đồ.\n- *LB*: đo tại load balancer, gồm cả SSE của trợ lý; LB không biết VM nào phục vụ nên chỉ có cho cả nhóm.\n- Số mẫu thấp thì p99 dao động mạnh; đọc cùng ô request ở tổng quan.\n- Ngưỡng: search p95 ≤ 250 ms, chi tiết sản phẩm ≤ 100 ms (NFR-PERF-01)."
             }
           }
         },
         {
-          xPos = 0, yPos = 3, width = 6, height = 4
+          yPos = 3, width = 6, height = 4
           widget = {
             title = "p95 API theo VM (ms, bỏ SSE và health)"
             xyChart = {
@@ -184,7 +189,8 @@ resource "google_monitoring_dashboard" "ha_latency" {
                     aggregation = { alignmentPeriod = local.align_per_vm, perSeriesAligner = "ALIGN_PERCENTILE_95", crossSeriesReducer = "REDUCE_MEAN", groupByFields = local.group_by_vm }
                   }
                 }
-                plotType = "LINE"
+                targetAxis = "Y1"
+                plotType   = "LINE"
               }]
               thresholds = [{ label = "NFR search p95 250 ms", value = 250, targetAxis = "Y1" }]
               yAxis      = { scale = "LINEAR", label = "ms" }
@@ -203,14 +209,15 @@ resource "google_monitoring_dashboard" "ha_latency" {
                     aggregation = { alignmentPeriod = local.align_per_vm, perSeriesAligner = "ALIGN_PERCENTILE_99", crossSeriesReducer = "REDUCE_MEAN", groupByFields = local.group_by_vm }
                   }
                 }
-                plotType = "LINE"
+                targetAxis = "Y1"
+                plotType   = "LINE"
               }]
               yAxis = { scale = "LINEAR", label = "ms" }
             }
           }
         },
         {
-          xPos = 0, yPos = 7, width = 6, height = 4
+          yPos = 7, width = 6, height = 4
           widget = {
             title = "p95 API theo route (ms): search cần ≤ 250, chi tiết sản phẩm ≤ 100"
             xyChart = {
@@ -221,7 +228,8 @@ resource "google_monitoring_dashboard" "ha_latency" {
                     aggregation = { alignmentPeriod = local.align_per_vm, perSeriesAligner = "ALIGN_PERCENTILE_95", crossSeriesReducer = "REDUCE_MEAN", groupByFields = ["metric.labels.route"] }
                   }
                 }
-                plotType = "LINE"
+                targetAxis = "Y1"
+                plotType   = "LINE"
               }]
               thresholds = [{ label = "NFR search 250 ms", value = 250, targetAxis = "Y1" }]
               yAxis      = { scale = "LINEAR", label = "ms" }
@@ -241,6 +249,7 @@ resource "google_monitoring_dashboard" "ha_latency" {
                       aggregation = { alignmentPeriod = local.align_lb, perSeriesAligner = "ALIGN_PERCENTILE_95", crossSeriesReducer = "REDUCE_MAX" }
                     }
                   }
+                  targetAxis     = "Y1"
                   plotType       = "LINE"
                   legendTemplate = "p95"
                 },
@@ -251,6 +260,7 @@ resource "google_monitoring_dashboard" "ha_latency" {
                       aggregation = { alignmentPeriod = local.align_lb, perSeriesAligner = "ALIGN_PERCENTILE_99", crossSeriesReducer = "REDUCE_MAX" }
                     }
                   }
+                  targetAxis     = "Y1"
                   plotType       = "LINE"
                   legendTemplate = "p99"
                 },
@@ -276,16 +286,17 @@ resource "google_monitoring_dashboard" "ha_vm_app" {
       columns = 12
       tiles = [
         {
-          xPos = 0, yPos = 0, width = 12, height = 2
+          width = 12, height = 2
           widget = {
             text = {
               format  = "MARKDOWN"
+              style   = {}
               content = "VM app thuộc MIG `${local.vm_name_prefix}`, nhóm theo tên VM. Ngưỡng vẽ theo alert: RAM ${var.memory_target_percent}% (mục tiêu autoscaler), đĩa ${var.alert_disk_percent}%, container 190 (95% của 2 vCPU). Biểu đồ RAM theo trạng thái nằm cuối trang vì có nhiều đường nhất."
             }
           }
         },
         {
-          xPos = 0, yPos = 2, width = 6, height = 4
+          yPos = 2, width = 6, height = 4
           widget = {
             title = "RAM đã dùng từng VM app (tên VM, %)"
             xyChart = {
@@ -296,7 +307,8 @@ resource "google_monitoring_dashboard" "ha_vm_app" {
                     aggregation = { alignmentPeriod = local.align_per_vm, perSeriesAligner = "ALIGN_MEAN", crossSeriesReducer = "REDUCE_MEAN", groupByFields = local.group_by_vm }
                   }
                 }
-                plotType = "LINE"
+                targetAxis = "Y1"
+                plotType   = "LINE"
               }]
               thresholds = [{ label = "memory_target (autoscaler)", value = var.memory_target_percent, targetAxis = "Y1" }]
               yAxis      = { scale = "LINEAR" }
@@ -315,7 +327,8 @@ resource "google_monitoring_dashboard" "ha_vm_app" {
                     aggregation = { alignmentPeriod = local.align_per_vm, perSeriesAligner = "ALIGN_MEAN", crossSeriesReducer = "REDUCE_MEAN", groupByFields = concat(local.group_by_vm, ["metric.labels.device"]) }
                   }
                 }
-                plotType = "LINE"
+                targetAxis = "Y1"
+                plotType   = "LINE"
               }]
               thresholds = [{ label = "ngưỡng đĩa VM app (${var.alert_disk_percent}%)", value = var.alert_disk_percent, targetAxis = "Y1" }]
               yAxis      = { scale = "LINEAR" }
@@ -323,7 +336,7 @@ resource "google_monitoring_dashboard" "ha_vm_app" {
           }
         },
         {
-          xPos = 0, yPos = 6, width = 6, height = 4
+          yPos = 6, width = 6, height = 4
           widget = {
             title = "CPU từng container (tên VM · container, 100 = một vCPU)"
             xyChart = {
@@ -334,7 +347,8 @@ resource "google_monitoring_dashboard" "ha_vm_app" {
                     aggregation = { alignmentPeriod = local.align_per_vm, perSeriesAligner = "ALIGN_MEAN", crossSeriesReducer = "REDUCE_MEAN", groupByFields = concat(local.group_by_vm, ["metric.labels.container_name"]) }
                   }
                 }
-                plotType = "LINE"
+                targetAxis = "Y1"
+                plotType   = "LINE"
               }]
               thresholds = [{ label = "ngưỡng container (190 = 95% của 2 vCPU)", value = 190, targetAxis = "Y1" }]
               yAxis      = { scale = "LINEAR" }
@@ -353,7 +367,8 @@ resource "google_monitoring_dashboard" "ha_vm_app" {
                     aggregation = { alignmentPeriod = local.align_per_vm, perSeriesAligner = "ALIGN_MEAN", crossSeriesReducer = "REDUCE_MEAN", groupByFields = concat(local.group_by_vm, ["metric.labels.container_name"]) }
                   }
                 }
-                plotType = "LINE"
+                targetAxis = "Y1"
+                plotType   = "LINE"
               }]
               yAxis = { label = "bytes", scale = "LINEAR" }
             }
@@ -361,12 +376,13 @@ resource "google_monitoring_dashboard" "ha_vm_app" {
         },
         # Chi tiết: RAM theo trạng thái (used, cached, buffered...). Nhiều đường nhất trang, nên đặt cuối.
         {
-          xPos = 0, yPos = 10, width = 12, height = 5
+          yPos = 10, width = 12, height = 5
           widget = {
             title = "RAM theo trạng thái từng VM app (tên VM · trạng thái, %)"
             xyChart = {
               dataSets = [{
-                plotType = "LINE"
+                targetAxis = "Y1"
+                plotType   = "LINE"
                 timeSeriesQuery = {
                   timeSeriesFilter = {
                     filter      = "resource.type=\"gce_instance\" metric.type=\"agent.googleapis.com/memory/percent_used\" metric.labels.state!=\"free\" metadata.user_labels.\"group\"=\"${local.vm_name_prefix}\""
@@ -391,22 +407,24 @@ resource "google_monitoring_dashboard" "ha_db_crawler" {
       columns = 12
       tiles = [
         {
-          xPos = 0, yPos = 0, width = 12, height = 3
+          width = 12, height = 3
           widget = {
             text = {
               format  = "MARKDOWN"
+              style   = {}
               content = "**Cụm DB** (pg-a, pg-b là node dữ liệu; pg-w là witness etcd, chỉ có CPU vì không cài Ops Agent) và **máy cào** (`${local.crawler_name}`). Ngưỡng alert: node DB RAM ${var.alert_db_memory_percent}%, đĩa ${var.alert_db_disk_percent}%, CPU ${var.alert_db_cpu_percent}%; máy cào RAM ${var.alert_crawler_memory_percent}%, đĩa ${var.alert_crawler_disk_percent}%, CPU ${var.alert_crawler_cpu_percent}% liên tục ${var.alert_crawler_cpu_minutes} phút. Lượt cào chạy quanh 09:00 giờ Việt Nam và chạm gần 100% CPU khoảng 1 giờ."
             }
           }
         },
         {
-          xPos = 0, yPos = 3, width = 6, height = 4
+          yPos = 3, width = 6, height = 4
           widget = {
             title = "CPU các node DB và máy cào (tên VM, 1 = 100%)"
             xyChart = {
               dataSets = [
                 {
-                  plotType = "LINE"
+                  targetAxis = "Y1"
+                  plotType   = "LINE"
                   timeSeriesQuery = {
                     timeSeriesFilter = {
                       filter      = local.db_cpu_filter
@@ -415,7 +433,8 @@ resource "google_monitoring_dashboard" "ha_db_crawler" {
                   }
                 },
                 {
-                  plotType = "LINE"
+                  targetAxis = "Y1"
+                  plotType   = "LINE"
                   timeSeriesQuery = {
                     timeSeriesFilter = {
                       filter      = local.crawler_cpu_filter
@@ -439,7 +458,8 @@ resource "google_monitoring_dashboard" "ha_db_crawler" {
             xyChart = {
               dataSets = [
                 {
-                  plotType = "LINE"
+                  targetAxis = "Y1"
+                  plotType   = "LINE"
                   timeSeriesQuery = {
                     timeSeriesFilter = {
                       filter      = local.db_memory_filter
@@ -448,7 +468,8 @@ resource "google_monitoring_dashboard" "ha_db_crawler" {
                   }
                 },
                 {
-                  plotType = "LINE"
+                  targetAxis = "Y1"
+                  plotType   = "LINE"
                   timeSeriesQuery = {
                     timeSeriesFilter = {
                       filter      = local.crawler_memory_filter
@@ -463,13 +484,14 @@ resource "google_monitoring_dashboard" "ha_db_crawler" {
           }
         },
         {
-          xPos = 0, yPos = 7, width = 6, height = 4
+          yPos = 7, width = 6, height = 4
           widget = {
             title = "Đĩa các node DB và máy cào (tên VM · thiết bị, %)"
             xyChart = {
               dataSets = [
                 {
-                  plotType = "LINE"
+                  targetAxis = "Y1"
+                  plotType   = "LINE"
                   timeSeriesQuery = {
                     timeSeriesFilter = {
                       filter      = local.db_disk_filter
@@ -478,7 +500,8 @@ resource "google_monitoring_dashboard" "ha_db_crawler" {
                   }
                 },
                 {
-                  plotType = "LINE"
+                  targetAxis = "Y1"
+                  plotType   = "LINE"
                   timeSeriesQuery = {
                     timeSeriesFilter = {
                       filter      = local.crawler_disk_filter
@@ -497,6 +520,7 @@ resource "google_monitoring_dashboard" "ha_db_crawler" {
           widget = {
             text = {
               format  = "MARKDOWN"
+              style   = {}
               content = "**Đọc nhanh**\n- Đĩa máy cào: đỉnh 7 ngày khoảng 78%, sát ngưỡng ${var.alert_crawler_disk_percent}%. Mỗi image crawler khoảng 3 GB trên đĩa 15 GB.\n- RAM và đĩa không có cho pg-w. CPU của pg-w vẫn có.\n- Chi tiết alert và việc cần làm: `docs/guide/van-hanh-db-patroni.md` §8, `docs/guide/van-hanh-crawler-db-noi-bo.md` §2."
             }
           }
@@ -514,16 +538,17 @@ resource "google_monitoring_dashboard" "ha_logs" {
       columns = 12
       tiles = [
         {
-          xPos = 0, yPos = 0, width = 12, height = 2
+          width = 12, height = 2
           widget = {
             text = {
               format  = "MARKDOWN"
+              style   = {}
               content = "Bốn khung log, mọi VM. Cột `labels.\"compute.googleapis.com/resource_name\"` trong Logs Explorer là tên VM. Các khung đã lọc sẵn giống link trong dashboard tổng quan."
             }
           }
         },
         {
-          xPos = 0, yPos = 2, width = 6, height = 5
+          yPos = 2, width = 6, height = 5
           widget = {
             title = "Lỗi backend (mức ERROR), mọi VM"
             logsPanel = {
@@ -543,7 +568,7 @@ resource "google_monitoring_dashboard" "ha_logs" {
           }
         },
         {
-          xPos = 0, yPos = 7, width = 6, height = 5
+          yPos = 7, width = 6, height = 5
           widget = {
             title = "Container dừng đột ngột / OOM (watcher, không tính helper)"
             logsPanel = {
