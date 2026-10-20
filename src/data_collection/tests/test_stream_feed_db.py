@@ -105,13 +105,18 @@ class StreamLoadRealDbTests(unittest.TestCase):
         self.assertEqual((rows['agoda:hotel:1']['available'], rows['agoda:hotel:1']['attributes']['mergedInto']),
                          (False, product_id('booking:hotel:9')))
         self.assertTrue(rows['booking:hotel:9']['available'])
+        # khách sạn chưa có phòng nhận phòng mô phỏng (data-model §3.1, 09/10); phòng của dòng đã gộp tắt, dòng giữ vẫn bán được
+        self.assertEqual((rows['demo:room:booking:hotel:9']['available'], rows['demo:room:agoda:hotel:1']['available']),
+                         (True, False))
         # lượt sau (nạp lại cả catalog) không lỗi "sourceRef/sameAs conflict"
         again = self.run / 'again'
         again.mkdir()
         (again / 'products.jsonl').write_text(json.dumps(item('booking:hotel:9', same_as=['agoda:hotel:1'])) + '\n',
                                               encoding='utf-8')
         load_into_db(again / 'products.jsonl', None, self.url, ROOT)
-        self.assertEqual(len(self.products()), 2)
+        rows = self.products()
+        self.assertEqual(sorted(ref for ref in rows if not ref.startswith('demo:')), ['agoda:hotel:1', 'booking:hotel:9'])
+        self.assertTrue(rows['booking:hotel:9']['available'])
 
 
 if __name__ == '__main__':

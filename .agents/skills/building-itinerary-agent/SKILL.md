@@ -3,7 +3,7 @@ name: building-itinerary-agent
 description: "Quy trình sửa, tune và đánh giá Itinerary Agent của V-OTA (LangGraph trong src/backend/app/agents, application/itinerary, domain/itinerary) và phần widget trợ lý hiển thị kết quả (src/frontend/src/features/itinerary/widget). Dùng khi thêm hoặc sửa node, prompt, tool, routing, guardrail, lời diễn giải (narrate), compose, grounding, golden dataset, trace LangSmith, hoặc thẻ/lịch trình/bản đồ trong widget. Từ khoá: itinerary agent, trợ lý lịch trình, LangGraph, node, prompt, narrate, compose, tool calling, grounding, golden, eval, assistant widget."
 metadata:
   owner: nhatnm
-  version: "1.0"
+  version: "1.1"
 ---
 
 # Xây và sửa Itinerary Agent
@@ -19,7 +19,7 @@ Chép checklist vào câu trả lời và đánh dấu khi xong từng bước:
 Itinerary agent task:
 - [ ] 1. Nạp context: AGENTS.md §1 + working-context.md §1 và đúng một hàng ở §2
 - [ ] 2. Tái hiện bằng bằng chứng thật (trace, golden case, giá trị thô)
-- [ ] 3. Chọn đúng lớp; ưu tiên luật tất định hơn LLM
+- [ ] 3. Chọn đúng lớp; LLM hiểu câu, code kiểm dữ liệu và phạm vi
 - [ ] 4. Có test hoặc golden case fail trước khi sửa
 - [ ] 5. Sửa và tự kiểm invariant
 - [ ] 6. Chạy lệnh kiểm tra, ghi số thật kèm tầng bằng chứng
@@ -37,14 +37,17 @@ Itinerary agent task:
 
 | Triệu chứng | Sửa ở (dưới `src/backend/app/`, trừ khi ghi khác) |
 |---|---|
-| Hiểu sai ý, hỏi lại sai, giọng văn | `agents/steps/prompts.py` và step của node (`classification.py`, `conversation.py`, `narration.py`) |
+| Hiểu sai ý, hỏi lại sai, giọng văn | `agents/steps/prompts.py` và step của node: `orchestration.py` (`ORCHESTRATOR_PROMPT`); ở nhánh lập lịch `classification.py` (`extract`), `conversation.py` (`clarify`), `narration.py` |
+| Chọn việc, phạm vi tìm, thẻ, câu vé, gác cổng | `agents/steps/jobs.py`, `agents/steps/fares.py`, `domain/itinerary/gatekeeper.py`; luật trước LLM ở `nodes.precheck_node` |
 | Ngày, tổng tiền, xếp lịch, lọc ứng viên | `domain/itinerary/` (hàm thuần, unit test) |
 | Tool sai tham số hoặc thiếu dữ liệu | `agents/steps/tool_planning.py`, `agents/tools/itinerary_gateway.py`, `application/itinerary/` |
 | Hình dạng request/response | Fragment OpenAPI trong `src/shared/contracts/` **trước**, rồi mới code |
 | Hiển thị trong widget | `src/frontend/src/features/itinerary/widget/` |
 
-Quyết định nào kiểm được bằng luật (ngày, tiền, `productId`, lọc) thì làm bằng luật. LLM chỉ phân luồng, trích ý định,
-lập tool plan và viết chữ.
+Luật code dành cho tiền, ngày, grounding, an toàn và phạm vi thực thi. Hiểu câu sửa bằng prompt/ngữ cảnh và case
+trong bộ đo; không vá bằng regex hay bảng từ khoá. Orchestrator là luồng duy nhất: LLM quyết hành động/việc/phạm
+vi/chọn thẻ và viết lời, code thực thi qua port và gác cổng; nhánh lập lịch/narrate giữ nguyên (PRD architecture §3,
+AGENTS.md §3).
 
 **4. Test trước.**
 - Luật mới hoặc sửa luật: viết unit test cạnh test sẵn có.
@@ -53,9 +56,9 @@ lập tool plan và viết chữ.
 
 **5. Invariant.** Đọc working-context.md §6 và PRD `architecture.md` §3, rồi tự trả lời trước khi bàn giao:
 - Mọi `productId`, tên, giá, ảnh hiển thị đều đến từ kết quả tool, và widget chỉ lấy chúng từ `product`?
-- LLM chỉ nhắc sản phẩm qua `[Tên](product:<id>)` và giá qua placeholder?
+- Orchestrator chỉ dùng `[Tên](#n)` và placeholder từ bản rút gọn lượt này, code đổi thành link canonical; số so mốc có job?
 - `compose` vẫn tất định và mọi nhánh đi qua `finalize`?
-- Thiếu điểm đến hoặc số ngày thì chưa gọi tool?
+- Nhánh lập lịch chỉ gọi tool khi đã đồng ý và đủ trường bắt buộc; khám phá được gọi khi chưa có số ngày?
 - Không log prompt có secret hay JWT?
 
 **6. Kiểm tra** (từ repo root; chỉ chạy dòng thuộc phạm vi thay đổi):

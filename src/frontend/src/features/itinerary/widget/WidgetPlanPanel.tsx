@@ -1,6 +1,7 @@
 import React from 'react';
 import dynamic from 'next/dynamic';
 import { MapPin, Calendar, Users } from 'lucide-react';
+import { SkeletonBlock, SkeletonStatus } from '../../../components/common/Skeleton';
 import { WidgetDays } from './WidgetDays';
 import { WidgetProductDetail } from './WidgetProductDetail';
 import { stayCardKey } from './widgetPlan';
@@ -13,9 +14,9 @@ const ItineraryMap = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="flex h-full min-h-[350px] items-center justify-center bg-slate-50 text-sm text-slate-500">
-        Đang tải bản đồ lộ trình…
-      </div>
+      <SkeletonStatus label="Đang tải bản đồ lộ trình" className="h-full min-h-[350px]">
+        <SkeletonBlock className="h-full min-h-[350px] w-full" />
+      </SkeletonStatus>
     ),
   }
 );

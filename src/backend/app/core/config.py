@@ -16,7 +16,8 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 # Chỉ các trường thực sự Optional: trường `str` thường (cdp_service_token, openai_api_key) coi ""
 # là "chưa cấu hình" và vẫn hợp lệ, không được đổi thành None.
 _OPTIONAL_BLANK_IS_NONE = ("itinerary_service_base_url", "itinerary_data_mode", "itinerary_llm_reasoning_effort",
-                           "search_no_diacritics_cutoff")
+                           "search_no_diacritics_cutoff", "itinerary_orchestrator_model", "itinerary_orchestrator_provider",
+                           "itinerary_orchestrator_reasoning_effort")
 
 
 class Settings(BaseSettings):
@@ -54,6 +55,9 @@ class Settings(BaseSettings):
     # Chỉ áp cho OpenAI. Model reasoning (vd gpt-6-luna) từ chối function tools trên chat completions khi
     # reasoning bật mặc định (400); đặt "none" để tool calling chạy được. Bỏ trống thì không gửi tham số.
     itinerary_llm_reasoning_effort: Literal["none", "minimal", "low", "medium", "high"] | None = None
+    itinerary_orchestrator_model: str | None = None
+    itinerary_orchestrator_provider: Literal["gemini", "openai", "anthropic"] | None = None
+    itinerary_orchestrator_reasoning_effort: Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"] | None = None
     itinerary_service_base_url: str | None = Field(default=None, pattern=r"^https?://")
     itinerary_data_mode: Literal["fixture", "inprocess", "http", "disabled"] | None = None
     itinerary_tool_timeout_seconds: float = Field(default=10.0, gt=0)
@@ -91,6 +95,10 @@ class Settings(BaseSettings):
     # Kết nối TRỰC TIẾP tới Postgres (không qua pgbouncer) cho khoá advisory của job đối soát. Trống = dùng database_url.
     leader_lock_database_url: str = ""
     cdp_database_url: str = "postgresql://cdp_client_login:cdp@localhost:5432/vota"
+    # Thời hạn kết nối PostgreSQL (infrastructure/persistence/db_connection.py). DB không với tới được trong
+    # khoảng này thì request trả 503 DATABASE_UNAVAILABLE thay vì treo theo timeout TCP của hệ điều hành.
+    db_connect_timeout_seconds: int = Field(default=3, ge=1, le=30)
+    db_tcp_user_timeout_ms: int = Field(default=15000, ge=1000)
     cdp_adapter: Literal["local", "http"] = "local"
 
     # Future/production HTTP adapter. Ignored while CDP_ADAPTER=local.
@@ -122,8 +130,26 @@ class Settings(BaseSettings):
     # Cosine e5 dồn ở 0,85–0,92; 0,84 hiệu chỉnh trên gold_v4 (PRD deployment-plan §2).
     search_cutoff: float = 0.84
     search_max_limit: int = 50
+    # Số trang /products đã trả nhớ trong mỗi worker (LRU, khoá theo truy vấn). 0 = tắt. Chọn theo RSS đo được trên VM.
+    catalog_response_cache_size: int = Field(default=256, ge=0)
     search_candidate_k: int = Field(default=200, ge=1)
     recommend_candidate_k: int = 200
+    # Ô khám phá khi có chuyến mở (FR-REC-02, chốt 09/10/2026). False = rollback về list trước PR-A, không cần redeploy.
+    recommend_explore_fill: bool = True
+    # Khi không có chuyến mở (FR-REC-04 / FR-REC-02, chốt 09/10/2026): cos chuẩn hoá F14c + tối đa N món / điểm đến. Rollback không
+    # cần redeploy: RECOMMEND_NEXT_TRIP_SCORING=false (công thức 0,7 / 0,15 / 0,15), RECOMMEND_MAX_PER_DESTINATION=0 (tắt cap).
+    recommend_next_trip_scoring: bool = True
+    recommend_max_per_destination: int = Field(default=2, ge=0)
+    # Các lượt Weaviate độc lập của /recommendations chạy song song trên pool riêng `recsys-io` mỗi tiến trình (2026-10-12).
+    # Output y hệt tuần tự; 0 = tuần tự, rollback không cần redeploy.
+    recommend_io_workers: int = Field(default=16, ge=0, le=64)
+    # Nạp sẵn vector sản phẩm vào RAM ở nền sau mỗi lần nạp catalog (2026-10-12): tra vector theo id lấy từ RAM, ANN vẫn qua
+    # Weaviate. False = mọi lần tra vector hỏi Weaviate như trước (rollback không cần redeploy).
+    recommend_preload_vectors: bool = True
+    # Cache kết quả gợi ý trên Redis dùng chung (PRD architecture §4, deployment-plan §2; chốt 2026-10-12): DB index riêng,
+    # mọi khoá có TTL (noeviction). Trống = tắt cache (dev/test). Không bắt buộc ở REQUIRE_SHARED_BACKENDS: thiếu thì chỉ chậm.
+    recommend_cache_redis_url: str = ""
+    recommend_cache_ttl_seconds: int = Field(default=900, ge=60, le=86400)
     # Hybrid /search (HYBRID_CANDIDATE_SCORE, spec §2.4): BM25 trên nameAscii/searchTextAscii + RRF ở app.
     search_hybrid: bool = True  # False → dense-only ANN_CANDIDATE_SCORE như trước 25/09
     search_normalize: bool = True  # bước chuẩn hoá truy vấn (viết tắt, chính tả tên riêng, điểm đến, kiểu đi); False → nguyên câu
@@ -141,7 +167,7 @@ class Settings(BaseSettings):
     search_dest_filter_fallback: bool = True
     # Câu gõ không dấu (slice no_diacritics; contract 1.14.0 `diagnostics.queryProfile`): `relax` nới cổng vớt BM25 và (tuỳ chọn)
     # cutoff dense cho riêng câu phát hiện không dấu (≥ min_tokens token); `off` = như cũ. Giá trị nới là tạm, chưa qua dev/test.
-    search_no_diacritics_mode: Literal["off", "relax"] = "relax"
+    search_no_diacritics_mode: Literal["off", "relax", "restore"] = "restore"   # production 14/10: phục hồi dấu, không nới
     search_no_diacritics_lexical_k: int = Field(default=20, ge=0)
     search_no_diacritics_lexical_cutoff: float = 0.0
     search_no_diacritics_min_coverage: float = Field(default=0.4, ge=0, le=1)
@@ -163,9 +189,16 @@ class Settings(BaseSettings):
     # 07/10 (contract 1.18.0; spec docs/spec/bench/tong-hop-chinh-sua-luong-search-ota.md; plan docs/plan/2026-10-07-search-duration-
     # entity-poi.md): ba họ mới, mặc định tắt — TẮT thì không parse, không khai (response y như 1.17.0); bật mới parse + khai ở
     # queryPlan. Bật ở production chỉ sau khi bench WIN/TIE + Forbidden@10 = 0 (plan §Bước 9).
-    search_duration_filter: bool = False       # F7: "3 ngày 2 đêm" / "3N2Đ" → queryPlan.duration; bỏ cụm khỏi câu BM25 (không lọc)
-    search_poi_resolve: bool = False           # địa danh gazetteer repo ("Hồ Hoàn Kiếm" → Hà Nội) vào F1; hard.destinationSource = poi
-    search_entity_filter: bool = False         # entity gate CỨNG: câu nêu điểm vui chơi (VinWonders…) → chỉ attraction/combo có tên
+    search_duration_filter: bool = True        # production 14/10. F7: "3 ngày 2 đêm" / "3N2Đ" → queryPlan.duration; bỏ cụm khỏi câu BM25 (không lọc)
+    search_poi_resolve: bool = True            # production 14/10. địa danh gazetteer repo ("Hồ Hoàn Kiếm" → Hà Nội) vào F1; hard.destinationSource = poi
+    # 13/10 (contract 1.30.0; plan docs/plan/2026-10-13-search-evidence-gate-no-answer.md; PRD FR-SRC-03/04 chốt 13/10):
+    # mặc định tắt → response như 1.27.0. Bật từng cờ chỉ sau khi bench đạt cổng ở plan §4.
+    search_evidence_gate: bool = True          # production 14/10 (bench gold_v7 r2): BM25 chỉ vớt theo cụm giữ dấu
+    search_duration_mask: bool = True          # production 14/10 (bench r3). thời lượng vai trò gate → chỉ vé/combo đúng số ngày; câu lưu trú → stay (không lọc)
+    search_embed_residual: bool = True         # production 14/10 (bench r3). dense embed câu đã bỏ span điều kiện; residual rỗng + gate thời lượng → chỉ-filter
+    search_unexplained_empty: bool = True      # production 14/10: residual chỉ là tên lạ / vô nghĩa → rỗng (unexplained)
+    search_emit_background: bool = False       # phát backgroundScore (trung vị cosine top-K trong F) + diagnostics.saturated
+    search_entity_filter: bool = True          # production 14/10 (Web đã chốt). entity gate CỨNG: câu nêu điểm vui chơi (VinWonders…) → chỉ attraction/combo có tên
     #                                            chứa entity; đổi số đếm tab của Web khi bật — cần Web xác nhận (như F4)
     # Kênh fuzzy tên gần đúng (trigram cửa sổ, domain/search/fuzzy.py): 0 = tắt. Bật thì unit có rank fuzzy ≤ K, độ giống
     # ≥ MIN_SIM (0.6 vớt cả tên chung chung — đo 06/10) và cosine ≥ SEARCH_LEXICAL_CUTOFF được vớt vào R. Chỉ ở hybrid.

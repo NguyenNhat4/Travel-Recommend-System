@@ -107,10 +107,13 @@ SELECT
     (COALESCE(p.attributes->>'level', '') NOT IN ('property', 'route')
      AND COALESCE((p.attributes->>'ticketed')::boolean, true)
      AND p.unit_price IS NOT NULL)                              AS is_bookable,
-    (COALESCE(p.attributes->>'level', '') NOT IN ('room', 'flight')) AS is_search_unit,
+    -- comboOnly: sản phẩm thành phần combo mô phỏng (PRD data-model §3.1, chốt 09/10/2026) — chỉ đặt qua combo, không tìm/gợi ý.
+    (COALESCE(p.attributes->>'level', '') NOT IN ('room', 'flight')
+     AND NOT COALESCE((p.attributes->>'comboOnly')::boolean, false)) AS is_search_unit,
     -- được gợi ý: search unit và (tự đặt được, hoặc có ít nhất một con đặt được).
     -- 243 property không có hạng phòng → false: vẫn search ra, chỉ hiển thị, không vào /recommendations (availability precision ≥ 95%).
     (COALESCE(p.attributes->>'level', '') NOT IN ('room', 'flight')
+     AND NOT COALESCE((p.attributes->>'comboOnly')::boolean, false)
      AND (
         (COALESCE(p.attributes->>'level', '') NOT IN ('property', 'route')
          AND COALESCE((p.attributes->>'ticketed')::boolean, true) AND p.unit_price IS NOT NULL)
@@ -151,6 +154,7 @@ CREATE TABLE catalog.combo_items (
                       CHECK (source IN ('description_parse','manual','api')),
     confidence        numeric(3,2) CHECK (confidence BETWEEN 0 AND 1), -- độ tin của bước map sang product
     evidence          text,                                          -- đoạn description đã khớp, để soát tay
+    price_share       numeric(14,2) CHECK (price_share >= 0),        -- phần giá combo của dòng có sản phẩm; tổng = giá combo (09/10)
     PRIMARY KEY (combo_product_id, position),
     CONSTRAINT combo_items_combo_fk FOREIGN KEY (combo_product_id, combo_taxonomy)
         REFERENCES cdp.products (product_id, taxonomy) ON DELETE CASCADE,

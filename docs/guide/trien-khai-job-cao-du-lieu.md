@@ -11,7 +11,7 @@ Repo có hai job. Hai job cùng ghi `cdp.products` nên không được chạy s
 |---|---|---|
 | Code | `src/data_collection/daily.py` | `src/data_collection/fresh_catalog.py` (P1–P5, vé khứ hồi, monitor mới) |
 | Image | `Dockerfile.daily` | `Dockerfile.fresh-catalog` (có Chromium + Xvfb) |
-| Lệnh runner | `run_daily_docker.sh run` | `run_daily_docker.sh fresh-run tick` (giờ chạy đặt trên monitor, mặc định 02:00 VN) |
+| Lệnh runner | `run_daily_docker.sh run` | `run_daily_docker.sh fresh-run tick` (giờ chạy đặt trên monitor, mặc định 08:35 VN) |
 | Lịch cron | `0 2 * * *` | `*/15 * * * *` (tick rảnh không làm gì, không cần DB) |
 | Dữ liệu / env | `/srv/vota/daily-data`, `/etc/vota/daily.env` | `/srv/vota/fresh-catalog-data` (UID 10001), `/etc/vota/fresh-catalog.env`, log `/srv/vota/fresh-catalog-logs` |
 | Monitor | `run_daily_docker.sh monitor` (container `vota-daily-monitor`) | `run_daily_docker.sh fresh-monitor` (container `vota-fresh-catalog-monitor`) |
@@ -32,16 +32,19 @@ scripts/install-vota-cron.sh --job fresh --image <AR>/vota-fresh-catalog:latest 
 Không có `--job` thì script vẫn cài job cũ để tương thích; CI/CD mới truyền rõ `--job fresh`. Test:
 `bash scripts/tests/test-install-vota-cron.sh`.
 
-## Push và deploy (CD của `release-mvp-v2`, cập nhật 30/09/2026)
+## Push và deploy (CD staging-ha, cập nhật 13/10/2026)
 
-Workflow `crawler-ci-cd.yml` deploy khi push/merge PR vào main/release-mvp-v1/v2/v3 và có thay đổi trong `src/data_collection/**`,
-`Dockerfile.fresh-catalog` hoặc script cron. Nhánh `test/newcrawl` phải mở PR vào một nhánh này; push riêng nhánh test chỉ chạy CI.
+`crawler-ci-cd.yml` chỉ còn CI: kiểm shell, chạy `scripts/tests/test-install-vota-cron.sh`, và build thử `Dockerfile.fresh-catalog`
+trên PR. Deploy do `staging-ha-crawler-cd.yml` làm, chạy khi push vào main/release-mvp-v1/v2/v3 và có thay đổi trong
+`src/data_collection/**`, `Dockerfile.fresh-catalog`, script cron hoặc `scripts/deploy-staging-ha-crawler.sh`. Nhánh `test/newcrawl`
+phải mở PR vào một nhánh này; push riêng nhánh test chỉ chạy CI. CD lên VM staging cũ đã gỡ ngày 13/10/2026.
 Các bước:
 
-1. Kiểm shell, chạy `scripts/tests/test-install-vota-cron.sh`, build `Dockerfile.fresh-catalog`.
-2. Publish image fresh tại secret `GAR_FRESH_IMAGE` (tag SHA và `latest`), lấy digest bất biến.
-3. Chép `run_daily_docker.sh` lên VM, cài khối cron **fresh** duy nhất (`fresh-run tick` mỗi 15 phút) với image ghim digest.
-4. Xoá và khởi động lại monitor fresh (public cổng 8765). Chỉ container monitor bị thay; lượt cào đang chạy giữ nguyên và tự kết thúc.
+1. Build và publish image fresh tại secret `GAR_FRESH_IMAGE` (tag SHA), lấy digest bất biến.
+2. `scripts/deploy-staging-ha-crawler.sh` qua IAP SSH lên VM `vota-ha-crawler`: chép `run_daily_docker.sh`, cài cấu hình Ops Agent,
+   cài khối cron **fresh** duy nhất (`fresh-run tick` mỗi 15 phút) với image ghim digest.
+3. Xoá và khởi động lại monitor fresh (cổng 8765). Chỉ container monitor bị thay; lượt cào đang chạy giữ nguyên và tự kết thúc.
+4. Kiểm VM đang RUNNING và chỉ có đúng một VM mang tag `vota-crawler`, rồi ghi digest vào last-good của crawler.
 
 CD **không** tự chạy lượt cào ngay. Code mới có hiệu lực ở lượt kế tiếp theo giờ trong monitor. Muốn cào ngay: mở monitor, bấm chạy
 lượt `full` (gồm vé Trip SEO/khứ hồi và collector thương gia, rồi normalize → DB → index).
@@ -62,8 +65,8 @@ VM hiện có job fresh cần giữ nguyên:
   `/etc/vota/fresh-catalog.env` trên VM** (xem [mục dưới](#vé-thương-gia-mô-phỏng-trên-vm)).
 - Collection `ProductE5` của đích chưa có vector thì lượt index đầu embed toàn bộ search unit trên CPU của VM (một lần); các
   lượt sau chỉ embed dòng mới hoặc đổi text. Job từ chối ghi vào collection đang giữ vector khác số chiều/model.
-- Đổi đường dẫn bằng các secret tùy chọn `GCE_CRON_DATA_DIR`, `GCE_CRON_ENV_FILE`, `GCE_CRON_LOG_DIR`, `GCE_CRON_RUNNER` (mặc định là
-  các đường dẫn fresh ở trên).
+- Đường dẫn mặc định là các đường dẫn fresh ở trên; đổi bằng biến `CRAWLER_DATA_DIR`, `CRAWLER_ENV_FILE`, `CRAWLER_LOG_DIR`,
+  `CRAWLER_RUNNER` của `scripts/deploy-staging-ha-crawler.sh`.
 
 Sau deploy, `crontab -l` chỉ có một khối `VOTA CRAWLER`, cuối dòng là `fresh-run tick`. `run_daily_docker.sh report 3` và log cho biết
 số dòng DB/index.
@@ -110,7 +113,7 @@ free -h && dmesg -T | grep -iE "killed process|out of memory" | tail -5
 ```
 
 Nên thêm swap 2–4 GB một lần (`sudo fallocate -l 4G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile`, thêm
-vào `/etc/fstab`) hoặc nâng VM lên 8 GB. Bật lại ngay: GitHub Actions → "Crawler CI/CD" → Run workflow trên nhánh CD.
+vào `/etc/fstab`) hoặc nâng VM lên 8 GB. Bật lại ngay: GitHub Actions → "Crawler CI" → Run workflow trên nhánh CD.
 
 **Chưa có đăng nhập.** Ai có link đều bấm chạy / đổi cấu hình job được, và các thao tác ghi thẳng vào DB thật. Tạm chấp nhận
 theo yêu cầu, bảo mật làm sau: giới hạn IP nguồn trong rule firewall (`--source-ranges`), hoặc đặt sau proxy có đăng nhập.

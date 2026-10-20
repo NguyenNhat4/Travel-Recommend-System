@@ -1,0 +1,46 @@
+# Ops Agent cho VM crawler staging-ha (vota-ha-crawler). Dùng bởi scripts/deploy-staging-ha-crawler.sh.
+#
+# Khác ops-agent-staging.yaml (VM app và VM cũ):
+# - Không có receiver docker_json: stdout của container crawler đã nằm trong file lượt cào (docker run ... >> log),
+#   đọc thêm từ docker json-file sẽ đưa cùng một dòng lên Cloud Logging hai lần.
+# - Chỉ đọc file lượt cào fresh-catalog-2*.log, không đọc monitor-cd.log (log của monitor, dễ ồn và tốn tiền ingest).
+#
+# Dòng JSON của log.emit (src/data_collection/log.py) được parse thành jsonPayload (service, event, status). Dòng text
+# (fresh-catalog.start / fresh-catalog.exit) giữ nguyên trong message. Ba cảnh báo crawler dựa trên jsonPayload.service.
+logging:
+  receivers:
+    fresh_catalog_logs:
+      type: files
+      include_paths:
+        - /srv/vota/fresh-catalog-logs/fresh-catalog-2*.log
+      record_log_file_path: true
+  processors:
+    parse_fresh_catalog_json:
+      type: parse_json
+      field: message
+  service:
+    pipelines:
+      fresh_catalog_pipeline:
+        receivers:
+          - fresh_catalog_logs
+        processors:
+          - parse_fresh_catalog_json
+
+metrics:
+  receivers:
+    hostmetrics:
+      type: hostmetrics
+      collection_interval: 60s
+  processors:
+    # Không gửi metric theo tiến trình (agent.googleapis.com/processes/*): là phần lớn lượng metric bị tính phí.
+    metrics_filter:
+      type: exclude_metrics
+      metrics_pattern:
+        - agent.googleapis.com/processes/*
+  service:
+    pipelines:
+      default_pipeline:
+        receivers:
+          - hostmetrics
+        processors:
+          - metrics_filter

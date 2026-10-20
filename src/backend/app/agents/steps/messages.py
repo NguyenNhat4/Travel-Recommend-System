@@ -90,9 +90,12 @@ MESSAGES = {
         "fallback_noun_other": "sản phẩm",
         "note_unclear": "chưa hiểu tin nhắn, nhờ người dùng nói rõ hơn",
         "note_chat": "trò chuyện",
+        "note_stop": "người dùng dừng lên lịch: cảm ơn, hẹn gặp lại, không hỏi thêm",
+        "farewell": "Cảm ơn bạn đã trò chuyện cùng mình! Khi nào muốn đi, bạn cứ nhắn mình để lên kế hoạch nhé. "
+                    "Hẹn gặp lại bạn lần sau!",
         "note_fare": "báo giá vé máy bay một chiều {origin} → {destination}",
         "note_fare_anywhere": "so giá vé máy bay từ {origin} đi các nơi, rẻ/đắt nhất là {destination}",
-        "note_explore": "giới thiệu {destination}: {names}",
+        "note_explore": "giới thiệu {count} nơi ở {destination} (xem already_shown)",
         "note_refusal": "từ chối: yêu cầu ngoài phạm vi lập lịch trình",
         "note_constraint": "không có sản phẩm đáp ứng yêu cầu bắt buộc, hỏi có nới yêu cầu không",
         "note_invalid": "không dùng được {field} \"{value}\": {reason}",
@@ -237,10 +240,8 @@ MESSAGES = {
                          "hai cách xếp gần ngang nhau thì mình chọn cách rẻ hơn.",
         "plan_criteria_change": "Các điểm nằm ở hai khu cách xa nhau, nên từ đêm {night} bạn chuyển từ {first} sang "
                                 "{second}: đỡ đi lại hơn nhiều so với ở một chỗ cả chuyến.",
-        "plan_criteria_budget": "Mình chọn điểm, ghép các ngày và chọn nơi ở để tổng quãng đường bạn phải đi là ít "
-                                "nhất mà tổng chi phí vẫn nằm trong ngân sách của bạn; nếu hai cách xếp gần ngang nhau "
-                                "thì mình chọn cách rẻ hơn, và nếu không cách nào vừa ngân sách thì mình chọn cách rẻ "
-                                "nhất.",
+        "plan_criteria_budget": "Mình xếp để tổng quãng đường ít nhất mà vẫn trong ngân sách của bạn; hai "
+                                "cách gần ngang nhau thì chọn cách rẻ hơn, không cách nào vừa thì chọn cách rẻ nhất.",
         "stay_nights_range": "Đêm {first}–{last}",
         "stay_night_single": "Đêm {first}",
         "options_total": "Lịch trên: đi lại ≈{km} km cả chuyến.",
@@ -264,17 +265,7 @@ MESSAGES = {
         "reference_note": "Mình chưa tìm thấy vé mở bán cho ngày {date} (vé tham quan ở {destination} đang mở bán đến {end}), nhưng {destination} vẫn có những nơi rất đáng đến, nên mình dựng lịch tham khảo dưới đây. Các điểm có vé sẽ đặt được khi mở bán cho ngày của bạn.",
         "reference_nearest": "Muốn đặt được ngay thì bạn bấm nút \"Đi {destination} {days} ngày từ ngày {nearest}\" bên dưới nhé.",
         "chip_reference_nearest": "Đi {destination} {days} ngày từ ngày {nearest}",
-        "explore_title": "{destination} có gì đáng đi",
-        "explore_hotel_title": "Chỗ ở tại {destination}",
-        "explore_intro": "Mình gợi ý vài chỗ ở {destination}, mỗi chỗ mạnh một điểm khác nhau.",
-        "explore_filtered_pool": "Mình chỉ tính những chỗ có ghi nhận hồ bơi.",
-        "explore_filtered_near": "Mình chỉ tính những chỗ ở ngay quanh {place}.",
-        "explore_none": "Mình chưa tìm thấy chỗ nào ở {destination} trong dữ liệu hiện có.",
-        "explore_none_pool": "Mình chưa thấy chỗ ở nào tại {destination} ghi nhận có hồ bơi trong dữ liệu hiện có.",
-        "explore_unavailable": "Mình chưa tải được gợi ý ở {destination} lúc này. Bạn hỏi lại sau ít phút giúp mình nhé.",
         "explore_offer": "Bạn có muốn mình lên lịch {destination} không?",
-        "explore_continue": "Thông tin chuyến của bạn mình vẫn giữ. Khi sẵn sàng thì bấm \"Tiếp tục lập lịch\" nhé.",
-        "explore_card_line": "{link}: {reason}.",
         "reason_most_reviewed": "nhiều người ghé nhất ở đây",
         "reason_top_rated": "được du khách khen nhiều",
         "reason_cheapest": "giá mềm",
@@ -285,10 +276,6 @@ MESSAGES = {
         "reason_low_price": "cũng thuộc nhóm giá mềm",
         "reason_dearest": "giá cao nhất",
         "reason_high_price": "cũng thuộc nhóm giá cao",
-        "explore_price_free": "tham quan tự do",
-        "explore_price_unknown": "giá đang cập nhật",
-        "explore_asked_price": "Giá vé {price}.",
-        "explore_price_from": "từ {money}",
         "chip_plan": "Lên lịch {destination} cho mình",
         "chip_continue": "Tiếp tục lập lịch",
         "chip_change_destination": "Đổi sang {destination}",
@@ -365,11 +352,6 @@ MESSAGES = {
         "chip_fare_to": "Vé ra {destination} bao nhiêu?",
         "chip_sights": "{destination} có gì chơi?",
         "chip_near": "Gần {place} có gì nữa?",
-        "explore_ask_which_place": "Bạn muốn nói {places}?",
-        "explore_place_joiner": " hay ",
-        "title_unverified_fact": "Chưa kiểm được thông tin này",
-        "unverified_fact": ("Mình chưa tìm thấy {place} trong dữ liệu hiện có, nên chưa kiểm được giờ mở cửa, giá vé hay "
-                            "quy định của nơi này và không dám nói chắc. Bạn nhắn kèm tên thành phố để mình tra lại nhé."),
         "chip_more_sights": "{destination} còn gì đáng đi?",
         "chip_elsewhere": "Gợi ý nơi khác cho mình",
         "chip_beach": "Tìm chỗ đi biển cuối tuần",
@@ -487,9 +469,12 @@ MESSAGES = {
         "fallback_noun_other": "product(s)",
         "note_unclear": "did not understand the message, asked the user to rephrase",
         "note_chat": "small talk",
+        "note_stop": "the user stopped planning: thanked them and said goodbye, asked nothing",
+        "farewell": "Thanks for chatting with me! Whenever you'd like to travel, just message me and we'll plan it "
+                    "together. See you next time!",
         "note_fare": "gave one-way flight fares {origin} → {destination}",
         "note_fare_anywhere": "compared flight fares from {origin}; top pick {destination}",
-        "note_explore": "introduced {destination}: {names}",
+        "note_explore": "introduced {count} places in {destination} (see already_shown)",
         "note_refusal": "declined: outside itinerary planning",
         "note_constraint": "no product meets a required condition, asked whether to relax it",
         "note_invalid": "could not use {field} \"{value}\": {reason}",
@@ -621,10 +606,8 @@ MESSAGES = {
                          "short as possible; when two arrangements are about as short, I chose the cheaper one.",
         "plan_criteria_change": "The places sit in two areas far apart, so from night {night} you move from {first} to "
                                 "{second}: much less travel than staying in one place.",
-        "plan_criteria_budget": "I picked the places, grouped the days and chose where to stay so that your total "
-                                "travel is as short as possible while the total cost stays within your budget; when "
-                                "two arrangements are about as short, I chose the cheaper one, and when none fits the "
-                                "budget, I chose the cheapest.",
+        "plan_criteria_budget": "I kept your total travel as short as possible within your budget; when two plans "
+                                "are about as short I chose the cheaper one, and when none fits, the cheapest.",
         "stay_nights_range": "Nights {first}–{last}",
         "stay_night_single": "Night {first}",
         "options_total": "The plan above: ≈{km} km of travel for the whole trip.",
@@ -648,17 +631,7 @@ MESSAGES = {
         "reference_note": "I could not find tickets on sale for {date} (attraction tickets in {destination} are on sale until {end}), but {destination} still has places well worth a visit, so here is a reference plan. Ticketed places can be booked once your date goes on sale.",
         "reference_nearest": "To book right away, tap \"Đi {destination} {days} ngày từ ngày {nearest}\" below.",
         "chip_reference_nearest": "Đi {destination} {days} ngày từ ngày {nearest}",
-        "explore_title": "What to see in {destination}",
-        "explore_hotel_title": "Where to stay in {destination}",
-        "explore_intro": "Here are a few places in {destination}, each good for a different reason.",
-        "explore_filtered_pool": "I only counted places listed with a pool.",
-        "explore_filtered_near": "I only counted places right around {place}.",
-        "explore_none": "I could not find any places in {destination} in the current data.",
-        "explore_none_pool": "I could not find a place to stay in {destination} listed with a pool.",
-        "explore_unavailable": "I could not load suggestions for {destination} right now. Please ask again in a few minutes.",
         "explore_offer": "Would you like me to plan a trip to {destination}?",
-        "explore_continue": "I am keeping your trip details. Tap \"Continue planning\" when you are ready.",
-        "explore_card_line": "{link}: {reason}.",
         "reason_most_reviewed": "the most reviewed here",
         "reason_top_rated": "the highest rated",
         "reason_cheapest": "the lowest price",
@@ -669,10 +642,6 @@ MESSAGES = {
         "reason_low_price": "also among the cheapest",
         "reason_dearest": "the highest price",
         "reason_high_price": "also among the priciest",
-        "explore_price_free": "free to visit",
-        "explore_asked_price": "Tickets {price}.",
-        "explore_price_unknown": "price being updated",
-        "explore_price_from": "from {money}",
         "chip_plan": "Plan a {destination} trip for me",
         "chip_continue": "Continue planning",
         "chip_change_destination": "Switch to {destination}",
@@ -748,11 +717,6 @@ MESSAGES = {
         "chip_fare_to": "How much is a flight to {destination}?",
         "chip_sights": "What to do in {destination}?",
         "chip_near": "What else is near {place}?",
-        "explore_ask_which_place": "Do you mean {places}?",
-        "explore_place_joiner": " or ",
-        "title_unverified_fact": "I cannot check this yet",
-        "unverified_fact": ("I could not find {place} in the data I have, so I cannot check its opening hours, ticket "
-                            "prices or rules and would rather not guess. Send the city as well and I will look again."),
         "chip_more_sights": "What else is worth seeing in {destination}?",
         "chip_elsewhere": "Suggest somewhere else",
         "chip_beach": "Find a beach for the weekend",
@@ -890,7 +854,9 @@ class _LoggedStructured:
     câu trả lời thô (docs/spec/logging-schema.md §4). Mọi thuộc tính khác chuyển thẳng cho runnable gốc."""
 
     def __init__(self, inner, schema):
-        self._inner, self._schema = inner, getattr(schema, "__name__", str(schema))
+        # Schema dạng dict (JSON schema của orc) chỉ ghi `title`, không dump cả schema vào log.
+        name = schema.get("title") if isinstance(schema, dict) else getattr(schema, "__name__", None)
+        self._inner, self._schema = inner, name or type(schema).__name__
 
     def _log(self, started: float, outcome: str) -> None:
         log_event(logger, "assistant.llm.call", "INFO" if outcome == "ok" else "WARNING", schema=self._schema,
@@ -928,6 +894,9 @@ class _LoggedModel:
 
     def with_structured_output(self, schema, *args, **kwargs):
         return _LoggedStructured(self._llm.with_structured_output(schema, *args, **kwargs), schema)
+
+    def bind_tools(self, tools, **kwargs):
+        return _LoggedStructured(self._llm.bind_tools(tools, **kwargs), {"title": "OrcFunctions"})
 
     def __getattr__(self, name):
         return getattr(self._llm, name)

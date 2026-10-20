@@ -33,11 +33,11 @@ và PRD `docs/prd/user-flow.md` §4.2. Khi lệch nhau thì các nguồn đó th
 | Controller | `features/itinerary/widget/useFloatingWidget.ts` | Nối Provider với giao diện; mọi handler của widget |
 | | `features/itinerary/widget/widgetPlan.ts` | Response `COMPLETED` → `WidgetPlan`; `narrationProducts`, `locateProduct`, `isFreeToVisit` |
 | | `features/itinerary/widget/widgetProgress.ts` | `node.completed` → 3 bước tiến độ |
-| | `features/itinerary/widget/useWidgetCart.ts` | Trạng thái nút "Thêm" theo sản phẩm (đang thêm / đã thêm) |
+| | `features/itinerary/widget/useWidgetCart.ts` | Trạng thái nút "Thêm vào giỏ" theo sản phẩm (đang thêm / đã thêm) |
 | | `features/itinerary/widget/useWidgetFocus.ts` | Focus trap, trả focus về nút mở khi đóng |
 | Khung | `features/itinerary/widget/FloatingWidget.tsx` | Ba trạng thái: nút mở, sidebar, toàn màn hình |
 | Cột chat | `WidgetChat.tsx` | Transcript, tiến độ, khung lỗi, ô nhập |
-| | `WidgetOpening.tsx` | Màn mở đầu: lời chào, ô nhập lớn, chip gợi ý, form "Thêm thông tin chuyến đi" |
+| | `WidgetOpening.tsx` | Màn mở đầu: lời chào, ô nhập lớn, chip gợi ý, nút "Thêm thông tin chuyến đi" mở `TripDetailsForm` |
 | | `WidgetComposer.tsx` | Ô nhập: Enter gửi, Shift+Enter xuống dòng, đang chạy thì nút Dừng (Esc cũng dừng) |
 | | `WidgetNarration.tsx` | Lời diễn giải + thẻ sản phẩm chèn sau lần nhắc đầu |
 | | `WidgetProgress.tsx` | Danh sách 3 bước ✓ |
@@ -49,8 +49,7 @@ và PRD `docs/prd/user-flow.md` §4.2. Khi lệch nhau thì các nguồn đó th
 | | `WidgetPlanEmpty.tsx` | Cột phải khi chưa có lịch trình |
 | | `widgetVisuals.ts` | Ảnh dự phòng, tag khách sạn từ `attributes` |
 | Dùng chung | `components/assistant/inlineBold.tsx` | Parse `**đậm**` và `[Tên](product:id)` thành React node (không chèn HTML) |
-| | `components/assistant/TripDetailsForm.tsx` | Form hỏi lại (`clarificationForm`) |
-| | `components/assistant/AssistantTripStarter.tsx` | Form chọn nhanh ở màn mở đầu |
+| | `components/assistant/TripDetailsForm.tsx` | Form thông tin chuyến đi: form hỏi lại (`clarificationForm`) và form ở màn mở đầu |
 | | `components/assistant/SuggestionChips.tsx` | Chip `suggestions` |
 | | `components/assistant/ItineraryMap.tsx` | Bản đồ Leaflet + OSM, tuyến đường OSRM |
 | | `components/assistant/AssistantResultPanel.tsx` | Chỉ còn dùng `itineraryCartItems`, `isBookable` và kiểu `AssistantCartItem` (xem §9) |
@@ -88,7 +87,7 @@ Sự kiện SSE và tác động lên UI:
 
 `message` của `node.completed` là chuỗi debug của backend, **không bao giờ** hiện cho người dùng. Nhãn 3 bước do Web
 sở hữu, map từ `nodeId` trong `widgetProgress.ts` (`AFTER_NODE`): xong `extract`/`tool`/`retry` thì bước 2 đang chạy,
-xong `evaluate`/`compose` thì bước 3 đang chạy. Node khác (classify, converse, clarify, narrate...) không đẩy bước, nên nhánh trò chuyện
+xong `evaluate`/`compose` thì bước 3 đang chạy. Node khác (precheck, orchestrate, gatekeep, converse, clarify, narrate...) không đẩy bước, nên nhánh trò chuyện
 hay hỏi lại không có ✓ giả.
 
 "Chậm" = 12 giây không có `node.completed` nào (`SLOW_NODE_MS`), đo theo từng node chứ không theo cả lượt.
@@ -119,9 +118,9 @@ thành nút Dừng.
 | Lỗi khác | Khung đỏ; `retryable` thì có nút "Thử lại" | — |
 | Người dùng bấm Dừng | "Đã dừng..." + nút "Gửi lại" | — |
 
-Lưu ý hành vi "điền chứ không gửi": chip ở màn mở đầu, prompt ở `WidgetPlanEmpty` và nút xác nhận của
-`TripDetailsForm` chỉ **đặt câu vào ô nhập** để người dùng đọc lại. Riêng `SuggestionChips` và form
-`AssistantTripStarter` thì gửi ngay.
+Lưu ý hành vi "điền chứ không gửi": chip ở màn mở đầu và prompt ở `WidgetPlanEmpty` chỉ **đặt câu vào ô nhập** để
+người dùng đọc lại. `SuggestionChips` và nút Xác nhận của `TripDetailsForm` (form hỏi lại và form ở màn mở đầu) thì gửi
+ngay (AC-AGT-01).
 
 ## 6. Bố cục và điều hướng trong widget
 
@@ -207,7 +206,7 @@ Kiểm bằng `grep` ngày 2026-10-05; chưa sửa gì.
 
 | Muốn sửa | File |
 |---|---|
-| Chữ, chip, form ở màn mở đầu | `WidgetOpening.tsx`, `AssistantTripStarter.tsx` |
+| Chữ, chip, form ở màn mở đầu | `WidgetOpening.tsx`, `TripDetailsForm.tsx` |
 | Nhãn hoặc cách đánh dấu 3 bước tiến độ | `widgetProgress.ts` (`STEPS`, `AFTER_NODE`) |
 | Cách hiện lời diễn giải, vị trí thẻ | `WidgetNarration.tsx` (`narrationBlocks`), `inlineBold.tsx` |
 | Thẻ theo ngày, nút trên thẻ | `WidgetDays.tsx`, `useFloatingWidget.itemActions` |
@@ -239,7 +238,7 @@ Test sẵn có theo file nguồn (trong `src/frontend/tests/`):
 | `widgetPlan.ts`, `widgetProgress.ts` | `unit/widgetPlan.test.ts`, `unit/widgetProgress.test.ts` |
 | `WidgetNarration.tsx`, `inlineBold.tsx` | `unit/widgetNarration.test.tsx`, `unit/inlineBold.test.ts` |
 | `WidgetDays.tsx`, `WidgetProductDetail.tsx` | `unit/widgetDays.test.tsx`, `unit/widgetProductDetail.test.tsx` |
-| `WidgetOpening.tsx`, `TripDetailsForm.tsx`, `AssistantTripStarter.tsx` | `unit/floatingWidgetOpening.test.tsx`, `unit/tripDetailsForm.test.tsx`, `unit/assistantTripStarter.test.tsx` |
+| `WidgetOpening.tsx`, `TripDetailsForm.tsx` | `unit/floatingWidgetOpening.test.tsx`, `unit/tripDetailsForm.test.tsx` |
 | `useWidgetCart.ts`, `useAssistantCart.ts` | `unit/useWidgetCart.test.tsx`, `unit/useAssistantCart.test.tsx` |
 | Luồng thật trên trình duyệt | `e2e/widget-opening.spec.ts`, `e2e/widget-detail.spec.ts` |
 

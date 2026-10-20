@@ -231,11 +231,11 @@ Khách huỷ đơn đã CONFIRMED (trong hạn)
 
 ## 6. Đọc lịch sử cho Recommendation
 
-1. Đọc tối đa **500 event** mới nhất cho mỗi lần tính, có thể thu hẹp bằng `since`, để giữ p95 `/recommendations` dưới 300 ms.
+1. Đọc tối đa **500 event** mới nhất cho mỗi lần tính, có thể thu hẹp bằng `since`, để giữ p95 `/recommendations` dưới 300 ms. Cài từ 2026-10-12: `HISTORY_MAX_EVENTS` (`application/ports/cdp_client.py`); `PostgresCdpReader.events_for_user` dùng `ORDER BY "timestamp" DESC, event_id ASC LIMIT 500` (cùng thời điểm thì `event_id` tăng dần, khớp thứ tự harness bench dựng lại); engine cắt thêm một lần trên đường đọc CDP cho adapter sau này. Đường `events=` của harness không cắt.
 2. Không bao giờ dùng event đã huỷ (mặc định CDP đã lọc).
 3. CDP lỗi hoặc timeout: `/recommendations` vẫn trả `200` với `strategy: "popular"`, `because: []`, `diagnostics.coldStart: true`, `eventsUsed: 0`. Không trả `500` vì lỗi CDP.
 4. Phân biệt "CDP lỗi" với "chưa có lịch sử": cả hai cho `popular`, nhưng chỉ lỗi CDP mới ghi log `WARNING`.
-5. Nếu sau này cache lịch sử, phải xoá cache của người dùng ngay khi ghi `purchase` thành công, để khoảnh khắc K1 (đặt xong, gợi ý đổi ngay) vẫn đúng.
+5. Nếu sau này cache lịch sử, phải xoá cache của người dùng ngay khi ghi `purchase` thành công, để khoảnh khắc K1 (đặt xong, gợi ý đổi ngay) vẫn đúng. Cache **kết quả** gợi ý trên Redis (từ 2026-10-12, `hop-dong-tich-hop-search-recommendation.md` §5) không cache lịch sử: mỗi request vẫn đọc CDP theo mục 1, và khoá cache chứa dấu vân tay các event vừa đọc. `purchase` mới hay `cancel_purchases` cho khoá mới, nên K1 đúng mà không cần bước xoá cache nào.
 
 ---
 

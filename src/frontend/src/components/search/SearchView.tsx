@@ -8,21 +8,57 @@ import {
   DEFAULT_QUERY, SEARCH_GROUPS, TAB_GROUPS, parseGroupParam, searchCacheKey, searchOverviewApi,
   type SearchGroup, type TabGroup,
 } from '../../services/search';
-import { useLazySection } from '../../hooks/useLazySection';
+import { loadSection, useLazySection } from '../../hooks/useLazySection';
 import { parseTripContext, serializeTripContext } from '../../features/search/tripContext';
 import { SearchBox } from '../common/SearchBox';
-import { Search, Loader2 } from 'lucide-react';
+import { SkeletonBlock, SkeletonStatus } from '../common/Skeleton';
+import { Search } from 'lucide-react';
 import { GroupResults } from './GroupResults';
-import { GroupShelf } from './GroupShelf';
+import { GroupShelf, ShelfTilesSkeleton } from './GroupShelf';
 import { SearchAssistantBanner } from './SearchAssistantBanner';
 
 const GROUP_TITLES: Record<SearchGroup | 'all', string> = {
   all: 'Tất cả dịch vụ du lịch',
-  stay: 'Khách sạn & Khu nghỉ dưỡng V-OTA',
+  stay: 'Khách sạn & Khu nghỉ dưỡng Sota',
   exp: 'Tour và trải nghiệm',
   more: 'Gói Combo Du lịch Tiết Kiệm',
   flight: 'Vé máy bay & Chặng bay phổ biến',
 };
+
+/**
+ * Khung của cả trang khi `SearchView` chưa chạy được (fallback Suspense lúc trang mới tải, trước khi đọc được URL): ô tìm kiếm,
+ * tiêu đề và số kết quả, thanh tab, ba hàng nhóm của tab "Tất cả".
+ */
+export const SearchViewSkeleton: React.FC = () => (
+  <SkeletonStatus label="Đang tải trang tìm kiếm" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+    <div aria-hidden="true" className="space-y-3">
+      <SkeletonBlock className="h-14 w-full rounded-2xl" />
+      <div className="flex gap-2 overflow-hidden">
+        {['w-32', 'w-36', 'w-40', 'w-28', 'w-36'].map((w, i) => <SkeletonBlock key={i} className={`h-7 shrink-0 rounded-lg ${w}`} />)}
+      </div>
+    </div>
+    <div aria-hidden="true" className="space-y-3">
+      <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2">
+        <SkeletonBlock className="h-7 w-64 max-w-full rounded-lg" />
+        <SkeletonBlock className="h-4 w-44 rounded" />
+      </div>
+      <div className="flex items-center gap-1.5 overflow-hidden border-b border-slate-200 pb-2">
+        {['w-20', 'w-24', 'w-36', 'w-28'].map((w, i) => <SkeletonBlock key={i} className={`h-6 shrink-0 rounded ${w}`} />)}
+      </div>
+    </div>
+    <div aria-hidden="true" className="space-y-8">
+      {TAB_GROUPS.map((tab) => (
+        <div key={tab} className="space-y-3">
+          <div className="flex items-baseline justify-between gap-4">
+            <SkeletonBlock className="h-6 w-40 rounded-md" />
+            <SkeletonBlock className="h-5 w-24 rounded" />
+          </div>
+          <div className="flex gap-4 overflow-hidden"><ShelfTilesSkeleton /></div>
+        </div>
+      ))}
+    </div>
+  </SkeletonStatus>
+);
 
 export const SearchView: React.FC = () => {
   const { navigate } = useTravel();
@@ -54,10 +90,11 @@ export const SearchView: React.FC = () => {
     return url.pathname + url.search;
   };
 
-  // Số kết quả của các tab: một request nhẹ, có bộ đệm. Không dùng ở chế độ vé máy bay (không có tab).
+  // Số kết quả của các tab = `total` của chính các request hàng ở "Tất cả" (cùng khóa bộ đệm, nên hàng không gọi lại),
+  // để tab, hàng và "Xem thêm" cùng một số. Không dùng ở chế độ vé máy bay (không có tab).
   const overview = useLazySection(
     searchCacheKey('overview', queryParam, destination),
-    () => searchOverviewApi(queryParam, destination),
+    () => searchOverviewApi(queryParam, destination, loadSection),
     { enabled: !isFlightMode },
   );
   const counts = overview.data?.counts;
@@ -90,9 +127,11 @@ export const SearchView: React.FC = () => {
           <h1 className="text-xl sm:text-2xl font-black text-slate-900">{headerTitle}</h1>
           {!isFlightMode && (
             <span className="text-xs font-semibold text-slate-500 flex items-center gap-1.5">
-              {overview.loading && <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-600" />}
+              {overview.loading && !overview.data && (
+                <SkeletonStatus label="Đang đếm kết quả"><SkeletonBlock className="h-4 w-44 rounded" /></SkeletonStatus>
+              )}
               {overview.data && (
-                <span>Tìm thấy {overview.data.total}{overview.data.totalExact === false ? '+' : ''} dịch vụ phù hợp</span>
+                <span>Tìm thấy {overview.data.total} dịch vụ phù hợp</span>
               )}
             </span>
           )}
@@ -122,7 +161,7 @@ export const SearchView: React.FC = () => {
 
       {overview.data?.isWeakMatch && (
         <div className="p-3 bg-amber-50 text-amber-900 border border-amber-200 rounded-xl text-xs flex items-center justify-between">
-          <span>Chưa tìm thấy kết quả khớp tuyệt đối với &ldquo;{queryParam}&rdquo;. Đây là những lựa chọn gần nghĩa nhất.</span>
+          <span>Kết quả gần nhất: chưa tìm thấy kết quả khớp tuyệt đối với &ldquo;{queryParam}&rdquo;. Đây là những lựa chọn gần nghĩa nhất.</span>
           <button onClick={askAssistant} className="font-bold underline text-amber-950 ml-2 shrink-0">Hỏi Trợ lý AI →</button>
         </div>
       )}
@@ -144,7 +183,14 @@ export const SearchView: React.FC = () => {
           </div>
           <div>
             <h3 className="text-base font-bold text-slate-800">Chưa tìm thấy dịch vụ nào cho &ldquo;{queryParam}&rdquo;</h3>
-            <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">Hãy thử thay đổi từ khóa hoặc nhờ Trợ lý AI gợi ý lịch trình.</p>
+            {overview.data && overview.data.unexplained.length > 0 ? (
+              <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
+                Không có sản phẩm nào khớp &ldquo;{overview.data.unexplained.join(', ')}&rdquo;. Thử tên khác, hoặc mô tả nhu cầu
+                (điểm đến, loại dịch vụ, tiện ích).
+              </p>
+            ) : (
+              <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">Hãy thử thay đổi từ khóa hoặc nhờ Trợ lý AI gợi ý lịch trình.</p>
+            )}
           </div>
           <button onClick={askAssistant} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-lg transition-colors">
             Nhờ Trợ lý AI gợi ý
@@ -161,15 +207,13 @@ export const SearchView: React.FC = () => {
               </span>
             </div>
           )}
-          {TAB_GROUPS.map((tab, index) => (
+          {TAB_GROUPS.map((tab) => (
             <GroupShelf
               key={`${tab}|${queryParam}|${destination ?? ''}`}
               group={tab}
               query={queryParam}
               destination={destination}
               tripQuery={tripQuery}
-              total={counts?.[tab]}
-              lazy={index > 0}
               onSeeAll={goTab}
             />
           ))}

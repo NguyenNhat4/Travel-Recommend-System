@@ -18,10 +18,18 @@ Hệ thống được thiết kế để vận hành trên ba cấp môi trườ
 | **Mục đích** | Phát triển tính năng, debug | Tích hợp liên tục, kiểm thử E2E | Phục vụ người dùng thực tế |
 | **Cơ sở dữ liệu** | PostgreSQL 16 local qua Docker | PostgreSQL Cloud | Managed Cloud Database Cluster |
 | **Session store** | Redis local qua Docker (bind `127.0.0.1`, có mật khẩu); hội thoại dùng DB index riêng | Redis dùng chung, hội thoại dùng DB index riêng | Redis managed, `noeviction`; hội thoại dùng DB index riêng |
-| **Cơ sở dữ liệu vector** | Weaviate local qua Docker (volume riêng) | Weaviate dùng chung | Weaviate Cloud hoặc self-host có backup |
+| **Cơ sở dữ liệu vector** | Weaviate local qua Docker (volume riêng) | Weaviate Cloud (cluster chung của nhóm, eu-central-1) | Weaviate Cloud hoặc self-host có backup |
 | **Cổng thanh toán** | Stripe test mode, `stripe listen` chuyển webhook về máy | Stripe test mode, webhook trỏ về URL staging | Ngoài phạm vi (live mode) |
 | **Dữ liệu mẫu** | Snapshot nén hoặc dữ liệu tổng hợp | Toàn bộ dữ liệu snapshot chuẩn hóa | Dữ liệu giao dịch thực tế |
 | **Dịch vụ AI** | Local LLM hoặc API dev key | API key chia sẻ nội bộ | Dedicated API quota / Enterprise |
+
+### 1.1. Tầng DB HA riêng cho `staging-ha`
+
+`staging-ha` là môi trường staging duy nhất, có Terraform root và state riêng (`infra/staging-ha`). Staging cũ đã ngừng ngày 2026-10-13: repo không còn Terraform, workflow CI/CD hay code monitoring của nó (`infra/terraform/environments/staging`, `infra/monitoring` dạng Terraform). Cùng ngày, monitoring cũ đã xoá khỏi GCP: 18 alert policy (15 gắn VM cũ đã nghỉ hoặc probe đã hỏng, 3 policy VM do Compute Engine tự tạo), 4 log-metric, dashboard, uptime check và exclusion log `vota-staging-debug-and-health-ok`. Còn lại trên GCP, chưa có code quản lý: 8 alert policy toàn project và log-metric `vota-staging_*` của chúng, kênh email `vota-staging email alerts`, metric descriptor `custom.googleapis.com/vota/container/*` (dashboard staging-ha dùng), IP tĩnh `34.142.132.251` (bastion dùng), và hai state `infra/staging`, `monitoring/staging`, state này đã lệch so với GCP nên không chạy plan hay apply. Muốn dọn phần còn lại thì import vào root staging-ha trước (task riêng). *(Theo `update-archive/2026-10-13-xoa-monitoring-staging-cu.md`.)*
+
+Khi được bật có chủ đích bằng `create_patroni = true`, staging-ha tạo hai node PostgreSQL + Patroni ở hai zone, một witness etcd ở zone thứ ba và một ILB private. ILB chỉ gửi kết nối ghi tới node trả HTTP `200` ở `/primary`; Patroni tự bầu leader khi mất node. `create_patroni = false` vẫn là mặc định, nên việc merge mã không tự dựng cụm.
+
+Di trú từ primary cũ là một cửa sổ vận hành riêng: dừng ghi, clone một lần vào node `a`, để node `b` gia nhập cụm qua DCS, đối chiếu dữ liệu và xác nhận replication lag trước khi đổi `db.vota.internal` sang ILB. Primary cũ giữ nguyên cho rollback có điều kiện. Vì clone là một điểm thời gian, do đó mọi ghi phát sinh sau clone phải bị dừng cho tới khi cutover hoàn tất mà không được mở lại ghi sớm.
 
 ---
 
@@ -37,14 +45,20 @@ Hệ thống phân tách ranh giới bảo mật bằng các chuỗi kết nối
 | `INSIDER_BASE_URL` | URL kết nối dịch vụ Insider Clone | Tất cả | Giao tiếp qua HTTP REST |
 | `INSIDER_REQUEST_TOKEN`| Token xác thực gọi sang Insider | Staging / Prod | Bí mật, không commit vào repository |
 | `LLM_API_KEY` | Khóa xác thực mô hình AI (OpenAI / Claude) | Tất cả | Bí mật, quản lý qua Vault hoặc Secret Manager |
+| `ITINERARY_ORCHESTRATOR_MODEL` / `ITINERARY_ORCHESTRATOR_PROVIDER` | Model riêng và provider `gemini|openai|anthropic`; bỏ trống dùng model chung; lựa chọn GPT-6.1 Sol/OpenAI | Tất cả | Không bí mật; dùng khoá provider hiện có |
+| `ITINERARY_ORCHESTRATOR_REASONING_EFFORT` | Mức reasoning tuỳ chọn; chọn theo số đo, không gửi khi để trống | Tất cả | Không bí mật |
 | `ITINERARY_DATA_MODE` | Nguồn dữ liệu cho tool của trợ lý: `fixture` (dữ liệu mẫu, mặc định dev/test), `inprocess` (gọi engine trong cùng tiến trình; dùng khi chạy dữ liệu thật), `http` (gọi qua HTTP tới `ITINERARY_SERVICE_BASE_URL`; tuỳ chọn, để hoàn tác hoặc khi tách agent thành service riêng), `disabled` | Tất cả | Không bí mật. Không đặt thì ngoài dev/test là `disabled`, nên staging/production phải đặt tường minh |
 | `ITINERARY_SERVICE_BASE_URL` | Gốc URL backend mà adapter HTTP gọi tới | Chỉ khi `ITINERARY_DATA_MODE=http` | Không bí mật. Bắt buộc ở mode `http`, bỏ qua ở mode khác |
 | `ITINERARY_TOOL_TIMEOUT_SECONDS` | Thời hạn (giây) cho mỗi lời gọi tool của trợ lý, áp dụng mọi mode | Tất cả | Không bí mật |
 | `EMBED_MODEL` / `EMBED_MODEL_REVISION` / `EMBED_DIMENSION` | Model vector — chỉ `intfloat/multilingual-e5-small`, revision ghim, 384 chiều (chạy local trong backend và job index, không cần khoá) | Tất cả | Không bí mật. Thường không đặt (mặc định trong `core/config.py`); đổi revision = chạy lại job embed |
 | `VECTOR_COLLECTION` | Collection vector — mặc định `ProductE5Small` (vector e5-small). Biến cũ `WEAVIATE_COLLECTION` (collection `Product`, vector Cohere) không còn được đọc | Tất cả | Không bí mật. Job embed từ chối ghi vào collection đang chứa vector của model khác |
-| `SEARCH_CUTOFF` / `SEARCH_LEXICAL_CUTOFF` | Ngưỡng cosine của Search — mặc định 0,84 (hiệu chỉnh cho e5-small) / 0,50; `SEARCH_NO_DIACRITICS_CUTOFF` **0,80** cho câu không dấu (chỉ khi `SEARCH_NO_DIACRITICS_MODE=relax`, mặc định production) | Tất cả | Không bí mật. Hiệu chỉnh trên gold khi đổi model. Cutoff tuyệt đối không làm câu ngoài catalog trả rỗng — giới hạn đã biết |
+| `SEARCH_CUTOFF` / `SEARCH_LEXICAL_CUTOFF` | Ngưỡng cosine của Search — mặc định 0,84 (hiệu chỉnh cho e5-small) / 0,50; `SEARCH_NO_DIACRITICS_CUTOFF` **0,80** cho câu không dấu (chỉ khi `SEARCH_NO_DIACRITICS_MODE=relax`, mặc định production) | Tất cả | Không bí mật. Hiệu chỉnh trên gold khi đổi model. Cutoff tuyệt đối không tự làm câu ngoài catalog trả rỗng; việc đó do cổng bằng chứng (`SEARCH_EVIDENCE_GATE`) và luật câu không giải thích được (`SEARCH_UNEXPLAINED_EMPTY`) đảm nhận |
+| `SEARCH_NO_DIACRITICS_MODE` | Câu gõ không dấu: `off` \| `relax` (hạ cutoff về `SEARCH_NO_DIACRITICS_CUTOFF`) \| `restore` (**mặc định production từ 2026-10-14**: phục hồi dấu theo cụm có trong catalog rồi dùng cutoff thường, không hạ ngưỡng) | Tất cả | Không bí mật. `relax` giữ để rollback. *(Chốt 2026-10-13/14, đề xuất `update/2026-10-13-search-evidence-gate-no-answer.md`, bench `eval-2026-10-14-search-evidence-gate-gold-v7.md`.)* |
+| `SEARCH_EVIDENCE_GATE` / `SEARCH_UNEXPLAINED_EMPTY` | **Mặc định `true` từ 2026-10-14** (bench gold_v7): BM25 chỉ vớt khi khớp cụm liền nhau, đúng thứ tự, giữ dấu · trả rỗng khi câu chỉ có tên lạ / vô nghĩa | Tất cả | Không bí mật. Đặt `false` để rollback, không cần build lại. |
+| `SEARCH_POI_RESOLVE` / `SEARCH_DURATION_FILTER` / `SEARCH_DURATION_MASK` / `SEARCH_EMBED_RESIDUAL` | **Mặc định `true` từ 2026-10-14** (bench gold_v7 r3): địa danh gazetteer ("Hồ Hoàn Kiếm") → lọc điểm đến · thời lượng: lọc vé/combo chỉ khi câu chỉ có thời lượng · embed phần câu còn lại sau khi tách điều kiện | Tất cả | Không bí mật. Đặt `false` để rollback. `SEARCH_ENTITY_FILTER` cũng **mặc định `true` từ 2026-10-14** (team Web chốt; câu chỉ nêu điểm vui chơi → chỉ vé/combo của điểm đó, tab khác về 0). |
+| `SEARCH_EMIT_BACKGROUND` | Mặc định `false`: phát `backgroundScore` cho nhãn "Kết quả gần nhất" | Tất cả | Không bí mật. Bật khi ngưỡng banner đã chốt bằng log production. |
 | `SEARCH_LLM_FALLBACK` / `SEARCH_LLM_FALLBACK_MIN_CONFIDENCE` / `SEARCH_LLM_FALLBACK_TIMEOUT_MS` | LLM fallback của query plan: `off` (mặc định) \| `shadow` \| `on`; ngưỡng độ tin cậy kích hoạt; hạn thời gian mỗi lượt | Tất cả | Không bí mật; dùng khoá LLM có sẵn (`LLM_API_KEY`) |
-| `WEAVIATE_URL` | Endpoint Weaviate (local: `http://localhost:8080`) | Tất cả | Không mở ra mạng ngoài ở local |
+| `WEAVIATE_URL` | Endpoint Weaviate (dev: `http://localhost:8080`; staging: URL cluster Weaviate Cloud, dạng `https://<cluster>.weaviate.cloud`) | Tất cả | Không mở ra mạng ngoài ở local |
 | `WEAVIATE_GRPC_PORT` | Cổng gRPC của Weaviate (mặc định `50051`). Search, Similar và Recommendation truy vấn top-K qua gRPC; Weaviate Cloud tự dùng cổng 443 của host `grpc-<cluster>` nên bỏ qua biến này | Tất cả | Không mở ra mạng ngoài ở local |
 | `JWT_PRIVATE_KEY_PATH` / `JWT_PUBLIC_KEY_PATH` | Khoá RS256 để FastAPI ký và kiểm JWT; public key công bố qua JWKS | Tất cả | Khoá riêng bí mật: không commit, không vào image. Chỉ FastAPI giữ |
 | `JWT_ISSUER` / `JWT_AUDIENCE` | Giá trị `iss`/`aud` bắt buộc khớp khi kiểm token | Tất cả | Không bí mật |
@@ -62,6 +76,8 @@ Hệ thống phân tách ranh giới bảo mật bằng các chuỗi kết nối
 | `BOOKING_DRAFT_TTL_MINUTES` | Thời gian hiệu lực của đơn nháp (Đặt ngay), mặc định `30` | Tất cả | Không bí mật |
 | `GUEST_BOOKING_TTL_DAYS` | Thời gian Redis giữ giỏ và đơn nháp của khách chưa đăng nhập, mặc định `3` | Tất cả | Không bí mật |
 | `BOOKING_REDIS_URL` | Redis cho giỏ và đơn nháp của khách chưa đăng nhập, dùng DB index riêng | Tất cả | Có mật khẩu; không mở ra mạng ngoài |
+| `RECOMMEND_CACHE_REDIS_URL` | Redis cho cache kết quả gợi ý cá nhân hoá, DB index riêng (ví dụ `/4`) | Tất cả | Có mật khẩu; không mở ra mạng ngoài. Để trống thì tắt cache (dev/test) |
+| `RECOMMEND_CACHE_TTL_SECONDS` | Thời gian sống của một mục cache gợi ý, mặc định `900` | Tất cả | Không bí mật |
 | `PAYMENT_MAX_FAILED_ATTEMPTS` | Số lần thẻ bị từ chối tối đa, mặc định `3` | Tất cả | Không bí mật |
 | `PUBLIC_WEB_URL` | Gốc URL web để dựng `success_url`, `cancel_url` | Tất cả | Không bí mật |
 
@@ -130,7 +146,7 @@ Hệ thống cung cấp các endpoint kiểm tra trạng thái sức khỏe đ�
   - Kết nối tới Weaviate (`WEAVIATE_URL`) và sự tồn tại của collection `Product`.
   - Model embedding e5-small đã tải và embed thử được một câu.
 - **Metrics Endpoint (`GET /metrics`):** Xuất các chỉ số độ trễ API, tỷ lệ lỗi HTTP 5xx và thời gian xử lý của Trợ lý AI.
-- **Xem DB trên monitor job cào (tab "DB"):** danh sách schema / bảng kèm số dòng; xem từng bảng có phân trang, lọc, sắp xếp; xem một dòng kèm **liên kết** theo khoá ngoại: bấm sang dòng được trỏ tới (vd. `booking_items.product_id` → sản phẩm) và xem các dòng trỏ về nó (vd. sản phẩm → `booking_items`, `cart_items`, `booking_draft_items`, `combo_items`; hồ sơ CDP → `events`, `users`, `bookings`). Quan hệ lấy từ khoá ngoại khai báo trong PostgreSQL (tự theo migration mới), cộng hai quan hệ theo quy ước không có khoá ngoại: `attributes.parentProductId` (vé / phòng → tuyến / khách sạn) và `demo:business:<sourceRef>` (vé mô phỏng → vé gốc). Dùng kết nối DB sẵn có của job, mỗi yêu cầu trong transaction chỉ đọc, `statement_timeout` 5 giây. Chỉ database `vota`; database `insider` không có (monitor không có kết nối tới nó). Monitor chưa có đăng nhập: trong lúc chờ, nên giới hạn IP nguồn cổng 8765.
+- **Xem DB trên monitor job cào (tab "DB"):** danh sách schema / bảng kèm số dòng; **ô tìm nhanh chung cho cả database**: gõ là hiện kết quả (không cần chọn bảng, không cần bấm), không phân biệt hoa thường và dấu tiếng Việt; mã dạng UUID khớp đúng ở mọi cột UUID của mọi bảng (sản phẩm, người dùng, đơn, hồ sơ và sự kiện CDP…); chuỗi khác tìm trong các cột chữ ngắn của từng bảng (tên, điểm đến, `source_ref`, email, mã đơn…), mỗi bảng tối đa 10 kết quả, mỗi bảng chịu riêng giới hạn 5 giây (bảng quá giờ báo "quá giờ", bảng khác vẫn hiện); bấm một kết quả mở dòng đó kèm liên kết như dưới đây *(chốt 2026-10-13, đề xuất `update-archive/2026-10-13-tim-nhanh-tab-db-monitor.md`)*. Xem từng bảng có phân trang, lọc (ô lọc của bảng cũng không phân biệt dấu và tìm khi đang gõ), sắp xếp; xem một dòng kèm **liên kết** theo khoá ngoại: bấm sang dòng được trỏ tới (vd. `booking_items.product_id` → sản phẩm) và xem các dòng trỏ về nó (vd. sản phẩm → `booking_items`, `cart_items`, `booking_draft_items`, `combo_items`; hồ sơ CDP → `events`, `users`, `bookings`). Quan hệ lấy từ khoá ngoại khai báo trong PostgreSQL (tự theo migration mới), cộng hai quan hệ theo quy ước không có khoá ngoại: `attributes.parentProductId` (vé / phòng → tuyến / khách sạn) và `demo:business:<sourceRef>` (vé mô phỏng → vé gốc). Dùng kết nối DB sẵn có của job, mỗi yêu cầu trong transaction chỉ đọc, `statement_timeout` 5 giây. Chỉ database `vota`; database `insider` không có (monitor không có kết nối tới nó). Monitor chưa có đăng nhập: trong lúc chờ, nên giới hạn IP nguồn cổng 8765.
 - **Sơ đồ và hoạt động DB realtime trên monitor (tab "DB"):**
   - *Sơ đồ quan hệ:* mỗi bảng / view của `cdp`, `catalog`, `app` là một ô (nhóm theo schema) kèm số dòng; đường nối là khoá ngoại (nét liền) và quan hệ quy ước (nét đứt: sản phẩm cha–con, vé mô phỏng–vé gốc); bấm ô mở bảng.
   - *Luồng dữ liệu:* ai đọc / ghi bảng nào — job cào → `cdp.products`, `catalog.combo_items`; backend nạp catalog vào bộ nhớ (chu kỳ `CATALOG_REFRESH_SECONDS`) → web / agent; agent → công cụ backend → catalog trong bộ nhớ + Weaviate; web / agent → giỏ, đơn nháp, đơn, thanh toán, đăng nhập, hội thoại (`app.*`); sự kiện hành vi qua `CdpClient` → `cdp.events`, `cdp.profiles`. Bảng ánh xạ đọc / ghi giữ trong một file khai báo của monitor, đối chiếu code backend.
@@ -143,12 +159,21 @@ Hệ thống cung cấp các endpoint kiểm tra trạng thái sức khỏe đ�
 
 ### 6.1. Quy trình phát hành phiên bản mới (Release Process)
 ```
-[Code Push] ──> [CI: Lint & Tests] ──> [DB Migration] ──> [Deploy Backend] ──> [Deploy Frontend] ──> [Smoke Test]
+[PR: CI] ──> [Merge] ──> [CD: CI gate] ──> [Build (nếu key đổi)] ──> [DB Migration] ──> [Prepare mọi VM] ──> [Switch: canary → còn lại] ──> [Verify + Smoke]
 ```
-1. Xác nhận toàn bộ automated tests và contract validation đều PASS trên CI.
-2. Thực thi migration cơ sở dữ liệu bằng `db/migrations/run.py`.
-3. Triển khai phiên bản Backend mới (hỗ trợ Zero-downtime rolling update).
-4. Triển khai phiên bản Frontend mới tương ứng.
+1. CI chạy trên mọi PR. Sau khi merge, CD gọi lại đúng CI đó (`workflow_call`) làm cổng: CI đỏ thì không build và không deploy.
+2. Thực thi migration cơ sở dữ liệu bằng `db/migrations/run.py`. Migration phải tương thích ngược với bản đang chạy (expand trước, contract ở lần phát hành sau), vì bản cũ và bản mới cùng chạy trong lúc roll.
+3. Triển khai backend và frontend trong **một** luồng CD (`staging-ha-app-cd.yml`):
+   - CD so *content key* của từng thành phần (hash các thư mục đầu vào của image) với bản đang chạy (last-good). Chỉ thành phần đổi mới qua CI và build. Image có key đã tồn tại thì không build lại.
+   - Run mới nhất luôn chứa trọn mọi thay đổi chưa deploy, nên run đang chờ bị thay thế mà không mất thay đổi nào. Khoá `concurrency: staging-ha-app` đặt ở mức workflow và giữ `flock` trên VM.
+   - Image mong muốn được ghi vào *all-instances config* của MIG (metadata `vota-backend-image`, `vota-frontend-image`), để VM do autoscaler hoặc autohealing tạo khởi động đúng bản. Deploy ứng dụng **không chạy Terraform**; Terraform chỉ chạy ở `staging-ha-infra-cd.yml`.
+   - Roll theo hai pha. Pha `prepare` chạy song song trên mọi VM: dựng slot mới, đợi `/health/ready`, chép `/_next/static` vào kho tĩnh của proxy. Pha `switch`: đổi proxy trên VM đầu trước (canary), rồi các VM còn lại song song.
+   - Kho tĩnh giữ asset của các phiên bản gần đây, để trình duyệt đang chạy bản cũ không bị 404 chunk.
+   - Cổng sẵn sàng: mọi VM chạy đúng image đích, LB báo đủ VM HEALTHY, và `/health/ready` qua public endpoint đạt 3 lần liên tiếp (cách 5 s).
+   - Lỗi hoặc run bị huỷ thì đưa image mong muốn và các VM về last-good.
+
+   Quyết định này áp dụng cho staging-HA; production chưa có quyết định riêng. *(Theo `update-archive/2026-10-13-cd-staging-ha-mot-luong-hai-pha.md`, thay mô tả ngày 2026-10-12; chi tiết vận hành ở `docs/guide/van-hanh-cd-staging-ha.md`.)*
+4. Frontend đi cùng luồng ở bước 3; không còn CD frontend riêng.
 5. Thực hiện kịch bản Smoke Test trên Staging/Production để xác nhận luồng tìm kiếm và đặt hàng hoạt động bình thường.
 
 ### 6.2. Kế hoạch hoàn tác khi phát sinh sự cố (Rollback Strategy)
@@ -159,3 +184,17 @@ Khi phát hiện lỗi nghiêm trọng sau phát hành:
 2. **Rollback Dữ liệu (Data Rollback):**
    - Nếu migration tạo ra lỗi dữ liệu, thực thi script hoàn tác tương ứng `NNN_ten_thay_doi.down.sql`.
    - Trong trường hợp lỗi đơn hàng giao dịch, sử dụng cơ chế bù trừ sự kiện của CDP (`cancel_purchase`) để bảo toàn tính toàn vẹn của hồ sơ khách hàng.
+
+### 6.3. Hoàn tác có điều kiện khi di trú DB `staging-ha`
+
+Vì primary cũ không bị promote hay xoá trong giai đoạn dựng cụm, do đó có thể đưa `db.vota.internal` về IP primary cũ nếu kiểm tra leader Patroni, dữ liệu hoặc replication không đạt. Việc này chỉ an toàn trước khi mở lại ghi trên primary cũ: mọi ghi đã nhận sau cutover trên Patroni không tự quay ngược về primary cũ, nên phải giữ cửa sổ bảo trì và ghi nhận rõ điểm dữ liệu trước khi rollback.
+
+Lệnh rollback DNS phải dùng đúng private zone của staging-ha và được kiểm tra từ một app VM trước khi mở lại ứng dụng:
+
+```bash
+gcloud dns record-sets update db.vota.internal. \
+  --zone=vota-ha-internal --type=A --ttl=30 \
+  --rrdatas=<old-primary-private-ip>
+```
+
+Không dùng state `infra/staging` của staging cũ (đã gỡ khỏi repo) để rollback Patroni; hai state có ranh giới riêng.

@@ -71,8 +71,17 @@ metrics:
     hostmetrics:
       type: hostmetrics
       collection_interval: 60s
+  processors:
+    # Metric theo từng tiến trình chiếm ~83% lượng metric agent được tính phí (2026-10-12). Autoscaler và dashboard
+    # không dùng; cpu/memory/disk/network của máy vẫn giữ. Tài liệu: monitoring/settings/disable (Ops Agent >= 2.0.0).
+    metrics_filter:
+      type: exclude_metrics
+      metrics_pattern:
+        - agent.googleapis.com/processes/*
   service:
     pipelines:
       default_pipeline:
         receivers:
           - hostmetrics
+        processors:
+          - metrics_filter

@@ -23,6 +23,8 @@ async function mockApi(page: Page) {
 test('Home loads one catalog request up front and the rest only when scrolled to', async ({ page }) => {
   const requests = await mockApi(page);
   await page.goto('/');
+  // Request catalog chỉ phát sau hydrate; runner chậm có thể đạt networkidle trước đó, nên chờ request rồi mới kiểm số lượng.
+  await expect.poll(() => requests.filter((p) => p.endsWith('/products')).length).toBeGreaterThan(0);
   await page.waitForLoadState('networkidle');
   expect(requests.filter((p) => p.endsWith('/products'))).toHaveLength(1);
   expect(requests.filter((p) => p.endsWith('/recommendations'))).toHaveLength(0);
@@ -65,6 +67,8 @@ test('header groups open by keyboard and lead to the category pages', async ({ p
 test('a header menu lists services only: no popular destinations, no API call, five services under "Tất cả dịch vụ"', async ({ page }) => {
   const requests = await mockApi(page);
   await page.goto('/');
+  // Chờ request catalog của trang chủ (phát sau hydrate) để thanh nhóm đã thay nút render sẵn bằng nút của client trước khi bấm.
+  await expect.poll(() => requests.filter((p) => p.endsWith('/products')).length).toBeGreaterThan(0);
   await page.waitForLoadState('networkidle');
   const destinationCalls = () => requests.filter((p) => p.endsWith('/destinations')).length;
   const before = destinationCalls();
@@ -106,8 +110,10 @@ test('header controls share one 40px height and the header has no assistant entr
 test('the hotels search sheet shows results on /hotels itself, not on /search', async ({ page }) => {
   const requests = await mockApi(page);
   await page.goto('/hotels');
+  // Ô trống hiện khách sạn nổi tiếng; điểm đến chỉ hiện khi gõ (PRD update-archive/2026-10-13-san-bay-va-khach-san-noi-tieng.md).
   await page.getByRole('combobox').click();
-  await page.getByRole('option', { name: 'Nha Trang' }).click();
+  await page.getByRole('combobox').fill('Nha Trang');
+  await page.getByRole('option', { name: 'Nha Trang', exact: true }).click();
   await page.getByRole('button', { name: 'Tìm kiếm' }).click();
 
   // Đề xuất PRD update-archive/2026-10-07-tim-kiem-tai-trang-danh-muc.md: ở lại trang danh mục, kết quả hiện ngay dưới tấm tìm kiếm.

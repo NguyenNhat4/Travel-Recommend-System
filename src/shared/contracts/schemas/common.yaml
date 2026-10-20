@@ -71,7 +71,9 @@ SearchMode:
     R_dense = top-K dense có score >= cutoff (như ANN). R_lex = hit BM25 (trên
     nameAscii/searchTextAscii đã fold dấu) có rank <= diagnostics.lexicalK, score
     trong [diagnostics.lexicalCutoff, cutoff) và tên chứa >= diagnostics.lexicalMinCoverage
-    token của truy vấn.
+    token của truy vấn. Khi diagnostics.evidenceGate = true (1.30.0): R_lex còn đòi tên khớp
+    ít nhất một cặp âm tiết liền nhau, đúng thứ tự, giữ dấu với câu; RRF chỉ cộng hạng BM25 của
+    unit có cặp đó trong tên hoặc mô tả. Khi diagnostics.filterOnly = true: R = top-K của F, không cutoff.
     results sắp theo RRF (k = diagnostics.rrfK) nên score — vẫn là cosine đã clamp —
     KHÔNG đơn điệu trong một trang; đếm phần vớt ở diagnostics.lexicalCount.
     approximate/totalExact/facetsExact như ANN. Backend tắt hybrid (SEARCH_HYBRID=false)
@@ -181,6 +183,8 @@ ErrorCode:
   - DIRECT_BOOKING_ONLY
   - BOOKING_DRAFT_NOT_FOUND
   - BOOKING_DRAFT_EXPIRED
+  # --- 1.14.0: PostgreSQL không với tới được (503, retryable) ---
+  - DATABASE_UNAVAILABLE
 
 ValidationFieldError:
   type: object
@@ -230,7 +234,8 @@ ErrorResponse:
           type: boolean
           description: >-
             true chỉ với SEARCH_UNAVAILABLE, INTERNAL_ERROR, LLM_UNAVAILABLE,
-            TOO_MANY_ATTEMPTS, CDP_UNAVAILABLE và PAYMENT_PROVIDER_UNAVAILABLE.
+            TOO_MANY_ATTEMPTS, CDP_UNAVAILABLE, PAYMENT_PROVIDER_UNAVAILABLE và
+            DATABASE_UNAVAILABLE (503, kèm Retry-After; áp dụng cho mọi endpoint cần DB).
             Mọi mã còn lại là false — thử lại nguyên request cho cùng kết quả.
         requestId:
           type: string

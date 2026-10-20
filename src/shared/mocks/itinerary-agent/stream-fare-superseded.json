@@ -1,0 +1,141 @@
+[
+  {
+    "event": "run.started",
+    "data": {
+      "runId": "fixture-run",
+      "requestId": "fixture-request"
+    }
+  },
+  {
+    "event": "node.completed",
+    "data": {
+      "sequence": 1,
+      "nodeId": "precheck",
+      "outcome": "completed",
+      "message": "internal debug",
+      "durationMs": 100,
+      "progress": {
+        "turnKind": "fare",
+        "steps": [
+          "understand",
+          "search"
+        ],
+        "completedStep": "understand"
+      }
+    }
+  },
+  {
+    "event": "node.activity",
+    "data": {
+      "nodeId": "run_jobs",
+      "code": "SEARCHING_FLIGHTS",
+      "origin": "TP. Hồ Chí Minh",
+      "destination": "Hà Nội"
+    }
+  },
+  {
+    "event": "node.completed",
+    "data": {
+      "sequence": 1,
+      "nodeId": "run_jobs",
+      "outcome": "completed",
+      "message": "internal debug",
+      "durationMs": 100,
+      "progress": {
+        "completedStep": "search",
+        "searches": [
+          {
+            "groupId": "job:1",
+            "kind": "flight",
+            "status": "answered",
+            "scope": {
+              "origin": "TP. Hồ Chí Minh",
+              "destination": "Hà Nội"
+            },
+            "counts": {
+              "received": 8,
+              "inScope": 8,
+              "eligible": 8,
+              "dropped": {},
+              "outOfScope": {},
+              "sourceMore": false,
+              "sourceTotal": 400,
+              "chosen": 2
+            }
+          }
+        ]
+      }
+    }
+  },
+  {
+    "event": "node.completed",
+    "data": {
+      "sequence": 1,
+      "nodeId": "run_jobs",
+      "outcome": "completed",
+      "message": "internal debug",
+      "durationMs": 100,
+      "progress": {
+        "searches": [
+          {
+            "groupId": "job:1",
+            "kind": "flight",
+            "status": "superseded",
+            "scope": {
+              "origin": "TP. Hồ Chí Minh",
+              "destination": "Hà Nội"
+            },
+            "counts": {
+              "received": 8,
+              "inScope": 8,
+              "eligible": 8,
+              "dropped": {},
+              "outOfScope": {},
+              "sourceMore": false,
+              "sourceTotal": 400,
+              "chosen": 2
+            }
+          },
+          {
+            "groupId": "job:2",
+            "kind": "flight",
+            "status": "answered",
+            "scope": {
+              "origin": "TP. Hồ Chí Minh",
+              "destination": "Hà Nội"
+            },
+            "counts": {
+              "received": 8,
+              "inScope": 8,
+              "eligible": 8,
+              "dropped": {},
+              "outOfScope": {},
+              "sourceMore": false,
+              "sourceTotal": 400,
+              "chosen": 2
+            }
+          }
+        ],
+        "notices": [
+          {
+            "code": "LOOKUP_FAILED",
+            "groupId": "job:1",
+            "kind": "flight"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "event": "run.completed",
+    "data": {
+      "runId": "fixture-run",
+      "httpStatus": 200,
+      "response": {
+        "status": "NEEDS_CLARIFICATION",
+        "conversationId": "sample-conv",
+        "question": "Bạn muốn khám phá thêm không?"
+      }
+    }
+  }
+]

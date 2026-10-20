@@ -33,6 +33,14 @@ class PlanCriteriaTests(unittest.TestCase):
         self.assertEqual(len(criteria(result)), 1)
         self.assertIn('tổng quãng đường', criteria(result)[0])
 
+    def test_the_budget_criteria_is_one_short_sentence(self):
+        """Góp ý UX 12/10: đoạn tiêu chí có ngân sách dài 4 dòng; AC-AGT-04 chỉ cần một câu nêu tiêu chí."""
+        text = criteria(composition.composed(square_trip(budget=20_000_000)))[0]
+        self.assertIn('tổng quãng đường', text)
+        self.assertIn('ngân sách', text)
+        self.assertEqual(text.count('.'), 1)
+        self.assertLessEqual(len(text), 160)
+
     def test_english_wording(self):
         result = composition.composed(state(product('a', 10.40, 103.95), language='en'))
         self.assertIn('total travel', criteria(result)[0])

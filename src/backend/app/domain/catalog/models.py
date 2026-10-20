@@ -1,9 +1,9 @@
 """Entity thuần cho catalog. Không import FastAPI/DB/numpy."""
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from datetime import date
-import math
 from typing import Any
 
 TAXONOMIES = ("hotel", "flight", "attraction", "combo", "golf")
@@ -14,6 +14,16 @@ RATING_SOURCES = (
     ("tripAdvisorRating", None, "tripAdvisorReviewCount"),
     ("rating", "ratingScale", "reviewCount"),
 )
+
+
+def entry_policy(taxonomy: str, price: float | None, ticketed: bool | None = None) -> str:
+    """Phí vào cửa, gồm giả định tham quan tự do được chốt 13/10/2026; không đổi giá nguồn."""
+    if taxonomy in ("attraction", "golf"):
+        if price == 0 or ticketed is False:
+            return "free"
+        if price is None and ticketed is not True:
+            return "assumed_free"
+    return "unknown" if price is None else "paid"
 
 
 def _date(value: Any) -> date | None:
@@ -38,7 +48,7 @@ class Product:
     image_url: str | None = None
 
     @classmethod
-    def from_cdp(cls, row: dict) -> "Product":
+    def from_cdp(cls, row: dict) -> Product:
         """row = một dòng products.jsonl (13 trường CDP, camelCase)."""
         return cls(
             product_id=row["productId"], name=row["name"], taxonomy=row["taxonomy"], destination=row["destination"],
@@ -95,6 +105,10 @@ class Product:
         if self.taxonomy == "combo":
             return "PER_PACKAGE"
         return "PER_PERSON"
+
+    @property
+    def entry_policy(self) -> str:
+        return entry_policy(self.taxonomy, self.unit_price, self.attributes.get("ticketed"))
 
     # --- vai trò suy ra (cùng quy tắc với view catalog.product_meta)
     @property

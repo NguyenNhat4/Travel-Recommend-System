@@ -1,4 +1,4 @@
-import asyncio, json, os, sys, pathlib
+import asyncio, hashlib, json, os, sys, pathlib
 import numpy as np, pytest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
 
@@ -36,7 +36,7 @@ class FakeEmbedder:
     """Vector giả, xác định theo hash text — đủ để test luồng, không test chất lượng."""
     name = "fake"
     def _v(self, t):
-        r = np.random.default_rng(abs(hash(t)) % (2**32)); v = r.normal(size=64).astype(np.float32); return v / np.linalg.norm(v)
+        r = np.random.default_rng(int.from_bytes(hashlib.sha256(t.encode("utf-8")).digest()[:4], "big")); v = r.normal(size=64).astype(np.float32); return v / np.linalg.norm(v)
     def embed_docs(self, texts): return np.stack([self._v(t) for t in texts])
     def embed_query(self, q): return self._v(q)
 
@@ -61,7 +61,7 @@ ROWS = [
 EVENTS = [
  {"cdpUserId":"P1","eventName":"product_view","productId":"A1","timestamp":"2026-09-15T10:00:00Z","eventGroupId":"T1"},
  {"cdpUserId":"P1","eventName":"purchase","productId":"R1","timestamp":"2026-09-18T10:00:00Z","usingDate":"2026-10-05","eventGroupId":"T1"},
- {"cdpUserId":"P3","eventName":"purchase","productId":"R3","timestamp":"2026-02-01T10:00:00Z","usingDate":"2026-02-20","eventGroupId":"T0"},
+ {"cdpUserId":"P3","eventName":"purchase","productId":"R3","timestamp":"2025-08-01T10:00:00Z","usingDate":"2025-08-20","eventGroupId":"T0"},   # > 365 ngày: dormant (09/10)
  {"cdpUserId":"X","eventName":"purchase","productId":"R3","timestamp":"2025-09-15T10:00:00Z","usingDate":"2025-10-01","eventGroupId":"c"},
  {"cdpUserId":"Y","eventName":"purchase","productId":"FL1","timestamp":"2025-08-20T10:00:00Z","usingDate":"2025-09-05","eventGroupId":"e"},
 ]

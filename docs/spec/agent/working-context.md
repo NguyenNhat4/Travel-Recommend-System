@@ -28,7 +28,8 @@ Chỉ đọc hàng khớp với task hiện tại. Không cần nạp các nhán
 |---|---|---|
 | Hiểu hoặc đổi luật nghiệp vụ (hỏi lại, lọc, vé, xếp lịch, tiền, diễn giải) | đúng một file trong `nghiep-vu/` theo mục lục [nghiep-vu/README.md](nghiep-vu/README.md) | file ở mục "Code liên quan" của file đó |
 | Hiểu hoặc đổi topology/routing | `langgraph-nodes.md` | `agents/graph.py`, `agents/routing.py`, `agents/state.py` |
-| Tune classify/clarify/converse hoặc prompt | `langgraph-nodes.md`, phần hội thoại trong spec Itinerary | `agents/steps/prompts.py`, `agents/steps/classification.py`, `agents/steps/conversation.py`, `infrastructure/llm/` |
+| Tune orchestrator (hiểu câu, chọn việc, chọn thẻ, hỏi lại, câu vé) | `docs/prd/architecture.md` §3 (đoạn orchestrator) | `agents/steps/orchestration.py`, `agents/steps/jobs.py`, `agents/steps/fares.py`, `domain/itinerary/gatekeeper.py`, `ORCHESTRATOR_PROMPT` trong `agents/steps/prompts.py` |
+| Tune `extract`, `clarify` hoặc prompt nhánh lập lịch | `langgraph-nodes.md`, phần hội thoại trong spec Itinerary | `agents/steps/prompts.py`, `agents/steps/classification.py` (`extract`), `agents/steps/conversation.py` (`clarify`), `infrastructure/llm/` |
 | Tune tool planning, Search/Recommendation/Similar | spec Itinerary §2 (Similar: §2.5), `src/backend/README.md` | `agents/steps/tool_planning.py`, `agents/tools/itinerary_gateway.py`, `application/itinerary/tool_contracts.py`, `application/itinerary/engine_tools.py` |
 | Tune lọc candidate/grounding | `langgraph-nodes.md` §5, spec Itinerary §5 | `application/itinerary/retrieval.py`, `domain/itinerary/planning.py` |
 | Tune Search ranking | handbook §12 và spec Backend mục Search | `application/search/use_cases.py`, `domain/search/`, `infrastructure/vectors/` |
@@ -41,6 +42,9 @@ Chỉ đọc hàng khớp với task hiện tại. Không cần nạp các nhán
 
 ## 3. Bản đồ runtime hiện hành
 
+Orchestrator là luồng duy nhất (chốt 13/10/2026, `docs/prd/architecture.md` §3); luồng phân loại cũ và cờ
+`ITINERARY_ORCHESTRATOR` đã gỡ.
+
 ```text
 POST /api/v1/assistant/itineraries hoặc /stream
   -> api/v1/routes/assistant.py        nhận request, validate, gọi use case qua Depends
@@ -50,15 +54,22 @@ POST /api/v1/assistant/itineraries hoặc /stream
                                       port; main.py nối agents/runtime_dependencies.py vào theo request
   -> agents/graph.py                   topology LangGraph và dependency injection
   -> agents/nodes.py                   hàm của từng node (luật chi tiết ở agents/steps/)
-       intake -> classify
-         |- thiếu dữ liệu -> clarify -> finalize
-         |- hội thoại/refusal -> converse -> finalize
-         `- đủ dữ liệu -> tool -> evaluate
-                              |- candidate hợp lệ -> filter -> compose -> narrate -> finalize
-                              |     (filter: luật cùng tên + LLM chỉ ra cặp điểm tham quan trùng)
-                              |- lỗi tạm thời -> retry -> tool
-                              |- cần hỏi điều kiện -> clarify -> finalize
-                              `- lỗi vĩnh viễn -> dead_letter -> finalize
+       intake -> precheck (luật trước LLM, không gọi LLM)
+         |- guardrail/tin rác -> converse (câu cố định) -> finalize
+         |- nút vé do code tạo -> run_jobs
+         |- chọn phương án, đổi vé/khách sạn bằng luật, đồng ý lập lịch có sẵn -> extract | tool | clarify
+         `- còn lại -> orchestrate (LLM, steps/orchestration.py)
+              |- answer/ask -> gatekeep -> finalize
+              |- execute -> run_jobs (steps/jobs.py) -> orchestrate | gatekeep
+              `- plan (đồng ý đã kiểm) -> extract
+                   |- chưa đồng ý -> gatekeep (lời mời lập lịch)
+                   |- thiếu dữ liệu -> clarify -> finalize
+                   `- đủ dữ liệu -> tool -> evaluate
+                        |- candidate hợp lệ -> filter -> compose -> narrate -> finalize
+                        |     (filter: luật cùng tên + LLM chỉ ra cặp điểm tham quan trùng)
+                        |- lỗi tạm thời -> retry -> tool
+                        |- cần hỏi điều kiện -> clarify -> finalize
+                        `- lỗi vĩnh viễn -> dead_letter -> finalize
   -> agents/tools/itinerary_gateway.py allowlist, validate và dispatch tool
   -> application/ports/itinerary_tools.py
                                       interface Agent phụ thuộc
@@ -76,6 +87,45 @@ POST /api/v1/assistant/itineraries hoặc /stream
 
 Kết quả tool quay lại `retrieval.py` để gộp, hậu kiểm và ghi nguồn; `planning.py` xếp lịch tất định;
 `finalize` kiểm OpenAPI, grounding và lưu conversation trước khi trả response.
+
+Orchestrator (chốt 12/10, luồng duy nhất từ 13/10): `precheck` giữ luật đầu vào (không LLM phân loại), chuyển hội thoại tới
+`steps/orchestration.py` (`orchestrate` → `run_jobs` → `gatekeep`). `steps/jobs.py` thực thi qua port, domain
+`gatekeeper.py` kiểm nguồn/phạm vi/số/thẻ; `steps/shown.py` ghi trí nhớ từ response ở finalize. Model riêng nằm tại
+`app.state.itinerary_orchestrator_llm`, không vào state. Nhánh lập lịch và narrate giữ nguyên.
+Phanh của lượt có mã nguyên nhân (`steps/limits.py`: hết giờ, trần vòng, trần tool, model hoặc tool quá hạn), ghi ở
+metadata event, `turn_limit_reason` và log `itinerary.turn_limit`. B11 (bộ đo so sánh) bỏ; B12 (chuyển mặc định) đã thay
+bằng việc gỡ luồng cũ; B13 (gỡ regex) chưa làm.
+
+Tiến trình 1.27.0 (AC-AGT-09): `LangGraphItineraryPlanner.astream` phát state/custom; `graph.timed` phát activity, gắn progress vào event. Collector `steps/progress.py` chỉ sống trong stream của request, số đếm từ `application/itinerary/progress_counts.py` tại các bộ lọc. Không vào working memory hay payload LLM. Route chuyển thành `node.activity`, `node.completed.progress` (không còn `run.preview`, chốt 2026-10-14); Web gộp theo nhóm và viết nhãn, chẩn đoán mức 1 tại Shift+D. Snapshot vẫn dùng `ainvoke`, không ghi lại cho thay đổi tiến trình.
+
+### 3.1. Assistant v2 (orc tự chủ, chạy song song v1)
+
+```text
+POST /api/v2/assistant/itineraries hoặc /stream
+  -> api/v2/routes/assistant.py        validate request, rate limit, SSE
+  -> application/itinerary/v2_use_cases.py
+                                      khoá lượt (clientTurnId), nút server đã cấp, ghi đúng một lần
+  -> agents/orc_v2.py                  OrcV2Runtime + graph: precheck → decide ⇄ dispatch → guard; PROMPT
+       decide   bind_tools + assistant/tool messages nối thêm trong lượt; schema từng function tại orc_contracts.py
+       dispatch application/itinerary/orc_dispatch.py: chạy đúng tool orc gọi, không trần request nguồn (chỉ deadline),
+                lookup_flights ở flight_lookup.py, plan_itinerary tính/kiểm buổi bằng domain/itinerary/draft_validation.py
+       guard    domain/itinerary/orc_guardrails.py kiểm câu trả lời; v2_final.py dựng response theo contract v2
+  -> infrastructure/persistence/assistant_v2_store.py  working memory 24h (memory/Redis), mở tiếp hội thoại v1
+```
+
+Giới hạn mỗi lượt: 4 lượt gọi tool nghiệp vụ (không giới hạn số tool mỗi lượt), không trần request nguồn (chỉ deadline), 6 lần gọi model, sửa câu trả lời 1 lần.
+Năm tool: find_products (có query Search, không query Catalog, khách sạn kèm refs phòng), get_products (tối đa 10 refs,
+lỗi từng ref trả riêng), recommend (like_ref gọi Similar), lookup_flights, plan_itinerary. update_trip cần evidence và
+respond là final có cấu trúc, không tính lượt nghiệp vụ. Hết lượt chỉ bind respond. Request nguồn sau deadline trả TIME_LIMIT.
+OpenAI reasoning dùng Responses API cho function tools, giữ JSON-schema v1; Gemini/Anthropic ép any và kiểm local.
+ToolMessage chỉ gửi view sản phẩm mới/thay đổi; remaining báo quota, request vé tối đa năm. Ngày hiện tại ở payload,
+không đổi prefix system. Chuyến N ngày tối đa N−1 đêm; số phòng theo tổng khách/priceAdults hoặc sức chứa có cảnh báo.
+System prompt kèm tên điểm đến của catalog (`application/itinerary/destination_names.py`, lấy qua `list_destinations`,
+cache 10 phút trong process, không tính vào ngân sách lượt) để orc dùng đúng tên catalog thay cách khách viết ("Sài Gòn",
+"HCM" → "TP. Hồ Chí Minh"); không lấy được thì prompt không kèm danh sách và orc dùng tên khách nói; không còn tool Destinations ở v2.
+Mã sản phẩm `p1, p2…` và mã lời gọi `c1, c2…` do server cấp; số liệu trong lời đáp đi qua đoạn `fact`, tên sản phẩm qua
+đoạn `product` (code điền tên và đặt thẻ). Test: `tests/unit/agents/test_orc_*.py`, `tests/unit/application/test_assistant_v2_*.py`,
+`tests/unit/domain/test_orc_*.py`, `tests/contract/test_assistant_v2_contract.py`; model giả ở `tests/fakes/orc_tools.py`.
 
 ## 4. Trách nhiệm các lớp — dùng để tránh sửa sai chỗ
 
@@ -98,6 +148,24 @@ Kết quả tool quay lại `retrieval.py` để gộp, hậu kiểm và ghi ngu
 
 Bằng chứng tối thiểu: state trước/sau node, node path, tool name/arguments, final status. Không dùng chất
 lượng ranking để kết luận prompt tốt hoặc xấu.
+
+**Snapshot hành vi: đã gỡ test** (chốt 2026-10-13, `docs/prd/update-archive/2026-10-13-bo-kiem-tra-snapshot-hanh-vi.md`).
+`tests/unit/agents/test_behavior_snapshot.py` không còn; không còn lưới phát lại offline để báo đổi hành vi orchestrator.
+`behavior_snapshot/` vẫn còn: `harness.py` và `record.py` do `test_turn_limits.py` và công cụ ghi lại dùng. Cassette và
+`snapshot.json` là dữ liệu ghi lại, không còn được kiểm tự động. Khi cần ghi lại bằng `inprocess` và LLM thật (cần Postgres,
+Weaviate local), chỉ những kịch bản bị ảnh hưởng, rồi đọc diff của `snapshot.json` trước khi commit:
+
+```bash
+HF_HUB_OFFLINE=1 .venv/bin/python -m src.backend.tests.unit.agents.behavior_snapshot.record --only X01-plan-doi,v5-SC-A
+```
+
+- Không `--fresh`: lời gọi LLM có payload không đổi được phát lại từ cassette, chỉ payload mới gọi model thật. `--fresh`
+  ghi lại toàn bộ hai cassette; chỉ dùng khi đổi kiến trúc hay model.
+- Lượt hết giờ hoặc model/tool thật quá hạn, lỗi (`TIME_LIMIT`, `MODEL_TIMEOUT`, `MODEL_ERROR`, `TOOL_TIMEOUT`) không
+  phát lại được: `record` ghi lại kịch bản đó tối đa 3 lần rồi dừng và báo, không lưu.
+- Baseline hiện hành và bảng so với luồng cũ: `src/evaluation/reports/eval-2026-10-13-d3-snapshot-orchestrator.md`.
+
+Chi tiết: `src/backend/tests/unit/agents/behavior_snapshot/harness.py`, plan `docs/plan/2026-10-11-refactor-agent-giu-hanh-vi.md`.
 
 ### B. Tune retrieval/recommendation
 

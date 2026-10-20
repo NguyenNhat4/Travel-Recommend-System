@@ -170,7 +170,7 @@ export interface paths {
         };
         /**
          * Danh sách sản phẩm
-         * @description Không có parentProductId: chỉ trả tầng cha (search unit — property, route và taxonomy không phân tầng), giống /search và /recommendations. Có parentProductId: trả các sản phẩm tầng con (hạng phòng, chuyến bay cụ thể) của sản phẩm cha đó, là đơn vị đặt chỗ mà Web thêm vào giỏ; sort=popular với tầng con xếp theo giá tăng dần. parentProductId không có trong catalog hoặc không có tầng con thì trả results rỗng.
+         * @description Không có parentProductId: chỉ trả tầng cha (search unit — property, route và taxonomy không phân tầng), giống /search và /recommendations. Có parentProductId: trả các sản phẩm tầng con (hạng phòng, chuyến bay cụ thể) của sản phẩm cha đó, là đơn vị đặt chỗ mà Web thêm vào giỏ; sort=popular với tầng con xếp theo giá tăng dần. parentProductId không có trong catalog hoặc không có tầng con thì trả results rỗng. Response 200 có `Cache-Control: public, max-age=60, s-maxage=300`: danh mục không đọc người dùng nên giống nhau cho mọi người, trình duyệt giữ 60 giây và lớp cache trung gian giữ 5 phút. Lỗi 400 không có header này. diversify=taxonomy (1.27.0) trộn danh sách theo nhóm loại; kệ Phổ biến tab Tất cả ở Home dùng tham số này.
          */
         get: operations["listProducts"];
         put?: never;
@@ -188,7 +188,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Chi tiết sản phẩm */
+        /**
+         * Chi tiết sản phẩm
+         * @description Response 200 có `Cache-Control: public, max-age=60, s-maxage=300` (chi tiết không đọc người dùng). 404 không có header này.
+         */
         get: operations["getProduct"];
         put?: never;
         post?: never;
@@ -205,7 +208,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Sản phẩm tương tự theo độ gần vector sản phẩm */
+        /**
+         * Sản phẩm tương tự theo độ gần vector sản phẩm
+         * @description Response 200 có `Cache-Control: public, max-age=60, s-maxage=300` (vector và danh sách tương tự không đọc người dùng). 400, 404, 409 và 503 không có header này.
+         */
         get: operations["getSimilarProducts"];
         put?: never;
         post?: never;
@@ -580,7 +586,7 @@ export interface paths {
         put?: never;
         /**
          * Tạo hoặc tiếp tục lịch trình và stream tiến trình graph
-         * @description SSE chỉ phát topology, sự kiện node an toàn và kết quả cuối; không phát raw state, prompt hoặc token.
+         * @description SSE phát topology, node.activity, node.completed với progress tuỳ chọn và kết quả cuối. Progress cập nhật theo groupId; số cộng dồn do backend tính. run.preview giữ trong schema cho client cũ nhưng server không còn phát (2026-10-14). Không phát raw state, prompt hoặc token.
          */
         post: operations["streamItinerary"];
         delete?: never;
@@ -695,13 +701,13 @@ export interface components {
         };
         ReferenceCode: string;
         /** @enum {string} */
-        ErrorCode: "VALIDATION_ERROR" | "CART_EMPTY" | "INVALID_CREDENTIALS" | "INVALID_TOKEN" | "TOKEN_EXPIRED" | "PRODUCT_NOT_FOUND" | "CART_ITEM_NOT_FOUND" | "BOOKING_NOT_FOUND" | "NOT_FOUND" | "EMAIL_ALREADY_EXISTS" | "PRODUCT_UNAVAILABLE" | "PRICE_CHANGED" | "DATE_OUT_OF_RANGE" | "SEARCH_UNAVAILABLE" | "INTERNAL_ERROR" | "INVALID_TRIP_DURATION" | "CONVERSATION_NOT_FOUND" | "UNSUPPORTED_DESTINATION" | "LLM_UNAVAILABLE" | "ITINERARY_VALIDATION_FAILED" | "AVAILABILITY_NOT_FOUND" | "AVAILABILITY_EXPIRED" | "NO_RATE_PLAN" | "MIN_STAY_NOT_MET" | "CLOSED_ON_ARRIVAL" | "CLOSED_ON_DEPARTURE" | "PARTIALLY_AVAILABLE" | "PRODUCT_NOT_INDEXED" | "UNAUTHENTICATED" | "SESSION_EXPIRED" | "CSRF_FAILED" | "MFA_REQUIRED" | "MFA_INVALID" | "EMAIL_NOT_VERIFIED" | "TOO_MANY_ATTEMPTS" | "CAPTCHA_REQUIRED" | "CAPTCHA_FAILED" | "WEAK_PASSWORD" | "INVALID_VERIFICATION_TOKEN" | "OAUTH_EMAIL_UNVERIFIED" | "OAUTH_ALREADY_LINKED" | "CDP_UNAVAILABLE" | "BOOKING_PENDING_PAYMENT" | "BOOKING_ALREADY_PAID" | "BOOKING_NOT_CANCELLABLE" | "PAYMENT_PROVIDER_UNAVAILABLE" | "INVALID_WEBHOOK_SIGNATURE" | "DIRECT_BOOKING_ONLY" | "BOOKING_DRAFT_NOT_FOUND" | "BOOKING_DRAFT_EXPIRED";
+        ErrorCode: "VALIDATION_ERROR" | "CART_EMPTY" | "INVALID_CREDENTIALS" | "INVALID_TOKEN" | "TOKEN_EXPIRED" | "PRODUCT_NOT_FOUND" | "CART_ITEM_NOT_FOUND" | "BOOKING_NOT_FOUND" | "NOT_FOUND" | "EMAIL_ALREADY_EXISTS" | "PRODUCT_UNAVAILABLE" | "PRICE_CHANGED" | "DATE_OUT_OF_RANGE" | "SEARCH_UNAVAILABLE" | "INTERNAL_ERROR" | "INVALID_TRIP_DURATION" | "CONVERSATION_NOT_FOUND" | "UNSUPPORTED_DESTINATION" | "LLM_UNAVAILABLE" | "ITINERARY_VALIDATION_FAILED" | "AVAILABILITY_NOT_FOUND" | "AVAILABILITY_EXPIRED" | "NO_RATE_PLAN" | "MIN_STAY_NOT_MET" | "CLOSED_ON_ARRIVAL" | "CLOSED_ON_DEPARTURE" | "PARTIALLY_AVAILABLE" | "PRODUCT_NOT_INDEXED" | "UNAUTHENTICATED" | "SESSION_EXPIRED" | "CSRF_FAILED" | "MFA_REQUIRED" | "MFA_INVALID" | "EMAIL_NOT_VERIFIED" | "TOO_MANY_ATTEMPTS" | "CAPTCHA_REQUIRED" | "CAPTCHA_FAILED" | "WEAK_PASSWORD" | "INVALID_VERIFICATION_TOKEN" | "OAUTH_EMAIL_UNVERIFIED" | "OAUTH_ALREADY_LINKED" | "CDP_UNAVAILABLE" | "BOOKING_PENDING_PAYMENT" | "BOOKING_ALREADY_PAID" | "BOOKING_NOT_CANCELLABLE" | "PAYMENT_PROVIDER_UNAVAILABLE" | "INVALID_WEBHOOK_SIGNATURE" | "DIRECT_BOOKING_ONLY" | "BOOKING_DRAFT_NOT_FOUND" | "BOOKING_DRAFT_EXPIRED" | "DATABASE_UNAVAILABLE";
         ErrorResponse: {
             error: {
                 code: components["schemas"]["ErrorCode"];
                 /** @description Tiếng Việt, hiển thị được trực tiếp cho người dùng. */
                 message: string;
-                /** @description true chỉ với SEARCH_UNAVAILABLE, INTERNAL_ERROR, LLM_UNAVAILABLE, TOO_MANY_ATTEMPTS, CDP_UNAVAILABLE và PAYMENT_PROVIDER_UNAVAILABLE. Mọi mã còn lại là false — thử lại nguyên request cho cùng kết quả. */
+                /** @description true chỉ với SEARCH_UNAVAILABLE, INTERNAL_ERROR, LLM_UNAVAILABLE, TOO_MANY_ATTEMPTS, CDP_UNAVAILABLE, PAYMENT_PROVIDER_UNAVAILABLE và DATABASE_UNAVAILABLE (503, kèm Retry-After; áp dụng cho mọi endpoint cần DB). Mọi mã còn lại là false — thử lại nguyên request cho cùng kết quả. */
                 retryable: boolean;
                 requestId: string;
                 /** @description Tùy mã lỗi. VALIDATION_ERROR {fields: ValidationFieldError[]}; PRODUCT_NOT_FOUND và PRODUCT_UNAVAILABLE {productId}; CART_ITEM_NOT_FOUND {cartItemId}; PRICE_CHANGED {productId, oldPrice, newPrice, fareType?} — fareType là CHILD khi giá vé trẻ em đổi; DATE_OUT_OF_RANGE {productId, availableFrom, availableTo}; UNSUPPORTED_DESTINATION {destination, supportedDestinations, conversationId} — conversationId là hội thoại đã lưu phần chuyến đi còn lại, gửi lại cùng điểm đến hợp lệ để tiếp tục; MIN_STAY_NOT_MET {productId, minStay}; PRODUCT_NOT_INDEXED {productId, taxonomy}; TOO_MANY_ATTEMPTS {retryAfterSeconds}; MFA_INVALID {attemptsLeft}; EMAIL_NOT_VERIFIED {email}; WEAK_PASSWORD {reasons}; INVALID_VERIFICATION_TOKEN {purpose}; OAUTH_EMAIL_UNVERIFIED và OAUTH_ALREADY_LINKED {provider}; BOOKING_PENDING_PAYMENT {referenceCode, holdExpiresAt} — đơn đang giữ chỗ để tiếp tục hoặc huỷ; BOOKING_NOT_CANCELLABLE {referenceCode, reason, cancellableUntil}; BOOKING_ALREADY_PAID {referenceCode}; DIRECT_BOOKING_ONLY {productId, taxonomy}; BOOKING_DRAFT_EXPIRED {draftId, items: [{productId, taxonomy, inCart}]}; PRODUCT_UNAVAILABLE khi tạo đơn nháp mà không mục nào được nhận {rejectedItems}. */
@@ -726,7 +732,7 @@ export interface components {
         PriceUnit: "PER_NIGHT" | "PER_PERSON" | "PER_PACKAGE" | "UNKNOWN";
         /**
          * @description ANN_CANDIDATE_SCORE là mặc định cho /similar và /recommendations (từ 2026-09-24): lọc id theo structured filter, lấy top-K ứng viên từ Weaviate, rồi chấm điểm và đếm trên tập ứng viên đó. Ở chế độ này approximate là true, totalExact và facetsExact bắt buộc là false.
-         *     HYBRID_CANDIDATE_SCORE là mặc định của /search (từ 2026-09-25): R = R_dense ∪ R_lex. R_dense = top-K dense có score >= cutoff (như ANN). R_lex = hit BM25 (trên nameAscii/searchTextAscii đã fold dấu) có rank <= diagnostics.lexicalK, score trong [diagnostics.lexicalCutoff, cutoff) và tên chứa >= diagnostics.lexicalMinCoverage token của truy vấn. results sắp theo RRF (k = diagnostics.rrfK) nên score — vẫn là cosine đã clamp — KHÔNG đơn điệu trong một trang; đếm phần vớt ở diagnostics.lexicalCount. approximate/totalExact/facetsExact như ANN. Backend tắt hybrid (SEARCH_HYBRID=false) thì /search khai lại ANN_CANDIDATE_SCORE.
+         *     HYBRID_CANDIDATE_SCORE là mặc định của /search (từ 2026-09-25): R = R_dense ∪ R_lex. R_dense = top-K dense có score >= cutoff (như ANN). R_lex = hit BM25 (trên nameAscii/searchTextAscii đã fold dấu) có rank <= diagnostics.lexicalK, score trong [diagnostics.lexicalCutoff, cutoff) và tên chứa >= diagnostics.lexicalMinCoverage token của truy vấn. Khi diagnostics.evidenceGate = true (1.30.0): R_lex còn đòi tên khớp ít nhất một cặp âm tiết liền nhau, đúng thứ tự, giữ dấu với câu; RRF chỉ cộng hạng BM25 của unit có cặp đó trong tên hoặc mô tả. Khi diagnostics.filterOnly = true: R = top-K của F, không cutoff. results sắp theo RRF (k = diagnostics.rrfK) nên score — vẫn là cosine đã clamp — KHÔNG đơn điệu trong một trang; đếm phần vớt ở diagnostics.lexicalCount. approximate/totalExact/facetsExact như ANN. Backend tắt hybrid (SEARCH_HYBRID=false) thì /search khai lại ANN_CANDIDATE_SCORE.
          *     EXACT_FILTER_SCORE giữ cho engine quét toàn bộ vector (bản chạy offline).
          * @enum {string}
          */
@@ -867,6 +873,11 @@ export interface components {
             taxonomy: components["schemas"]["Taxonomy"];
             /** @description Nhãn du lịch đã chuẩn hóa ("Nha Trang", "Hạ Long"), KHÔNG phải tỉnh. Lấy danh sách hiện hành qua GET /api/v1/destinations. */
             destination: string;
+            /**
+             * @description Căn cứ phí vào cửa từ nguồn, giữ ý nghĩa ticketed=false khi C2 lược bỏ thuộc tính false. Attraction/golf giá 0 hoặc ticketed=false là free; không giá và không ghi ticketed=true là assumed_free (tham quan tự do theo quy ước, cần xác nhận phí vào cửa). Vé thu phí thiếu giá là unknown. Hotel/flight/combo không áp dụng giả định tham quan tự do. unitPrice nguồn không đổi.
+             * @enum {string}
+             */
+            entryPolicy?: "free" | "assumed_free" | "paid" | "unknown";
             /** @description Thương hiệu ("Vinpearl", "independent"). Cần cho yêu cầu ưu tiên Vinpearl và để đo rủi ro vector space phân cụm theo nguồn crawl. */
             brand?: string | null;
             /**
@@ -981,6 +992,7 @@ export interface components {
             total: number;
             limit: number;
             offset: number;
+            /** @description Id của request đã tạo bản cache khi response được cache (`Cache-Control: public`). Lượt trúng cache không đến backend nên không có log tương ứng; không dùng giá trị này để truy vết lượt đó. */
             requestId: string;
         };
         SimilarProductsResponse: {
@@ -996,6 +1008,7 @@ export interface components {
             strategy: "same_taxonomy" | "cross_taxonomy";
             results: components["schemas"]["ScoredProduct"][];
             diagnostics?: components["schemas"]["EngineDiagnostics"];
+            /** @description Id của request đã tạo bản cache khi response được cache (`Cache-Control: public`). Lượt trúng cache không đến backend nên không có log tương ứng; không dùng giá trị này để truy vết lượt đó. */
             requestId: string;
         };
         DestinationListResponse: {
@@ -1140,6 +1153,7 @@ export interface components {
             /**
              * @description [C3] Trung vị cosine của TOÀN BỘ tập đã lọc F. Lấy miễn phí trong cùng lượt quét exact của C4.
              *     Dùng cho quy tắc margin: model họ e5 có dải cosine bị nén (cặp không liên quan đã ở 0.72–0.78), nên ngưỡng tuyệt đối đơn thuần không đáng tin. Client tính margin = topScore - backgroundScore và báo "kết quả yếu" khi topScore < WEAK_RESULT_TOP_SCORE HOẶC margin < WEAK_RESULT_MARGIN. null khi results rỗng.
+             *     (1.30.0) Backend chỉ phát khi SEARCH_EMIT_BACKGROUND bật, và tính trên top-K dense trong F (candidateK) — xấp xỉ khi |F| > candidateK. Vắng khoá = backend không phát.
              */
             backgroundScore?: number | null;
             /** @description [C3][C4] Ngưỡng đã áp cho nhánh dense **ở câu này** (cutoff hiệu lực: khác cấu hình chung chỉ khi diagnostics.queryProfile có mặt). Giá trị tạm 0.62 (PROVISIONAL), benchmark Ngày 3 trên 80 cặp query-product gán nhãn cộng 10 truy vấn âm. Nguồn sự thật là search.cutoff trong application.yml; frontend đọc lại từ trường này, KHÔNG hard-code bản sao. Ở HYBRID_CANDIDATE_SCORE, kết quả vớt từ nhánh BM25 có score trong [diagnostics.lexicalCutoff, cutoff). */
@@ -1356,12 +1370,17 @@ export interface components {
                     /** @enum {string} */
                     source?: "param" | "query";
                 };
-                /** @description (1.18.0) Thời lượng chuyến nêu trong câu: "N ngày M đêm", "M đêm N ngày", "3N2Đ", "N ngày", "M đêm", "N days M nights" — chữ số 1–30, không nhận số viết bằng chữ; "/đêm" của giá, "3 tiếng", "chợ đêm", "qua đêm" không tính. P0 chỉ khai và bỏ cụm khỏi lexicalText (cờ SEARCH_DURATION_FILTER); KHÔNG lọc, không xếp hạng vì catalog chưa có trường thời lượng (P1). Chỉ khai khi cờ bật. */
+                /** @description (1.18.0) Thời lượng chuyến nêu trong câu: "N ngày M đêm", "M đêm N ngày", "3N2Đ", "N ngày", "M đêm", "N days M nights" — chữ số 1–30, không nhận số viết bằng chữ; "/đêm" của giá, "3 tiếng", "chợ đêm", "qua đêm" không tính. Khai và bỏ cụm khỏi lexicalText (cờ SEARCH_DURATION_FILTER). Từ 1.30.0 (cờ SEARCH_DURATION_MASK) có `role`: gate → chỉ giữ vé tham quan / combo có số ngày (đêm) suy từ tên hoặc thời lượng gợi ý khớp; stay (câu có cue lưu trú) → chỉ khai, không lọc. Chỉ khai khi cờ bật. */
                 duration?: {
                     days?: number | null;
                     nights?: number | null;
                     /** @enum {string} */
                     source?: "query";
+                    /**
+                     * @description (1.30.0) Chỉ khi SEARCH_DURATION_MASK bật. gate = câu chỉ có thời lượng → lọc vé / combo đúng số ngày; soft = câu còn nội dung khác → chỉ khai và bỏ cụm, không lọc; stay = câu lưu trú → không lọc.
+                     * @enum {string}
+                     */
+                    role?: "gate" | "soft" | "stay";
                 };
                 /** @description (1.18.0) Điểm vui chơi trong gazetteer repo (domain/search/gazetteer.py: vinwonders, safari, grand_world, …) nhận ra trong câu (bỏ cụm trong scope phủ định), chỉ khi SEARCH_ENTITY_FILTER bật. role = gate: câu chỉ nêu entity hoặc kèm cue attraction / combo → chỉ giữ unit attraction / combo có TÊN chứa entity (HARD, không nới; "entity" vào applied); location: câu có cue loại khác (khách sạn / vé máy bay / golf, kể cả cue yếu) hoặc nêu từ hai loại → entity chỉ định vị, không lọc. Tham số taxonomy của request không đổi role, chỉ giao với mask (tab Web có thể 0 → emptyReason entity). Thương hiệu khách sạn (Vinpearl, Meliá) không phải entity. */
                 entity?: {
@@ -1386,17 +1405,23 @@ export interface components {
                     /** @enum {string} */
                     source?: "param";
                 };
-                /** @description Câu đưa vào nhánh BM25 và độ phủ vớt sau khi bỏ các cụm đã thành filter (phủ định, giá/sao, cue loại, địa danh tuyến; từ 1.18.0 thêm thời lượng). Vector dense vẫn dùng câu chuẩn hoá đầy đủ (khoá cache embed không đổi). */
+                /** @description Câu đưa vào nhánh BM25 và độ phủ vớt sau khi bỏ các cụm đã thành filter (phủ định, giá/sao, cue loại, địa danh tuyến; từ 1.18.0 thêm thời lượng; từ 1.30.0 thêm cụm `unparsed`). Vector dense dùng câu chuẩn hoá đầy đủ, trừ khi có `denseText` (1.30.0). */
                 lexicalText?: string;
+                /** @description (1.30.0, cờ SEARCH_EMBED_RESIDUAL) Câu thật sự đem embed khi khác câu chuẩn hoá đầy đủ: đã bỏ thời lượng, giá/sao, số khách, phủ định đang áp và cụm `unparsed`; giữ điểm đến, entity và cue loại. Không khai khi giống câu đầy đủ. */
+                denseText?: string;
+                /** @description (1.30.0, cờ SEARCH_UNEXPLAINED_EMPTY) Cụm khiến câu không có đáp án: phần câu còn lại sau khi tách điều kiện toàn bộ là cụm dạng tên riêng catalog không có, hoặc cả câu không có chữ nào catalog hiểu. Đi cùng emptyReason `unexplained`, total 0 (FR-SRC-04). */
+                unexplained?: string[];
+                /** @description (1.30.0, cờ SEARCH_UNEXPLAINED_EMPTY) Cụm lạ (không có trong catalog) đã bị bỏ khỏi câu BM25 và câu embed; phần còn lại vẫn được tìm. */
+                unparsed?: string[];
                 /** @description Họ filter suy từ câu THẬT SỰ đã áp (cờ bật và câu có giá trị); rỗng khi mọi cờ tắt. Từ 1.18.0: duration (chỉ tác động lên câu BM25 — lexicalText — không vào F) và entity (gate vào F). */
                 applied?: ("taxonomy" | "route" | "mustNot" | "price" | "star" | "party" | "date" | "duration" | "entity")[];
                 /** @description Số kết quả bị loại ở bước kiểm lại hard filter sau fusion (kỳ vọng 0; > 0 là lỗi dữ liệu/mask). Ở 1.16.0 – 1.18.0 gồm cả unit có phòng/chuyến con mà KHÔNG con nào thoả đồng thời giá và số khách; từ 1.19.0 mask kiểm các điều kiện cấp phòng (giá, số khách, ngày) trên cùng một con nên không còn trường hợp đó. */
                 revalidatedDrops?: number;
                 /**
-                 * @description F rỗng do họ filter nào (họ đầu tiên làm F rỗng theo thứ tự áp). Filter suy từ câu KHÔNG được nới ngầm (kiến trúc Phase A §6); chỉ điểm đến suy ra có fallback (diagnostics.destinationFilter.fallback, FR-SRC-04). Từ 1.16.0 khai thêm star (mọi unit còn lại đều KHAI sao thấp hơn starRatingMin — giá trị engine 1.15.0 đã có thể trả) và party (mọi unit còn lại có sức chứa đã biết nhỏ hơn số khách). Từ 1.18.0: entity (mọi unit còn lại không có tên chứa entity trong tập attraction / combo — kể cả khi request taxonomy ∉ {attraction, combo}); duration khai cho đủ họ, 1.18.0 không bao giờ phát (duration không vào F). (mọi unit còn lại có sức chứa đã biết nhỏ hơn số khách). Từ 1.19.0 khai thêm date (mọi unit còn lại không dùng được vào khoảng ngày checkIn / checkOut).
+                 * @description F rỗng do họ filter nào (họ đầu tiên làm F rỗng theo thứ tự áp). Filter suy từ câu KHÔNG được nới ngầm (kiến trúc Phase A §6); chỉ điểm đến suy ra có fallback (diagnostics.destinationFilter.fallback, FR-SRC-04). Từ 1.16.0 khai thêm star (mọi unit còn lại đều KHAI sao thấp hơn starRatingMin — giá trị engine 1.15.0 đã có thể trả) và party (mọi unit còn lại có sức chứa đã biết nhỏ hơn số khách). Từ 1.18.0: entity (mọi unit còn lại không có tên chứa entity trong tập attraction / combo — kể cả khi request taxonomy ∉ {attraction, combo}); duration khai cho đủ họ, 1.18.0 không bao giờ phát (duration không vào F). (mọi unit còn lại có sức chứa đã biết nhỏ hơn số khách). Từ 1.19.0 khai thêm date (mọi unit còn lại không dùng được vào khoảng ngày checkIn / checkOut). Từ 1.30.0: duration phát khi gate thời lượng làm F rỗng (không vé / combo đúng số ngày); unexplained = câu không có đáp án theo `queryPlan.unexplained` (F có thể không rỗng — filteredCount vẫn là |F|, total 0).
                  * @enum {string}
                  */
-                emptyReason?: "taxonomy" | "route" | "mustNot" | "price" | "star" | "party" | "date" | "destination" | "param" | "entity" | "duration";
+                emptyReason?: "taxonomy" | "route" | "mustNot" | "price" | "star" | "party" | "date" | "destination" | "param" | "entity" | "duration" | "unexplained";
                 /** @description Tham số request bị bỏ qua vì sai ngữ cảnh (ví dụ origin cho câu không phải vé máy bay). */
                 ignored?: string[];
                 /** @description (1.16.0) Router confidence của plan rule-based (kiến trúc §5): 1 trừ 0.25 cho mỗi lý do ở fallbackReasons, tất định. Có mặt khi khối queryPlan có mặt. Từ 1.17.0: dưới ngưỡng SEARCH_LLM_FALLBACK_MIN_CONFIDENCE và SEARCH_LLM_FALLBACK ≠ off thì kích hoạt LLM fallback (khối llm); giá trị này luôn là của plan rule. */
@@ -1485,9 +1510,9 @@ export interface components {
             excludedVerticals: components["schemas"]["Taxonomy"][];
             /** @description true khi khách đã đặt đủ mọi taxonomy trong chuyến và engine phải bỏ category exclusion để không trả danh sách rỗng. */
             exclusionRelaxed?: boolean;
-            /** @description [CHỜ DUYỆT: P3] false nghĩa là phải dựng lại user vector tại chỗ — đọc tối đa 500 event qua HTTP từ CDP clone. Đây là đường chậm; tỉ lệ false cao nghĩa là quy tắc vô hiệu hóa cache đang sai. */
+            /** @description true khi kết quả lấy từ cache gợi ý. */
             userVectorCacheHit?: boolean;
-            /** @description [CHỜ DUYỆT: P3] Phải xấp xỉ 1.0. Lệch xa là dấu hiệu quên L2-normalize hoặc sai đơn vị thời gian trong decay — hai lỗi cho ra kết quả trông hoàn toàn hợp lý. */
+            /** @description Phải xấp xỉ 1.0. Lệch xa là dấu hiệu quên L2-normalize hoặc sai đơn vị thời gian trong decay — hai lỗi cho ra kết quả trông hoàn toàn hợp lý. */
             userVectorNorm?: number;
             engine?: components["schemas"]["EngineDiagnostics"];
             latencyMs: number;
@@ -2016,6 +2041,12 @@ export interface components {
         SearchResultsByTaxonomy: {
             [key: string]: components["schemas"]["ProductSummary"][];
         };
+        /** @description (1.28.0, AC-AGT-06) Số lượng theo yêu cầu, tổng tối đa 20 thẻ do backend kiểm. Không nêu số lượng: tối đa 3 điểm tham quan/tour, 2 khách sạn hỏi chung hoặc 4 khi chỉ hỏi chỗ ở. Thiếu dữ liệu/ngân sách thực thi thì trả số thực chọn và giải thích trong question. Không áp dụng cho lịch trình đã xếp. */
+        ExplorationSearchResults: {
+            flight?: components["schemas"]["ProductSummary"][];
+        } & {
+            [key: string]: components["schemas"]["ProductSummary"][];
+        };
         ItineraryWarning: {
             /** @description Ví dụ PRODUCT_DROPPED_UNAVAILABLE, DAY_WITHOUT_PRODUCTS, OVER_BUDGET. */
             code: string;
@@ -2068,7 +2099,7 @@ export interface components {
             };
             /** @description Form gợi ý hiển thị trong khung chat khi hỏi bằng câu chữ một lượt vẫn chưa đủ thông tin. */
             clarificationForm?: {
-                /** @description Ô hiển thị theo thứ tự. `interests` (1.24.0, FR-AGT-06): ô sở thích khách sạn chọn nhiều, không bắt buộc; lựa chọn lấy từ `interestOptions`, lựa chọn đã tích sẵn nằm trong `defaults.interests`. */
+                /** @description Ô hiển thị theo thứ tự. `interests` (1.24.0, FR-AGT-06; 1.26.0 AC-AGT-01): không bắt buộc, gồm các lựa chọn cố định trong `interestOptions` (chọn nhiều, tích sẵn theo `defaults.interests`) và một ô tự nhập tối đa 150 ký tự, điền sẵn bằng phần `defaults.interests` không thuộc `interestOptions`. */
                 fields: ("destination" | "days" | "startDate" | "party" | "budget" | "origin" | "interests")[];
                 defaults: components["schemas"]["TripIntent"];
                 /**
@@ -2076,13 +2107,15 @@ export interface components {
                  * @description Ngày khởi hành sớm nhất được phép chọn; hôm nay theo giờ Việt Nam.
                  */
                 startDateMin?: string;
-                /** @description Tuỳ chọn (1.24.0, FR-AGT-06). Nhãn sở thích khách sạn đã có dữ liệu (ví dụ "Hồ bơi", "Phù hợp trẻ nhỏ"). Sở thích là ưu tiên khi tìm khách sạn, không loại khách sạn thiếu dữ liệu tiện ích. Client ghép lựa chọn vào câu xác nhận ("ưu tiên khách sạn có Hồ bơi, Phù hợp trẻ nhỏ"). */
+                /** @description Tuỳ chọn (1.26.0). Mở ngay khi người dùng trực tiếp xin form; mặc định chỉ hiện nút mở. */
+                autoOpen?: boolean;
+                /** @description Tuỳ chọn (1.24.0, FR-AGT-06). Nhãn sở thích khách sạn đã có dữ liệu (ví dụ "Hồ bơi", "Phù hợp trẻ nhỏ"). Sở thích là ưu tiên khi tìm khách sạn, không loại khách sạn thiếu dữ liệu tiện ích. Client ghép lựa chọn vào câu xác nhận ("ưu tiên khách sạn có Hồ bơi, Phù hợp trẻ nhỏ"); nội dung ô tự nhập đi sau đó (1.26.0). */
                 interestOptions?: string[];
             };
             /** @description Tuỳ chọn (1.13.0). Câu yêu cầu gửi được nguyên văn làm lượt chat kế tiếp, cùng ngữ nghĩa với `ItineraryNoResults.suggestions`. Có khi điều kiện bắt buộc (khách sạn, khách sạn hoặc hoạt động cụ thể) không có sản phẩm nào đáp ứng, ví dụ ngày khởi hành gần nhất còn bán hoặc lập lịch không cần khách sạn. Từ 1.24.0 còn có ở lượt trò chuyện và khám phá (FR-AGT-06): tối đa 3 nút theo các hướng khác nhau (đi tiếp như lập lịch, xem sâu, đổi hướng), không lặp nút của lượt trước. */
             suggestions?: string[];
-            /** @description Tuỳ chọn (1.24.0, FR-AGT-06). Lượt khám phá trước khi lập lịch ("Hà Nội có gì?", "khách sạn nào có hồ bơi?"): sản phẩm thật lấy từ Search của chính lượt này, nhóm theo loại, tối đa 4 mỗi loại. `question` nhắc từng sản phẩm bằng link `[Tên](product:<productId>)` với `productId` có trong đây; client đặt thẻ ngay sau dòng đầu tiên nhắc sản phẩm, như lời diễn giải lịch trình. Không có trường này thì lượt hỏi lại như trước. Từ 1.25.0 còn có ở lượt hỏi giá vé máy bay (FR-AGT-07): `flight` là các chuyến một chiều thật của tuyến được hỏi, lấy từ catalog (danh sách chuyến của tuyến), tối đa 4, chuyến `question` nêu đầu tiên đứng đầu (thường mỗi chuyến một ngày bay; hỏi một ngày cụ thể thì có thể nhiều chuyến cùng ngày). Client gom các chuyến này thành một hàng thẻ ngày–giá đặt tại dòng đầu tiên nhắc chuyến, mỗi thẻ mở trang vé máy bay của đúng tuyến và ngày bay đó. */
-            searchResults?: components["schemas"]["SearchResultsByTaxonomy"];
+            /** @description Tuỳ chọn (1.24.0, FR-AGT-06). Lượt khám phá trước khi lập lịch ("Hà Nội có gì?", "khách sạn nào có hồ bơi?"): sản phẩm thật lấy từ Search của chính lượt này, nhóm theo loại. Từ 1.28.0 số lượng theo AC-AGT-06, tổng tối đa 20 thẻ/lượt; `flight` giữ tối đa 4. `question` nhắc từng sản phẩm bằng link `[Tên](product:<productId>)` với `productId` có trong đây; client đặt thẻ ngay sau dòng đầu tiên nhắc sản phẩm, như lời diễn giải lịch trình. Không có trường này thì lượt hỏi lại như trước. Từ 1.25.0 còn có ở lượt hỏi giá vé máy bay (FR-AGT-07): `flight` là các chuyến một chiều thật của tuyến được hỏi, lấy từ catalog (danh sách chuyến của tuyến), tối đa 4, chuyến `question` nêu đầu tiên đứng đầu (thường mỗi chuyến một ngày bay; hỏi một ngày cụ thể thì có thể nhiều chuyến cùng ngày). Client gom các chuyến này thành một hàng thẻ ngày–giá đặt tại dòng đầu tiên nhắc chuyến, mỗi thẻ mở trang vé máy bay của đúng tuyến và ngày bay đó. */
+            searchResults?: components["schemas"]["ExplorationSearchResults"];
             metadata?: components["schemas"]["ItineraryMetadata"];
         };
         ItineraryNoResults: {
@@ -2168,7 +2201,7 @@ export interface components {
         /** @description Union logic của payload SSE; trường event nằm ở dòng event của SSE. */
         AssistantStreamEvent: {
             /** @enum {string} */
-            event: "run.started" | "graph.topology" | "node.completed" | "run.completed" | "run.failed";
+            event: "run.started" | "graph.topology" | "node.completed" | "node.activity" | "run.preview" | "run.completed" | "run.failed";
             data: {
                 [key: string]: unknown;
             };
@@ -2180,6 +2213,173 @@ export interface components {
              */
             eventName: "product_view";
             productId: string;
+        };
+        AssistantProgressCounts: {
+            sourceTotal?: number;
+            received?: number;
+            inScope?: number;
+            eligible?: number;
+            chosen?: number;
+            outOfScope?: {
+                DESTINATION?: number;
+                TAXONOMY?: number;
+                FLIGHT?: number;
+                QUERY?: number;
+                DISTANCE?: number;
+                PRICE_COMPARISON?: number;
+                PRODUCT_DROPPED_DESTINATION?: number;
+                PRODUCT_DROPPED_EXCLUDED?: number;
+                PRODUCT_DROPPED_TAXONOMY?: number;
+                PRODUCT_DROPPED_DATE?: number;
+                PRODUCT_DROPPED_UNAVAILABLE?: number;
+                PRODUCT_DROPPED_PRICE?: number;
+                PRODUCT_DROPPED_PRICE_BASIS?: number;
+                PRODUCT_DROPPED_ATTRIBUTES?: number;
+                PRODUCT_DROPPED_NAMED_REQUIREMENT?: number;
+                SEEN?: number;
+                DUPLICATE?: number;
+                PREFERENCE?: number;
+            };
+            dropped?: {
+                DESTINATION?: number;
+                TAXONOMY?: number;
+                FLIGHT?: number;
+                QUERY?: number;
+                DISTANCE?: number;
+                PRICE_COMPARISON?: number;
+                PRODUCT_DROPPED_DESTINATION?: number;
+                PRODUCT_DROPPED_EXCLUDED?: number;
+                PRODUCT_DROPPED_TAXONOMY?: number;
+                PRODUCT_DROPPED_DATE?: number;
+                PRODUCT_DROPPED_UNAVAILABLE?: number;
+                PRODUCT_DROPPED_PRICE?: number;
+                PRODUCT_DROPPED_PRICE_BASIS?: number;
+                PRODUCT_DROPPED_ATTRIBUTES?: number;
+                PRODUCT_DROPPED_NAMED_REQUIREMENT?: number;
+                SEEN?: number;
+                DUPLICATE?: number;
+                PREFERENCE?: number;
+            };
+            sourceMore?: boolean;
+        };
+        AssistantSearchGroup: {
+            groupId: string;
+            kind: components["schemas"]["Taxonomy"];
+            /** @enum {string} */
+            status: "running" | "ok" | "empty" | "partial" | "failed" | "asked" | "answered" | "unavailable" | "superseded";
+            scope?: {
+                destination?: string;
+                near?: string;
+                origin?: string;
+                /** @enum {string} */
+                sort?: "relevance" | "price_asc" | "price_desc";
+                /** @enum {string} */
+                intent?: "new" | "more" | "about_shown" | "cheaper" | "dearer";
+                /** Format: date */
+                date?: string;
+                /** Format: date */
+                returnDate?: string;
+                /**
+                 * @description (1.28.0) Giữ điều kiện chưa đổi hay dùng phạm vi mới của lượt này.
+                 * @enum {string}
+                 */
+                scopeMode?: "inherit" | "replace";
+                /** @description Điểm đến không xét trong việc này, không phải danh sách nơi bị chê cho cả hội thoại. */
+                excludedDestinations?: string[];
+                /** @description Số lượng đã hiểu từ yêu cầu; code áp trần tổng 20. Không phải số kết quả tìm được. */
+                requestedCount?: number;
+            };
+            counts?: components["schemas"]["AssistantProgressCounts"];
+        };
+        AssistantProgressNotice: {
+            /** @enum {string} */
+            code: "DESTINATION" | "TAXONOMY" | "FLIGHT" | "QUERY" | "DISTANCE" | "PRICE_COMPARISON" | "PRODUCT_DROPPED_DESTINATION" | "PRODUCT_DROPPED_EXCLUDED" | "PRODUCT_DROPPED_TAXONOMY" | "PRODUCT_DROPPED_DATE" | "PRODUCT_DROPPED_UNAVAILABLE" | "PRODUCT_DROPPED_PRICE" | "PRODUCT_DROPPED_PRICE_BASIS" | "PRODUCT_DROPPED_ATTRIBUTES" | "PRODUCT_DROPPED_NAMED_REQUIREMENT" | "SEEN" | "DUPLICATE" | "PREFERENCE" | "RETRYING" | "NO_FLIGHT" | "NOT_ON_SALE" | "OVER_BUDGET" | "NOTHING_NEW" | "PLACE_NOT_FOUND" | "LOOKUP_FAILED" | "PARTIAL_RESULTS";
+            groupId?: string;
+            kind?: components["schemas"]["Taxonomy"];
+            count?: number;
+            /** Format: date */
+            date?: string;
+        };
+        AssistantUnderstood: {
+            intent?: components["schemas"]["TripIntentPatch"];
+            missing?: string[];
+            jobs?: {
+                groupId: string;
+                kind: components["schemas"]["Taxonomy"];
+                scope?: {
+                    destination?: string;
+                    near?: string;
+                    origin?: string;
+                    /** @enum {string} */
+                    sort?: "relevance" | "price_asc" | "price_desc";
+                    /** @enum {string} */
+                    intent?: "new" | "more" | "about_shown" | "cheaper" | "dearer";
+                    /** Format: date */
+                    date?: string;
+                    /** Format: date */
+                    returnDate?: string;
+                    /**
+                     * @description (1.28.0) Giữ điều kiện chưa đổi hay dùng phạm vi mới của lượt này.
+                     * @enum {string}
+                     */
+                    scopeMode?: "inherit" | "replace";
+                    /** @description Điểm đến không xét trong việc này, không phải danh sách nơi bị chê cho cả hội thoại. */
+                    excludedDestinations?: string[];
+                    /** @description Số lượng đã hiểu từ yêu cầu; code áp trần tổng 20. Không phải số kết quả tìm được. */
+                    requestedCount?: number;
+                };
+            }[];
+            assumptions?: {
+                /** @enum {string} */
+                code: "NO_BUDGET" | "NO_ORIGIN" | "DAY_TRIP" | "FLIGHT_EXCLUDED" | "SAME_CITY" | "NAME_MATCHED" | "KIDS_COUNT_UNKNOWN" | "ROOM_MIN_GUESTS";
+                from?: string;
+                to?: string;
+                count?: number;
+            }[];
+        };
+        AssistantArrangeSummary: {
+            criteria?: ("SHORTEST_DISTANCE" | "MAX_TWO_ACTIVITIES_PER_DAY" | "FLIGHT_TIMES" | "STAY_PREFERENCE")[];
+            distanceKm?: number;
+            stayOptions?: number;
+            /** @enum {string} */
+            budgetStatus?: "WITHIN_BUDGET" | "OVER_BUDGET" | "NO_BUDGET" | "UNKNOWN";
+        };
+        /** @description Updates replace understood, arranged, turnKind and steps. Searches replace by groupId; missing groups remain. Notices replace by (code, groupId, date), never add counts. Superseded groups and their notices are hidden. Counts are cumulative per group. */
+        AssistantProgressUpdate: {
+            /** @enum {string} */
+            turnKind?: "plan" | "clarify" | "explore" | "fare" | "converse" | "blocked";
+            steps?: ("understand" | "search" | "arrange" | "write")[];
+            /** @enum {string} */
+            completedStep?: "understand" | "search" | "arrange" | "write";
+            understood?: components["schemas"]["AssistantUnderstood"];
+            searches?: components["schemas"]["AssistantSearchGroup"][];
+            arranged?: components["schemas"]["AssistantArrangeSummary"];
+            notices?: components["schemas"]["AssistantProgressNotice"][];
+        };
+        AssistantNodeCompletedData: {
+            sequence: number;
+            nodeId: string;
+            outcome: string;
+            message: string;
+            durationMs: number;
+            progress?: components["schemas"]["AssistantProgressUpdate"];
+        };
+        AssistantNodeActivity: {
+            nodeId: string;
+            /** @enum {string} */
+            code: "STARTED" | "PLANNING_SEARCH" | "SEARCHING" | "SEARCHING_FLIGHTS" | "CHECKING_AVAILABILITY" | "READING_SHOWN";
+            round?: number;
+            groupId?: string;
+            kinds?: components["schemas"]["Taxonomy"][];
+            destination?: string;
+            origin?: string;
+            /** Format: date */
+            date?: string;
+        };
+        /** @description Deprecated 2026-10-14 — server không còn phát run.preview; giữ schema cho client cũ. */
+        AssistantRunPreview: {
+            runId: string;
+            products: components["schemas"]["ProductSummary"][];
         };
     };
     responses: {
@@ -2517,9 +2717,14 @@ export interface operations {
                 /** @description productId của sản phẩm cha (property hoặc route). Lọc các tầng con của nó. */
                 parentProductId?: string;
                 destination?: string;
-                taxonomy?: components["schemas"]["Taxonomy"];
+                /** @description Lọc một hoặc nhiều danh mục (1.27.0): nhiều giá trị cách nhau bằng dấu phẩy, ví dụ taxonomy=attraction,golf. Một giá trị như cũ vẫn hợp lệ. Giá trị trùng được bỏ qua; giá trị ngoài enum hoặc đoạn rỗng (taxonomy=hotel,) trả 400 VALIDATION_ERROR, details.fields có "taxonomy". */
+                taxonomy?: components["schemas"]["Taxonomy"][];
                 availableOnly?: boolean;
+                /** @description Chỉ điểm tham quan/golf vào cửa tự do, lọc trước sort và phân trang; total là số điểm phù hợp. entryPolicy=free hoặc assumed_free (điểm không giá, không ghi ticketed=true; cần xác nhận phí vào cửa). Không gửi/false giữ hành vi cũ. Không tự suy hotel/flight/combo thiếu giá thành miễn phí. */
+                freeOnly?: boolean;
                 sort?: components["schemas"]["ProductSort"];
+                /** @description (1.27.0) Chỉ nhận taxonomy. Trộn danh sách đã lọc và xếp theo round-robin giữa các nhóm loại, thứ tự nhóm cố định: khách sạn (hotel) → vé tham quan và golf (attraction, golf) → combo → vé máy bay (flight); trong mỗi nhóm giữ thứ tự của sort, nhóm hết món thì bỏ qua. Trộn trước khi cắt offset/limit nên kết quả là một hoán vị: total không đổi, các trang nối tiếp nhau. Lọc taxonomy chỉ còn một nhóm thì thứ tự không đổi. Chỉ đi với sort=popular và không có parentProductId; giá trị khác, đi cùng sort giá hoặc parentProductId trả 400 VALIDATION_ERROR, details.fields có "diversify". Không gửi thì giữ hành vi cũ. */
+                diversify?: "taxonomy";
                 limit?: components["parameters"]["Limit"];
                 offset?: components["parameters"]["Offset"];
             };

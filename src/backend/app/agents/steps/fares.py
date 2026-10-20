@@ -1,6 +1,6 @@
 """Hỏi giá vé máy bay (kịch bản bản 5 cảnh 6, người dùng chốt 2026-10-10).
 
-`classify` (LLM) nhận ra câu hỏi vé dù gõ sai, viết tắt, tiếng Anh hay nói vòng ("tao ở sài gòn, đi đâu cũng đc miễn vé
+Orchestrator (LLM) nhận ra câu hỏi vé dù gõ sai, viết tắt, tiếng Anh hay nói vòng ("tao ở sài gòn, đi đâu cũng đc miễn vé
 rẻ"), và đọc ra nơi đi, nơi đến, chiều về, đắt/rẻ nhất (`models.FareQuestion`, state `fare_ask`). Phần còn lại ở đây là
 luật: tên nơi đối chiếu với điểm đến và tuyến bay của catalog; thiếu nơi đi hoặc điểm đến thì hỏi lại đúng chỗ thiếu
 (kèm nút những nơi có chuyến); đủ thì báo vé một chiều rẻ nhất trong cửa sổ bán của catalog (hoặc đúng ngày đi nếu đã
@@ -116,7 +116,15 @@ def _one_way(products: list[dict], today: date) -> list[dict]:
     usable = [p for p in products if flight_rules._bookable(p) and not flight_rules._is_round_trip(p)
               and (day := flight_rules.flight_date(p)) is not None and day >= today]
     real = [p for p in usable if not _simulated(p)]
-    return real or usable
+    result = real or usable
+    from . import progress
+    row = progress.current_group()
+    if row and row.get('counter'):
+        kept = {p['productId'] for p in result}
+        for p in products:
+            reason = None if p['productId'] in kept else ('PRODUCT_DROPPED_UNAVAILABLE' if not flight_rules._bookable(p) else 'PRODUCT_DROPPED_DATE' if flight_rules.flight_date(p) is None or flight_rules.flight_date(p) < today else 'QUERY')
+            row['counter'].record(p['productId'], reason, outside=reason=='QUERY')
+    return result
 
 
 def _in_period(products: list[dict], period: str | None) -> list[dict]:
@@ -168,7 +176,8 @@ def answer_text(state: dict, origin: str, destination: str, products: list[dict]
     chữ quá dài). Đã có ngày đi (ngày người dùng hỏi hoặc ngày của chuyến): các chuyến của đúng ngày đó, rồi so với cả đợt
     mở bán; không có chuyến ngày đó thì nêu ngày gần nhất có chuyến. `period`: chỉ tính chuyến trong khung giờ đó ("đi
     sớm", "buổi tối"), không có chuyến nào trong khung thì nói rõ và tính mọi giờ. `availability`: đợt mở bán và các
-    ngày chưa có chuyến. `more`: hỏi tiếp ngày khác, nêu các ngày kế tiếp. `cheaper`: nói rõ khi không còn vé rẻ hơn.
+    ngày chưa có chuyến. `more`: hỏi tiếp ngày khác, nêu các ngày kế tiếp. `cheaper`: hỏi rẻ hơn sau khi đã báo giá
+    cùng tuyến, nói rõ không còn vé rẻ hơn rồi nêu vé rẻ nhất cả đợt, bỏ qua ngày.
     """
     start = start or (state.get("intent") or {}).get("startDate")
     title = message(state, "fare_title", origin=origin, destination=destination)
@@ -190,6 +199,14 @@ def answer_text(state: dict, origin: str, destination: str, products: list[dict]
     shown: list[dict] = []
     if availability:
         lines += _availability_lines(state, fields, usable, ranked, period_text)
+        shown = [product for _, product in ranked[:MAX_FARE_CARDS]]
+    elif cheaper and kind == CHEAPEST:
+        # "rẻ hơn nữa ko" sau khi đã báo giá cùng tuyến (mọi câu trả lời vé đều đã nêu vé rẻ nhất cả đợt): nói thẳng là không
+        # còn vé rẻ hơn, kể cả khi lượt trước trả lời một ngày (chặng về của lịch, chat thử M11: LLM hiểu `cheaper` mà câu
+        # lặp y hệt câu ngày về).
+        lines.append(message(state, "fare_already_cheapest", end=window_end))
+        lines.append(message(state, "fare_cheapest", **fields, money=money(best["unitPrice"], language),
+                             day=_short(best_day), flight=_flight_text(state, best)))
         shown = [product for _, product in ranked[:MAX_FARE_CARDS]]
     elif start:
         day_asked = date.fromisoformat(start)
@@ -221,9 +238,6 @@ def answer_text(state: dict, origin: str, destination: str, products: list[dict]
         lines.append(message(state, f"fare_more_{kind}", **fields, day=_short(first_day),
                              money=money(first["unitPrice"], language)))
     else:
-        if cheaper and kind == CHEAPEST:
-            # "rẻ hơn nữa ko" sau khi đã báo giá rẻ nhất: nói thẳng là không còn vé rẻ hơn trong đợt mở bán.
-            lines.append(message(state, "fare_already_cheapest", end=window_end))
         lines.append(message(state, f"fare_{kind}", **fields, money=money(best["unitPrice"], language),
                              day=_short(best_day), flight=_flight_text(state, best)))
         shown = [product for _, product in ranked[:MAX_FARE_CARDS]]
@@ -388,9 +402,8 @@ def chip_reply(state: dict) -> dict | None:
     if ask is None:
         return None
     return {"fare_ask": dict(ask), "interaction_type": "conversation", "refusal": False, "decision": "explore",
-            "fare_question": True, "missing_fields": [], "explore_place": None, "explore_city": None,
-            "explore_focus": None, "explore_price": None, "other_questions": [], "form_request": False,
-            "events": [event("classify", "route fare (button)")]}
+            "fare_question": True, "missing_fields": [], "other_questions": [], "form_request": False,
+            "events": [event("precheck", "route fare (button)")]}
 
 
 def _kind_key(kind: str) -> dict:
@@ -485,13 +498,13 @@ def _day_asked(ask: dict, today: date) -> str | None:
 
 async def answer(state: dict, *, tools: ToolExecutorPort | None, supported: list[str] | None,
                  timeout_seconds: float, today: date | None = None) -> dict:
-    """Update của nhánh giá vé trong `explore`: hỏi lại chỗ thiếu, hoặc tư vấn vé (FR-AGT-07).
+    """Update của job vé (`jobs._fare`) và nút vé: hỏi lại chỗ thiếu, hoặc tư vấn vé (FR-AGT-07).
 
     Đọc `fare_ask` (LLM đã hiểu từ câu chữ, hoặc nút vừa bấm qua `chip_reply`). Chỗ LLM để trống lấy từ lần hỏi lại còn
     treo (`pending_fare`) rồi từ chuyến (`intent`). Trả lời được: vé rẻ nhất/đắt nhất, một ngày cụ thể, một khung giờ,
     ngày nào có/không có chuyến, và "tại sao đắt" của vé vừa báo. Chuyến nêu trong câu và các ngày khác thành thẻ
     ngày–giá (`searchResults.flight`). Sau khi báo giá, `pending_fare` giữ tuyến vừa trả lời (`answered`), kiểu câu
-    hỏi, các chuyến vừa hiện và nút của lượt này, để câu hỏi tiếp còn ngữ cảnh; `classify` bỏ nó khi người dùng chuyển
+    hỏi, các chuyến vừa hiện và nút của lượt này, để câu hỏi tiếp còn ngữ cảnh; `precheck` bỏ nó khi người dùng chuyển
     sang chuyện khác.
     """
     today = today or datetime.now(flight_rules.VIETNAM).date()
@@ -516,7 +529,7 @@ async def answer(state: dict, *, tools: ToolExecutorPort | None, supported: list
     if ask.get("kind_unclear"):
         flight_ask = {"origin": _place(origin_text, supported), "anywhere": ask.get("anywhere"),
                       "dearest": ask.get("dearest")}
-        place = None if ask.get("anywhere") else destination or _place(state.get("explore_city"), supported)
+        place = None if ask.get("anywhere") else destination
         return _kind_question(state, place, intent, supported, flight_ask)
     if tools is not None and getattr(tools, "supports_catalog", False) and (
             ask.get("anywhere") or (pending.get("anywhere") and not ask.get("destination"))):

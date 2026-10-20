@@ -18,6 +18,18 @@ Mỗi thuật ngữ một dòng định nghĩa. Cột "Chi tiết" trỏ tới f
 | <a id="previous_selection"></a>Sản phẩm đã cho xem (`previous_selection`) | id, tên, loại của chỗ ở và hoạt động trong lịch gần nhất; nguồn duy nhất để đổi món | [sua-lich-qua-nhieu-luot.md](sua-lich-qua-nhieu-luot.md) |
 | <a id="ghi-chu-luot"></a>Ghi chú lượt (`note`) | Câu tóm tắt nghĩa của tin trợ lý, dựng bằng luật, đưa cho LLM ở lượt sau thay cho cả bài | [sua-lich-qua-nhieu-luot.md](sua-lich-qua-nhieu-luot.md) |
 
+## Trước khi lập lịch
+
+| Thuật ngữ | Nghĩa | Chi tiết |
+|---|---|---|
+| <a id="dong-y-lap-lich"></a>Đồng ý lập lịch (`plan_consent`) | Người dùng xin lập lịch, nói "ok" sau lời mời, nêu số ngày/ngày đi/số người, xin form hoặc sửa form. Trước đó không hỏi thông tin chuyến | [tro-chuyen-va-kham-pha.md](tro-chuyen-va-kham-pha.md) |
+| <a id="loi-moi"></a>Lời mời lập lịch (`pending_offer`) | Câu "Bạn có muốn lập lịch <nơi> không?" đang chờ trả lời | [tro-chuyen-va-kham-pha.md](tro-chuyen-va-kham-pha.md) |
+| <a id="kham-pha"></a>Khám phá (job `explore`) | Trả lời câu hỏi về một nơi bằng thẻ thật từ Search (tối đa 3 điểm tham quan/tour + 2 khách sạn, hoặc 4 khách sạn khi hỏi riêng chỗ ở), kèm lời dẫn và nút. Orchestrator khai việc, `run_jobs` chạy | [tro-chuyen-va-kham-pha.md](tro-chuyen-va-kham-pha.md) |
+| <a id="ly-do-the"></a>Lý do thẻ | Vì sao thẻ được chọn (nhiều đánh giá nhất, điểm cao nhất, rẻ nhất, vào cửa tự do, gần nơi hỏi); code tính, LLM không viết số | [tro-chuyen-va-kham-pha.md](tro-chuyen-va-kham-pha.md) |
+| <a id="nut-goi-y"></a>Nút gợi ý (`suggestions`) | Tối đa 3 câu bấm được, viết như lời người dùng; LLM đề xuất, code kiểm | [tro-chuyen-va-kham-pha.md](tro-chuyen-va-kham-pha.md) |
+| <a id="noi-bi-che"></a>Nơi bị chê (`rejected_destinations`) | Nơi người dùng chê ("đi rồi", "chán"); không gợi ý lại cho tới khi người dùng tự nhắc lại | [tro-chuyen-va-kham-pha.md](tro-chuyen-va-kham-pha.md) |
+| <a id="cau-hoi-con-do"></a>Câu hỏi còn dở (`open_question`) | Câu hỏi về một nơi chưa rõ thành phố; trả lời khi người dùng chọn thành phố | [tro-chuyen-va-kham-pha.md](tro-chuyen-va-kham-pha.md) |
+
 ## Sản phẩm và truy xuất
 
 | Thuật ngữ | Nghĩa | Chi tiết |
@@ -50,6 +62,8 @@ Mỗi thuật ngữ một dòng định nghĩa. Cột "Chi tiết" trỏ tới f
 | <a id="quang-duong-chuyen"></a>Quãng đường của chuyến | Tổng km đường chim bay: ngày 1 từ sân bay đến về khách sạn rồi khách sạn → các điểm → khách sạn (không có vé: từ điểm đầu tới khách sạn), ngày giữa từ khách sạn đêm trước qua các điểm tới khách sạn đêm đó, ngày cuối từ khách sạn qua các điểm ra sân bay (không có vé: dừng ở điểm cuối). Số km hiện với dấu "≈" | [xep-lich.md](xep-lich.md#gom-theo-khoang-cach) |
 | <a id="doi-khach-san"></a>Đổi khách sạn | Chuyển khách sạn một lần giữa chuyến (chuyến từ 5 ngày, mỗi khách sạn ≥ 2 đêm), tính thêm 15 km vào chi phí; ngày đổi có dòng `CHANGE_STAY` | [xep-lich.md](xep-lich.md#gom-theo-khoang-cach) |
 | <a id="lich-vua-ngan-sach"></a>Lịch vừa ngân sách | Mọi giá biết được và tổng tiền (gồm vé máy bay) không vượt ngân sách; có ngân sách thì chỉ chọn trong các lịch này, không lịch nào vừa thì lấy lịch rẻ nhất | [xep-lich.md](xep-lich.md#gom-theo-khoang-cach) |
+| <a id="lich-tham-khao"></a>Lịch tham khảo | Lịch `COMPLETED` dựng từ điểm nổi tiếng khi ngày đi chưa mở bán; điểm có vé không tính là đặt được | [xep-lich.md](xep-lich.md#ngay-ngoai-cua-so) |
+| <a id="ngay-di-chung"></a>Ngày đi chung | Một ngày đi gần nhất mà vé máy bay, khách sạn, vé tham quan cùng có | [xep-lich.md](xep-lich.md#ngay-ngoai-cua-so) |
 | <a id="phuong-an-khac"></a>Phương án khác (`STAY_OPTIONS`) | Tối đa 3 cách chọn khách sạn khác, ghi "thêm X ₫ → bớt Y km" hoặc "bớt X ₫ → đi thêm Y km"; chọn bằng "lấy phương án N" | [xep-lich.md](xep-lich.md#gom-theo-khoang-cach) |
 
 ## Vé máy bay
@@ -59,6 +73,9 @@ Mỗi thuật ngữ một dòng định nghĩa. Cột "Chi tiết" trỏ tới f
 | <a id="tuyen-chuyen"></a>Tuyến / chuyến | Tuyến là cặp thành phố (không đặt được); chuyến là chuyến bay cụ thể dưới tuyến | [ve-may-bay.md](ve-may-bay.md) |
 | <a id="chang-bay"></a>Chặng bay (leg) | Một vé trong lịch: `OUTBOUND`, `RETURN` hoặc `ROUND_TRIP` | [ve-may-bay.md](ve-may-bay.md) |
 | <a id="noi-di"></a>Nơi đi (`origin`) | Thành phố khởi hành; không bắt buộc, cần để có vé | [ve-may-bay.md](ve-may-bay.md) |
+| <a id="cau-hoi-ve"></a>Câu hỏi vé (`pending_fare`) | Tuyến, kiểu hỏi (rẻ/đắt) và chuyến vừa báo, để câu hỏi tiếp ngắn vẫn hiểu | [tu-van-ve-may-bay.md](tu-van-ve-may-bay.md) |
+| <a id="dot-mo-ban"></a>Đợt mở bán | Các ngày từ hôm nay có chuyến còn bán của tuyến trong catalog | [tu-van-ve-may-bay.md](tu-van-ve-may-bay.md) |
+| <a id="hang-the-ngay-gia"></a>Hàng thẻ ngày–giá | Tối đa 4 chuyến (`searchResults.flight`), mỗi thẻ mở trang vé máy bay đúng tuyến, đúng ngày | [tu-van-ve-may-bay.md](tu-van-ve-may-bay.md) |
 
 ## Câu trả lời
 

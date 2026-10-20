@@ -16,7 +16,7 @@ from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
-from .lexical import STOPWORDS, fold, tokens
+from .lexical import STOPWORDS, fold, strip_accents, tokens
 from .tone import detect_style, normalize_tone
 
 _WORD = re.compile(r"\w+")          # NFC trước: dấu tổ hợp (Mn) không thuộc \w nên NFD sẽ tách token sai
@@ -70,6 +70,7 @@ class NormalizedQuery:
     #: (bắt đầu, kết thúc, tên chuẩn) của từng địa danh TRÊN `text` cuối — offset hợp lệ với chuỗi trả về, để parser
     #: ràng buộc (`constraints.py`) cắt cụm ra khỏi text BM25. `destinations` giữ nguyên (không lặp, theo thứ tự).
     destination_spans: tuple[tuple[int, int, str], ...] = ()
+    restored: tuple[str, ...] = ()                      # cụm đã phục hồi dấu (chế độ restore, plan 2026-10-13 §2.5)
 
 
 def _spans(text: str) -> list[tuple[int, int, str, str]]:
@@ -127,6 +128,27 @@ def _osa(a: str, b: str) -> int:
     return d[-1][-1]
 
 
+def _restore_table(texts: Iterable[str], max_n: int = 4, share: float = 0.8) -> dict[str, str]:
+    counts: defaultdict[str, Counter[str]] = defaultdict(Counter)
+    for text in texts:
+        words = _WORD.findall(unicodedata.normalize("NFC", str(text)))
+        for n in range(2, max_n + 1):
+            for i in range(len(words) - n + 1):
+                surface = " ".join(words[i:i + n])
+                key = fold(surface)
+                if key != surface.lower() and len(key.split()) == n:
+                    counts[key][surface] += 1
+    out: dict[str, str] = {}
+    for key, c in counts.items():
+        by_lower: Counter[str] = Counter()
+        for surf, k in c.items():
+            by_lower[surf.lower()] += k
+        top, k = by_lower.most_common(1)[0]
+        if k / sum(by_lower.values()) >= share:
+            out[key] = top
+    return out
+
+
 #: Tên công khai cho module khác trong `domain/search` (parser ràng buộc dùng chung cách tách token và khớp cụm).
 spans = _spans
 find_phrases = _find
@@ -136,9 +158,9 @@ class QueryNormalizer:
     """Dựng một lần từ catalog (`destinations`, `names`), gọi cho từng truy vấn. Idempotent: chạy hai lần như một."""
 
     def __init__(self, destinations: Iterable[str], names: Iterable[str], *,
-                 min_len: int = 5, min_df: int = 3, spelling: bool = True, tone: bool = False):
+                 min_len: int = 5, min_df: int = 3, spelling: bool = True, tone: bool = False, restore: bool = False):
         dests = {str(d) for d in destinations if d}
-        if tone:   # `names` có thể là generator (use case) — giữ lại để vừa đếm kiểu dấu vừa dựng từ vựng
+        if tone or restore:   # `names` có thể là generator (use case) — giữ lại để dùng nhiều lần
             names = [str(n) for n in names if n]
         #: Kiểu dấu thanh của catalog ("old" | "new"); None = tắt hoặc catalog không đủ bằng chứng → không đổi câu.
         self.tone_style: str | None = detect_style([*dests, *names]) if tone else None
@@ -168,6 +190,10 @@ class QueryNormalizer:
         for t, n in df.items():
             if n >= min_df and t:
                 self._buckets[(t[0], len(t))].append(t)
+        #: Phục hồi dấu (plan 2026-10-13 §2.5, SEARCH_NO_DIACRITICS_MODE=restore): cụm 2..4 âm tiết (fold) → cách viết có dấu
+        #: chiếm ≥ 80 % lần xuất hiện trong tên catalog + điểm đến. Không phục hồi âm tiết đơn ("tran" có thể là Trần / trấn).
+        self._restore: dict[str, str] = _restore_table([*names, *dests]) if restore else {}
+        self._restore_n = max((len(k.split()) for k in self._restore), default=1)
 
     # ------------------------------------------------------------------ sửa chính tả
     def _correct_token(self, t: str) -> str | None:
@@ -201,6 +227,14 @@ class QueryNormalizer:
         if self.tone_style:   # trước alias: "Khánh Hoà" → "Khánh Hòa" khi catalog viết kiểu cũ
             text, _ = normalize_tone(text, self.tone_style)
 
+        # Phục hồi dấu chạy TRƯỚC alias (alias trả chữ có dấu, sẽ làm câu không còn "không dấu"): khớp dài nhất trước.
+        restored: list[tuple[str, str]] = []
+        raw = unicodedata.normalize("NFC", q)
+        if self._restore and strip_accents(raw) == raw:
+            spans = _spans(text)
+            text, restored = _apply(text, spans, _find(spans, self._restore.__contains__, self._restore_n),
+                                    self._restore.get)
+
         # Lượt alias tra cả gazetteer để "khớp dài nhất" đúng: "tp ho chi minh" (4 token, đã chuẩn) thắng alias
         # "ho chi minh" (3 token) — nếu không, chạy lần hai sẽ thành "TP. TP. Hồ Chí Minh".
         spans = _spans(text)
@@ -227,4 +261,4 @@ class QueryNormalizer:
         destination_spans = tuple((spans[i][0], spans[i + n - 1][1], self._gazetteer[k]) for i, n, k in hits)
 
         return NormalizedQuery(text, tuple(aliases + places + party_edits), tuple(corrections), destinations, party,
-                               destination_spans)
+                               destination_spans, tuple(r for _, r in restored))

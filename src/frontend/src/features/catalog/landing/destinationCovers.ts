@@ -1,8 +1,10 @@
+import { unsplashPath } from '../../../lib/unsplash';
+
 /**
  * Ảnh bìa theo nhãn điểm đến. `GET /destinations` chỉ trả tên và số sản phẩm, không có ảnh, nên ảnh là bản đồ tĩnh
  * theo nhãn chuẩn hóa; nhãn chưa có trong bản đồ thì dùng nền gradient (DestinationTiles).
  */
-const cover = (photo: string) => `https://images.unsplash.com/photo-${photo}?q=80&w=800&auto=format&fit=crop`;
+const cover = unsplashPath;
 
 const COVERS: Record<string, string> = {
   'Nha Trang': cover('1544644181-1484b3fdfc62'),
@@ -13,6 +15,8 @@ const COVERS: Record<string, string> = {
   'Hạ Long': cover('1528127269322-539801943592'),
   'Quy Nhơn': cover('1507525428034-b723cf961d3e'),
   'Đà Lạt': cover('1519681393784-d120267933ba'),
+  'Hà Nội': cover('1753380226922-06a65b17ddf2'),
+  'Huế': cover('1765034841805-8330b54bfdb7'),
 };
 
 export function coverFor(destination: string): string | null {

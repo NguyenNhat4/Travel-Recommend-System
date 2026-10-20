@@ -60,7 +60,7 @@ describe('verticals', () => {
   });
 
   it('returns a cover only for known destination labels', () => {
-    expect(coverFor('Nha Trang')).toMatch(/^https:\/\//);
+    expect(coverFor('Nha Trang')).toMatch(/^\/images\/unsplash\/.+\.webp$/);
     expect(coverFor('Điểm đến lạ')).toBeNull();
   });
 });

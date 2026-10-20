@@ -115,6 +115,12 @@ Tổng ≈ 450 dòng. `destination` lấy từ danh sách Vinpearl: Nha Trang, P
 
 5. **Vé Thương gia mô phỏng** (`seed/simulated_business.py`, `docs/prd/data-model.md` §3): sau khi nạp, mỗi vé `level = flight` có số hiệu chuyến, hạng khác `BUSINESS`/`FIRST`, sinh một dòng `sourceRef = demo:business:<sourceRef gốc>`, `cabinClass = BUSINESS`, giá = giá gốc × 2,65 làm tròn nghìn, `attributes.simulated = true`, `fieldSources.unitPrice = "mô phỏng"`, tên "(giá minh hoạ)"; ngày, cửa sổ, `available`, `priceValidUntil` chép từ vé gốc. Vé Thương gia thật cùng hành trình và ngày thắng (vé mô phỏng `available = false`). Seed đầy đủ luôn bật; `--catalog-only` và job fresh mặc định bật, `SIMULATED_BUSINESS_FARES=0` thì khoá (không xoá) vé mô phỏng đã có. Snapshot 2026-09-30 → 797 vé (290 khứ hồi, 507 một chiều / vé cũ).
 
+6. **Thành phần combo mô phỏng** (`seed/combo_components.py`, `docs/prd/data-model.md` §3.1, chốt 09/10/2026): chạy sau parse combo. Mỗi dòng `catalog.combo_items` trỏ tới sản phẩm đặt được — khách sạn → hạng phòng thật khi tên khách sạn và hạng phòng khớp (sau chuẩn hoá, `SequenceMatcher` ≥ 0,9), không thì khách sạn tổng + hạng phòng mô phỏng riêng của combo; vé máy bay → tuyến theo sân bay (thiếu thì tuyến mô phỏng, chặng mẫu `templateFlight` / `templateReturnFlight` từ giờ bay của combo); vé tham quan/golf → vé đặt được, không thì vé mô phỏng; ăn uống / xe đưa đón / voucher / khác không thuộc loại catalog nào → phần đi kèm, không sinh sản phẩm, `item_product_id` và `price_share` NULL (chốt 09/10/2026). Sản phẩm mô phỏng: `comboOnly = true` (view không cho là search unit / gợi ý), `simulated = true`, tên "(giá minh hoạ)", `sourceRef = demo:combo:<sourceRef combo>:<position>` (khách sạn tổng thêm `:property`), `comboBaseProductId` khi khớp được sản phẩm thật. `price_share` chia giá combo cho thành phần có sản phẩm theo giá tham khảo (phòng, khứ hồi rẻ nhất của tuyến × số khách, giá vé; vé mô phỏng: số tiền trong nhãn), làm tròn nghìn, phần lẻ dồn vào thành phần lớn nhất; thiếu giá tham khảo thì bằng thành phần rẻ nhất, không có thì chia đều; giá lẻ của sản phẩm mô phỏng = giá thật nếu có (phòng của khách sạn đã khớp: giá khách sạn; vé: số tiền trong nhãn), không thì `price_share / quantity`; khi tách combo luôn dùng `price_share`. Combo hết bán hoặc `SIMULATED_COMBO_ITEMS=0` → sản phẩm mô phỏng `available = false`. Production 09/10: 147 combo đang bán, 334 thành phần (110 là dịch vụ đi kèm).
+7. **Vé phủ ngày** (`seed/simulated_fill.py`, cùng mục PRD): chạy sau bước 5 và 6. Mỗi tuyến × mỗi ngày của cửa sổ chưa có vé một chiều (hạng không phải Thương gia) đặt được thì sinh một vé một chiều; chưa có khứ hồi thì sinh một vé khứ hồi. Chặng đi chép từ vé thật của tuyến (chọn theo `crc32(tuyến:loại:ngày)`), chặng về từ vé thật của tuyến ngược chiều, ở 2–5 ngày; giá = giá vé thật đã chép (khứ hồi: một vé khứ hồi thật của tuyến, không có thì `roundTripFrom`, không có nữa thì cộng hai chặng); `cabinClass = ECONOMY`, `simulated = true`, `simulatedFrom` = id vé mẫu, tên "(giá minh hoạ)", `sourceRef = demo:fill:<sourceRef tuyến>:<oneWay|roundTrip>:<ngày>`. Có vé thật, ngày đã qua, hoặc `SIMULATED_FILL_FLIGHTS=0` → `available = false`. Nới `available_from/to` của tuyến theo vé con trong cửa sổ. Trước khi sinh vé, sinh **tuyến chiều ngược** (`demo:reverse:<sourceRef tuyến A → B>`) cho tuyến thật A → B có vé thật mà chưa có tuyến thật B → A: thành phố, sân bay, toạ độ đảo chiều; `templateFlights` = các vé thật A → B đảo sân bay (giữ hãng, giờ cất cánh, không số hiệu, giá chép); có tuyến thật B → A thì tuyến mô phỏng `available = false`. Bản chép production 09/10 (as_of 09/10): 24 tuyến chiều ngược; khoảng 3.730 vé một chiều + 3.710 khứ hồi; 139/140 tuyến đang bán có vé một chiều và khứ hồi đủ 30 ngày (còn "Cà Mau – Hà Nội": tuyến thật không có chuyến nào, sân bay nguồn ghi VCA).
+8. **Hạng phòng cho khách sạn chưa có phòng** (`seed/simulated_rooms.py`, cùng mục PRD, chốt 09/10/2026): khách sạn tổng có giá mà không có hạng phòng con thật nào nhận một "Phòng tiêu chuẩn" `demo:room:<sourceRef khách sạn>` (giá = giá khách sạn, `maxOccupancy` 2, lịch mở 30 ngày, ảnh khách sạn), rồi được bật lại (bỏ `noBookableRoom`). Có phòng thật hoặc `SIMULATED_ROOMS=0` → phòng mô phỏng `available = false` (và khách sạn tắt lại khi chỉ còn phòng mô phỏng). Bản chép production 09/10: 295 khách sạn; khách sạn được gợi ý 2.471 → 2.766.
+
+Bước 6–8 chạy chung qua `seed/demo_data.py` sau `simulated_business.sync` và sau parse combo, trong cùng transaction của mọi đường nạp (seed đầy đủ, `--catalog-only`, job fresh `load_into_db` / `maintain_catalog`), theo thứ tự: phòng → tuyến chiều ngược + vé phủ ngày → thành phần combo → vé phủ ngày lần hai (cho tuyến mô phỏng của combo). Job fresh không cuộn cửa sổ các dòng `demo:fill/combo/reverse` (module tự quản), không parse combo vào dòng `demo:*`, và không khớp khách sạn cào về vào dòng `demo:*`.
+
 Idempotent: `INSERT … ON CONFLICT (product_id) DO UPDATE` toàn bộ cột.
 
 ## 3. Bước 2 — `parse_combos.py`
@@ -144,7 +150,7 @@ Tất cả ngày tính từ `as_of`. RNG = `numpy.random.default_rng(seed)`.
 
 **Chuyến (event_group_id = "OFF" + yyyymmdd + 3 số thứ tự trong ngày):**
 - Số chuyến/khách theo stage: new 0–1 (1 chuyến chỉ có `product_view`, không mua) · active 1–4 · dormant 1–2 (chuyến cuối cách `as_of` 180–365 ngày) · churned 1–2 (> 365 ngày). Trải trong 24 tháng trước `as_of`.
-- Mỗi chuyến **một destination**, chọn theo trọng số số sản phẩm bookable của destination. Ngày đi `using_date` = ngày đặt + 7–45 ngày; hotel `using_date` = nhận phòng; flight = ngày bay = nhận phòng; attraction = nhận phòng + 1.
+- Mỗi chuyến **một destination**, chọn theo trọng số số sản phẩm bookable của destination — lần bốc này **không phụ thuộc khách** (chỉ profile `g6-pref-v1`, §4.3, mới thêm sở thích chủ đề ẩn; demo giữ nguyên). Ngày đi `using_date` = ngày đặt + 7–45 ngày; hotel `using_date` = nhận phòng; flight = ngày bay = nhận phòng; attraction = nhận phòng + 1.
 - Vertical trong chuyến: luôn có 1 vertical; 65% chuyến ≥ 2 (thứ tự hotel → flight → attraction/combo → golf 3%). Mỗi vertical chọn **một** sản phẩm `is_bookable = true` trong destination theo **power-law** Zipf s = 0.8 trên thứ tự cố định (hash product_id); `brand = Vinpearl` nhân trọng số 2. Mức 0.8 được hiệu chỉnh trên snapshot 10.320 dòng để baseline popular-in-destination Recall@20 khoảng 0.58, không vượt trần 0.60.
 - Event của một chuyến, theo thứ tự thời gian: 1–3 `product_view` (0–7 ngày trước mua, có thể là sản phẩm khác cùng destination) → 40% có `add_to_cart` → `purchase` với `quantity` 1–2 (hotel: 1; flight: 1–3 khách; attraction: 2–4), `unit_price` = `products.unit_price` lúc đó (cộng ±5% nhiễu, làm tròn nghìn), `taxonomy` copy từ products. `search` event: 30% chuyến có 1 event `search` trước tiên (`product_id` NULL).
 - Giới hạn: không khách nào > 15 event; tổng mục tiêu 6.000–8.000.
@@ -212,6 +218,63 @@ Giữ nguyên `db/verify.sql`: ba ngưỡng quy mô demo (2.000 hồ sơ, 6.000�
 báo cáo vẫn ghi mọi PASS/FAIL thực tế, phân biệt lỗi sẵn có và lỗi mới. Tqanh phải đóng băng snapshot/split mới để đo sau nạp;
 không tái sử dụng split eval-v2 trên database đã gộp thêm dữ liệu.
 
+### 4.3. Bộ sở thích chủ đề `g6-pref-v1` (08/10/2026)
+
+Phục vụ FR-REC-01/02/04, AC-REC-01/02 (gate G6 của `docs/plan/2026-10-08-recsys-trien-khai-theo-giai-doan.md`, lane B1). **Chỉ cho
+database nghiên cứu RecSys**; demo, staging, eval-v2 và append-v1 không đổi một byte (kiểm 08/10 trên snapshot 30/09, `as_of` 30/09, seed 42:
+cùng sha `cdp_events.jsonl` / `cdp_profiles.jsonl` trước / sau; artifact append-v1 cùng sha).
+
+**Mục đích.** Theo `docs/spec/bench/recsys-bam-so-thich-quyet-dinh.md` §7.1: ở §4, điểm đến mỗi chuyến được bốc từ phân phối **toàn cục**
+theo khối lượng bookable, `plan_trip(w, rng, home)` không nhận tham số nào của khách ngoài `home` (chỉ để kiểm tuyến bay) → điểm đến
+chuyến sau **độc lập thống kê** với lịch sử của khách, bộ dự đoán tối ưu của split temporal / nexttrip chính là độ phổ biến toàn cục, và
+lợi ích của việc bám sở thích **không thể xuất hiện** ở hai split đó. Profile này gán cho mỗi khách thường một **chủ đề ẩn** (biển / núi /
+thành phố) và bốc điểm đến cùng chủ đề với xác suất `p`, để đo lại G2 trên dữ liệu mà sở thích không phải nhiễu.
+
+**Tham số** (`config.py` §4.3; profile = `PROFILES["append-v1"]` + `THEME_PREF_RATE`):
+
+| Tham số | Demo / eval-v2 / append-v1 | g6-pref-v1 | Ý nghĩa |
+|---|---|---|---|
+| `THEME_PREF_RATE` (p) | 0 (tắt — không tạo stream RNG, output không đổi) | **0,8** | mỗi lần bốc điểm đến của khách có chủ đề: p → bốc trong bể chủ đề (cùng trọng số bookable tuyến tính của lần bốc toàn cục, chỉ điểm đến có cả trong catalog lẫn `DEST_THEMES`), 1 − p → bốc toàn cục như §4 |
+| `THEME_NO_PREF_SHARE` | — | 0,30 | 30 % khách thường không sở thích (`None`): luôn bốc toàn cục |
+| `THEME_MIX` | — | `None` | trọng số chọn chủ đề cho khách; `None` = tỷ lệ khối lượng bookable của từng chủ đề trong catalog lúc sinh |
+| `DEST_THEMES` | — | beach 15 · mountain 16 · city 10 | chép từ `theme_exp.THEME` (theme_exp import lại từ đây — một nguồn). Danh sách `mixed` và 7 điểm đến chưa nhãn của prodcopy (Quảng Ngãi, Quảng Trị, Cà Mau, Sóc Trăng, Vinpearl Onsen Resort Tuyên Quang, Tuyên Quang, Bạc Liêu) **không** có = không chủ đề, chỉ tới được qua lần bốc toàn cục |
+
+Mọi tham số còn lại (số khách 5.004 − 4 persona, 40 event/khách, bỏ giỏ, không cạnh sản phẩm giả / mất group) kế thừa §4.2. Kỳ vọng tỷ lệ chuyến
+của khách có chủ đề tới điểm đến cùng chủ đề ≈ p + (1 − p)·mass (mass = khối lượng bookable của chủ đề / tổng); report in dòng này để đối
+chiếu (snapshot 30/09, seed 42: beach 1.735 · city 1.215 · mountain 546 · không sở thích 1.504; 87,5 % / 4.237 chuyến, mục tiêu 87,4 %).
+Theo từng chủ đề thì núi thấp hơn mục tiêu (0,769 so với 0,829; biển 0,898 / 0,891, phố 0,889 / 0,868): khi điểm đến núi thiếu vertical
+cần cho chuyến, `DEST_REDRAWS` rơi về bốc toàn cục — là hệ quả của catalog, không phải lỗi bộ sinh.
+`--theme-pref FLOAT` ghi đè p sau profile; p = 0 thì output trùng byte append-v1.
+
+**Nhãn ẩn.** Chủ đề của khách sinh từ stream RNG **riêng** `{seed}|theme|{user}` (không stream nào sẵn có bị dịch; persona P1–P4 luôn
+`None`) và chỉ ghi ra **sidecar**: `user_themes.jsonl` (`seed_histories`) hoặc `themes.json` cạnh `batch.json` (`append_histories prepare`,
+id đã mang tiền tố `VPX:<batch>:`). **Không có cột DB, không vào `cdp.profiles` / `cdp.events`, không thuật toán nào đọc nhãn** — nhãn chỉ để
+chấm điểm (như `theme_exp`). Khách có chủ đề vẫn có (1 − p) chuyến ngoài chủ đề và chuyến golf / nhiều vertical vẫn bốc lại tới 30 lần khi điểm
+đến thiếu vertical, nên nhãn không suy ngược được chắc chắn từ lịch sử.
+
+**Đường nạp** (không `seed --reset`, không mất catalog):
+
+```bash
+createdb -T vota_prodcopy vota_g6pref_v1                                   # bản sao DB nghiên cứu
+psql "$G6_URL" -c "TRUNCATE cdp.events"                                    # CHỈ lịch sử; catalog, app.*, Insider giữ nguyên
+psql "$G6_URL" -c "DELETE FROM cdp.profiles p WHERE NOT EXISTS (SELECT 1 FROM app.users u WHERE u.cdp_user_id = p.cdp_user_id)"
+SEED_DATABASE_URL="$G6_URL" python -m data_collection.seed.append_histories prepare --profile g6-pref-v1 \
+    --batch g6pref-v1 --as-of 2026-10-08 --out data/append/g6pref-v1     # batch.json + catalog.json + themes.json
+SEED_DATABASE_URL="$G6_URL" python -m data_collection.seed.append_histories apply \
+    --artifact data/append/g6pref-v1/batch.json --receipt data/append/g6pref-v1/receipt.json
+```
+
+Không bảng nào FK tới `cdp.events` nên TRUNCATE được; `cdp.profiles` bị `app.users` / `app.bookings` / giỏ… tham chiếu nên **không**
+`TRUNCATE … CASCADE` (xoá luôn tài khoản, đơn) — xoá bằng DELETE các profile không còn ai trỏ tới (nếu FK khác còn chặn một profile thì giữ
+nó: profile không có event, harness coi là khách mới). Lịch sử nghiên cứu khi đó chỉ gồm khách `VPX:g6pref-v1:…`; persona / tài khoản test
+còn lại không có event.
+
+Payload giữ `format = 1`, thêm khóa `profile` (chỉ khi khác `append-v1`); `validate()` chấp nhận khóa này, artifact append-v1 cũ vẫn validate
+và giữ sha. `db/verify.sql` trên DB này FAIL **theo thiết kế**: ba dòng quy mô như §4.1 / §4.2 (`profiles = 2000`, `events 6000-8000`,
+`max events per user <= 15`) cộng các dòng trông đợi lịch sử persona đã bị xoá (`P1 booking <-> event`, `persona users = 4` nếu bản sao
+không còn đủ app.users persona); report ghi rõ là FAIL dự kiến, không sửa `db/*.sql`. Split đóng băng trên DB g6 đặt tên với `-g6pref-v1-`
+(vd `split-nexttrip-g6pref-v1-asof20261008.json`); **không** ghi baseline gate trên DB này và không tái dùng split prodcopy / eval-v2.
+
 ## 5. Bước 4 — `seed_app.py`
 
 `app.users`: 4 persona + 50 tài khoản test `test01@vota.demo`…; mật khẩu chung `Demo@2026` băm **Argon2id** (m=19456, t=2, p=1 — đúng tham số backend, auth §8.1; salt tất định theo `user_id` để seed tái lập được); `cdp_user_id` cố định cho persona: P1 `VP0000001`, P2 `VP0000002`, P3 `VP0000003`, P4 `VP0000004` (seed_histories phải chừa 4 id này và sinh lịch sử đúng bảng dưới).
@@ -220,7 +283,7 @@ không tái sử dụng split eval-v2 trên database đã gộp thêm dữ liệ
 |---|---|---|
 | P1 Minh Anh `P1_frequent` | 3 chuyến Nha Trang trong 18 tháng (hotel + attraction); **chuyến sắp tới**: purchase `hotel_room` Vinpearl Nha Trang tại `as_of − 3`, `using_date = as_of + 12`, có `app.bookings` + `booking_items` tương ứng, chưa có flight/attraction; active, Gold | "Hoàn thiện chuyến Nha Trang" → flight / attraction |
 | P2 Quốc Bảo `P2_first_time` | 2 `product_view` Phú Quốc tại `as_of − 2`, `as_of − 1`; không purchase; new | cold start có `because` |
-| P3 Thu Hà `P3_dormant` | 2 chuyến Phú Quốc, chuyến cuối `as_of − 190`; dormant | "Chào mừng quay lại" |
+| P3 Thu Hà `P3_dormant` | 2 chuyến Phú Quốc, chuyến cuối `as_of − 400` (> 365, ngưỡng dormant chốt 09/10); `lifecycle_stage` CDP = churned | "Chào mừng quay lại" |
 | P4 Khách mới `P4_no_history` | 0 event; new | chỉ "Được đặt nhiều" |
 
 `app.bookings` cho P1: `reference_code = "VOTA-" + yyyymmdd(as_of+12) + "-" + 4 ký tự`, `event_group_id` trùng với event purchase, `total_amount` = Σ line_total. Không tạo bookings cho khách seed khác.

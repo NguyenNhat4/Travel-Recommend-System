@@ -9,14 +9,16 @@ Hai adapter CDP trong `infrastructure/cdp/` cùng tồn tại vì là hai chiề
   * `PostgresCdpReader`  — ĐỌC (sync): lịch sử của khách và bảng phổ biến cho recsys.
 Cả hai đi qua `CDP_DATABASE_URL`; không nơi nào khác được SQL thẳng vào schema `cdp` (AGENTS.md §6.1).
 
-Nạp metadata search unit lúc khởi động rồi nạp lại mỗi `CATALOG_REFRESH_SECONDS`; vector ở lại Weaviate.
-Lần nạp lại lỗi thì giữ bản đang phục vụ. Chưa nạp được lần nào (thiếu database, Weaviate hoặc index) thì log
+Nạp metadata search unit lúc khởi động rồi nạp lại mỗi `CATALOG_REFRESH_SECONDS`; truy vấn ANN luôn ở Weaviate.
+Vector theo id được nạp vào RAM ở nền sau mỗi lần nạp (`PreloadedVectorSearch`, `RECOMMEND_PRELOAD_VECTORS`; khởi động
+không chờ). Lần nạp lại lỗi thì giữ bản đang phục vụ. Chưa nạp được lần nào (thiếu database, Weaviate hoặc index) thì log
 rồi bỏ qua phần recsys — các route còn lại vẫn phục vụ được, đúng tinh thần "CDP lỗi thì không kéo sập cả app"
 (hop-dong-tich-hop-cdp.md §6).
 """
 from __future__ import annotations
 
 import asyncio
+import functools
 import threading
 from pathlib import Path
 import logging
@@ -27,10 +29,13 @@ from concurrent.futures import Executor, ThreadPoolExecutor
 from contextlib import AsyncExitStack, asynccontextmanager
 
 import httpx
+import psycopg
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
-from src.backend.app.agents.runtime_dependencies import RuntimeAgentDependencies
+from src.backend.app.agents.runtime_dependencies import RuntimeAgentDependencies, orchestrator_budget
+from src.backend.app.agents.orc_v2 import OrcV2Runtime
+from src.backend.app.application.itinerary.destination_names import DestinationNames
 from src.backend.app.agents.tools.itinerary_gateway import ItineraryToolGateway
 from src.backend.app.api.errors import install_error_handlers
 from src.backend.app.api.middleware import (
@@ -39,8 +44,10 @@ from src.backend.app.api.middleware import (
     install_http_logging,
     install_request_id,
 )
+from src.backend.app.infrastructure.persistence import db_connection
 from src.backend.app.api.ops import ops_router
 from src.backend.app.api.v1.router import api_router, root_router
+from src.backend.app.api.v2.router import api_router as api_v2_router
 from src.backend.app.application.auth.use_cases import (
     AuthenticateUser,
     ChangePassword,
@@ -67,10 +74,18 @@ from src.backend.app.application.itinerary.history import ConversationHistory
 from src.backend.app.application.itinerary.engine_tools import InProcessItineraryTools
 from src.backend.app.application.telemetry import traced
 from src.backend.app.application.itinerary.use_cases import PlanItinerary
+from src.backend.app.application.itinerary.v2_use_cases import RunAssistantV2
 from src.backend.app.application.tracking.behaviour import BehaviourTracker
 from src.backend.app.domain.booking import DraftPolicy, HoldPolicy
 from src.backend.app.domain.catalog import ListingItem
-from src.backend.app.application.recommendation import BuildPopularity, RecommendForUser
+from src.backend.app.application.recommendation import (
+    BuildPopularity,
+    CachePolicy,
+    RecommendationCache,
+    RecommendForUser,
+    WarmRecommendations,
+    source_digest,
+)
 from src.backend.app.application.search import SearchProducts, SimilarProducts, SuggestProducts
 from src.backend.app.application.search.search_log import SearchLogRecorder
 from src.backend.app.domain.search import HybridConfig
@@ -92,13 +107,17 @@ from src.backend.app.infrastructure.cdp.local_cdp_client import LocalCdpClient
 from src.backend.app.infrastructure.cdp.postgres_cdp_reader import PostgresCdpReader
 from src.backend.app.infrastructure.clients.itinerary_fixture_clients import FixtureItineraryClients
 from src.backend.app.infrastructure.clients.itinerary_http_clients import ItineraryHttpClients
-from src.backend.app.infrastructure.llm import build_chat_model
+from src.backend.app.infrastructure.llm import build_chat_model, build_orchestrator_model
 from src.backend.app.infrastructure.telemetry.memory import InMemoryCallTelemetry
 from src.backend.app.infrastructure.payments.fake_gateway import FakeGateway
 from src.backend.app.infrastructure.payments.stripe_gateway import StripePaymentGateway
 from src.backend.app.infrastructure.persistence.conversation_store import (
     InMemoryConversationStore,
     RedisConversationStore,
+)
+from src.backend.app.infrastructure.persistence.assistant_v2_store import (
+    InMemoryAssistantV2Store,
+    RedisAssistantV2Store,
 )
 from src.backend.app.infrastructure.persistence.postgres_conversation_archive import PostgresConversationArchive
 from src.backend.app.infrastructure.persistence.guest_booking_store import (
@@ -133,7 +152,7 @@ def build_catalog(settings, state) -> dict:
         "get_product_detail": GetProductDetail(products),
         "list_products": ListProducts(
             products, getattr(state, "listing_units", None), getattr(state, "product_popularity", None) or {},
-            max_limit=settings.search_max_limit),
+            max_limit=settings.search_max_limit, response_cache_size=settings.catalog_response_cache_size),
         "get_similar_products": GetSimilarProducts(products, getattr(state, "similar", None)),
     }
 
@@ -172,10 +191,14 @@ def search_hypothesizer(settings):
     return _SEARCH_HYPOTHESIZERS[key]
 
 
-def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) -> dict:
+def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None, *,
+                 recommend_executor: Executor | None = None, recommend_cache=None) -> dict:
     """Dựng engine recsys trên database đã seed.
 
-    Ba tham số override để test tiêm giả lập mà không cần Postgres hay tải model embedding.
+    Ba tham số override để test tiêm giả lập mà không cần Postgres hay tải model embedding. `recommend_executor` là pool
+    `recsys-io` của tiến trình (lifespan dựng một lần, dùng lại qua các lần nạp lại) cho các lượt Weaviate song song.
+    `recommend_cache` là `RecommendationCache` trên Redis (None = tắt); engine chỉ cache khi biết phiên bản catalog
+    (`WeaviateVectorStore.version`).
     """
     owns_embedder = False
     owns_vector_store = vector_store is None
@@ -201,18 +224,25 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
                         embedder, QueryEmbeddingCache(settings.search_embed_cache_size),
                         log_every=settings.search_embed_cache_log_every,
                     )
+            search = WeaviateVectorSearch(
+                connect_weaviate(
+                    settings.weaviate_url,
+                    api_key=settings.weaviate_api_key,
+                    grpc_port=settings.weaviate_grpc_port,
+                    timeout_seconds=settings.weaviate_timeout_seconds,
+                ),
+                collection=settings.vector_collection,
+                dimension=settings.embed_dimension,
+            )
+            if settings.recommend_preload_vectors:
+                # Tra vector theo id từ RAM (nạp ở nền sau mỗi lần nạp); ANN vẫn qua Weaviate. Dựng một lần: RecsysRefresher
+                # truyền lại store này ở các lần nạp sau nên bảng vector sống qua reload.
+                from src.backend.app.infrastructure.vectors.preloaded_vector_search import PreloadedVectorSearch
+
+                search = PreloadedVectorSearch(search)
             vector_store = WeaviateVectorStore(
                 settings.database_url,
-                WeaviateVectorSearch(
-                    connect_weaviate(
-                        settings.weaviate_url,
-                        api_key=settings.weaviate_api_key,
-                        grpc_port=settings.weaviate_grpc_port,
-                        timeout_seconds=settings.weaviate_timeout_seconds,
-                    ),
-                    collection=settings.vector_collection,
-                    dimension=settings.embed_dimension,
-                ),
+                search,
                 expected_model_version=f"{settings.embed_model}:{TEXT_BUILDER_VERSION}",
             )
         logger.info("startup.recsys.index.load.start source=weaviate")
@@ -246,6 +276,7 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
         lexical_k=settings.search_lexical_k,
         lexical_cutoff=min(settings.search_lexical_cutoff, settings.search_cutoff),  # contract: lexicalCutoff ≤ cutoff
         min_coverage=settings.search_lexical_min_coverage,
+        evidence_gate=settings.search_evidence_gate,
         **fusion,
     ) if settings.search_hybrid and hasattr(vector_search, "bm25") else None
     logger.info("startup.recsys.search.mode=%s", "HYBRID_CANDIDATE_SCORE" if hybrid else "ANN_CANDIDATE_SCORE")
@@ -259,6 +290,7 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
         lexical_cutoff=min(settings.search_no_diacritics_lexical_cutoff,
                            no_diacritics_cutoff if no_diacritics_cutoff is not None else settings.search_cutoff),
         min_coverage=settings.search_no_diacritics_min_coverage,
+        evidence_gate=settings.search_evidence_gate,
         **fusion,
     ) if hybrid and relax else None
     logger.info("startup.recsys.search.dest_filter=%s no_diacritics=%s", settings.search_dest_filter,
@@ -268,9 +300,16 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
                 settings.search_taxonomy_strong_only, settings.search_route_filter, settings.search_numeric_filter,
                 settings.search_party_filter, settings.search_tone_normalize, settings.search_duration_filter,
                 settings.search_poi_resolve, settings.search_entity_filter)
+    logger.info("startup.recsys.search.evidence gate=%s duration_mask=%s embed_residual=%s unexplained=%s background=%s",
+                settings.search_evidence_gate, settings.search_duration_mask, settings.search_embed_residual,
+                settings.search_unexplained_empty, settings.search_emit_background)
     logger.info("startup.recsys.search.fusion fuzzy_k=%s weights=%s/%s/%s", settings.search_fuzzy_k if hybrid else 0,
                 settings.search_rrf_dense_weight, settings.search_rrf_lexical_weight, settings.search_rrf_fuzzy_weight)
     product_popularity = {index.units[u].product_id: s for u, s in popularity.unit_scores().items()}
+    catalog_version = getattr(vector_store, "version", None)
+    if recommend_cache is not None and not catalog_version:
+        log_event(logger, "recsys.cache.disabled", "WARNING", reason="no_catalog_version",
+                  message="recsys.cache.disabled reason=no_catalog_version; lần nạp này tính mỗi request")
     return {
         "recsys_embedder": embedder,
         "recsys_vectors": vector_search,
@@ -302,6 +341,11 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
             duration_filter=settings.search_duration_filter,
             poi_resolve=settings.search_poi_resolve,
             entity_filter=settings.search_entity_filter,
+            duration_mask=settings.search_duration_mask,
+            embed_residual=settings.search_embed_residual,
+            unexplained_empty=settings.search_unexplained_empty,
+            emit_background=settings.search_emit_background,
+            no_diacritics_restore=settings.search_no_diacritics_mode == "restore",
             llm_fallback=settings.search_llm_fallback,
             llm_min_confidence=settings.search_llm_fallback_min_confidence,
             llm_timeout_ms=settings.search_llm_fallback_timeout_ms,
@@ -314,7 +358,13 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
         "listing_units": [ListingItem(p, bool(index.recommendable[i])) for i, p in enumerate(index.units)],
         "product_popularity": product_popularity,
         "recommend": RecommendForUser(
-            index, vector_search, cdp_reader, popularity, candidate_k=settings.recommend_candidate_k
+            index, vector_search, cdp_reader, popularity, candidate_k=settings.recommend_candidate_k,
+            explore_fill=settings.recommend_explore_fill,
+            next_trip_scoring=settings.recommend_next_trip_scoring,
+            max_per_destination=settings.recommend_max_per_destination or None,
+            executor=recommend_executor,
+            cache=recommend_cache,
+            catalog_version=catalog_version,
         ),
     }
 
@@ -360,6 +410,7 @@ class RecsysRefresher:
         self._failures = 0
         self._stop = asyncio.Event()
         self._prewarm_task: asyncio.Task | None = None
+        self._preload_task: asyncio.Task | None = None   # nạp vector vào RAM (PreloadedVectorSearch), mỗi lần nạp lại
         self._prewarm_stop = threading.Event()
 
     async def reload(self) -> bool:
@@ -384,6 +435,10 @@ class RecsysRefresher:
             setattr(self.app.state, name, service)
         if self._on_publish is not None:
             self._on_publish()
+        preload = getattr(updated.get("recsys_vectors"), "preload", None)
+        if callable(preload) and (self._preload_task is None or self._preload_task.done()):
+            # Nền: chỉ lấy vector còn thiếu hoặc đã đổi `textHash` từ lần nạp trước; trước khi xong vẫn hỏi Weaviate.
+            self._preload_task = asyncio.create_task(self._run_preload(preload))
         if first:
             logger.info("startup.recsys.ready search_units=%d", len(updated["index"].units))
             if getattr(self.settings, "search_prewarm", False) and self._prewarm_task is None:
@@ -404,14 +459,24 @@ class RecsysRefresher:
         except Exception as exc:  # noqa: BLE001 — prewarm hỏng thì cache chỉ nạp dần theo request, không ảnh hưởng phục vụ
             logger.warning("search.prewarm.failed error=%s", exc)
 
-    async def wait_prewarm(self, timeout: float = PREWARM_SHUTDOWN_WAIT_SECONDS) -> None:
-        """Shutdown: chờ prewarm dừng (đã nhận `stop`) trước khi đóng embedder dùng chung."""
-        if self._prewarm_task is None:
-            return
+    async def _run_preload(self, preload) -> None:
         try:
-            await asyncio.wait_for(asyncio.shield(self._prewarm_task), timeout)
-        except (asyncio.TimeoutError, asyncio.CancelledError):
-            logger.warning("search.prewarm.shutdown_timeout seconds=%s", timeout)
+            report = await asyncio.to_thread(preload, self._prewarm_stop)
+            log_event(logger, "recsys.vectors.preload", outcome=report.get("outcome"), vectors=report.get("vectors"),
+                      fetched=report.get("fetched"), complete=report.get("complete"),
+                      duration_ms=round(1000 * float(report.get("seconds") or 0)))
+        except Exception as exc:  # noqa: BLE001 — nạp lỗi thì vẫn hỏi Weaviate như trước, không ảnh hưởng phục vụ
+            log_event(logger, "recsys.vectors.preload", "WARNING", outcome="failed", error_kind=type(exc).__name__)
+
+    async def wait_prewarm(self, timeout: float = PREWARM_SHUTDOWN_WAIT_SECONDS) -> None:
+        """Shutdown: chờ prewarm và việc nạp vector dừng (đã nhận `stop`) trước khi đóng embedder và client dùng chung."""
+        for name, task in (("search.prewarm", self._prewarm_task), ("recsys.vectors.preload", self._preload_task)):
+            if task is None:
+                continue
+            try:
+                await asyncio.wait_for(asyncio.shield(task), timeout)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                logger.warning("%s.shutdown_timeout seconds=%s", name, timeout)
 
     async def run(self) -> None:
         while not self._stop.is_set():
@@ -432,6 +497,29 @@ class RecsysRefresher:
             resource = self.services.get(name)
             if resource is not None and hasattr(resource, "close"):
                 resource.close()
+
+
+def build_recommendation_cache(settings: Settings, stack) -> RecommendationCache | None:
+    """Cache kết quả gợi ý trên Redis dùng chung (PRD architecture §4, chốt 2026-10-12); URL trống thì tắt.
+
+    Namespace của khoá băm mã nguồn các module quyết định output, để bản deploy mới không đọc kết quả của bản cũ.
+    `stack` (AsyncExitStack của lifespan) đóng client khi tắt.
+    """
+    if not settings.recommend_cache_redis_url:
+        if settings.app_env == "production":
+            log_event(logger, "recsys.cache.disabled", "WARNING", reason="no_redis_url",
+                      message="recsys.cache.disabled reason=no_redis_url; RECOMMEND_CACHE_REDIS_URL trống")
+        return None
+    from src.backend.app.application.recommendation import cache as cache_module, use_cases as recommend_module
+    from src.backend.app.application.search import use_cases as search_module
+    from src.backend.app.domain.recommendation import popularity as popularity_module, profile as profile_module
+    from src.backend.app.infrastructure.persistence.redis_recommendation_cache import RedisRecommendationCacheStore
+
+    store = RedisRecommendationCacheStore.from_url(settings.recommend_cache_redis_url)
+    stack.callback(store.close)
+    namespace = source_digest(recommend_module, cache_module, search_module, profile_module, popularity_module)
+    logger.info("startup.recsys.cache.ready mode=redis ttl_seconds=%d", settings.recommend_cache_ttl_seconds)
+    return RecommendationCache(store, CachePolicy(ttl_seconds=settings.recommend_cache_ttl_seconds), namespace=namespace)
 
 
 def build_auth(settings: Settings, cdp_client, redis_client=None) -> dict:
@@ -580,12 +668,32 @@ def _itinerary_runtime(app: FastAPI, settings: Settings, authorization: str | No
         archive=getattr(app.state, "itinerary_conversation_archive", None),
         tool_timeout_seconds=settings.itinerary_tool_timeout_seconds,
         llm_timeout_seconds=settings.itinerary_llm_timeout_seconds,
+        orchestrator_llm=getattr(app.state, "itinerary_orchestrator_llm", None),
+        orchestrator_budget_seconds=orchestrator_budget(settings.itinerary_request_timeout_seconds),
     )
 
 
 def _itinerary_planner(app: FastAPI, settings: Settings, authorization: str | None, owner: str | None = None):
     runtime = _itinerary_runtime(app, settings, authorization, owner)
     return runtime.planner() if runtime is not None else None
+
+
+def _itinerary_v2_runtime(app: FastAPI, settings: Settings, *, known_refs: dict[str, str], authorization: str | None,
+                          progress=None, **_turn) -> OrcV2Runtime | None:
+    """Graph assistant v2 của một lượt; None khi chưa có model hoặc client tool (route trả 503)."""
+    clients = getattr(app.state, "itinerary_http_clients", None)
+    llm = getattr(app.state, "itinerary_orchestrator_llm", None) or getattr(app.state, "itinerary_llm", None)
+    if clients is None or llm is None:
+        return None
+    catalog = clients if getattr(clients, "supports_catalog", False) else None
+    similar = clients if getattr(clients, "supports_similar", False) else None
+    gateway = ItineraryToolGateway(clients, clients, catalog, recommendation_authorization=authorization,
+                                   similar=similar)
+    return OrcV2Runtime(tools=gateway, llm=llm, known_refs=known_refs,
+                        request_timeout_seconds=settings.itinerary_request_timeout_seconds,
+                        tool_timeout_seconds=settings.itinerary_tool_timeout_seconds,
+                        model_timeout_seconds=settings.itinerary_llm_timeout_seconds, progress=progress,
+                        destinations=getattr(app.state, "itinerary_destination_names", None))
 
 
 def _forward_langsmith_env(settings) -> None:
@@ -614,6 +722,10 @@ def _forward_langsmith_env(settings) -> None:
 async def lifespan(app: FastAPI):
     settings = get_settings()
     app.state.ready = False
+    db_connection.configure(
+        connect_timeout_seconds=settings.db_connect_timeout_seconds,
+        tcp_user_timeout_ms=settings.db_tcp_user_timeout_ms,
+    )
     if settings.ready_requires_db:
         app.state.db_probe = DatabaseProbe(
             settings.database_url, timeout_seconds=settings.ready_db_timeout_seconds,
@@ -696,17 +808,27 @@ async def lifespan(app: FastAPI):
             stack.push_async_callback(itinerary_redis.aclose)
             app.state.itinerary_conversation_store = RedisConversationStore(
                 itinerary_redis, ttl_seconds=settings.itinerary_conversation_ttl_seconds)
+            app.state.itinerary_v2_store = RedisAssistantV2Store(
+                itinerary_redis, ttl_seconds=settings.itinerary_conversation_ttl_seconds,
+                legacy_store=app.state.itinerary_conversation_store)
             logger.info("startup.itinerary_conversation_store.ready mode=redis")
         elif settings.app_env == "production":
             raise RuntimeError("ITINERARY_REDIS_URL là bắt buộc khi APP_ENV=production")
         else:
             app.state.itinerary_conversation_store = InMemoryConversationStore(
                 ttl_seconds=settings.itinerary_conversation_ttl_seconds)
+            app.state.itinerary_v2_store = InMemoryAssistantV2Store(
+                ttl_seconds=settings.itinerary_conversation_ttl_seconds,
+                legacy_store=app.state.itinerary_conversation_store)
             logger.warning("startup.itinerary_conversation_store.ready mode=memory")
         app.state.plan_itinerary = PlanItinerary(
             lambda authorization, owner: _itinerary_planner(app, settings, authorization, owner),
             settings.itinerary_request_timeout_seconds,
         )
+        app.state.itinerary_destination_names = DestinationNames(
+            timeout_seconds=settings.itinerary_tool_timeout_seconds)
+        app.state.run_assistant_v2 = RunAssistantV2(
+            app.state.itinerary_v2_store, lambda **turn: _itinerary_v2_runtime(app, settings, **turn))
         mode = settings.itinerary_data_mode or ("fixture" if settings.app_env in {"development", "test"} else "disabled")
         app.state.itinerary_data_mode = mode
         logger.info("startup.itinerary_clients.start mode=%s", mode)
@@ -741,6 +863,12 @@ async def lifespan(app: FastAPI):
             logger.warning("startup.itinerary_llm.unavailable error=%s", exc)
         logger.info("startup.itinerary_llm.mode mode=%s", app.state.itinerary_llm_mode)
 
+        try:
+            app.state.itinerary_orchestrator_llm = build_orchestrator_model(settings, app.state.itinerary_llm)
+        except Exception as exc:
+            app.state.itinerary_orchestrator_llm = app.state.itinerary_llm
+            logger.warning("startup.itinerary_orchestrator.fallback errorType=%s", type(exc).__name__)
+
         # Recsys tách khỏi phần itinerary: chưa nạp được thì tắt recsys và thử lại sau, các route còn lại
         # (kể cả assistant chạy fixture) vẫn phục vụ được.
         logger.info("startup.recsys.start model=%s", settings.embed_model)
@@ -759,7 +887,23 @@ async def lifespan(app: FastAPI):
             units = getattr(getattr(app.state, "index", None), "units", None)
             app.state.call_telemetry.set_catalog(len(units) if units is not None else None)
 
-        recsys = RecsysRefresher(app, settings, on_publish=publish_catalog)
+        # Pool riêng cho các lượt Weaviate song song của /recommendations; dùng lại qua các lần nạp lại (0 = tuần tự).
+        recsys_io = None
+        if settings.recommend_io_workers:
+            recsys_io = ThreadPoolExecutor(max_workers=settings.recommend_io_workers, thread_name_prefix="recsys-io")
+            stack.callback(recsys_io.shutdown, wait=False, cancel_futures=True)
+        recommend_cache = build_recommendation_cache(settings, stack)
+        # Làm ấm cache gợi ý sau đăng nhập trên pool riêng 2 thread, tách khỏi `recsys-io` mà engine dùng bên trong (việc
+        # trong một pool chờ việc gửi vào chính pool đó thì khoá chết khi pool đầy).
+        app.state.warm_recommendations = None
+        if recommend_cache is not None:
+            warm_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="recsys-warm")
+            stack.callback(warm_pool.shutdown, wait=False, cancel_futures=True)
+            app.state.warm_recommendations = WarmRecommendations(lambda: getattr(app.state, "recommend", None), warm_pool)
+        recsys = RecsysRefresher(app, settings,
+                                 build=functools.partial(build_recsys, recommend_executor=recsys_io,
+                                                         recommend_cache=recommend_cache),
+                                 on_publish=publish_catalog)
         if not await recsys.reload():
             publish_catalog()
         app.state.behaviour_tracker = BehaviourTracker(app.state.browse_event_recorder, app.state.product_lookup)
@@ -785,7 +929,7 @@ settings = get_settings()
 app = FastAPI(
     title=settings.app_name,
     description="Travel recommendation and itinerary API",
-    version="1.25.0",
+    version="1.30.0",
     lifespan=lifespan,
 )
 
@@ -794,8 +938,9 @@ install_cors(app, settings.cors_origins)
 install_call_telemetry(app)
 install_http_logging(app)  # trước install_request_id: nằm trong, đọc được X-Request-ID
 install_request_id(app)
-install_error_handlers(app)
+install_error_handlers(app, (psycopg.OperationalError,))
 app.include_router(api_router, prefix="/api/v1")
+app.include_router(api_v2_router, prefix="/api/v2")
 app.include_router(root_router)
 app.include_router(ops_router)
 

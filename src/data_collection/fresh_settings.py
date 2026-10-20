@@ -61,8 +61,9 @@ FIELDS: tuple[Field, ...] = (
     # ---- lịch
     Field("schedule.enabled", "schedule", "Bật lịch tự động", "bool", True,
           help="Cron gọi `fresh-run tick` mỗi 15 phút; tắt thì tick không chạy gì. Nút chạy tay vẫn dùng được."),
-    Field("schedule.time", "schedule", "Giờ chạy mỗi ngày (giờ Việt Nam)", "time", "02:00",
-          help="Lượt theo lịch bắt đầu ở tick đầu tiên sau giờ này, mỗi ngày tối đa một lượt."),
+    Field("schedule.time", "schedule", "Giờ chạy mỗi ngày (giờ Việt Nam)", "time", "08:35",
+          help="Lượt theo lịch bắt đầu ở tick đầu tiên sau giờ này, mỗi ngày tối đa một lượt. VM crawler staging-ha "
+               "chỉ bật 08:30–23:59 nên mặc định 08:35."),
     Field("schedule.fullEveryDays", "schedule", "Cào lớn mỗi bao nhiêu ngày", "int", 7, env="FULL_REFRESH_DAYS",
           minimum=1, maximum=60,
           help="Tính theo ngày lịch từ ngày bắt đầu lượt cào lớn thành công gần nhất. Các ngày còn lại chạy cập nhật hằng ngày."),
@@ -185,17 +186,23 @@ FIELDS: tuple[Field, ...] = (
           minimum=1, maximum=1800, help="Mỗi lần sau chờ gấp đôi lần trước."),
     # ---- hạn giờ (P4, docs/plan/2026-09-29-bo-cho-doi-giua-cac-buoc.md): quá hạn thì dừng riêng bước đó, giữ phần đã cào,
     # nguồn khác và các bước sau cào chạy tiếp; 0 = không giới hạn
-    Field("run.maxHours", "reliability", "Hạn giờ – toàn lượt gồm DB, chuẩn hoá và index", "float", 18.0,
+    Field("run.maxHours", "reliability", "Hạn giờ – toàn lượt gồm DB, chuẩn hoá và index", "float", 15.0,
           minimum=0.01, maximum=96, env="CATALOG_MAX_HOURS",
-          help="Luôn hữu hạn. Tiến trình giám sát dừng cây tiến trình rồi ghi lỗi, giữ dữ liệu để chạy lại."),
+          help="Luôn hữu hạn. Tiến trình giám sát dừng cây tiến trình rồi ghi lỗi, giữ dữ liệu để chạy lại. "
+               "Mặc định 15 giờ: lượt bắt đầu 08:35 kết thúc trước khi VM tắt lúc 23:59."),
     Field("run.autoResume", "reliability", "Lượt cào lớn bị dừng cưỡng bức thì tự chạy tiếp từ bước chuẩn hoá", "bool", True,
           help="Một bước treo quá hạn hoặc tiến trình bị hệ điều hành giết (hết RAM): chạy tiếp một lần, nạp phần đã cào "
                "vào DB và index. Không áp cho lượt người vận hành bấm Dừng."),
     Field("timeout.processing", "reliability", "Hạn giờ – mỗi bước chuẩn hoá/index/DB (phút)", "int", 30,
           minimum=1, maximum=240, help="Áp cả bước cuối lượt; không chờ vô hạn khi thư viện hoặc luồng bị treo."),
-    Field("crawl.maxHours", "reliability", "Hạn giờ – cả phần cào của một lượt (giờ)", "float", 16.0, env="CRAWL_MAX_HOURS",
+    Field("crawl.maxHours", "reliability", "Hạn giờ – cả phần cào của một lượt (giờ)", "float", 14.0, env="CRAWL_MAX_HOURS",
           minimum=0, maximum=72, help="Quá hạn thì dừng mọi nguồn còn đang cào, rồi vẫn gộp, kiểm tra, nạp DB phần đã có. "
                                       "0 = không giới hạn."),
+    Field("timeout.stallMinutes", "reliability", "Nguồn không có tiến triển quá (phút) thì coi là nghẽn", "int", 30,
+          minimum=0, maximum=600,
+          help="Nguồn chạy bằng crawl.py không in log và không ghi thêm dữ liệu trong ngần ấy phút: dừng riêng nguồn đó và "
+               "thử lại như lỗi tạm thời (retry.transientAttempts); vẫn nghẽn thì bỏ nguồn, giữ phần đã cào, các nguồn khác "
+               "và các bước sau cào chạy tiếp. Nên lớn hơn lần nghỉ dài nhất khi bị chặn (15 phút). 0 = tắt."),
     Field("timeout.vinpearl", "reliability", "Hạn giờ – Vinpearl (phút)", "int", 90, minimum=0, maximum=1440,
           help="0 = không giới hạn."),
     Field("timeout.tripFlights", "reliability", "Hạn giờ – trip.com vé máy bay (phút)", "int", 60, minimum=0, maximum=1440),
@@ -300,7 +307,7 @@ def coerce(field: Field, value, *, bounded: bool) -> Any:
     if kind == "time":
         text = str(value).strip()
         if not TIME_RE.match(text):
-            raise SettingsError(f"{field.label}: dạng HH:MM, vd. 02:00")
+            raise SettingsError(f"{field.label}: dạng HH:MM, vd. 08:35")
         return text
     if kind == "offsets":
         out = _offsets(value, field)

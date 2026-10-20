@@ -80,7 +80,7 @@ cp .env.example .env                      # điền các biến ở khối "Job 
 | `SEED_DATABASE_URL`, `DATABASE_URL`, `WEAVIATE_URL` | đích `local` (Postgres Docker + Weaviate local) |
 | `CLOUD_SEED_DATABASE_URL` | đích `cloud`: `postgresql://<user>:<mật khẩu mã hoá URL>@127.0.0.1:15432/vota` qua SSH tunnel |
 | `CLOUD_WEAVIATE_URL`, `CLOUD_WEAVIATE_API_KEY` | Weaviate Cloud (`https://<cluster>.weaviate.cloud`) |
-| `COHERE_API_KEY` | embed, dùng chung mọi đích |
+| `COHERE_API_KEY` | chỉ job `daily.py` cũ còn kiểm khoá này trước bước index; embed thực tế là e5-small trong image |
 | `DAILY_DESTINATIONS` | phạm vi điểm đến, mặc định `@v1` (38 điểm, `collectors/plan.py`) |
 | `DAILY_AGODA_PER_CITY`, `DAILY_AGODA_HOURS` | số khách sạn Agoda tối đa mỗi điểm đến (50), số giờ Agoda chạy mỗi ngày (14, hết giờ thì dừng êm) |
 
@@ -103,7 +103,7 @@ Mã thoát `daily.py`: 0 ổn · 1 gate chặn / lỗi · 2 có worker lỗi ho�
 ### Luồng Docker/daily.py cũ (chỉ chạy khi chủ động chọn `legacy-run`)
 
 Image `Dockerfile.daily` (repository root) gói `src/data_collection` + phần backend mà bước embed cần, Python 3.11 và Chromium cho vé thương gia, không chứa `data/`, `.env` hay secret. Dữ liệu làm việc nằm trên ổ VPS (`DATA_DIR`, mount vào `/data`) nên giữ
-nguyên giữa các lượt; kết nối DB/Weaviate/Cohere nằm trong `ENV_FILE`. Mọi thao tác đi qua một script:
+nguyên giữa các lượt; kết nối DB/Weaviate nằm trong `ENV_FILE`. Mọi thao tác đi qua một script:
 `run_daily_docker.sh` (`init` · `run`/`legacy-run` · `daily <lệnh>`). `run` giữ job cũ để tương thích các lệnh legacy; job mới dùng `fresh-run`, monitor mới dùng `fresh-monitor`.
 
 ```bash
@@ -144,14 +144,16 @@ Image [Dockerfile.fresh-catalog](../../Dockerfile.fresh-catalog) chứa collecto
 - Hằng ngày còn lại: xoay vòng tối đa 180 ID đã biết, ưu tiên ID chưa thử/lâu chưa thử, hỏi JSON phòng/giá mới cho cả phòng cũ và phòng mới. Chỉ file ID/thành phố và thời điểm thử/thành công được giữ cho lịch chạy; marker full chỉ ghi sau khi nạp DB thành công. Giá Trip.com gốc quá `tripHotels.priceMaxAgeDays` ngày (mặc định 7; `0` = tạm không tắt, chỉnh trên monitor) chưa làm mới sẽ được đặt chưa khả dụng để không quảng bá giá cũ.
 - Hai dòng DB chưa gộp cùng nhận một `sourceRef`/`sameAs` (vd. dòng agoda nạp riêng trong khi dòng booking đã ghi ref agoda vào `sameAs`) không còn làm dừng lượt nạp: dòng ghi ref trong `sameAs` được giữ, dòng kia nhận `mergedInto` và `available = false`, phòng con chuyển sang dòng giữ; số cặp ghi ở `refConflicts`.
 - DB giữ các trường mô tả đã có, cập nhật giá/trạng thái, thêm phòng mới, đánh dấu phòng Trip.com không còn xuất hiện trong phản hồi hợp lệ là hết bán. Một phản hồi lỗi/chặn **không** được coi là hết phòng. Không xóa `cdp.products` đã được đơn hàng tham chiếu.
-- Đầu mỗi lượt (kể cả khi mọi nguồn lỗi sau đó) job chạy một transaction riêng: đặt chưa khả dụng các giá Trip.com quá `tripHotels.priceMaxAgeDays` ngày (mặc định 7, `0` = bỏ qua), và cuộn cửa sổ đặt chỗ 30 ngày cho toàn catalog đúng như seed (`docs/spec/DATABASE_SCHEMA.md` #13): `available_from/to` = khoảng nguồn `attributes.sourceAvailableFrom/To` cắt vào `[hôm nay, +29]`, thiếu thì lấy cả cửa sổ; chuyến bay `from = to` = ngày bay; vé ngày cố định ngoài cửa sổ (đã bay, sau cửa sổ, hết hạn báo giá) được dời cả hai chặng vào cửa sổ như seed, ngày trong tên/mô tả đổi theo, và vé có giá luôn đặt được (`docs/prd/data-model.md` §3.1, chốt 06/10/2026); giao rỗng → `available = false` kèm `attributes.windowClosed`, và dòng mang dấu này được bật lại khi cửa sổ cuộn tới khoảng của nó (còn giá, chưa gộp, không có `priceFreshness`). Dòng tắt vì lý do khác (hết bán, giá quá hạn) không bị bật lại. Khách sạn tổng quan không có hạng phòng con nào đặt được thì `available = false` kèm `attributes.noBookableRoom`, tự bật lại khi có phòng (PRD FR-CAT-02, chốt 06/10/2026). Dòng mới/làm mới trong lượt ghi lại khoảng nguồn của lượt đó. Lịch `attributes.availability` của hạng phòng, điểm tham quan, golf được sinh lại theo cửa sổ mới như seed (`docs/spec/MOCK_DATA_SPEC.md` §2 bước 2); ngày Trip.com đã hỏi ghi theo kết quả thật, dòng chưa khả dụng có lịch toàn `0`.
+- Đầu mỗi lượt (kể cả khi mọi nguồn lỗi sau đó) job chạy một transaction riêng: đặt chưa khả dụng các giá Trip.com quá `tripHotels.priceMaxAgeDays` ngày (mặc định 7, `0` = bỏ qua), và cuộn cửa sổ đặt chỗ 30 ngày cho toàn catalog đúng như seed (`docs/spec/DATABASE_SCHEMA.md` #13): `available_from/to` = khoảng nguồn `attributes.sourceAvailableFrom/To` cắt vào `[hôm nay, +29]`, thiếu thì lấy cả cửa sổ; chuyến bay `from = to` = ngày bay; vé ngày cố định ngoài cửa sổ (đã bay, sau cửa sổ, hết hạn báo giá) được dời cả hai chặng vào cửa sổ như seed, ngày trong tên/mô tả đổi theo, và vé có giá luôn đặt được (`docs/prd/data-model.md` §3.1, chốt 06/10/2026); giao rỗng → `available = false` kèm `attributes.windowClosed`, và dòng mang dấu này được bật lại khi cửa sổ cuộn tới khoảng của nó (còn giá, chưa gộp, không có `priceFreshness`). Dòng tắt vì lý do khác (hết bán, giá quá hạn) không bị bật lại theo cửa sổ. Khách sạn tổng quan không có hạng phòng con nào đặt được thì `available = false` kèm `attributes.noBookableRoom`; có hạng phòng đặt được thì bật lại (PRD FR-CAT-02, chốt 06/10/2026) — kể cả khách sạn bị lượt cào trước tắt vì nguồn không trả giá cho đúng ngày hỏi, trừ dòng đã gộp, giá quá hạn, ngoài cửa sổ; khách sạn bật lại mà chưa có giá thì lấy giá hạng phòng rẻ nhất đang bán (12/10/2026). Vé máy bay mới mang logo hãng (`collectors/airlines.py`, cả vé phủ ngày mô phỏng); ảnh đã có trên DB của tuyến chiều ngược và tuyến mô phỏng của combo được giữ, không bị ảnh tuyến gốc/ảnh combo ghi đè. Điểm đã soát tay và ẩn nằm trong `collectors/excluded_products.csv` nên lượt cào sau không bật lại; loại một khách sạn thì mọi hạng phòng `<ref>:room:*` của nó cũng bị loại cùng lý do (13/10/2026). Tên đã soát tay nằm trong `collectors/name_overrides.csv` (`sourceRef,name,evidence`, bắt buộc có bằng chứng): job đặt lại tên, giữ tên nguồn ở `attributes.originalName`, và sửa đầu mô tả nếu mô tả dựng từ tên cũ (13/10/2026). Sân golf Trip không hiện giá nhận giá hiện hành của nền tảng đặt tee time công khai giá và cho phép cào ở `collectors/golf_prices.csv` (giá, nguồn, URL, thời điểm quan sát; `fieldSources.unitPrice` = nguồn đó; giá của chính Trip luôn thắng); sân không tìm được giá giữ `unitPrice = null`, không dùng giá tham khảo cũ (12/10/2026). Dòng mới/làm mới trong lượt ghi lại khoảng nguồn của lượt đó. Lịch `attributes.availability` của hạng phòng, điểm tham quan, golf được sinh lại theo cửa sổ mới như seed (`docs/spec/MOCK_DATA_SPEC.md` §2 bước 2); ngày Trip.com đã hỏi ghi theo kết quả thật, dòng chưa khả dụng có lịch toàn `0`.
 - Cũng trong transaction đầu lượt đó và sau mỗi lần nạp DB, `catalog.combo_items` của **mọi combo trong DB** được parse lại từ tên + mô tả đang lưu (`fresh_catalog_db.sync_combo_items`), không chỉ combo lượt này cào được: sửa code parse thì combo đang bị chặn cào cũng nhận bản mới, và thành phần map sang sản phẩm của toàn catalog thay vì chỉ lô đang nạp. Chỉ combo có thành phần đổi mới được ghi lại (`combosChanged`). Xem trước, chỉ đọc: `python src/data_collection/fresh_catalog_db.py combo-items --database-url <dsn>`.
-- Sau khi nạp DB (và cả khi lượt cào lỗi), job gọi bước index `embed_products` vào Weaviate của **cùng đích**: chỉ embed search unit mới hoặc đổi text, xoá vector mồ côi. Cohere 429 sau khi DB đã nạp: giữ DB, ghi index pending vào `state/index_pending.json`, lượt báo `partial` nhưng trả mã 0; cron bật sẽ thử lại riêng index sau cooldown (1 giờ, tăng dần tối đa 24 giờ; ưu tiên Retry-After). Các lỗi index khác vẫn trả mã 3. `fresh-run index` cũng tuân thủ cooldown. Backend tự nạp lại giá/trạng thái mỗi `CATALOG_REFRESH_SECONDS` (mặc định 15 phút), không cần restart.
+- Sau khi nạp DB (và cả khi lượt cào lỗi), job gọi bước index `embed_products` vào Weaviate của **cùng đích**: chỉ embed search unit mới hoặc đổi text, xoá vector mồ côi. Lỗi 429 (quota) của bước index sau khi DB đã nạp: giữ DB, ghi index pending vào `state/index_pending.json`, lượt báo `partial` nhưng trả mã 0; cron bật sẽ thử lại riêng index sau cooldown (1 giờ, tăng dần tối đa 24 giờ; ưu tiên Retry-After). Các lỗi index khác vẫn trả mã 3. `fresh-run index` cũng tuân thủ cooldown. Backend tự nạp lại giá/trạng thái mỗi `CATALOG_REFRESH_SECONDS` (mặc định 15 phút), không cần restart.
 - Raw/JSON đã bỏ review/tên người, interim, `products.jsonl`, log và báo cáo giữ theo từng lượt; mặc định giữ 2 lượt (`runs.keep` trong monitor, hoặc biến môi trường `RUNS_KEEP`). Tóm tắt lịch sử, ID và lịch xoay vòng được giữ lâu dài. Giá/input vẫn chỉ lấy từ phản hồi mới của lượt hiện tại. `KEEP_FAILED_RUNS` cũ không còn dùng; browser profile Trip được dọn sau bước hỏi giá.
 
 ### Hạn giờ và phục hồi khi nghẽn
 
-CLI `fresh_catalog.py` giám sát tiến trình chạy: `run.maxHours` mặc định 18 giờ cho toàn lượt; `timeout.processing` mặc định 30 phút cho mỗi bước xử lý (chuẩn hoá, kiểm tra, DB, index và lô streaming). Hạn giờ từng nguồn vẫn theo Cấu hình (mặc định `timeout.booking` 600, `timeout.agoda` 180 phút cho lượt làm mới cả catalog; cả lượt ước 11–14 giờ trên VM, luôn dưới `run.maxHours` 18 giờ nên không chồng lượt 02:00 hôm sau). Retry dùng chung hạn giờ của nguồn. Nguồn chạy bằng `crawl.py` quá hạn mà không tự dừng thì supervisor chỉ dừng cây tiến trình của nguồn đó (pid ở `detail.pid` của bước) và lượt chạy tiếp nguồn sau; chỉ khi nguồn vẫn "running" thêm 3 phút, hoặc bước trong tiến trình (khách sạn Trip, chuẩn hoá, DB, index) quá hạn, supervisor mới kết thúc cả lượt, ghi trạng thái lỗi trước khi thả khóa. Lượt full bị kết thúc cưỡng bức như vậy, hoặc bị hệ điều hành giết (hết RAM), tự chạy tiếp **một lần** `resume <lượt> --from normalise` (setting `run.autoResume`, mặc định bật; không áp cho lượt bấm Dừng): dòng ghi dở ở cuối interim được chốt rồi phần đã cào được chuẩn hoá, nạp DB, index. Gọi trực tiếp `run_job()` từ Python không có lớp supervisor; dùng CLI/wrapper khi vận hành.
+CLI `fresh_catalog.py` giám sát tiến trình chạy: `run.maxHours` mặc định 15 giờ cho toàn lượt (`crawl.maxHours` 14 giờ cho phần cào); `timeout.processing` mặc định 30 phút cho mỗi bước xử lý (chuẩn hoá, kiểm tra, DB, index và lô streaming). Hạn giờ từng nguồn vẫn theo Cấu hình (mặc định `timeout.booking` 600, `timeout.agoda` 180 phút cho lượt làm mới cả catalog; cả lượt ước 11–14 giờ trên VM, dưới `run.maxHours` 15 giờ nên lượt bắt đầu 08:35 kết thúc trước khi VM crawler tắt lúc 23:59). Retry dùng chung hạn giờ của nguồn. Nguồn chạy bằng `crawl.py` quá hạn mà không tự dừng thì supervisor chỉ dừng cây tiến trình của nguồn đó (pid ở `detail.pid` của bước) và lượt chạy tiếp nguồn sau; chỉ khi nguồn vẫn "running" thêm 3 phút, hoặc bước trong tiến trình (khách sạn Trip, chuẩn hoá, DB, index) quá hạn, supervisor mới kết thúc cả lượt, ghi trạng thái lỗi trước khi thả khóa. Lượt full bị kết thúc cưỡng bức như vậy, hoặc bị hệ điều hành giết (hết RAM), tự chạy tiếp **một lần** `resume <lượt> --from normalise` (setting `run.autoResume`, mặc định bật; không áp cho lượt bấm Dừng): dòng ghi dở ở cuối interim được chốt rồi phần đã cào được chuẩn hoá, nạp DB, index. Gọi trực tiếp `run_job()` từ Python không có lớp supervisor; dùng CLI/wrapper khi vận hành.
+
+Nghẽn: nguồn chạy bằng `crawl.py` không in dòng log nào và không ghi thêm file interim trong `timeout.stallMinutes` phút (mặc định 30, gấp đôi lần nghỉ dài nhất khi bị chặn; 0 = tắt) thì job dừng riêng cây tiến trình của nguồn đó (mã 76, loại lỗi `stalled`) và chạy lại như lỗi tạm thời (`retry.transientAttempts`, trong cùng hạn giờ của nguồn). Vẫn nghẽn thì bước nguồn kết thúc `timeout` (`detail.errorKind = stalled`, `detail.stalls` = số lần), phần đã cào được chốt và chuẩn hoá, các nguồn khác và các bước sau cào chạy tiếp; lượt báo "chưa đủ dữ liệu" kèm cảnh báo "Nguồn nghẽn". Nhờ vậy một nguồn treo không giữ các bước sau tới hết hạn giờ của nó (Booking 10 giờ). Bước trong tiến trình (khách sạn Trip) chưa có kiểm tra nghẽn: vẫn theo hạn giờ của bước.
 
 Nạp DB không dừng cả lượt vì một dòng: dòng mới ghép với DB bị trùng ID mà khác ref, trùng `sourceRef` chuẩn với dòng khác của lượt, hoặc khách sạn Trip chưa đủ mốc ngày giá được bỏ ra, ghi vào `<lượt>/db_quarantine.jsonl` kèm lý do (`counts.database.quarantined`, có cảnh báo); các dòng khác vẫn nạp. `run_daily_docker.sh fresh-run` giới hạn RAM container job bằng `FRESH_MEMORY` (mặc định `2500m`, rỗng = không giới hạn) để hết RAM thì chỉ tiến trình trong job bị giết, không phải backend chạy chung VM.
 
@@ -201,8 +203,7 @@ MAX_DELAY=1.0
 FULL_REFRESH_DAYS=7
 # Số site cào cùng lúc ở lượt full (mỗi site vẫn tuần tự). Tăng thì theo dõi RAM bằng `fresh-run status`.
 CRAWL_PARALLEL=2
-# Bước index sau mỗi lượt; thiếu cấu hình thì vẫn cào/nạp nhưng báo lỗi index. Collection `Product` trên Cloud chỉ do job này ghi.
-COHERE_API_KEY=...
+# Bước index sau mỗi lượt (embed e5-small có sẵn trong image, không cần khoá); thiếu cấu hình Weaviate thì vẫn cào/nạp nhưng báo lỗi index. Collection vector mặc định: `ProductE5Small` (`VECTOR_COLLECTION`).
 CLOUD_WEAVIATE_URL=https://<cluster>.weaviate.cloud
 CLOUD_WEAVIATE_API_KEY=...
 # Tuỳ chọn: role chỉ đọc cho bước index; để trống thì dùng CLOUD_SEED_DATABASE_URL.
@@ -220,7 +221,7 @@ FRESH_IMAGE=<AR>/vota-fresh-catalog:<tag> /opt/vota/bin/run_daily_docker.sh fres
 FRESH_IMAGE=<AR>/vota-fresh-catalog:<tag> /opt/vota/bin/run_daily_docker.sh fresh-run index
 FRESH_IMAGE=<AR>/vota-fresh-catalog:<tag> /opt/vota/bin/run_daily_docker.sh fresh-run full
 
-# Cron đánh thức mỗi 15 phút. Giờ chạy cấu hình trên monitor (mặc định 02:00 Việt Nam).
+# Cron đánh thức mỗi 15 phút. Giờ chạy cấu hình trên monitor (mặc định 08:35 Việt Nam; VM crawler staging-ha bật 08:30–23:59).
 */15 * * * * FRESH_IMAGE=<AR>/vota-fresh-catalog:<tag> /opt/vota/bin/run_daily_docker.sh fresh-run tick
 ```
 
@@ -236,7 +237,7 @@ Theo dõi trên console của VM (chỉ cần Docker, `curl` cho lệnh backend)
 
 `backend` gọi `BACKEND_URL` (mặc định `http://127.0.0.1:8000`) và tìm container có nhãn compose `service=backend`; tên khác thì đặt `BACKEND_CONTAINER`. Cột RESULT của `report`: `ok`, `partial:0` (đã nạp dữ liệu hợp lệ, còn nguồn/ngày chưa hoàn tất hoặc index đang chờ quota), `fail:3` (lượt dừng, xem cột NOTE), `running`.
 
-`fresh-run` mount `/srv/vota/fresh-catalog-data` vào `/data`: state ở `/data/state`, dữ liệu từng lượt ở `/data/fresh_runs/<runId>/`. Log runner được giữ 30 ngày ở `/srv/vota/fresh-catalog-logs/` (đổi bằng `CATALOG_LOG_DIR`). Chỉ đặt **một** lịch cào cho cùng DB: cài bằng `scripts/install-vota-cron.sh --job fresh` (thay lịch job cũ trong cùng khối cron). CI/CD cài rõ `--job fresh`, dùng image `GAR_FRESH_IMAGE` ghim digest và khởi động lại monitor; không tự chạy lượt cào. Xem **[hướng dẫn triển khai job cào](../../docs/guide/trien-khai-job-cao-du-lieu.md)** về nhánh CD và env VM.
+`fresh-run` mount `/srv/vota/fresh-catalog-data` vào `/data`: state ở `/data/state`, dữ liệu từng lượt ở `/data/fresh_runs/<runId>/`. Log runner được giữ 30 ngày ở `/srv/vota/fresh-catalog-logs/` (đổi bằng `CATALOG_LOG_DIR`); lệnh dọn tay `cleanup` xoá log quá 7 ngày. Chỉ đặt **một** lịch cào cho cùng DB: cài bằng `scripts/install-vota-cron.sh --job fresh` (thay lịch job cũ trong cùng khối cron). CI/CD cài rõ `--job fresh`, dùng image `GAR_FRESH_IMAGE` ghim digest và khởi động lại monitor; không tự chạy lượt cào. Xem **[hướng dẫn triển khai job cào](../../docs/guide/trien-khai-job-cao-du-lieu.md)** về nhánh CD và env VM.
 
 ### Monitor của cron mới
 
@@ -251,41 +252,68 @@ chú; bấm lại để thu. Bước con ghi ở `detail.substeps` của bước
 `normalise_stages/steps.json`) và một dòng log `catalog.substep name=<bước>:<bước con> …`: tab Log của ô lớn lọc theo
 `name=<bước>`, bấm một ô con mở tab Log lọc đúng bước con đó.
 
+**Bước con chưa chạy và log theo bước (09/10/2026):** danh sách bước con của từng bước lớn khai báo ở
+`pipeline_graph.SUBSTEPS` (test đối chiếu với code), nên ô chưa chạy vẫn bung được; bước con chưa có số liệu là ô mờ viền đứt
+mang trạng thái "Chờ tới lượt" (sau bước con đang chạy, hoặc cả ô đang chờ) hoặc "Không chạy" (lượt này không chạy bước con
+đó). Bản gộp nháp trong lúc cào chỉ có chuỗi từ "đọc checkpoint". Mỗi bước con (`stage_log.Stages`) ghi một dòng
+`status=running` lúc bắt đầu và một dòng kết quả lúc xong. Tab Log của ô Gộp và các ô con của nó lấy thêm dòng
+`normalise.step.*` (gộp chính thức, và bản nháp có tiền tố `[preview]`) nên xem được ngay trong lúc gộp; ô Gộp (không chọn
+ô con) còn hiện toàn bộ log "Catalog đang gộp" (mọi dòng `[preview]`, `catalog.preview.*`), kể cả khi bước Gộp chính thức
+chưa chạy, và mọi dòng không tiền tố giữa `catalog.step.start name=normalise` và mốc bước kế tiếp (log của bước Gộp chính
+thức chạy trong tiến trình job: đọc interim, gộp trùng, "Đã ghi …", cảnh báo). Lọc `name=<bước>` khớp đúng tên bước, không lẫn `normalise.source:…` / `normalise.preview`; đầu tab Log ghi
+đang lọc theo bước nào, kèm nút bỏ lọc. Tab "DB" có nút "Tải lại" và ô "Tự làm mới mỗi 10 giây" (mặc định bật khi đang có
+lượt chạy; mỗi lần đếm lại số dòng mọi bảng).
+
+**Tìm nhanh ở tab "DB" (13/10/2026):** ô "Tìm nhanh trong cả database" tìm ngay khi gõ (250 ms sau phím cuối), không cần chọn
+bảng; `GET /api/dbx/search?q=` (`db_browser.DbBrowser.search`). Không phân biệt hoa thường và dấu: chuỗi tìm thành biểu thức
+chính quy mà mỗi chữ cái là lớp gồm mọi dạng có dấu (`accent_regex`), không bỏ dấu dữ liệu trong DB (`translate()` chậm gấp
+15–30 lần; DB không có `unaccent`). UUID khớp đúng mọi cột UUID và cột chữ chứa mã (`cdp_user_id`, `event_group_id`…); số
+khớp đúng cột khoá số; chuỗi khác: dòng có đủ mọi từ trong các cột chữ ngắn (bỏ mô tả, nội dung chat, URL, bằng chứng), xếp
+khớp trọn → đầu chuỗi → cả cụm → từ rải rác. Mỗi bảng (không gồm view) một câu lệnh, tối đa 10 dòng, quá giờ thì chỉ bảng đó
+báo "quá giờ"; cột bí mật không tìm. Ô lọc của từng bảng cũng không phân biệt dấu, cần đủ mọi từ, lọc khi đang gõ và chỉ đếm
+tới 10.000 dòng ("hơn 10.000 dòng"); mặc định bỏ qua cột JSON và cột chữ dài (mô tả, URL…), ô chọn "Tìm cả mô tả và JSON
+(chậm hơn)" (`deep=1`) tìm mọi cột. Chuỗi tìm nằm trên địa chỉ trang (`#page=db&q=…`). Đo: snapshot 2026-09-30 (12.515 sản
+phẩm) tìm chung 60–120 ms cho 17 bảng; production 13/10 (30.935 sản phẩm, `EXPLAIN ANALYZE`, không tính mạng) tìm chung
+~280 ms cho 19 bảng, ô lọc `cdp.products` ~0,2 s mỗi câu lệnh (gồm cả JSON: 1,7–2,5 s).
+
 **Dung lượng (tab "Dung lượng" của monitor, 06/10/2026):** hiện đĩa VM (đã dùng / còn trống của filesystem chứa thư mục dữ
 liệu), dung lượng từng thư mục con và từng lượt cào còn giữ; nút "Xoá các lượt cũ hơn" giữ N lượt mới nhất (lượt đang chạy
 luôn được giữ; state và dữ liệu đã nạp DB không bị đụng). API: `GET /api/storage`, `POST /api/storage/cleanup {"keepRuns": N}`.
 Monitor không xoá được image Docker (container không có quyền Docker): bước deploy job cào gọi
 `run_daily_docker.sh prune-images <image vừa deploy>`, giữ image đó và một bản trước, xoá image cũ hơn của cùng repository.
-Dọn tay trên VM: `run_daily_docker.sh cleanup` (container dừng, image không dùng, lượt cũ, log cũ).
+Dọn tay trên VM: `run_daily_docker.sh cleanup` (container dừng, image dangling, lượt cũ chỉ giữ N lượt mới nhất — mặc định 2, log quá 7 ngày).
 
 Phục vụ FR-CAT-01/03 và NFR-SEC-01. Dùng cùng **image/tag, env file và volume** với `fresh-run`:
 
 ```bash
 FRESH_IMAGE=<AR>/vota-fresh-catalog:<tag> /opt/vota/bin/run_daily_docker.sh fresh-monitor
 # Tab DB của monitor đọc DB đích bằng SEED_DATABASE_URL (DB_TARGET=local) hoặc CLOUD_SEED_DATABASE_URL, chỉ đọc.
-# Tab Realtime đọc GET $BACKEND_URL/internal/calls (mặc định http://127.0.0.1:8000).
+# Tab Realtime đọc GET $BACKEND_URL/internal/calls (mặc định http://127.0.0.1:8000). BACKEND_URL= (trống) tắt tab: staging-ha đang tắt.
 # `fresh-monitor` chạy nền với --restart unless-stopped (Docker tự bật lại khi bị tắt vì hết RAM hay VM khởi động lại;
 # log: docker logs -f vota-fresh-catalog-monitor). MONITOR_RESTART=no chạy tiền cảnh như trước. Không giới hạn RAM mặc
 # định vì lượt bấm trên monitor chạy trong container này; MONITOR_MEMORY đặt giới hạn nếu cần.
 # `monitor` (không có `fresh-`) chạy cùng UI trong image daily, đọc <DATA_DIR>/state, /fresh_runs.
+# Công khai (đặt env trước khi chạy; mặc định tắt):
+#   MONITOR_HOST=0.0.0.0 MONITOR_PUBLIC=1   nghe mọi interface, chấp nhận Host public, không có đăng nhập
+#   MONITOR_READ_ONLY=1                     tuỳ chọn: chỉ GET, mọi POST trả 405; khi bật thì 7 API điều khiển không dùng được
 # Trên máy cá nhân:
 ssh -L 8765:127.0.0.1:8765 <user>@<vm>
 # Mở http://127.0.0.1:8765/ ; /daily và /pipeline tự chuyển về đây.
 ```
 
-Server chỉ nghe loopback trên mạng host của VM; URL DB trong env phải phân giải được từ mạng host (IP nội bộ/loopback, không chỉ tên service Docker). Không mở cổng monitor ra internet. Nếu cổng 8765 còn bị monitor cũ chiếm, dừng **đúng tiến trình/container monitor cũ** trước khi khởi động bản mới; không dừng backend/DB. Monitor không mount Docker socket.
+Mặc định server chỉ nghe loopback trên mạng host của VM; URL DB trong env phải phân giải được từ mạng host (IP nội bộ/loopback, không chỉ tên service Docker). **Staging đang công khai:** CD `staging-ha-crawler-cd.yml` (`scripts/deploy-staging-ha-crawler.sh`) chạy `fresh-monitor` với `MONITOR_HOST=0.0.0.0 MONITOR_PUBLIC=1` và không có `MONITOR_READ_ONLY` (đọc và ghi), công khai đủ chức năng qua `monitor.praxis.io.vn` (LB HTTPS sau Cloudflare; VM không có IP public; deploy thủ công; bản đầu chạy chỉ đọc, xem [entry lịch sử](../../history/2026-10-09-monitor-chi-doc-deploy-thu-cong.md)). Dashboard công khai không có đăng nhập; POST chỉ kiểm header `X-Requested-With: vota-monitor`. Tab Realtime trên staging-ha đang tắt (BACKEND_URL trống). Nếu cổng 8765 còn bị monitor cũ chiếm, dừng **đúng tiến trình/container monitor cũ** trước khi khởi động bản mới; không dừng backend/DB. Monitor không mount Docker socket.
 
 - **Tổng quan:** lượt hiện tại, bước đang chạy, lịch kế, log runner, trạng thái cấu hình kết nối và nơi lượt kế tiếp ghi (host/database/collection, không có tài khoản). Secret chỉ báo đã đặt/chưa đặt.
 - **Một lượt** (bấm mã lượt), các tab:
-  - *Luồng & nguồn*: bước của lượt và bảng từng nguồn: trạng thái, tiến độ x/y, số file raw, bản ghi interim so với lượt cùng chế độ trước đó, cảnh báo/lỗi/bị chặn/mã HTTP lỗi, dòng log gần nhất. “Mất nguồn” khi nguồn lỗi, bị chặn (mã 75), bị bỏ vì nguồn khác lỗi, không chạy tới, hoặc chạy xong mà 0 bản ghi. Khi lượt đang chạy: chỉnh delay từng nguồn, tạm dừng/chạy tiếp (có hiệu lực ở request kế tiếp, mức tối thiểu như trang Cấu hình, chỉ cho lượt đó); số tab/worker lưu cho lượt sau.
+  - *Tiến độ & tốc độ*: bước của lượt và bảng từng nguồn: trạng thái, tiến độ x/y, số file raw, bản ghi interim so với lượt cùng chế độ trước đó, cảnh báo/lỗi/bị chặn/mã HTTP lỗi, dòng log gần nhất. “Mất nguồn” khi nguồn lỗi, bị chặn (mã 75), bị bỏ vì nguồn khác lỗi, không chạy tới, hoặc chạy xong mà 0 bản ghi. Khi lượt đang chạy: chỉnh delay từng nguồn, tạm dừng/chạy tiếp (có hiệu lực ở request kế tiếp, mức tối thiểu như trang Cấu hình, chỉ cho lượt đó); số tab/worker lưu cho lượt sau.
   - *Theo thành phố*: catalog đã chuẩn hoá (bản nháp hoặc chính thức) theo thành phố × loại (khách sạn, hạng phòng, điểm tham quan/vé, tuyến bay, chuyến bay, combo) × nguồn; và bản ghi interim theo thành phố × nguồn khi đang cào (đọc tăng dần, tự cập nhật 5 giây). Khách sạn Vinpearl chưa có thành phố cho tới bước chuẩn hoá nên nằm ở dòng "chưa rõ" của bảng interim.
-  - *Log trực tiếp*: `job.log` qua server-sent events, lọc theo nguồn, mức, chữ.
+  - *Log* (stream trực tiếp): `job.log` qua server-sent events, lọc theo nguồn, mức, chữ.
   - *Raw / interim*: JSON/HTML gốc đã làm sạch (xem JSON, văn bản hiển thị, JSON-LD, `__NEXT_DATA__`) và bản ghi đã parse.
   - *Chuẩn hoá*: số dòng và từng dòng sau mỗi bước của `normalise.py` (ánh xạ nguồn → gộp trùng → lọc → làm giàu → kiểm vị trí/giá), dòng bị loại kèm lý do, cặp gộp trùng, truy vết một sản phẩm qua các bước với trường đã đổi.
-  - *Chuẩn hoá theo nguồn và bản nháp* (lượt cào lớn, cấu hình "Chuẩn hoá từng nguồn ngay khi nguồn cào xong", mặc định bật): bước cào nào xong thì `normalise.py --only-source` ánh xạ ngay file interim của bước đó, không đợi các bước khác cùng site (vd. vé máy bay Trip không đợi điểm tham quan); file còn lại của site được ánh xạ khi cả site xong (tối đa 2 tiến trình) thành checkpoint `<lượt>/normalised/<nguồn>.jsonl`; sau đó gộp nháp từ các checkpoint vào `<lượt>/preview/` để xem ở tab Chuẩn hoá / Catalog cuối (công tắc Nháp / Chính thức). Bước normalize chính thức (`--reuse-checkpoints`) chỉ ánh xạ lại nguồn còn thiếu, cũ hoặc lỗi rồi gộp. Không validate, không nạp DB, không index ở bản nháp; lượt lỗi giữ bản nháp cuối.
-  - *Ổn định*: bảng "Thời gian từng bước normalize" (giây, vào → ra, RAM, traceback khi lỗi), "Bản ghi lỗi khi ánh xạ" (bản ghi hỏng bị bỏ, quá ngưỡng thì dừng), cột "Lỗi / thử lại" ở bảng bước (lỗi tạm thời/hạ tầng tự thử lại, nguồn bị chặn bị bỏ qua, lỗi code dừng ngay, catalog tụt mạnh thì không nạp DB). Chạy lại riêng: `normalise.py --only-source <nguồn>`, `normalise.py --merge-only`.
-  - *Catalog cuối*, *Nạp DB* (trước/sau), *Báo cáo*.
-  - *Embedding*: text đúng như gửi Cohere cho từng search unit, hash, nhúng mới/giữ nguyên/xoá và lý do, 8 chiều đầu + độ dài vector, đọc vector đang lưu trong Weaviate; ô thử truy vấn (Cohere `search_query`, xếp hạng cosine trên collection đích).
+  - *Chuẩn hoá theo nguồn và bản nháp* (lượt cào lớn, cấu hình "Chuẩn hoá từng nguồn ngay khi nguồn cào xong", mặc định bật): bước cào nào xong thì `normalise.py --only-source` ánh xạ ngay file interim của bước đó, không đợi các bước khác cùng site (vd. vé máy bay Trip không đợi điểm tham quan); file còn lại của site được ánh xạ khi cả site xong (tối đa 2 tiến trình) thành checkpoint `<lượt>/normalised/<nguồn>.jsonl`; sau đó gộp nháp từ các checkpoint vào `<lượt>/preview/` để xem ở tab Chuẩn hoá / Catalog cuối (công tắc “Catalog đang gộp (mới nhất)” / “Bản chính thức”). Bước normalize chính thức (`--reuse-checkpoints`) chỉ ánh xạ lại nguồn còn thiếu, cũ hoặc lỗi rồi gộp. Không validate, không nạp DB, không index ở bản nháp; lượt lỗi giữ bản nháp cuối.
+  - *Chuẩn hoá – phần ổn định*: bảng "Thời gian từng bước normalize" (giây, vào → ra, RAM, traceback khi lỗi), "Bản ghi lỗi khi ánh xạ" (bản ghi hỏng bị bỏ, quá ngưỡng thì dừng), cột "Lỗi / thử lại" ở bảng bước (lỗi tạm thời/hạ tầng tự thử lại, nguồn bị chặn bị bỏ qua, lỗi code dừng ngay, catalog tụt mạnh thì không nạp DB). Chạy lại riêng: `normalise.py --only-source <nguồn>`, `normalise.py --merge-only`.
+  - *Catalog cuối*, *Trước → sau* (nạp DB), *Báo cáo*.
+  - *Embedding*: text đưa vào model e5-small cho từng search unit (tiền tố `passage: `), hash, nhúng mới/giữ nguyên/xoá và lý do, 8 chiều đầu + độ dài vector, đọc vector đang lưu trong Weaviate; ô thử truy vấn (e5-small, tiền tố `query: `, xếp hạng cosine trên collection đích; model nạp một lần ở lần bấm đầu).
 - Lượt bị kill được đánh dấu mất tiến trình qua khoá file; heartbeat cũ được báo riêng.
 - **Cấu hình:** file `/data/state/settings.json` ưu tiên hơn env, rồi mới tới mặc định. Chỉ gửi thay đổi; nút “Về env/mặc định” xoá override của trường đó. Lượt đang chạy giữ cấu hình ban đầu.
 - **Trip nhiều khách sạn:** bấm “Áp ngân sách Trip 30 / 10 / 180” rồi Lưu, kể cả env cũ vẫn đặt 10/3/60. Có thể tăng thêm: tối đa 500 ID/thành phố, quét 2.000 ID/thành phố, 2.000 ID/daily. Đây là ngân sách, không bảo đảm nguồn trả đủ. Giữ 2 tab giá + 4 worker HTTP trên VM 2 CPU/4 GB; mức này chưa được benchmark với ngân sách mới trên VM.
@@ -306,7 +334,7 @@ Server chỉ nghe loopback trên mạng host của VM; URL DB trong env phải p
   chặn / lỗi / quá giờ có nút “Cào lại nguồn này”, hoặc `./local_crawl.sh run resume <mã lượt> crawl <nguồn>`
   (`fresh_catalog.py resume <mã lượt> --from crawl --source <nguồn>`): chỉ cào lại nguồn đó rồi chuẩn hoá, nạp DB, index.
   Nguồn, bước và quan hệ giữa chúng khai báo ở `pipeline_graph.py`. Plan: `docs/plan/2026-09-29-bo-cho-doi-giua-cac-buoc.md`.
-- **Chạy liên tục** (Cấu hình → Chiến thuật, mặc định **tắt**): chuẩn hoá từng phần trong lúc cào, gộp theo chu kỳ, và nếu bật
+- **Chạy liên tục** (Cấu hình → Chạy liên tục, mặc định **tắt**): chuẩn hoá từng phần trong lúc cào, gộp theo chu kỳ, và nếu bật
   thêm thì nạp DB / index theo phần vào đích `DB_TARGET` của lượt. Dòng đã nạp giữa lượt ở lại dù cuối lượt lỗi. Khi lượt
   đang chạy, chỉnh chu kỳ / tạm dừng / chạy ngay ở tab “Chạy liên tục” của lượt. Plan: `docs/plan/2026-09-28-pipeline-chay-lien-tuc.md`.
 - **Cảnh báo và SLA** (Cấu hình → Cảnh báo và SLA): lượt lỗi, bị chặn chất lượng, nguồn bị chặn, trễ SLA được ghi vào
@@ -316,8 +344,7 @@ Job cũ không sinh `run.json` mới nên lịch sử cũ không được chuy�
 
 ### Chạy thử job mới trên máy cá nhân
 
-Cần Docker, Python ≥ 3.10 có `requirements.txt` (vd. `conda activate vsf`), Chromium của Playwright, `xvfb-run` và
-`COHERE_API_KEY` trong `.env` ở gốc repo. [local_crawl.sh](local_crawl.sh) ghi vào Postgres + Weaviate Docker local, vào
+Cần Docker, Python ≥ 3.10 có `requirements.txt` (vd. `conda activate vsf`), Chromium của Playwright, `xvfb-run`. Embed chạy e5-small trong tiến trình, không cần khoá; lần đầu model được tải về cache Hugging Face. [local_crawl.sh](local_crawl.sh) ghi vào Postgres + Weaviate Docker local, vào
 database `vota_crawl` và collection `ProductCrawl` riêng; không đụng `vota`/`Product` của backend local. Lượt chạy ở chế độ
 local (`CATALOG_LOCAL_ONLY=1`) nên `fresh_catalog.py` dừng ngay nếu đích DB/Weaviate không phải localhost, kể cả khi `.env`
 gốc đang trỏ `WEAVIATE_URL` tới Weaviate Cloud.
@@ -327,7 +354,7 @@ cd src/data_collection
 export LOCAL_CRAWL_NAME=demo  # tuỳ chọn: bộ riêng vota_crawl_demo / ProductCrawlDemo / data/local_crawl_demo
 ./local_crawl.sh setup      # docker compose up postgres weaviate; tạo database từ db/vota_schema.sql + migration; cấu hình đa luồng
 ./local_crawl.sh small      # tuỳ chọn: phạm vi nhỏ (Nha Trang + Hà Nội, 3 khách sạn/nguồn, Vinpearl 1 ngày giá)
-./local_crawl.sh monitor    # http://127.0.0.1:8765 → "Cào lớn"; theo dõi ở tab Luồng & nguồn / Log trực tiếp
+./local_crawl.sh monitor    # http://127.0.0.1:8765 → "Cào lớn"; theo dõi ở tab Tiến độ & tốc độ / Log
 ./local_crawl.sh run full   # hoặc chạy từ terminal; `run status` in lịch kế tiếp
 ./local_crawl.sh run resume <mã lượt> db   # chạy lại lượt đã kết thúc từ một bước sau cào, không cào lại
 ./local_crawl.sh run resume <mã lượt> crawl booking   # cào lại riêng một nguồn rồi chạy tiếp tới index
@@ -339,8 +366,8 @@ export LOCAL_CRAWL_NAME=demo  # tuỳ chọn: bộ riêng vota_crawl_demo / Prod
 khách sạn Trip tắt vì trang danh sách Trip đang trả "Tìm thấy 0 nơi lưu trú" cho trình duyệt tự động (25/09/2026).
 
 Trình duyệt chạy trong Xvfb; `SHOW_BROWSER=1 ./local_crawl.sh monitor` để thấy cửa sổ Chromium (tự bấm xác minh nếu nguồn hỏi).
-Dữ liệu các lượt ở `data/local_crawl/` (Git ignore). Bước index gọi Cohere cho search unit mới hoặc đổi text; ô thử truy
-vấn gọi Cohere một lần mỗi lần bấm.
+Dữ liệu các lượt ở `data/local_crawl/` (Git ignore). Bước index embed bằng e5-small cho search unit mới hoặc đổi text; ô thử truy
+vấn chạy e5-small trong tiến trình monitor, mỗi lần bấm một truy vấn.
 
 ### Nối DB nội bộ và chống chồng lượt (HA)
 
@@ -694,6 +721,18 @@ python -m data_collection.seed --as-of 2026-09-23 --seed 42 --reset
 ```
 
 Pipeline parse combo, chuẩn hoá cửa sổ đặt chỗ, sinh lịch sử CDP/app/Insider rồi nạp hai database bằng transaction. Vector không nằm trong PostgreSQL; sau khi seed, chạy `make index-vectors` ở repository root để chỉ embed text mới/đã đổi và đồng bộ collection `Product` của Weaviate. `purchase` thiếu `event_group_id` khoảng 3% là edge case cố ý và vẫn được giữ lại.
+
+Dữ liệu mô phỏng cho demo (`docs/prd/data-model.md` §3.1, chốt 09/10/2026): hạng phòng cho khách sạn chưa có phòng (`demo:room:*`),
+tuyến chiều ngược (`demo:reverse:*`) + vé phủ ngày (`demo:fill:*`), sản phẩm cho mọi thành phần combo + `price_share` (`demo:combo:*`).
+Mọi đường nạp catalog (seed, `--catalog-only`, job fresh) tự chạy `seed/demo_data.py` sau vé Thương gia mô phỏng; chạy tay khi cần
+(cả bốn bước trong một transaction, `--dry-run` chạy rồi ROLLBACK). Mỗi bước chỉ ghi dòng của mình, chạy lại không đổi gì; tắt bằng
+`SIMULATED_ROOMS=0` / `SIMULATED_FILL_FLIGHTS=0` / `SIMULATED_COMBO_ITEMS=0` thì khoá các dòng đó, không xoá. Từng bước có CLI riêng
+(`--dry-run` chỉ đọc), `combo_components --report` ghi quyết định từng thành phần ra JSON:
+
+```bash
+python -m data_collection.seed.demo_data --database-url-env SEED_DATABASE_URL [--as-of YYYY-MM-DD] [--dry-run]
+python -m data_collection.seed.combo_components --database-url-env SEED_DATABASE_URL --dry-run --report combo_report.json
+```
 
 Chạy kiểm tra từ repository root:
 

@@ -52,6 +52,7 @@ describe('WidgetNarration', () => {
     expect(screen.getByText('Đài Quan Sát LOTTE Hanoi Sky')).toBeTruthy();   // tên catalog, không phải nhãn link
     expect(screen.getByText('4.4/5')).toBeTruthy();
     expect(screen.getByText(/13\.246 đánh giá/)).toBeTruthy();
+    expect(screen.queryByText('4.4')).toBeNull();                              // điểm chỉ hiện một lần
     expect(screen.getByText('Tham quan tự do')).toBeTruthy();
     expect(screen.getByText('58 P. Quốc Tử Giám, Hà Nội')).toBeTruthy();
     expect(screen.queryByText(/Nơi lạ/)).toBeTruthy();                         // id lạ: chỉ còn chữ, không có thẻ
@@ -81,6 +82,8 @@ describe('WidgetNarration', () => {
       quickAddIds={new Set(['lotte'])} onQuickAdd={onQuickAdd} />);
     const add = screen.getAllByRole('button', { name: /Thêm/ });
     expect(add).toHaveLength(1);
+    expect(add[0].getAttribute('aria-label')).toBe('Thêm Đài Quan Sát LOTTE Hanoi Sky vào giỏ');
+    expect(add[0].textContent).toBe('Thêm vào giỏ');
     fireEvent.click(add[0]);
     expect(onQuickAdd).toHaveBeenCalledWith('lotte');
     expect(onOpen).not.toHaveBeenCalled();
@@ -220,5 +223,29 @@ describe('WidgetNarration fare days', () => {
     render(<WidgetNarration text={fareText} products={{ f12: fares.f12 }} onOpen={vi.fn()} flights={[leg]} />);
     expect(screen.queryByRole('region', { name: 'Giá vé theo ngày bay' })).toBeNull();
     expect(screen.getByRole('article', { name: /Vé máy bay/ })).toBeTruthy();
+  });
+});
+
+describe('product-only headings', () => {
+  afterEach(cleanup);
+
+  it('shows a standalone product name only on its clickable card', () => {
+    const onOpen = vi.fn();
+    render(<WidgetNarration text={'**[Hồ Hoàn Kiếm](product:lake)**\nBạn có thể ghé dạo quanh hồ.'}
+      products={{ lake: product('lake', 'Hồ Hoàn Kiếm') }} onOpen={onOpen} />);
+    expect(screen.getAllByText('Hồ Hoàn Kiếm')).toHaveLength(1);
+    expect(screen.getByText('Bạn có thể ghé dạo quanh hồ.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Xem chi tiết Hồ Hoàn Kiếm' }));
+    expect(onOpen).toHaveBeenCalledWith('lake');
+  });
+
+  it('keeps names within useful sentences and preserves unknown references', () => {
+    const blocks = narrationBlocks('Ghé [Hồ Hoàn Kiếm](product:lake) để dạo bộ.\n[Nơi khác](product:unknown)',
+      (id) => id === 'lake');
+    expect(blocks).toEqual([
+      { kind: 'text', text: 'Ghé [Hồ Hoàn Kiếm](product:lake) để dạo bộ.' },
+      { kind: 'card', productId: 'lake' },
+      { kind: 'text', text: '[Nơi khác](product:unknown)' },
+    ]);
   });
 });

@@ -29,13 +29,13 @@ Sự kiện nghiệp vụ, nối với request qua `request_id`:
 |---|---|
 | Xác thực | `auth.login` (`ok/bad_credentials/locked/mfa_required`), `auth.register`, `auth.session.revoke`, `auth.password.change`, `auth.mfa.verify` |
 | Search | `search.run` (`mode, query_text, result_count, engine_ms, degraded`), `search.embed.failed` |
-| Recommendation | `recsys.recommend` (`persona, branch, result_count, duration_ms`), `recsys.fallback` |
+| Recommendation | `recsys.recommend` (`persona, branch, result_count, duration_ms, cache, stage_ms, events_read` — `stage_ms` là thời gian từng bước của engine, ms nguyên: `cdp, history, candidates, rank, explore, build, coldStart`, cộng thời gian riêng của từng lượt kho vector `annShort, annLong, popularVectors` (chạy song song nên có thể chồng lên nhau; `candidates` là thời gian thật của cả bước); `cache` là kết quả tra cache gợi ý khi bật: `hit`, `wait_hit` (chờ lần tính đang chạy), `miss` (tính và lưu), `wait_timeout`, `error` (Redis lỗi, tính trực tiếp), `too_large`, `unserializable`), `recsys.fallback`, `recsys.vectors.preload` (`outcome, vectors, fetched, complete, duration_ms, error_kind` — nạp vector theo id vào RAM ở nền sau mỗi lần nạp catalog), `recsys.cache.error` (`op, error_kind, suppressed` — Redis của cache gợi ý lỗi; WARNING tối đa một dòng mỗi 60 giây mỗi worker, `suppressed` là số lần lỗi bị nén; không ghi URL), `recsys.cache.disabled` (`reason`: `no_redis_url` \| `no_catalog_version`), `recsys.cache.warm` (`outcome, duration_ms, error_kind` — làm ấm sau đăng nhập; `outcome` là kết quả tra cache như trên, hoặc `duplicate`, `busy`, `no_engine`, `cache_off`, `uncached` (CDP lỗi, kết quả lui không lưu), `failed`) |
 | Giỏ / đơn nháp | `cart.item.add/remove`, `draft.create/update`, `guest.merge` |
 | Đặt chỗ | `booking.create_hold`, `booking.checkout.start`, `booking.cdp.record_purchase`, `booking.commit`, `booking.cdp.cancel_purchase`, `booking.cancel`, `booking.reconcile.deferred/failed` (kèm `booking_ref, amount_vnd, item_count`) |
 | Thanh toán | `payment.webhook.received` (`stripe_event_type, event_id`), `payment.signature.invalid`, `payment.settled`, `payment.failed` |
 | Trợ lý | `assistant.run.start`, `assistant.node` (`node, duration_ms, outcome`), `assistant.tool.call`, `assistant.llm.call`, `assistant.grounding` (`checked, violations`), `assistant.run.end`, `assistant.stream.open/close` |
 | Sự kiện hành vi | `events.ingest` (`count, cdp_ok`) |
-| Hạ tầng | `app.startup`, `app.shutdown`, `db.pool.exhausted`, `db.unavailable`, `readiness.degraded` |
+| Hạ tầng | `app.startup`, `app.shutdown`, `db.unavailable`, `readiness.degraded` |
 
 ### frontend (chỉ Next.js, server-side)
 

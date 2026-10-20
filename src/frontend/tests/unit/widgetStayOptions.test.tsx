@@ -57,15 +57,16 @@ describe('WidgetStayOptions', () => {
       options: response.stayOptions!.options.map((option) => ({ ...option, itinerary: roomy(option.itinerary) })) } };
     render(<WidgetStayOptions cards={stayOptionCards(withRooms)!} interactive selectingKey={null} previewKey={null}
       onPreview={vi.fn()} onSelect={vi.fn()} />);
-    expect(screen.getAllByText(/\/đêm × 5 phòng/)).toHaveLength(2);
+    expect(screen.getAllByText(/ · 5 phòng$/)).toHaveLength(2);
   });
 
   it('shows the trade-off of each option', () => {
     render(row());
-    expect(screen.getByText('Đang chọn')).toBeTruthy();
-    expect(screen.getByText(/Đi lại ≈33,1 km/)).toBeTruthy();
-    expect(screen.getByText('−5.000.000 ₫')).toBeTruthy();
-    expect(screen.getByText('≈+9,2 km')).toBeTruthy();
+    expect(screen.getAllByText('Đang chọn')).toHaveLength(2);
+    expect(screen.getAllByText('≈33,1 km')).toHaveLength(1);
+    expect(screen.getByText('So với lựa chọn hiện tại')).toBeTruthy();
+    expect(screen.getByText('Rẻ hơn 5 triệu')).toBeTruthy();
+    expect(screen.getByText('Xa hơn ≈9,2 km')).toBeTruthy();
   });
 
   it('notes that the km is an estimate, including the airport legs only when the plan has a flight', () => {
@@ -98,7 +99,7 @@ describe('WidgetStayOptions', () => {
   it('lifts the previewed card without making it the chosen one', () => {
     render(row({ previewKey: stayCardKey(cards[1]) }));
     expect(screen.getByText('Đang xem trước')).toBeTruthy();
-    expect(screen.getByText('Đang chọn')).toBeTruthy();
+    expect(screen.getAllByText('Đang chọn')).toHaveLength(2);
     expect(screen.getByRole('button', { name: /Xem trước phương án 1/ }).getAttribute('aria-pressed')).toBe('true');
   });
 
@@ -160,4 +161,32 @@ describe('two-hotel options that split the nights differently', () => {
     expect(screen.getByText('Đêm 1–3 · Khách sạn A')).toBeTruthy();
     expect(screen.getByText('Đêm 4 · Khách sạn B')).toBeTruthy();
   });
+});
+
+
+it('separates hotel category labels from selection and shows absolute totals', () => {
+  const cards = stayOptionCards(response)!;
+  cards[0].hotels[0].attributes.starRating = 5;
+  cards[0].hotels[0].aggregateRating = { score: 4.8, count: 500 };
+  cards[0].plan.budgetSummary = { total: 6400000, stays: 6000000, activities: 400000, flights: 0, budget: null, status: 'NO_BUDGET' };
+  cards[1].plan.budgetSummary = { total: 1400000, stays: 1000000, activities: 400000, flights: 0, budget: null, status: 'NO_BUDGET' };
+  render(<WidgetStayOptions cards={cards} interactive selectingKey={null} previewKey={null} onPreview={vi.fn()} onSelect={vi.fn()} />);
+  expect(screen.getByText('Tiết kiệm nhất')).toBeTruthy();
+  expect(screen.getByText('Ít di chuyển nhất')).toBeTruthy();
+  expect(screen.getByText('Cân bằng')).toBeTruthy();
+  expect(screen.getByText('Cao cấp · Được yêu thích')).toBeTruthy();
+  expect(screen.getAllByText('Đang chọn')).toHaveLength(2);
+  expect(screen.getByText('1 triệu')).toBeTruthy();
+  expect(screen.getByText('≈42,3 km')).toBeTruthy();
+});
+
+it('separates the guest score from the hotel class and keeps internal thresholds out of the copy', () => {
+  const cards = stayOptionCards(response)!;
+  cards[0].hotels[0].attributes.starRating = 5;
+  cards[0].hotels[0].aggregateRating = { score: 4.3, count: 410 };
+  render(<WidgetStayOptions cards={cards} interactive selectingKey={null} previewKey={null} onPreview={vi.fn()} onSelect={vi.fn()} />);
+  expect(screen.getAllByText('4,3/5').length).toBeGreaterThan(0);
+  expect(screen.getAllByText('Khách sạn 5 sao').length).toBeGreaterThan(0);
+  expect(screen.queryByText(/50 lượt/)).toBeNull();
+  expect(screen.queryByText(/đường chim bay/)).toBeNull();
 });

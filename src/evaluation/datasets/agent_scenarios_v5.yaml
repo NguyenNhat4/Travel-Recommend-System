@@ -184,7 +184,7 @@
       expect:
         httpStatus: 200
         status: [NEEDS_CLARIFICATION]
-        nodesInclude: [explore]
+        nodesInclude: [run_jobs]
         cardsMin: 2
     - message: Thôi, Hà Nội thì sao?
       expect:
@@ -235,7 +235,7 @@
         httpStatus: 200
         status: [NEEDS_CLARIFICATION]
         toolCalled: false
-        nodesExclude: [explore]
+        nodesExclude: [run_jobs]
 
 # SC-H3 — Người dùng khó: tin nhắn rác được trả câu cố định, không gọi tool.
 - id: SC-H3

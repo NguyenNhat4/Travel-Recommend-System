@@ -1,17 +1,23 @@
 // @vitest-environment jsdom
 import React from 'react';
 import { cleanup, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const nav = vi.hoisted(() => ({ pathname: '/profile' }));
-vi.mock('next/navigation', () => ({ usePathname: () => nav.pathname }));
-vi.mock('../../src/context/TravelContext', () => ({
-  useTravel: () => ({ currentPersona: { id: 'VP1', name: 'Trần Minh Quân', email: 'q@example.vn' } }),
+const travel = vi.hoisted(() => ({
+  currentPersona: { id: 'VP1', name: 'Trần Minh Quân', email: 'q@example.vn' } as unknown,
+  authReady: true,
 }));
+vi.mock('next/navigation', () => ({ usePathname: () => nav.pathname }));
+vi.mock('../../src/context/TravelContext', () => ({ useTravel: () => travel }));
 
 import { AccountShell } from '../../src/features/profile/AccountShell';
 
 describe('AccountShell — khung hai trang tài khoản', () => {
+  beforeEach(() => {
+    travel.currentPersona = { id: 'VP1', name: 'Trần Minh Quân', email: 'q@example.vn' };
+    travel.authReady = true;
+  });
   afterEach(cleanup);
 
   it('có hai mục trỏ đúng địa chỉ; /profile là mục đang mở ở trang hồ sơ', () => {
@@ -34,8 +40,25 @@ describe('AccountShell — khung hai trang tài khoản', () => {
   });
 
   it('thẻ người dùng hiện tên và email', () => {
-    render(<AccountShell><p>x</p></AccountShell>);
+    const { container } = render(<AccountShell><p>x</p></AccountShell>);
     expect(screen.getByText('Trần Minh Quân')).toBeTruthy();
     expect(screen.getByText('q@example.vn')).toBeTruthy();
+    expect(container.querySelector('aside .skeleton-wave')).toBeNull();
+  });
+
+  it('phiên đang khôi phục: thẻ người dùng là khung chờ, menu vẫn dùng được', () => {
+    travel.currentPersona = null;
+    travel.authReady = false;
+    const { container } = render(<AccountShell><p>x</p></AccountShell>);
+    const card = container.querySelector('aside > [aria-hidden="true"]')!;
+    expect(card.querySelectorAll('.skeleton-wave')).toHaveLength(3);
+    expect(screen.getByRole('link', { name: 'Hồ sơ cá nhân' })).toBeTruthy();
+  });
+
+  it('đã biết là khách (chưa đăng nhập): không có thẻ người dùng lẫn khung chờ', () => {
+    travel.currentPersona = null;
+    const { container } = render(<AccountShell><p>x</p></AccountShell>);
+    expect(container.querySelector('aside .skeleton-wave')).toBeNull();
+    expect(screen.queryByText('Trần Minh Quân')).toBeNull();
   });
 });

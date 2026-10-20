@@ -182,8 +182,10 @@ class CommandStdoutTests(unittest.TestCase):
                     contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
                 self.assertEqual(fresh_catalog.run_job("due"), 0)
         self.assertEqual(out.getvalue().strip(), "daily")
-        record = json.loads(err.getvalue().strip().splitlines()[-1])
-        self.assertEqual((record["event"], record["mode"]), ("catalog.due", "daily"))
+        # catalog.freshness (heartbeat của lượt due, phát ở mỗi tick) được ghi sau catalog.due nên không còn là dòng cuối
+        records = [json.loads(line) for line in err.getvalue().strip().splitlines()]
+        record = next(r for r in records if r["event"] == "catalog.due")
+        self.assertEqual(record["mode"], "daily")
         self.assertIn("catalog.due daily", record["message"])
 
     def test_run_end_event_keeps_the_legacy_exit_string(self):

@@ -18,9 +18,10 @@ from app.agents.steps import prompts  # noqa: E402
 
 PREFIX = "vota-itinerary-"
 HUB_PROMPTS = {
-    "classify": (prompts.CLASSIFY_PROMPT, "Node classify: phân luồng travel / conversation / out_of_scope."),
+    "orchestrator": (prompts.ORCHESTRATOR_PROMPT, "Node orchestrate: chọn answer / ask / plan / execute (việc khám "
+                                                  "phá, vé) và viết câu bằng mã thẻ, placeholder."),
     "extract": (prompts.EXTRACT_PROMPT, "Node extract: trích intent chuyến đi (hậu tố ngôn ngữ nối trong code)."),
-    "converse": (prompts.CONVERSATION_PROMPT, "Node converse/clarify: viết câu trả lời (hậu tố ngôn ngữ nối trong code)."),
+    "converse": (prompts.CONVERSATION_PROMPT, "Node clarify: viết câu hỏi lại (hậu tố ngôn ngữ nối trong code)."),
     "tool-plan": (prompts.TOOL_PLAN_PROMPT, "Node tool: lập tool plan Search/Recommendation."),
     "similar-hint": (prompts.SIMILAR_HINT, "Node tool: gợi ý get_similar_products, nối sau tool-plan khi đổi món."),
     "destination": (prompts.DESTINATION_PROMPT, "Node tool: chọn điểm đến theo catalog."),

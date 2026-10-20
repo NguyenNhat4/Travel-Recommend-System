@@ -1,7 +1,22 @@
 locals {
+  # Agent và collector giám sát đưa vào metadata (không nhúng vào startup.sh.tftpl, vì template đó dùng templatefile
+  # và script có thể chứa ${ ). Startup script đọc các key này và cài như VM staging cũ (infra/monitoring).
+  monitoring_dir = "${path.module}/../../../monitoring"
+  monitoring_metadata = {
+    vota-mon-install      = file("${local.monitoring_dir}/install-vota-docker-event-watcher.sh")
+    vota-mon-ops-agent    = file("${local.monitoring_dir}/ops-agent-staging.yaml")
+    vota-mon-logrotate    = file("${local.monitoring_dir}/vota-monitoring-logrotate.conf")
+    vota-mon-watcher-py   = file("${local.monitoring_dir}/vota-docker-event-watcher.py")
+    vota-mon-watcher-unit = file("${local.monitoring_dir}/vota-docker-event-watcher.service")
+    vota-mon-disk-py      = file("${local.monitoring_dir}/vota-container-disk-collector.py")
+    vota-mon-disk-unit    = file("${local.monitoring_dir}/vota-container-disk-collector.service")
+    vota-mon-stats-py     = file("${local.monitoring_dir}/vota-container-stats-collector.py")
+    vota-mon-stats-unit   = file("${local.monitoring_dir}/vota-container-stats-collector.service")
+  }
+
   registry_host = split("/", var.backend_image)[0]
-  # The host-network compose used by the single staging VM, plus resource limits for the HA tier.
-  compose = file("${path.module}/compose.ha.yml")
+  # Script slot-deploy.sh (compose của slot blue/green, proxy nginx, đổi image không gián đoạn) cài lên VM bởi startup.
+  slot_deploy = file("${path.module}/slot-deploy.sh")
   startup = templatefile("${path.module}/startup.sh.tftpl", {
     backend_env_secret = var.backend_env_secret
     registry_host      = local.registry_host
@@ -11,7 +26,7 @@ locals {
     # Chuỗi tắt êm: SSE (90s) <= LB draining (100s) = uvicorn graceful (100s) < stop_grace (110s).
     graceful_seconds   = var.lb_connection_draining_seconds
     stop_grace_seconds = var.lb_connection_draining_seconds + 10
-    compose            = local.compose
+    slot_deploy        = local.slot_deploy
     pgbouncer_ini      = file("${path.module}/pgbouncer.ini")
     pgbouncer_setup    = file("${path.module}/pgbouncer-setup.sh")
   })
@@ -21,6 +36,11 @@ resource "google_compute_instance_template" "app" {
   name_prefix  = "${var.name_prefix}-app-"
   machine_type = var.machine_type
   tags         = ["${var.name_prefix}-app"]
+  # Nhãn nhóm để lọc VM của MIG theo nhãn (metadata.user_labels.group), không chỉ theo tên VM.
+  labels = {
+    group = "${var.name_prefix}-app"
+    role  = "app"
+  }
 
   disk {
     source_image = var.boot_image
@@ -45,10 +65,10 @@ resource "google_compute_instance_template" "app" {
     enable_integrity_monitoring = true
   }
 
-  metadata = {
+  metadata = merge(local.monitoring_metadata, {
     startup-script         = local.startup
     google-logging-enabled = "true"
-  }
+  })
 
   depends_on = [
     google_secret_manager_secret_iam_member.backend_env_reader,
@@ -117,17 +137,25 @@ resource "google_compute_region_instance_group_manager" "app" {
   }
 
   update_policy {
-    type                  = "PROACTIVE"
-    minimal_action        = "REPLACE"
-    max_surge_fixed       = 3
-    max_unavailable_fixed = 0
-    # Health check của MIG chỉ là liveness (tiến trình trả lời), nên không có min_ready_sec thì MIG coi VM mới là
-    # "đã cập nhật" ngay khi tiến trình lên, trước khi nạp xong RecSys, rồi xoá VM cũ. Đặt lớn hơn boot-to-ready.
-    min_ready_sec = var.boot_to_ready_seconds
+    # OPPORTUNISTIC: đổi template KHÔNG tự thay VM. Image trên VM đang chạy được đổi tại chỗ không gián đoạn bằng
+    # slot-deploy.sh (chạy bản mới song song bản cũ, đổi proxy khi bản mới ready); CD gọi qua
+    # scripts/roll-staging-ha-app-slots.sh. VM do autoscaler hoặc autohealing tạo đọc image mong muốn từ
+    # all-instances config (CD ghi); image trong template chỉ là dự phòng. (Trước 2026-10-12: PROACTIVE + max_surge 0, mỗi deploy thay hết VM và sập.)
+    type               = "OPPORTUNISTIC"
+    minimal_action     = "REPLACE"
+    replacement_method = "SUBSTITUTE"
+    # Regional MIG 3 zone: fixed chỉ nhận 0 hoặc >= 3, nên unavailable = 3 (>= số VM tối đa). Giữ 0 surge: nếu một VM
+    # bị thay thủ công thì không cần quota thêm. scripts/deploy-staging-ha-app.sh giữ APP_SURGE = 0 đồng bộ với đây.
+    max_surge_fixed       = 0
+    max_unavailable_fixed = 3
+    # min_ready_sec = 0: không chờ thêm sau khi VM qua liveness. Cổng sẵn sàng là bước Verify của workflow CD
+    # (LB báo đủ HEALTHY, /health/ready qua public endpoint).
+    min_ready_sec = 0
   }
 
   lifecycle {
-    ignore_changes = [target_size]
+    # all_instances_config giữ image mong muốn do CD ghi (scripts/set-staging-ha-desired-images.sh); Terraform không đụng.
+    ignore_changes = [target_size, all_instances_config]
   }
 }
 
@@ -163,6 +191,12 @@ resource "google_compute_region_autoscaler" "app" {
       }
     }
   }
+
+  lifecycle {
+    # Lịch ban đêm (scheduler.tf) tạm tắt autoscaler bằng mode OFF. Terraform không đưa mode về ON khi plan.
+    ignore_changes = [autoscaling_policy[0].mode]
+  }
+
 }
 
 # Google front ends and health checkers reach port 3000 (traffic + probe) only.
@@ -209,6 +243,23 @@ resource "google_compute_backend_service" "app" {
 resource "google_compute_url_map" "app" {
   name            = "${var.name_prefix}-app"
   default_service = google_compute_backend_service.app.id
+
+  # Dashboard job cào theo host riêng; xem crawler_monitor.tf. Host khác vẫn vào app như trước.
+  dynamic "host_rule" {
+    for_each = local.monitor_enabled ? [1] : []
+    content {
+      hosts        = [var.monitor_host]
+      path_matcher = "crawler-monitor"
+    }
+  }
+
+  dynamic "path_matcher" {
+    for_each = local.monitor_enabled ? [1] : []
+    content {
+      name            = "crawler-monitor"
+      default_service = google_compute_backend_service.monitor[0].id
+    }
+  }
 }
 
 resource "google_compute_managed_ssl_certificate" "app" {
@@ -256,4 +307,32 @@ resource "google_redis_instance" "shared" {
   redis_configs = {
     maxmemory-policy = "noeviction"
   }
+}
+
+# HTTPS origin cho Cloudflare (Full strict): chứng chỉ Origin CA tự quản, cùng backend vota-ha-app và URL map với HTTP.
+resource "google_compute_ssl_certificate" "origin" {
+  count       = var.origin_tls_enabled ? 1 : 0
+  name_prefix = "${var.name_prefix}-origin-"
+  certificate = data.google_secret_manager_secret_version.origin_cert[0].secret_data
+  private_key = data.google_secret_manager_secret_version.origin_key[0].secret_data
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "google_compute_target_https_proxy" "origin" {
+  count            = var.origin_tls_enabled ? 1 : 0
+  name             = "${var.name_prefix}-origin-https"
+  url_map          = google_compute_url_map.app.id
+  ssl_certificates = [google_compute_ssl_certificate.origin[0].id]
+}
+
+resource "google_compute_global_forwarding_rule" "origin_https" {
+  count                 = var.origin_tls_enabled ? 1 : 0
+  name                  = "${var.name_prefix}-origin-fr"
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+  ip_address            = google_compute_global_address.lb.id
+  port_range            = "443"
+  target                = google_compute_target_https_proxy.origin[0].id
 }

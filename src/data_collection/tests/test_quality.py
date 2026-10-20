@@ -271,6 +271,46 @@ class QualityTests(unittest.TestCase):
             for extra in ("bookable", "priceKind", "availabilityStatus"):
                 self.assertNotIn(extra, p["attributes"])
 
+    def test_route_city_falls_back_to_the_airport_destination(self):
+        record = {"fromCity": "Điện Biên Phủ", "toCity": "Hà Nội", "fromCode": "din", "toCode": "han",
+                  "fromAirports": ["DIN"], "toAirports": ["HAN"], "crawledAt": "2026-09-19T05:37:38Z",
+                  "url": "https://vn.trip.com/flights/x", "oneWay": {"lowPrice": 900000}, "flights": [
+                      {"flightNumber": "VN1807", "airline": "Vietnam Airlines", "from": "DIN", "to": "HAN",
+                       "departureTime": "2026-10-10T12:35:00.000Z", "arrivalTime": "2026-10-10T13:40:00.000Z",
+                       "durationMinutes": 65, "price": 900000}]}
+        route, flight = n.trip_route_products(record, 0)
+        self.assertEqual(route["attributes"]["originCity"], "Điện Biên")  # khớp điểm đến của /destinations
+        self.assertEqual(route["name"], "Vé máy bay Điện Biên - Hà Nội")
+        self.assertIn("Điện Biên - Hà Nội", flight["name"])
+        self.assertEqual(n._route_city("Vân Đồn", ["VDO"], "vdo"), "Vân Đồn")  # tên khớp alias thì giữ, không đổi theo sân bay
+        self.assertEqual(n._route_city("Nơi lạ", ["XXX"], None), "Nơi lạ")
+
+    def test_booking_tour_destination_ignores_departure_city(self):
+        cases = {
+            "From Hanoi: Sapa Trek, Cat Cat Village & Fansipan Summit Tour": "Sa Pa",
+            "Pu Luong 2 Days 1 Night tour from Hanoi": "Thanh Hóa",
+            "From Hanoi to Dien Bien Phu: 3 Day Adventure": "Điện Biên",
+            "Hue to DMZ Vinh Moc Tunnels and Khe Sanh Base Tour": "Quảng Trị",
+            "Hanoi: Ha Long Bay Day Cruise with Buffet, Kayak& Sunset Party": "Hạ Long",
+            "Hanoi to Cat Ba: 2-Day Cat Ba National Park & Lan Ha Bay Tour": "Cát Bà",
+            "From Saigon: Black Virgin Mountain, Cao Dai Temple & Cu Chi 1Day": "Tây Ninh",
+            "Cai Rang Floating market 1 Day Tour from Ho Chi Minh City": "Cần Thơ",
+            "Hanoi Imperial Citadel Tour": "Hà Nội",
+            "Mekong Delta Discovery Day Tours": None,
+        }
+        for name, expected in cases.items():
+            self.assertEqual(n.tour_destination(name), expected, name)
+        # Tên không nêu nơi đến: giữ cách cũ (thành phố khởi hành từ `city`).
+        p = n.booking_attraction_product({"name": "HCM: 2-Day Mekong Delta Floating Market", "city": "TP. Hồ Chí Minh",
+                                          "price": 50, "currency": "USD", "productId": "x"}, {"USD": 26000})
+        self.assertEqual(p["destination"], "TP. Hồ Chí Minh")
+        p = n.booking_attraction_product({"name": "Pu Luong Trek from Hanoi", "city": "Hà Nội",
+                                          "price": 50, "currency": "USD", "productId": "y"}, {"USD": 26000})
+        self.assertEqual(p["destination"], "Thanh Hóa")
+
+    def test_tuyen_quang_hotel_name_is_not_a_destination(self):
+        self.assertEqual(n.normalise_destination("Vinpearl Onsen Resort Tuyên Quang"), "Tuyên Quang")
+
     def test_trip_attraction_without_price_is_kept_and_not_called_unticketed(self):
         base = {"poiId": 1, "name": "Cầu Vàng", "province": "Đà Nẵng", "latitude": 15.99, "longitude": 107.99,
                 "introduction": "Cây cầu nổi tiếng " * 12, "crawledAt": "2026-09-19T00:00:00Z", "plan": {"destination": "Đà Nẵng"}}
@@ -304,6 +344,184 @@ class QualityTests(unittest.TestCase):
         self.assertEqual([p["productId"] for p, _ in removed], ["bad"])
         self.assertIn("giá phòng bất thường", removed[0][1])
         self.assertEqual({p["productId"] for p in kept}, {"a", "b", "c", "d", "e", "suite", "vin", "x1", "x2"})
+
+    def test_flights_without_image_get_the_airline_logo_routes_stay_empty(self):
+        """12/10/2026: vé mang logo hãng (collectors/airlines.py); tuyến để ảnh thành phố đến do DB đặt."""
+        products = [
+            {"taxonomy": "flight", "attributes": {"level": "flight", "airline": "VietJet Air"}, "imageUrl": None},
+            {"taxonomy": "flight", "attributes": {"level": "flight", "airline": "Hãng lạ"}, "imageUrl": None},
+            {"taxonomy": "flight", "attributes": {"level": "flight", "airline": "Vietnam Airlines"}, "imageUrl": "giữ"},
+            {"taxonomy": "flight", "attributes": {"level": "route", "airlines": ["VietJet Air"]}, "imageUrl": None},
+        ]
+        self.assertEqual(n.apply_airline_logos(products), 1)
+        self.assertEqual([p["imageUrl"] for p in products],
+                         ["https://pic.tripcdn.com/airline_logo/3x/vj.png", None, "giữ", None])
+
+    def test_points_hidden_on_production_are_in_the_reviewed_exclusion_list(self):
+        """27 điểm Trip không phải điểm tham quan đã ẩn trên production 12/10/2026: lượt cào sau không được bật lại."""
+        excluded = n.load_excluded_products()
+        for ref in ("trip:attraction:146226495", "trip:attraction:146505433", "trip:attraction:149736329",
+                    "trip:attraction:141660854", "trip:attraction:147617028"):
+            self.assertIn(ref, excluded)
+            self.assertTrue(excluded[ref].startswith("không phải sản phẩm du lịch"))
+
+    def test_trip_golf_duplicating_priced_vinpearl_voucher_is_excluded(self):
+        """Người dùng chốt 12/10/2026: điểm Trip không giá "Vinpearl Golf Hải Phòng" trùng voucher Vinpearl có giá."""
+        self.assertIn("trip:attraction:147484815", n.load_excluded_products())
+
+    def test_golf_prices_have_source_url_and_observation_time(self):
+        prices = n.load_golf_prices()
+        self.assertEqual(set(prices), {"trip:attraction:58257538", "trip:attraction:15151594"})
+        for price in prices.values():
+            self.assertGreater(price["unitPrice"], 0)
+            self.assertEqual(price["priceSource"], "golfscape.com")
+            self.assertTrue(price["observedAt"].startswith("2026-10-12T"))
+
+    def test_golf_price_only_fills_golf_without_own_price(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "golf_prices.csv"
+            with open(path, "w", encoding="utf-8", newline="") as f:
+                w = csv.writer(f)
+                w.writerow(["sourceRef", "name", "unitPrice", "priceSource", "priceSourceUrl", "observedAt", "evidence"])
+                for ref in ("trip:attraction:1", "trip:attraction:2", "trip:attraction:3"):
+                    w.writerow([ref, "Sân", "3950000", "golfscape.com", "https://golfscape.com/x", "2026-10-12T16:35:18Z", "e"])
+                w.writerow(["trip:attraction:4", "Sân không URL", "3950000", "golfscape.com", "", "2026-10-12T16:35:18Z", "e"])
+            prices = n.load_golf_prices(path)
+        self.assertNotIn("trip:attraction:4", prices)
+        sources = {"name": "trip.com", "unitPrice": "trip.com"}
+        no_price = {"sourceRef": "trip:attraction:1", "taxonomy": "golf", "unitPrice": None,
+                    "attributes": {"fieldSources": dict(sources), "priceObservedAt": "2026-10-12T15:49:01Z"}}
+        own_price = {"sourceRef": "trip:attraction:2", "taxonomy": "golf", "unitPrice": 2500000,
+                     "attributes": {"fieldSources": dict(sources)}}
+        attraction = {"sourceRef": "trip:attraction:3", "taxonomy": "attraction", "unitPrice": None,
+                      "attributes": {"fieldSources": dict(sources)}}
+        self.assertEqual(n.apply_golf_prices([no_price, own_price, attraction], prices), 1)
+        self.assertEqual(no_price["unitPrice"], 3950000)
+        self.assertEqual(no_price["attributes"]["fieldSources"], {"name": "trip.com", "unitPrice": "golfscape.com"})
+        self.assertEqual(no_price["attributes"]["priceObservedAt"], "2026-10-12T16:35:18Z")
+        self.assertEqual(own_price["unitPrice"], 2500000)
+        self.assertEqual(own_price["attributes"]["fieldSources"]["unitPrice"], "trip.com")
+        self.assertIsNone(attraction["unitPrice"])
+
+    def test_excluding_a_hotel_also_excludes_its_rooms(self):
+        """Còn hạng phòng đặt được thì job bật lại khách sạn đã ẩn (FR-CAT-02): loại khách sạn phải loại cả phòng."""
+        excluded = {"agoda:hotel:mango-house:ha-tien-kien-giang": "ngoài mọi điểm đến"}
+        self.assertEqual(n.excluded_reason("agoda:hotel:mango-house:ha-tien-kien-giang", excluded), "ngoài mọi điểm đến")
+        self.assertIn("ngoài mọi điểm đến", n.excluded_reason("agoda:hotel:mango-house:ha-tien-kien-giang:room:77", excluded))
+        self.assertIsNone(n.excluded_reason("agoda:hotel:mango-house-2:ha-tien-kien-giang:room:77", excluded))
+        self.assertIsNone(n.excluded_reason("trip:attraction:1", excluded))
+        room_only = {"trip:hotel:118233319:room:482483850": "giá đặt cho có"}
+        self.assertIsNone(n.excluded_reason("trip:hotel:118233319", room_only))  # loại một phòng không loại khách sạn
+        self.assertIsNone(n.excluded_reason("trip:hotel:118233319:room:1", room_only))
+
+    def test_name_override_renames_and_fixes_a_description_built_from_the_old_name(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "name_overrides.csv"
+            with open(path, "w", encoding="utf-8", newline="") as f:
+                w = csv.writer(f)
+                w.writerow(["sourceRef", "name", "evidence"])
+                w.writerow(["trip:attraction:1", "Phố đi bộ Nguyễn Huệ", "nameEn Nguyen Hue Street"])
+                w.writerow(["trip:attraction:2", "Động Trung Trang", "nameEn Trung Trang Cave"])
+                w.writerow(["trip:attraction:3", "Không bằng chứng", ""])
+            overrides = n.load_name_overrides(path)
+        self.assertEqual(set(overrides), {"trip:attraction:1", "trip:attraction:2"})
+        derived = {"sourceRef": "trip:attraction:1", "name": "Nguyễn Huệ", "attributes": {},
+                   "description": "Nguyễn Huệ. Loại hình: Cảnh đêm. Địa chỉ: Sài Gòn."}
+        prose = {"sourceRef": "trip:attraction:2", "name": "Halong Bay Cruises", "attributes": {},
+                 "description": "Hang động đẹp trên đảo Cát Bà."}
+        other = {"sourceRef": "trip:attraction:9", "name": "Nguyễn Huệ", "attributes": {}, "description": "Nguyễn Huệ."}
+        self.assertEqual(n.apply_name_overrides([derived, prose, other], overrides), 2)
+        self.assertEqual((derived["name"], derived["description"]),
+                         ("Phố đi bộ Nguyễn Huệ", "Phố đi bộ Nguyễn Huệ. Loại hình: Cảnh đêm. Địa chỉ: Sài Gòn."))
+        self.assertEqual(derived["attributes"]["originalName"], "Nguyễn Huệ")
+        self.assertEqual((prose["name"], prose["description"]), ("Động Trung Trang", "Hang động đẹp trên đảo Cát Bà."))
+        self.assertEqual(other["name"], "Nguyễn Huệ")
+        self.assertEqual(n.apply_name_overrides([derived], overrides), 0)  # chạy lại: không đổi gì thêm
+
+    def test_reviewed_names_and_exclusions_of_13_10_are_listed(self):
+        names = n.load_name_overrides()
+        self.assertEqual(names["trip:attraction:30633439"][0], "Phố đi bộ Nguyễn Huệ")
+        self.assertEqual(names["trip:attraction:55838986"][0], "Động Trung Trang")
+        excluded = n.load_excluded_products()
+        for ref in ("trip:hotel:118233319:room:482483850", "trip:route:cah-han", "vinpearl:tour:VW00469", "trip:hotel:135398727",
+                    "agoda:hotel:nha-nghi-gia-an:ha-tien-kien-giang", "agoda:hotel:mango-house:ha-tien-kien-giang",
+                    "trip:attraction:141833025"):
+            self.assertIn(ref, excluded)
+        self.assertNotIn("vinpearl:tour:VW00613", excluded)  # bản giữ lại của cặp vé trùng
+        self.assertNotIn("booking:hotel:8466578", excluded)  # căn hộ TMS thật: người dùng giữ hết (13/10/2026)
+
+    def test_english_only_names_of_13_10_are_renamed_or_dropped_as_duplicates(self):
+        """Mục 2 rà soát 13/10: 33 điểm trip.com tên chỉ có tiếng Anh nhận tên tiếng Việt; 9 điểm trùng bản tiếng Việt bị loại,
+        bản tiếng Việt giữ lại. Một ref không được vừa đổi tên vừa bị loại."""
+        names, excluded = n.load_name_overrides(), n.load_excluded_products()
+        self.assertEqual(names["trip:attraction:56080997"][0], "Động Tiên Sơn")
+        self.assertEqual(names["trip:attraction:55894440"][0], "Bãi Kỳ Co")
+        self.assertEqual(names["trip:attraction:148936843"][0], "Làng hương Quảng Phú Cầu")
+        # 33 tên duyệt; "Lantern Making Class" sau đó bị ẩn (điểm thu phí không giá, nhóm A) nên bỏ tên soát tay của nó
+        self.assertEqual(sum("người dùng duyệt 13/10/2026" in evidence for _, evidence in names.values()), 32)
+        self.assertIn("trip:attraction:142507515", excluded)
+        dropped_for_kept = {"137220354": "142270484", "142677977": "138841792", "142701301": "146597815",
+                            "137912295": "140139148", "150930088": "150792617", "153186120": "153196176",
+                            "136719903": "144437227", "142290987": "32862148", "134100373": "137069524"}
+        for dropped, kept in dropped_for_kept.items():
+            self.assertIn(f"trip:attraction:{dropped}", excluded)
+            self.assertIn(f"trip:attraction:{kept}", excluded[f"trip:attraction:{dropped}"])  # lý do trỏ tới bản giữ
+            self.assertNotIn(f"trip:attraction:{kept}", excluded)
+        self.assertEqual(set(names) & set(excluded), set())
+        self.assertNotIn("trip:attraction:133828272", names)  # Đảo chè Thanh Chương: toạ độ sai, chờ mục 4
+
+    def test_ha_long_bay_caves_listed_under_hai_phong_move_to_ha_long(self):
+        """Mục 4 rà soát 13/10: trip.com xếp hang trong vịnh Hạ Long dưới slug haiphong (như Ti Tốp, trip:attraction:95477)."""
+        overrides = n.load_destination_overrides()
+        for ref in ("trip:attraction:152155369", "trip:attraction:137221038", "trip:attraction:95477"):  # Hang Luồn, Đầu Gỗ, Ti Tốp
+            self.assertEqual(overrides[ref][0], "Hạ Long")
+        products = [{"sourceRef": "trip:attraction:152155369", "destination": "Hải Phòng", "attributes": {}}]
+        self.assertEqual(n.apply_destination_overrides(products, overrides), 1)
+        self.assertEqual((products[0]["destination"], products[0]["attributes"]["originalDestination"]), ("Hạ Long", "Hải Phòng"))
+
+    def test_review_of_13_10_destinations_generic_names_and_duplicates(self):
+        """Mục 4 + dữ liệu của bàn giao "chùa ở HCM" (13/10/2026): 12 sản phẩm đảo Cát Bà rời Hải Phòng, Chùa Cầu và Chợ đêm Hội An
+        rời Đà Nẵng; điểm mang tên thành phố, bản trùng vé Bà Nà / Hoàng Thành Huế, Đảo chè (toạ độ sai) bị ẩn; bản giữ không bị ẩn."""
+        overrides, excluded = n.load_destination_overrides(), n.load_excluded_products()
+        cat_ba = [ref for ref, (dest, evidence) in overrides.items() if dest == "Cát Bà" and "người dùng duyệt mục 4 13/10/2026" in evidence]
+        self.assertEqual(len(cat_ba), 12)
+        self.assertIn("trip:attraction:98748", cat_ba)  # Vườn Quốc gia Cát Bà
+        self.assertIn("booking:hotel:17022357", cat_ba)  # khách sạn: hạng phòng nhận điểm đến khi gộp cụm (merge_hotel_cluster)
+        for ref in ("trip:attraction:84672", "trip:attraction:142962582"):  # Chùa Cầu, Chợ đêm Hội An
+            self.assertEqual(overrides[ref][0], "Hội An")
+        for ref in ("trip:attraction:78970", "trip:attraction:150083736", "trip:attraction:153189460", "trip:attraction:146237431",
+                    "trip:attraction:142564460", "trip:attraction:61186357", "trip:attraction:18700019",  # tên chỉ là tên điểm đến
+                    "booking:attraction:pr77o1c6wg7p", "trip:attraction:142420045", "trip:attraction:23029651",
+                    "trip:attraction:136817447", "trip:attraction:133828272"):
+            self.assertIn(ref, excluded)
+        for kept in ("trip:attraction:10523367", "trip:attraction:81459", "trip:attraction:18700028"):  # Sun World Bà Nà, Kinh thành Huế, Cát Cát
+            self.assertNotIn(kept, excluded)
+        # override điểm đến của đợt này không trỏ vào dòng bị ẩn (override cũ của Côn Đảo, Hacoconut thì vô hại: loại chạy sau)
+        reviewed = [ref for ref, (_, evidence) in overrides.items() if "13/10/2026" in evidence]
+        self.assertEqual(len(reviewed), 16)  # 2 hang vịnh Hạ Long + 12 Cát Bà + 2 Hội An
+        self.assertEqual(set(reviewed) & set(excluded), set())
+
+    def test_unpriced_golf_and_paid_venues_are_hidden_not_called_free(self):
+        """Nhóm A/B rà soát 13/10/2026: điểm không giá bị trợ lý tính "tham quan tự do" 0 đ (architecture.md §3). Người dùng chốt ẩn
+        sân golf không giá và điểm chắc chắn thu phí; bảo tàng, nơi có thể miễn phí và bản có giá giữ nguyên; tour trùng tên giữ bản rẻ."""
+        excluded = n.load_excluded_products()
+        golf = [r for r, why in excluded.items() if why.startswith("sân golf không có giá")]
+        paid = [r for r, why in excluded.items() if why.startswith("điểm thu phí không có giá")]
+        self.assertEqual((len(golf), len(paid)), (17, 58))  # 36 theo từ khoá + 22 thương hiệu ngoài bộ từ khoá (đợt 2)
+        for ref in ("trip:attraction:142789240", "trip:attraction:50604546", "trip:attraction:142662661"):  # Wrath of Zeus, Red Dragon Junk, MADALAND
+            self.assertIn(ref, excluded)
+        for ref in ("trip:attraction:146743966", "trip:attraction:133828288", "trip:attraction:152914801"):  # Hanoi Golf, Aquatopia, Ambassador
+            self.assertIn(ref, excluded)
+        for kept in ("trip:attraction:58257538",    # Bà Nà Hills Golf Club: có giá (golf_prices.csv)
+                     "trip:attraction:130369440",   # Cáp Treo Sun World Bà Đen có giá
+                     "trip:attraction:130898816",   # Grand World Phú Quốc: vào cổng miễn phí
+                     "trip:attraction:90606"):      # bảo tàng: giữ
+            self.assertNotIn(kept, excluded)
+        self.assertIn("booking:attraction:przjecq6mcez", excluded)
+        self.assertIn("booking:attraction:pr5d00274odq", excluded)
+        self.assertNotIn("booking:attraction:pri4tsmsmghd", excluded)
+        self.assertNotIn("booking:attraction:prwoctoyh7fd", excluded)
+        self.assertEqual(set(n.load_name_overrides()) & set(excluded), set())
 
 
 if __name__ == "__main__":

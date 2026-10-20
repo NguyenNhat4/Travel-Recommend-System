@@ -1,11 +1,11 @@
 # Vé máy bay trong lịch trình
 
-Phục vụ FR-AGT-02, FR-AGT-03, AC-AGT-02, AC-AGT-03. Mô tả theo code tại 2026-10-07; khi lệch, PRD và contract thắng.
+Phục vụ FR-AGT-02, FR-AGT-03, AC-AGT-02, AC-AGT-03, AC-AGT-05. Mô tả theo code tại 2026-10-11; khi lệch, PRD và contract thắng.
 
 ## Mục đích
 
 Lịch trình có [chặng bay](glossary.md#chang-bay) đi và về từ chuyến bay thật của catalog. Vé được chọn **bằng luật**, LLM không
-chọn và không viết về vé.
+chọn và không viết về vé. Người dùng hỏi giá, giờ vé mà không lập lịch thì xem [tu-van-ve-may-bay.md](tu-van-ve-may-bay.md).
 
 ## Khái niệm
 
@@ -41,6 +41,9 @@ planner).
 
 - **Ngày bay:** đi ngày `startDate`, về ngày `startDate + days − 1`.
 - **Chỉ xét chuyến còn bán và có giá.** Chuyến không giá bị bỏ để tổng của cả chuyến không thành "chưa biết".
+- **Chuyến người dùng đã chọn thắng.** Chuyến chọn qua "đổi chuyến bay" (`constraints.chosen_flights`) được giữ ở các
+  lượt sau khi còn bán đúng ngày của chặng; khi đó không ưu tiên vé khứ hồi nữa. Cách đổi:
+  [sua-lich-qua-nhieu-luot.md](sua-lich-qua-nhieu-luot.md#doi-ve-khach-san).
 - **Thứ tự chọn trong cùng kiểu vé:**
   1. bay thẳng (chuyến không khai `nonstop` xếp sau);
   2. giá thấp;
@@ -51,6 +54,9 @@ planner).
 - **Nơi đi được chuẩn về tên catalog** ("Sài Gòn" → "TP. Hồ Chí Minh", rồi theo `originCity` của tuyến) và ghi lại vào
   `intent.origin`.
 - **Giờ bay quyết định buổi của ngày đến/ngày về.** Xem [xep-lich.md](xep-lich.md#theo-gio-bay).
+- **Ngày đã chọn không có chuyến:** câu cảnh báo nêu thêm tối đa 2 ngày gần nhất có vé (ngày đủ hai chiều trước), giữ số
+  ngày của chuyến. Khi khách sạn, vé tham quan cũng thiếu vì ngày thì gợi một [ngày đi chung](glossary.md#ngay-di-chung)
+  ([xep-lich.md](xep-lich.md#ngay-ngoai-cua-so)).
 - **Lý do thiếu vé luôn được nói.** Các mã `FLIGHT_*` thành cảnh báo, và thành mục **Vé máy bay** do hệ thống viết. Loại trừ
   vé, chuyến 1 ngày, nơi đi trùng điểm đến thì không nói. Xem [dien-giai-va-kiem-tra.md](dien-giai-va-kiem-tra.md).
 - **Grounding riêng.** Vé không nằm trong [ứng viên](glossary.md#candidate), vì chặng về đến nơi đi và bay ngày cuối nên
@@ -66,11 +72,10 @@ Code: [`src/frontend/src/services/flights.ts`](../../../../src/frontend/src/serv
 
 ## Edge case
 
-- ⚠️ cần xác nhận: AC-AGT-02 ghi "lượt sửa lịch chỉ chọn lại vé khi nơi đi, ngày đi, số ngày hoặc điểm đến đổi". Code tra
-  và chọn lại vé **ở mọi lượt có tìm sản phẩm**. Cùng dữ liệu thì luật ra cùng vé, nhưng nếu catalog đổi giá giữa hai lượt
-  thì vé có thể đổi dù chuyến đi không đổi.
-- ⚠️ cần xác nhận: vé không nằm trong [sản phẩm đã cho xem](glossary.md#previous_selection), nên người dùng chưa đổi hay bỏ
-  được một chuyến bay cụ thể qua chat ("đổi chuyến khác").
+- ⚠️ cần xác nhận: AC-AGT-02 ghi "lượt sửa lịch chỉ chọn lại vé khi nơi đi, ngày đi, số ngày hoặc điểm đến đổi, hoặc khi
+  người dùng chủ động chọn chuyến khác". Code tra và chọn lại vé **ở mọi lượt có tìm sản phẩm** (chuyến người dùng đã chọn
+  thì được giữ). Cùng dữ liệu thì luật ra cùng vé, nhưng nếu catalog đổi giá giữa hai lượt thì vé có thể đổi dù chuyến đi
+  không đổi.
 - Chặng đi tìm được mà không có chặng về (hoặc ngược lại): vẫn hiện chặng tìm được và báo thiếu chặng còn lại.
 
 ## Code liên quan

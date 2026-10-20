@@ -1,5 +1,7 @@
 'use client';
 
+import { useSearchParams } from 'next/navigation';
+
 import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { AlertCircle, Loader2, Search } from 'lucide-react';
@@ -8,7 +10,8 @@ import { guestsText } from '../../../components/checkout/guestCounts';
 import { SortMenu } from '../../../components/search/SortMenu';
 import { productFromApi } from '../../../services/catalog';
 import { todayVN } from '../../search/tripContext';
-import { FlightCard } from './FlightCard';
+import { SkeletonStatus } from '../../../components/common/Skeleton';
+import { FlightCard, FlightCardSkeleton, FlightDateStripSkeleton } from './FlightCard';
 import { FlightDateStrip } from './FlightDateStrip';
 import { FlightFilters } from './FlightFilters';
 import { TicketPanel, type LegId, type TicketLeg } from './TicketPanel';
@@ -41,6 +44,7 @@ const Notice: React.FC<{ tone?: 'info' | 'warn'; children: React.ReactNode }> = 
  */
 export const FlightResultsView: React.FC<{ search: FlightSearch; notice?: string | null }> = ({ search, notice }) => {
   const { origin, destination, trip } = search;
+  const preferredFareId = useSearchParams()?.get('fare');
   const { startBooking } = useTravel();
   const today = todayVN();
   const adults = trip.adults ?? 1;
@@ -148,10 +152,10 @@ export const FlightResultsView: React.FC<{ search: FlightSearch; notice?: string
   let body: React.ReactNode;
   if (outbound.status === 'loading' || (step === 'ret' && back.status === 'loading')) {
     body = (
-      <div className="space-y-3.5" aria-busy="true">
-        <div className="h-28 animate-pulse rounded-[20px] bg-slate-200/70" />
-        {[0, 1, 2].map((i) => <div key={i} className="h-44 animate-pulse rounded-[20px] bg-slate-200/70" />)}
-      </div>
+      <SkeletonStatus label="Đang tải chuyến bay" className="space-y-3.5">
+        <FlightDateStripSkeleton />
+        {[0, 1, 2].map((i) => <FlightCardSkeleton key={i} />)}
+      </SkeletonStatus>
     );
   } else if (outbound.status === 'error' || (step === 'ret' && back.status === 'error')) {
     body = (
@@ -163,7 +167,7 @@ export const FlightResultsView: React.FC<{ search: FlightSearch; notice?: string
   } else if (outbound.status === 'no-route') {
     body = (
       <div className={`${CARD} space-y-4 p-8`}>
-        <h3 className="font-display text-lg text-slate-900">Chưa có chặng {origin} → {destination} trên V-OTA</h3>
+        <h3 className="font-display text-lg text-slate-900">Chưa có chặng {origin} → {destination} trên Sota</h3>
         {outbound.choices.length > 0 ? (
           <>
             <p className="text-sm text-slate-600">Đổi điểm đi ở ô tìm kiếm phía trên, hoặc chọn một điểm đi có chuyến tới {destination}:</p>
@@ -231,6 +235,7 @@ export const FlightResultsView: React.FC<{ search: FlightSearch; notice?: string
           <div className="flex flex-col gap-3.5">
             {visible.map((option) => (
               <FlightCard key={option.key} option={option} expanded={expanded.has(option.key)}
+                preferredFareId={preferredFareId}
                 chosen={chosen[step]?.option.key === option.key ? chosen[step]!.fare : null}
                 onToggleExpanded={() => setExpanded((prev) => { const next = new Set(prev); if (!next.delete(option.key)) next.add(option.key); return next; })}
                 onPick={choose} onClear={clearChoice} />
@@ -284,7 +289,7 @@ export const FlightResultsView: React.FC<{ search: FlightSearch; notice?: string
             <h3 className="font-display text-[22px] text-slate-900" aria-live="polite">{step === 'ret' ? 'Chọn vé chiều về' : 'Chọn vé chiều đi'}</h3>
             <SortMenu<FlightSort> value={sort} onChange={setSort} labels={FLIGHT_SORT_LABELS} />
           </div>
-          {mode === 'round' && back.status === 'none' && <Notice tone="warn">Chưa có chuyến chiều về {destination} → {originCity} trên V-OTA. Bạn vẫn đặt được vé một chiều.</Notice>}
+          {mode === 'round' && back.status === 'none' && <Notice tone="warn">Chưa có chuyến chiều về {destination} → {originCity} trên Sota. Bạn vẫn đặt được vé một chiều.</Notice>}
           {mode === 'round' && back.status === 'loading' && outbound.status === 'ready' && step === 'out' && (
             <p className="flex items-center gap-2 text-xs text-slate-500"><Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />Đang tìm chuyến chiều về…</p>
           )}

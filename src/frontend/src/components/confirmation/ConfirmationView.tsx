@@ -9,6 +9,7 @@ import { fetchRecommendations } from '../../services/recsys';
 import { ApiError } from '../../services/http';
 import type { RecommendationResponse } from '../../types/travel';
 import { ProductCard } from '../common/ProductCard';
+import { ProductCardSkeleton, SkeletonBlock, SkeletonStatus } from '../common/Skeleton';
 import { WhyPopover } from '../common/WhyPopover';
 import {
   AlertTriangle, CheckCircle2, Clock, Copy, Check, HelpCircle, Home, Loader2, RefreshCw, Sparkles, XCircle,
@@ -163,11 +164,7 @@ export const ConfirmationView: React.FC<ConfirmationViewProps> = ({ referenceCod
         </CenteredCard>
       );
     }
-    return (
-      <div className="max-w-4xl mx-auto px-4 py-16 flex justify-center text-slate-400">
-        <Loader2 className="w-6 h-6 animate-spin" aria-label="Đang tải đơn đặt chỗ" />
-      </div>
-    );
+    return <BookingSkeleton />;
   }
 
   const canCancelConfirmed = booking.status === 'CONFIRMED' && booking.cancellableUntil !== null
@@ -228,7 +225,7 @@ export const ConfirmationView: React.FC<ConfirmationViewProps> = ({ referenceCod
             </h3>
             {booking.status === 'CONFIRMED' ? (
               <p className="text-xs text-slate-600">
-                V-OTA hoàn <strong>{formatVnd(booking.payment?.amount ?? booking.total)}</strong> về thẻ đã dùng (5–10 ngày làm
+                Sota hoàn <strong>{formatVnd(booking.payment?.amount ?? booking.total)}</strong> về thẻ đã dùng (5–10 ngày làm
                 việc). Hạn huỷ có hoàn tiền: {booking.cancellableUntil && formatDateTimeVn(booking.cancellableUntil)}.
                 Thao tác này không thể hoàn tác.
               </p>
@@ -373,7 +370,7 @@ const StatusCard: React.FC<{
     : payment?.status === 'REFUND_PENDING'
       ? `Đang hoàn ${formatVnd(refund)}. Tiền về thẻ trong 5–10 ngày làm việc.`
       : payment?.status === 'REFUND_FAILED'
-        ? 'Hoàn tiền đang gặp sự cố; V-OTA sẽ liên hệ với bạn.'
+        ? 'Hoàn tiền đang gặp sự cố; Sota sẽ liên hệ với bạn.'
         : 'Đơn chưa thanh toán nên không phát sinh hoàn tiền.';
   return (
     <CenteredCard icon={<XCircle className="w-10 h-10 text-slate-400" />} title="Đã huỷ đơn">
@@ -474,16 +471,33 @@ const NextForTrip: React.FC<{
   events: ReturnType<typeof useTravel>['activeEvents'];
 }> = ({ destination, persona, events }) => {
   const [recs, setRecs] = useState<RecommendationResponse | null>(null);
+  const [loading, setLoading] = useState(Boolean(destination));
   const [showWhy, setShowWhy] = useState(false);
   useEffect(() => {
     if (!destination) return;
     const controller = new AbortController();
+    setLoading(true);
     fetchRecommendations({ k: 4, destination, signal: controller.signal })
       .then(setRecs)
-      .catch(() => setRecs(null));
+      .catch(() => setRecs(null))
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [destination, persona, events]);
 
+  // Gợi ý đang tải: phần đơn hàng đã hiện, khối gợi ý giữ chỗ bằng khung (product.md §4.6.3). Đã có thẻ thì giữ thẻ khi tải lại.
+  if (destination && loading && !recs) {
+    return (
+      <SkeletonStatus label="Đang tải gợi ý cho chuyến đi" className="space-y-4">
+        <div className="space-y-2">
+          <SkeletonBlock className="h-6 w-72 max-w-full rounded-md" />
+          <SkeletonBlock className="h-3.5 w-96 max-w-full rounded" />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[0, 1, 2].map((i) => <ProductCardSkeleton key={i} />)}
+        </div>
+      </SkeletonStatus>
+    );
+  }
   if (!destination || !recs || recs.recommendations.length === 0) return null;
   return (
     <div className="space-y-4">
@@ -527,6 +541,44 @@ const CenteredCard: React.FC<{ icon: React.ReactNode; title: string; children?: 
     <h1 className="text-2xl sm:text-3xl font-black text-slate-900">{title}</h1>
     {children}
   </div>
+);
+
+/** Khung chờ của trang đơn: thẻ trạng thái, các khối chi tiết bên trái và khung thanh toán bên phải, đúng bố cục khi đã tải. */
+const BookingSkeleton: React.FC = () => (
+  <SkeletonStatus label="Đang tải đơn đặt chỗ" className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <SkeletonBlock className="mb-4 h-4 w-52 rounded" />
+    <div className="space-y-6">
+      <div className="p-8 bg-white rounded-3xl border border-slate-200 shadow-xl flex flex-col items-center gap-4">
+        <SkeletonBlock className="w-16 h-16 rounded-full" />
+        <SkeletonBlock className="h-8 w-72 max-w-full rounded-lg" />
+        <SkeletonBlock className="h-4 w-56 max-w-full rounded" />
+        <div className="flex gap-3">
+          <SkeletonBlock className="h-10 w-36 rounded-xl" />
+          <SkeletonBlock className="h-10 w-36 rounded-xl" />
+        </div>
+      </div>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
+        <div className="min-w-0 space-y-4">
+          {[3, 2, 2].map((rows, i) => (
+            <div key={i} className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+              <div className="bg-slate-50 px-4 py-3"><SkeletonBlock className="h-4 w-40 rounded" /></div>
+              <div className="grid gap-3 px-4 py-4">
+                {Array.from({ length: rows }, (_, row) => <SkeletonBlock key={row} className={`h-4 rounded ${row % 2 ? 'w-1/2' : 'w-3/4'}`} />)}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+          <div className="bg-slate-50 px-4 py-3"><SkeletonBlock className="h-4 w-32 rounded" /></div>
+          <div className="grid gap-3 px-4 py-4">
+            <SkeletonBlock className="h-4 w-full rounded" />
+            <SkeletonBlock className="h-4 w-2/3 rounded" />
+            <SkeletonBlock className="mt-2 h-7 w-40 rounded-md" />
+          </div>
+        </div>
+      </div>
+    </div>
+  </SkeletonStatus>
 );
 
 /** Đặt lại một đơn chưa thanh toán xong: đơn nháp mới từ các mục của đơn, theo giá hiện tại (spec dat-truc-tiep-theo-don-nhap.md §7). */

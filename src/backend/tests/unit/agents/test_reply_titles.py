@@ -61,6 +61,9 @@ class ReplyTitleTests(unittest.TestCase):
     def test_greetings_and_thanks_have_no_title(self):
         self.assertIsNone(conversation.reply_title(state(interaction_type='conversation', missing_fields=['days'])))
 
+    def test_a_goodbye_has_no_title(self):
+        self.assertIsNone(conversation.reply_title(state(interaction_type='stop')))
+
 
 class ConversationalUpdateTests(unittest.TestCase):
     def test_the_model_title_is_used_when_given(self):
@@ -78,6 +81,19 @@ class ConversationalUpdateTests(unittest.TestCase):
             state(interaction_type='conversation', missing_fields=['destination', 'days']),
             ConversationalAnswer(title='Chào bạn', message='Xin chào! Bạn muốn đi đâu?'))
         self.assertEqual(update['response']['question'], 'Xin chào! Bạn muốn đi đâu?')
+
+    def test_a_goodbye_is_only_the_words_with_no_title_question_or_buttons(self):
+        # "ko đi nữa" (AC-AGT-01, chốt 2026-10-12): cảm ơn, hẹn gặp lại; không form, không hỏi trường thiếu, không nút.
+        intent = {'destination': 'Đà Nẵng', 'days': None}
+        update = conversation.conversational_update(
+            state(interaction_type='stop', intent=intent, offer_suggestions=False, clarification_rounds=3),
+            ConversationalAnswer(title='Hẹn gặp lại', message='Cảm ơn bạn, hẹn gặp lại nhé!', suggestions=['Lên lịch']))
+        response = update['response']
+        self.assertEqual(response['status'], 'NEEDS_CLARIFICATION')
+        self.assertEqual(response['question'], 'Cảm ơn bạn, hẹn gặp lại nhé!')
+        self.assertEqual(response['knownIntent'], intent)
+        for key in ('missingFields', 'suggestedValues', 'clarificationForm', 'suggestions'):
+            self.assertNotIn(key, response)
 
     def test_an_out_of_scope_request_is_answered_with_a_title_not_an_error(self):
         # FR-AGT-06 (chốt 2026-10-10): ngoài phạm vi là câu trả lời thường 200; chỉ đầu vào bị guardrail chặn mới là lỗi.
@@ -113,6 +129,16 @@ class FixedTextTests(unittest.TestCase):
         question = conversation.clarification_fallback(
             state(interaction_type='conversation', missing_fields=['destination', 'days']))['response']['question']
         self.assertFalse(question.startswith('**'))
+
+    def test_a_goodbye_fallback_thanks_without_asking_in_both_languages(self):
+        for language in ('vi', 'en'):
+            with self.subTest(language=language):
+                response = conversation.conversational_fallback(
+                    state(language=language, interaction_type='stop', intent={'destination': 'Huế', 'days': None}))['response']
+                self.assertEqual(response['question'], messages.message({'language': language}, 'farewell'))
+                self.assertFalse(response['question'].startswith('**'))
+                self.assertNotIn('missingFields', response)
+        self.assertNotEqual(messages.message({'language': 'en'}, 'farewell'), messages.message({'language': 'vi'}, 'farewell'))
 
     def test_guardrail_block_and_out_of_scope_have_different_titles(self):
         blocked = conversation.conversational_fallback(state(refusal=True, blocked_by_guardrail='x'))

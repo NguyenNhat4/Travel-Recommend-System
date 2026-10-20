@@ -18,34 +18,29 @@ LOCAL_INSIDER_DATABASE_URL = postgresql://postgres:postgres@localhost:$(POSTGRES
 
 .PHONY: tunnel tunnel-down tunnel-status chat agent-eval web demo-db demo-db-reset verify-db index-vectors db-migrate db-migrate-status update backend backend-logs backend-stop backend-local jwt-keys
 
-# SSH tunnel tới DB staging: primary (ghi) :15432, replica (đọc) :15433. Mật khẩu đọc từ .env.tunnel (gitignore),
-# nạp qua SSH_ASKPASS nên không cần sshpass. Chạy nền; dừng bằng `make tunnel-down`.
-TUNNEL_PRIMARY = 127.0.0.1:15432:10.148.0.2:5432 vota-dev@35.197.148.180
-TUNNEL_REPLICA = 127.0.0.1:15433:10.148.0.4:5432 vota-dev@34.126.70.1
+# SSH tunnel tới DB staging-HA qua IAP (node không có IP public). Primary: cổng local :15432 → ILB 10.148.0.34 (leader).
+# Cần trong .env.tunnel (gitignore): IAP_SSH_USER=<tài khoản Google có quyền IAP + OS Login>, IAP_SSH_KEY=<đường dẫn khóa, mặc định ~/.ssh/google_compute_engine>.
+# Chạy nền; dừng bằng `make tunnel-down`.
+TUNNEL_IAP_PROJECT = vinpearl-508801
+TUNNEL_IAP_ZONE = asia-southeast1-b
+TUNNEL_IAP_VM = vota-ha-pg-b
+TUNNEL_IAP_HOST = compute.9103917531817219909
 tunnel:
-	if [[ ! -f .env.tunnel ]]; then echo "Thiếu .env.tunnel (SSH_PRIMARY_PASSWORD, SSH_REPLICA_PASSWORD)"; exit 1; fi
-	ASKPASS="$$(mktemp)"; trap 'rm -f "$$ASKPASS"' EXIT
-	printf '#!/bin/sh\nprintf %%s "$$TUNNEL_PW"\n' > "$$ASKPASS"; chmod 700 "$$ASKPASS"
-	open_tunnel() { # $$1=tên $$2=cổng local $$3=biến mật khẩu $$4=spec "-L ... user@host"
-		if (exec 3<>/dev/tcp/127.0.0.1/$$2) 2>/dev/null; then echo "$$1: cổng $$2 đã mở, bỏ qua"; return; fi
-		PW="$$(sed -n "s/^$$3=//p" .env.tunnel | tail -n 1)"
-		if [[ -z "$$PW" ]]; then echo "$$1: thiếu $$3 trong .env.tunnel"; exit 1; fi
-		TUNNEL_PW="$$PW" SSH_ASKPASS="$$ASKPASS" SSH_ASKPASS_REQUIRE=force setsid ssh -C -f -N \
-			-o PreferredAuthentications=password -o PubkeyAuthentication=no \
-			-o ExitOnForwardFailure=yes -o StrictHostKeyChecking=accept-new \
-			-o ServerAliveInterval=30 -L $$4
-		echo "$$1: tunnel mở trên :$$2"
-	}
-	open_tunnel primary 15432 SSH_PRIMARY_PASSWORD "$(TUNNEL_PRIMARY)"
-	open_tunnel replica 15433 SSH_REPLICA_PASSWORD "$(TUNNEL_REPLICA)"
+	if [[ ! -f .env.tunnel ]]; then echo "Thiếu .env.tunnel (IAP_SSH_USER)"; exit 1; fi
+	IAP_USER="$$(sed -n 's/^IAP_SSH_USER=//p' .env.tunnel | tail -n 1)"
+	IAP_KEY="$$(sed -n 's/^IAP_SSH_KEY=//p' .env.tunnel | tail -n 1)"; IAP_KEY="$${IAP_KEY:-$$HOME/.ssh/google_compute_engine}"
+	if [[ -z "$$IAP_USER" ]]; then echo "Thiếu IAP_SSH_USER trong .env.tunnel"; exit 1; fi
+	if (exec 3<>/dev/tcp/127.0.0.1/15432) 2>/dev/null; then echo "primary: cổng 15432 đã mở, bỏ qua"; exit 0; fi
+	ssh -f -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o IdentitiesOnly=yes -i "$$IAP_KEY" \
+		-o ProxyCommand="gcloud compute start-iap-tunnel $(TUNNEL_IAP_VM) %p --listen-on-stdin --project=$(TUNNEL_IAP_PROJECT) --zone=$(TUNNEL_IAP_ZONE) --verbosity=warning" \
+		-L 127.0.0.1:15432:10.148.0.34:5432 "$$IAP_USER@$(TUNNEL_IAP_HOST)"
+	echo "primary: tunnel mở trên :15432"
 
 tunnel-down:
-	pkill -f "ssh -f -N .*-L 127.0.0.1:1543[23]:" && echo "Đã tắt tunnel" || echo "Không có tunnel đang chạy"
+	pkill -f "ssh -f -N .*-L 127.0.0.1:15432:" && echo "Đã tắt tunnel" || echo "Không có tunnel đang chạy"
 
 tunnel-status:
-	for p in 15432 15433; do
-		if (exec 3<>/dev/tcp/127.0.0.1/$$p) 2>/dev/null; then echo ":$$p mở"; else echo ":$$p đóng"; fi
-	done
+	if (exec 3<>/dev/tcp/127.0.0.1/15432) 2>/dev/null; then echo ":15432 mở"; else echo ":15432 đóng"; fi
 .PHONY: recsys-test recsys-gate-run recsys-regress recsys-baseline
 
 # Chạy trọn bộ FastAPI + Streamlit; Ctrl+C sẽ dừng cả hai.

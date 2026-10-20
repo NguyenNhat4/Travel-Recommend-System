@@ -4,6 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { Building2, Flag, Loader2, Plane, Sparkles, Ticket } from 'lucide-react';
 import { formatDateTimeVn, formatVnd } from '../../components/confirmation/bookingLabels';
+import { SkeletonBlock } from '../../components/common/Skeleton';
 import type { BookingSummary } from '../../services/booking';
 import { canRebook, cardNote, cardStatus, itemSubtitle } from './historyModel';
 import { TONE_PILL } from './tone';
@@ -24,6 +25,39 @@ interface BookingCardProps {
   rebooking: boolean;
   onRebook: (referenceCode: string) => void;
 }
+
+/** Khung thẻ đơn trong lúc tải: ô ngày, mã đơn và giờ đặt, nhãn trạng thái, hai dòng dịch vụ, tổng tiền và nút. */
+export const BookingCardSkeleton: React.FC = () => (
+  <div aria-hidden="true" className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+    <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3.5 gap-y-2 px-4 py-3.5 max-sm:grid-cols-[auto_minmax(0,1fr)]">
+      <SkeletonBlock className="h-[52px] w-14 rounded-xl" />
+      <div className="min-w-0 space-y-1.5">
+        <SkeletonBlock className="h-4 w-32 rounded" />
+        <SkeletonBlock className="h-3 w-44 max-w-full rounded" />
+      </div>
+      <SkeletonBlock className="h-7 w-28 rounded-full max-sm:col-span-full" />
+    </div>
+    <div className="border-t border-slate-200 px-4">
+      {[0, 1].map((i) => (
+        <div key={i} className="grid grid-cols-[2.25rem_minmax(0,1fr)_auto] items-center gap-3 border-t border-slate-200 py-3 first:border-t-0">
+          <SkeletonBlock className="h-9 w-9 rounded-xl" />
+          <div className="min-w-0 space-y-1.5">
+            <SkeletonBlock className="h-4 w-3/4 rounded" />
+            <SkeletonBlock className="h-3 w-1/2 rounded" />
+          </div>
+          <SkeletonBlock className="h-4 w-20 rounded" />
+        </div>
+      ))}
+    </div>
+    <div className="flex items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3">
+      <div className="space-y-1.5">
+        <SkeletonBlock className="h-3 w-24 rounded" />
+        <SkeletonBlock className="h-5 w-28 rounded" />
+      </div>
+      <SkeletonBlock className="h-11 w-32 rounded-full" />
+    </div>
+  </div>
+);
 
 export const BookingCard: React.FC<BookingCardProps> = ({ booking, rebooking, onRebook }) => {
   const status = cardStatus(booking);

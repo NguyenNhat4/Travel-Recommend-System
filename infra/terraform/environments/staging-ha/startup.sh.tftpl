@@ -1,16 +1,63 @@
 #!/bin/bash
-# Boots one app VM: pull images, fetch env from Secret Manager, run compose.
+# Boots one app VM: install Docker and Ops Agent, then run slot-deploy.sh (env from Secret Manager, pgbouncer, proxy, slot).
+# Boot image là Debian 12 (xem variables.tf boot_image). Ops Agent ghi metric agent.googleapis.com/memory/percent_used
+# mà autoscaler đọc; Container-Optimized OS không hỗ trợ Ops Agent nên không dùng được cho MIG này (2026-10-08).
+# slot-deploy.sh chạy compose trong image docker:27-cli (đã kiểm trên VM thật: compose v2.33).
+# KHÔNG dùng $-mở-ngoặc-nhọn trong file này (templatefile của Terraform).
 set -euo pipefail
-mkdir -p /etc/vota
-gcloud secrets versions access latest --secret='${backend_env_secret}' > /etc/vota/backend.env
-chmod 600 /etc/vota/backend.env
-# The frontend gets only what it needs, not the DB credentials in backend.env.
-{
-  grep -E '^AUTH_SERVICE_TOKEN=' /etc/vota/backend.env || true
-  sed -n 's/^AUTH_REDIS_URL=/SESSION_REDIS_URL=/p' /etc/vota/backend.env
-} > /etc/vota/frontend.env
-chmod 600 /etc/vota/frontend.env
-docker-credential-gcr configure-docker --registries='${registry_host}'
+export HOME=/var/lib/vota
+export DEBIAN_FRONTEND=noninteractive
+mkdir -p "$HOME" /etc/vota
+
+apt-get update -qq
+apt-get install -y -qq docker.io jq curl iptables python3 ca-certificates
+systemctl enable --now docker
+
+# Ops Agent: cài từ repo chính thức. Lần sau khởi động lại VM script chạy lại, bước này idempotent.
+if ! systemctl is-active --quiet google-cloud-ops-agent; then
+  curl -sSo /tmp/add-ops-agent-repo.sh https://dl.google.com/cloudagents/add-google-cloud-ops-agent-repo.sh
+  bash /tmp/add-ops-agent-repo.sh --also-install
+fi
+
+# Giám sát VM, cùng bộ với VM staging cũ (infra/monitoring): cấu hình Ops Agent đọc log container (docker json-file),
+# docker event watcher và collector CPU/RAM/đĩa theo container. File lấy từ metadata vota-mon-*.
+# Ops Agent giữ hostmetrics: autoscaler đọc agent.googleapis.com/memory/percent_used. Lỗi giám sát không làm hỏng khởi động app.
+fetch_monitoring_file() {
+  curl -fsS -H 'Metadata-Flavor: Google' "http://metadata.google.internal/computeMetadata/v1/instance/attributes/$1" -o "/opt/vota-monitoring/$2"
+}
+
+install_monitoring() {
+  local mon_dir=/opt/vota-monitoring
+  local conf=/etc/google-cloud-ops-agent/config.yaml
+  mkdir -p "$mon_dir" || return 1
+  fetch_monitoring_file vota-mon-install install-vota-docker-event-watcher.sh || return 1
+  fetch_monitoring_file vota-mon-ops-agent ops-agent-staging.yaml || return 1
+  fetch_monitoring_file vota-mon-logrotate vota-monitoring-logrotate.conf || return 1
+  fetch_monitoring_file vota-mon-watcher-py vota-docker-event-watcher.py || return 1
+  fetch_monitoring_file vota-mon-watcher-unit vota-docker-event-watcher.service || return 1
+  fetch_monitoring_file vota-mon-disk-py vota-container-disk-collector.py || return 1
+  fetch_monitoring_file vota-mon-disk-unit vota-container-disk-collector.service || return 1
+  fetch_monitoring_file vota-mon-stats-py vota-container-stats-collector.py || return 1
+  fetch_monitoring_file vota-mon-stats-unit vota-container-stats-collector.service || return 1
+
+  # Ops Agent trước: nếu cấu hình mới không khởi động được thì khôi phục mặc định, để metric memory của autoscaler vẫn chạy.
+  if [ -f "$conf" ]; then cp -a "$conf" "$conf.default" || return 1; fi
+  install -D -m 0644 "$mon_dir/ops-agent-staging.yaml" "$conf" || return 1
+  if ! systemctl restart google-cloud-ops-agent; then
+    echo "vota-monitoring: Ops Agent không khởi động với cấu hình mới, khôi phục cấu hình trước đó" >&2
+    if [ -f "$conf.default" ]; then cp -a "$conf.default" "$conf"; else rm -f "$conf"; fi
+    systemctl restart google-cloud-ops-agent || true
+    return 1
+  fi
+
+  # Watcher và collector: install-vota-docker-event-watcher.sh cài systemd unit và logrotate, rồi bật ba service.
+  bash "$mon_dir/install-vota-docker-event-watcher.sh" || return 1
+}
+install_monitoring || echo "vota-monitoring: cài giám sát VM lỗi; xem systemctl status vota-* và google-cloud-ops-agent" >&2
+
+iptables -A INPUT -p tcp --dport 3000 -j ACCEPT
+
+# pgbouncer: mẫu cấu hình và script dựng; slot-deploy.sh gọi lại mỗi lần làm mới env.
 cat > /etc/vota/pgbouncer.ini.tmpl <<'PGBINI'
 ${pgbouncer_ini}
 PGBINI
@@ -18,10 +65,30 @@ cat > /etc/vota/pgbouncer-setup.sh <<'PGBSETUP'
 ${pgbouncer_setup}
 PGBSETUP
 chmod +x /etc/vota/pgbouncer-setup.sh
-/etc/vota/pgbouncer-setup.sh /etc/vota/backend.env /etc/vota/pgbouncer /etc/vota/pgbouncer.ini.tmpl
-cat > /etc/vota/compose.yml <<'COMPOSE'
-${compose}
-COMPOSE
-export BACKEND_IMAGE='${backend_image}' FRONTEND_IMAGE='${frontend_image}' UVICORN_WORKERS='${uvicorn_workers}' \
-  UVICORN_GRACEFUL_SECONDS='${graceful_seconds}' BACKEND_STOP_GRACE='${stop_grace_seconds}'
-docker compose -f /etc/vota/compose.yml up -d
+
+# Script chạy slot (blue/green) và proxy cục bộ: cập nhật image không gián đoạn trên VM đang chạy.
+# CD (scripts/roll-staging-ha-app-slots.sh) đẩy bản mới của chính file này lên VM mỗi lần deploy.
+cat > /usr/local/sbin/vota-slot-deploy.sh <<'SLOTDEPLOY'
+${slot_deploy}
+SLOTDEPLOY
+chmod 0755 /usr/local/sbin/vota-slot-deploy.sh
+cat > /etc/vota/slot.env <<'SLOTENV'
+BACKEND_ENV_SECRET='${backend_env_secret}'
+UVICORN_WORKERS='${uvicorn_workers}'
+UVICORN_GRACEFUL_SECONDS='${graceful_seconds}'
+BACKEND_STOP_GRACE='${stop_grace_seconds}'
+SLOTENV
+chmod 0644 /etc/vota/slot.env
+
+# Image mong muốn: CD ghi vào all-instances config của MIG (scripts/set-staging-ha-desired-images.sh), nên VM do autoscaler
+# hoặc autohealing tạo chạy đúng bản đang triển khai. Thiếu hoặc sai dạng thì dùng image trong template.
+desired_image() {
+  local v
+  v="$(curl -fsS -m 5 -H 'Metadata-Flavor: Google' "http://metadata.google.internal/computeMetadata/v1/instance/attributes/$1" 2>/dev/null || true)"
+  if [[ "$v" =~ ^[a-z0-9][a-z0-9._/-]*@sha256:[a-f0-9]{64}$ ]]; then echo "$v"; else echo "$2"; fi
+}
+boot_backend="$(desired_image vota-backend-image '${backend_image}')"
+boot_frontend="$(desired_image vota-frontend-image '${frontend_image}')"
+
+# Boot: lấy env từ Secret Manager, kéo image, dựng pgbouncer, proxy và slot blue (hoặc giữ slot đang chạy khi chỉ khởi động lại).
+BACKEND_IMAGE="$boot_backend" FRONTEND_IMAGE="$boot_frontend" /usr/local/sbin/vota-slot-deploy.sh boot

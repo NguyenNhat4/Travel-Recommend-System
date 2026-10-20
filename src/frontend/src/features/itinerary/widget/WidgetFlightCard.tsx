@@ -32,7 +32,7 @@ function Segment({ segment }: { segment: FlightSegment }) {
       </div>
       <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-600">
         <span className="rounded-md bg-emerald-50 px-1.5 py-0.5 font-semibold text-emerald-700">{segment.label}</span>
-        {[segment.flightNumber, segment.departure.time].filter(Boolean).join(' · ')}
+        {segment.flightNumber && <span>{segment.flightNumber}</span>}
       </p>
     </div>
   );
@@ -63,7 +63,7 @@ export function WidgetFlightCard({ flight, onOpen, onBookNow }: {
       <div className="flex items-center justify-between gap-3 border-t border-slate-100 px-3 py-2.5">
         <p className="text-xs text-slate-500 tabular-nums">
           {price != null
-            ? <><span className="text-base font-bold text-slate-900">{vnd.format(price)} ₫</span>/khách × {flight.passengers}</>
+            ? <><span className="text-base font-bold text-slate-900">{vnd.format(price)} ₫</span>/khách × {flight.passengers} khách</>
             : 'Chưa có giá'}
         </p>
         {onBookNow && (

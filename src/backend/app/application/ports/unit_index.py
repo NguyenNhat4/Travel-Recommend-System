@@ -2,14 +2,14 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 import numpy as np
 
 from src.backend.app.domain.catalog import Product, StayDates, UnitAttributes
 from src.backend.app.domain.catalog.stay_dates import calendar_open
-from src.backend.app.domain.catalog.unit_attributes import ChildRow
+from src.backend.app.domain.catalog.unit_attributes import DURATION_TAXONOMIES, ChildRow
 
 
 @dataclass
@@ -23,15 +23,44 @@ class UnitIndex:
     parent_of: dict[str, str]          # child product_id → parent product_id
     model_version: str
     attrs: UnitAttributes | None = None  # thuộc tính lọc Phase A (F3/F5/F6); None → dựng từ unit, không có con
+    #: combo product_id → product_id thành phần đã map tin cậy (`catalog.combo_items`, xem `postgres_store.combo_members_of`).
+    #: Chỉ để loại trừ sản phẩm đã mua (FR-REC-02, chốt 09/10); {} → combo không kéo theo gì.
+    combo_members: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
     def __post_init__(self):
         self.idx = {p.product_id: i for i, p in enumerate(self.units)}
         if self.attrs is None:
             self.attrs = UnitAttributes.build(self.units)
+        # Quan hệ combo ↔ thành phần theo chỉ số search unit (phòng → khách sạn, chuyến → tuyến qua `resolve`); bỏ thành phần
+        # ngoài catalog và tự tham chiếu.
+        components: dict[int, set[int]] = {}
+        combos: dict[int, set[int]] = {}
+        for combo_id, members in self.combo_members.items():
+            c = self.resolve(combo_id)
+            if c is None:
+                continue
+            for member_id in members:
+                m = self.resolve(member_id)
+                if m is None or m == c:
+                    continue
+                components.setdefault(c, set()).add(m)
+                combos.setdefault(m, set()).add(c)
+        self.components_of = {c: frozenset(v) for c, v in components.items()}
+        self.combos_with = {m: frozenset(v) for m, v in combos.items()}
 
     def resolve(self, product_id: str) -> int | None:
         """Phòng/chuyến → index của cha."""
         return self.idx.get(self.parent_of.get(product_id, product_id))
+
+    def purchase_closure(self, units: Iterable[int]) -> set[int]:
+        """Tập unit coi là "đã mua" sau luật combo của FR-REC-02 (chốt 2026-10-09): mua một sản phẩm → mọi combo chứa nó;
+        mua một combo → mọi thành phần của nó. Chỉ một bậc: mua combo A không kéo theo combo B chỉ vì chung thành phần."""
+        bought = set(units)
+        out = set(bought)
+        for u in bought:
+            out |= self.combos_with.get(u, frozenset())
+            out |= self.components_of.get(u, frozenset())
+        return out
 
     def mask(self, taxonomy=None, destination=None, only_available=True, only_recommendable=False, *,
              origin_city: str | None = None, destination_city: str | None = None,
@@ -40,7 +69,8 @@ class UnitIndex:
              exclude_brands: Iterable[str] = (), exclude_taxonomies: Iterable[str] = (),
              exclude_flags: Iterable[str] = (), min_occupancy: int | None = None,
              require_entities: Iterable[str] = (),
-             stay: StayDates | None = None) -> np.ndarray:
+             stay: StayDates | None = None,
+             duration_days: int | None = None, duration_nights: int | None = None) -> np.ndarray:
         """Mask bool theo index unit; mọi tham số mới mặc định tắt nên không đổi hành vi cũ.
 
         Quy ước "không biết" (spec §2.7 [C2]):
@@ -56,6 +86,9 @@ class UnitIndex:
         `require_entities` (contract 1.18.0, entity gate CỨNG): chỉ giữ unit có ít nhất một khoá entity trong tập
         (`UnitAttributes.entities` — dựng từ TÊN unit, chỉ attraction/combo có khoá); unit không có khoá bị loại — đây là gate,
         không phải quy ước "không biết → giữ". Rỗng = không gate.
+        `duration_days` / `duration_nights` (plan 2026-10-13 §2.3, vai trò gate): chỉ giữ unit thuộc `DURATION_TAXONOMIES` có số
+        ngày khớp (khi câu nêu ngày); số đêm đã biết thì phải khớp, chưa biết thì giữ; câu chỉ nêu đêm → unit phải có số đêm
+        khớp. Đây cũng là gate: loại khác (khách sạn…) bị loại — vai trò `stay` (câu có cue lưu trú) không gọi tham số này.
         """
         m = np.ones(len(self.units), dtype=bool)
         if only_available:
@@ -98,9 +131,22 @@ class UnitIndex:
             m &= np.array([bool(e & req) for e in a.entities], dtype=bool)
         if stay is not None:
             m &= self._stay_mask(stay)
+        if duration_days is not None or duration_nights is not None:
+            m &= self._duration_mask(duration_days, duration_nights)
         if price_min is not None or price_max is not None or min_occupancy is not None or stay is not None:
             m &= self._rooms_ok(price_min, price_max, min_occupancy, stay)
         return m
+
+    def _duration_mask(self, days: int | None, nights: int | None) -> np.ndarray:
+        a = self.attrs
+        ok = np.isin(self.taxonomy, list(DURATION_TAXONOMIES))
+        for i in np.flatnonzero(ok):
+            d, n = a.duration_days[i], a.duration_nights[i]
+            if days is not None:
+                ok[i] = days in d and (nights is None or not n or nights in n)
+            else:
+                ok[i] = nights in n
+        return ok
 
     def _stay_mask(self, stay: StayDates) -> np.ndarray:
         """Bộ lọc ngày (FR-SRC-03 / FR-CAT-03, `domain/catalog/stay_dates.py`), theo loại:

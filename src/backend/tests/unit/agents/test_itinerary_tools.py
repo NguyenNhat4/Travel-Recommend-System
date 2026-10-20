@@ -282,6 +282,25 @@ class GatewayTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(caught.exception.code, 'TOOL_NOT_ALLOWED')
         self.assertEqual(ports.calls, [])
 
+    async def test_catalog_list_forwards_free_only(self):
+        # Hồi quy 14/10: orc v2 lọc tham quan tự do gửi freeOnly; gateway từng chặn thành INVALID_ARGUMENTS.
+        class Catalog:
+            def __init__(self):
+                self.calls = []
+
+            async def list_products(self, params):
+                self.calls.append(params)
+                return {'results': [], 'total': 0, 'limit': 10, 'offset': 0, 'requestId': 'catalog-test'}
+
+        ports, catalog = self.Ports(), Catalog()
+        params = {'taxonomy': 'attraction', 'destination': 'Vũng Tàu', 'availableOnly': True,
+                  'freeOnly': True, 'sort': 'popular', 'limit': 10, 'offset': 0}
+        await ItineraryToolGateway(ports, ports, catalog).list_products(params)
+        self.assertEqual(catalog.calls, [params])
+        with self.assertRaises(ToolError) as caught:
+            await ItineraryToolGateway(ports, ports, catalog).list_products({**params, 'query': 'x'})
+        self.assertEqual(caught.exception.code, 'INVALID_ARGUMENTS')
+
     async def test_similar_response_is_validated_against_the_contract(self):
         ports = self.Ports()
         body = {'productId': 'H1', 'strategy': 'same_taxonomy', 'results': []}  # thiếu requestId
@@ -726,6 +745,14 @@ class DefaultCategoryFillTests(unittest.TestCase):
         plan = tool_planning.validated_plan(self._state('Nha Trang có golf', exclude_taxonomies=['golf']),
                                             [search(taxonomy='hotel')])
         self.assertEqual({call['args'].get('taxonomy') for call in plan}, {'hotel', 'attraction'})
+
+    def test_a_planned_search_of_an_excluded_category_is_dropped_not_fatal(self):
+        # Snapshot X01 12/10: "đổi chuyến bay" loại flight, planner vẫn search vé máy bay → từng thành 503.
+        plan = tool_planning.validated_plan(self._state(exclude_taxonomies=['flight']),
+                                            [search(taxonomy='flight'), search(taxonomy='hotel')])
+        self.assertEqual({call['args'].get('taxonomy') for call in plan}, {'hotel', 'attraction'})
+        only = tool_planning.validated_plan(self._state(exclude_taxonomies=['flight']), [search(taxonomy='flight')])
+        self.assertNotIn('flight', {call['args'].get('taxonomy') for call in only})
 
     def test_missing_destination_does_not_crash_the_fill(self):
         plan = tool_planning.validated_plan({'intent': {}, 'constraints': {}}, [REC], require_recommendations=True)

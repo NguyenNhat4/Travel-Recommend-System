@@ -32,9 +32,12 @@ const DAY_MS = 24 * 3600 * 1000;
 
 type ParamSource = { get(name: string): string | null };
 
+// Dựng một lần: todayVN được gọi khi render thẻ chuyến bay (flightHref), tạo formatter mỗi lần là lãng phí.
+const VN_DAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
+
 /** Ngày hôm nay theo giờ Việt Nam, dạng YYYY-MM-DD (cùng cách `TravelContext` tính ngày mặc định). */
 export function todayVN(now: Date = new Date()): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }).format(now);
+  return VN_DAY.format(now);
 }
 
 export function addDaysIso(iso: string, days: number): string {

@@ -100,27 +100,45 @@ class AgentState(TypedDict, total=False):
     # - `pending_fare`: lần hỏi lại của câu hỏi giá vé (`{"origin"|"destination": ...}`), để câu trả lời ngắn lượt sau
     #   ("Sài Gòn") điền đúng chỗ còn thiếu (kịch bản bản 5 cảnh 6).
     pending_fare: dict[str, Any] | None
-    # - `open_question`: câu hỏi của người dùng còn dở vì trợ lý phải hỏi lại điểm đến ("có khách sạn nào có hồ bơi gần
-    #   phố cổ không?" → "phố cổ Hà Nội hay Hội An?"); lượt sau chỉ nêu điểm đến ("hà nội cha ơi") thì `explore` trả lời câu
-    #   hỏi gốc ở điểm đến đó (chat thử 10/10).
-    open_question: str | None
-    # - `open_understood`: những gì LLM hiểu ở câu hỏi còn dở (`explore_place`, `explore_focus`, `explore_price`), đi
-    #   theo `open_question` để lượt trả lời không mất "chỗ ở", "giá rẻ".
-    open_understood: dict[str, Any] | None
     # - `skipped_details`: chi tiết không bắt buộc người dùng đã nói là không có ("không có ngân sách"); không hỏi lại.
     skipped_details: list[str]
+    # - `shown`: sản phẩm đã cho xem trong hội thoại (thẻ khám phá, thẻ vé, sản phẩm của lịch), mỗi cái một mã `#n` kèm
+    #   một dòng thông tin (`steps/shown.py`); `finalize` ghi từ response đã kiểm. Chỉ để nhớ, loại, so; không phải nguồn
+    #   sản phẩm hay giá của response.
+    shown: dict[str, Any]
+    # Rollout-only conversational state; the disabled graph preserves its original checkpoint payload.
+    orchestrator_active: bool
+    waiting_jobs: list[dict[str, Any]]
+    rejected_refs: list[str]
+    orchestrator_turn: dict[str, Any]
+    turn_jobs: list[dict[str, Any]]
+    turn_codes: dict[str, str]
+    turn_seq: int
+    turn_pending: list[dict[str, Any]]
+    turn_results: list[dict[str, Any]]
+    turn_rounds: int
+    turn_tool_calls: int
+    turn_signatures: list[str]
+    turn_unfinished: list[dict[str, Any]]
+    turn_violations: list[str]
+    force_answer: bool
+    #: Mã phanh đầu tiên làm lượt phải trả lời sớm (`steps/limits.py`); chỉ trong lượt, không lưu.
+    turn_limit_reason: str | None
+    gate_repairs: int
+    orchestrator_prefill: dict[str, Any] | None
+    orchestrator_fare_ids: list[str]
+    jobs_progress: bool
+    turn_declines_offer: bool
+    turn_stop: bool
+    turn_plan_reason: str | None
+    turn_plan_accepted: bool
+    button_jobs: bool
+    button_pending_jobs: list[dict[str, Any]]
     fare_question: bool
-    # Những gì `classify` (LLM) hiểu từ câu chữ của lượt này, chỉ trong lượt; code đối chiếu với catalog rồi mới dùng:
-    # - `fare_ask`: câu hỏi vé máy bay (`models.FareQuestion`: origin, destination, anywhere, dearest, return_leg,
-    #   other_days, kind_unclear).
-    # - `explore_place`, `explore_city`: nơi cụ thể và thành phố câu hỏi nói tới (kể cả qua "ở đó", "chỗ đó").
-    # - `explore_focus`: `hotels`/`sights` khi chỉ hỏi chỗ ở/chỗ chơi; `explore_price`: `asks`/`cheap`.
-    # - `other_questions`: câu hỏi khác trong cùng tin nhắn, thành nút gợi ý.
+    # Chỉ trong lượt, code đối chiếu với catalog rồi mới dùng:
+    # - `fare_ask`: câu hỏi vé máy bay (`models.FareQuestion`) của job vé hoặc của nút vé (`fares.chip_reply`).
+    # - `other_questions`: câu hỏi khác trong cùng tin nhắn (orchestrator gửi khi chọn `plan`), thành nút gợi ý.
     fare_ask: dict[str, Any]
-    explore_place: str | None
-    explore_city: str | None
-    explore_focus: str | None
-    explore_price: str | None
     other_questions: list[str]
     # - `form_request`: người dùng xin form để tự điền ("cho mình cái form"); lượt này luôn kèm form.
     form_request: bool
@@ -130,11 +148,8 @@ class AgentState(TypedDict, total=False):
     previous_flights: list[dict[str, Any]]
     # Chỉ trong lượt: lượt đổi cần hỏi lại (`{"kind": "stay"|"flight", "directions": [...], "unmatched": ...}`).
     change_request: dict[str, Any] | None
-    # Chỉ trong lượt này: `explore` tự chọn điểm đến (bậc 2 của "không biết"); `converse` thêm nút gợi ý; `classify` cho
-    # `explore` chạy thẳng không qua `extract` (`explore_direct`), không tra được tên nơi thì `explore` quay lại `extract`.
-    explore_pick: bool
+    # Chỉ trong lượt này: `converse` thêm nút gợi ý vào câu "chưa hiểu" khi `precheck` chặn tin rác.
     offer_suggestions: bool
-    explore_direct: bool
 
 
 def make_event(node: str, event_type: str, message: str, **metadata: Any) -> dict[str, Any]:

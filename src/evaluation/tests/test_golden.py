@@ -130,12 +130,12 @@ class GateBookingClaimTests(unittest.TestCase):
 class GateNoToolBeforeInfoTests(unittest.TestCase):
     def test_missing_fields_with_tool_node_flagged(self):
         response = {"status": "NEEDS_CLARIFICATION", "missingFields": ["destination"]}
-        events = [{"node": "intake"}, {"node": "classify"}, {"node": "tool"}]
+        events = [{"node": "intake"}, {"node": "precheck"}, {"node": "orchestrate"}, {"node": "extract"}, {"node": "tool"}]
         self.assertTrue(gate_no_tool_before_info(response, events))
 
     def test_missing_fields_without_tool_node_ok(self):
         response = {"status": "NEEDS_CLARIFICATION", "missingFields": ["destination"]}
-        events = [{"node": "intake"}, {"node": "classify"}, {"node": "clarify"}]
+        events = [{"node": "intake"}, {"node": "precheck"}, {"node": "orchestrate"}, {"node": "extract"}, {"node": "clarify"}]
         self.assertEqual(gate_no_tool_before_info(response, events), [])
 
     def test_constraint_clarification_without_missing_fields_ignored(self):
@@ -275,7 +275,7 @@ class DatasetFindingsTests(unittest.TestCase):
         self.assertEqual(findings, [])
 
     def test_nodes_exclude_violation(self):
-        events = [{"node": "intake"}, {"node": "classify"}, {"node": "tool"}]
+        events = [{"node": "intake"}, {"node": "precheck"}, {"node": "orchestrate"}, {"node": "extract"}, {"node": "tool"}]
         findings = dataset_findings({}, 200, events, {"nodesExclude": ["tool"]}, {})
         self.assertTrue(findings)
 
@@ -410,7 +410,8 @@ class FormMatchesAnswerTests(unittest.TestCase):
 class AgentTestCasesDatasetTests(unittest.TestCase):
     def test_the_user_reported_cases_load_and_every_placeholder_resolves(self):
         cases = load_dataset(AGENT_CASES_PATH)
-        self.assertEqual([case.id for case in cases], ["TC-01", "TC-02", "TC-03", "TC-04", "TC-10", "TC-11", "TC-12", "TC-13", "TC-14"])
+        self.assertEqual([case.id for case in cases], ["TC-01", "TC-02", "TC-03", "TC-04", "TC-10", "TC-11", "TC-12", "TC-13", "TC-14",
+                                                       "TC-15"])
         for case in cases:
             for turn in case.turns:
                 resolved = json.dumps([resolve_dates(turn.message, date(2026, 10, 2)),

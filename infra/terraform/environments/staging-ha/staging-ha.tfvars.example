@@ -9,13 +9,20 @@ db_primary_ip             = "10.148.0.2"
 # db_replica_ip            = "10.148.0.4"
 # alert_emails            = ["oncall@example.com"]
 # --- HA (docs/plan/2026-10-07-ha-vung-crawler-rolling.md) ---
-# min_replicas             = 3        # (N-1)/N: cpu_target <= 0.667, memory_target_percent <= 66
+# min_replicas             = 1        # quy tắc 2026-10-08: nhóm app 1 đến 2 VM
+# max_replicas             = 2
 # boot_to_ready_seconds    = 360      # ĐO lại sau lần apply đầu (tạo VM -> log startup.recsys.ready)
 # lb_connection_draining_seconds = 100 # >= 90 (SSE trợ lý)
 # --- DB Patroni (tắt mặc định) ---
 # create_patroni                = true
 # patroni_image                 = "asia-southeast1-docker.pkg.dev/vinpearl-508801/v-ota-data-pipeline-crawler/vota-patroni:REPLACE_TAG"
 # patroni_service_account_email = "REPLACE-pg@vinpearl-508801.iam.gserviceaccount.com"
-# patroni_clone_from_host       = "10.148.0.2"   # chỉ lúc di trú lần đầu
+# patroni_clone_from_host       = "10.148.0.2"   # chỉ node a dùng, chỉ lúc di trú lần đầu
 # --- Cảnh báo job cào ---
 # crawler_alerts_enabled = true   # sau khi crawler bản có catalog.freshness đã deploy
+
+# VM job cào (crawler.tf): false = chưa tạo
+create_crawler_vm = false
+
+# Dashboard job cào công khai (crawler_monitor.tf): false = không mở
+crawler_monitor_public = false

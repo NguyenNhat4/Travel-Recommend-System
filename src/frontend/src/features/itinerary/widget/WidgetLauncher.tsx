@@ -19,7 +19,8 @@ export function WidgetLauncher({ onOpen }: { onOpen: () => void }) {
   }, [showBubble]);
 
   return (
-    <div className="fixed bottom-5 right-5 z-40 flex flex-col items-end motion-safe:animate-float">
+    // Trên mobile nâng widget lên trên thanh tab dưới (h-14 + safe area), không che các nút tab.
+    <div className="fixed bottom-[calc(3.5rem+env(safe-area-inset-bottom)+0.75rem)] right-5 z-40 flex flex-col items-end motion-safe:animate-float md:bottom-5">
       {showBubble && <div className="relative mb-2.5 max-w-60 rounded-2xl border border-slate-100 bg-white shadow-xl">
         <button onClick={onOpen} className="rounded-2xl py-3 pl-4 pr-10 text-left text-sm font-semibold leading-snug text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ai-500">
           <span className="whitespace-pre-line" aria-hidden="true">{displayedText || '\u00a0'}</span><span className="sr-only">{text}</span>

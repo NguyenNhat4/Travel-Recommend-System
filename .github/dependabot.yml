@@ -1,0 +1,15 @@
+# Dependabot mở PR khi base image của Dockerfile có digest mới. Đổi digest là việc có chủ đích: lần đổi nào thì base và
+# mọi layer phía sau build lại một lần (xem Dockerfile.backend). Ecosystem docker chỉ sửa các dòng FROM có literal image.
+version: 2
+updates:
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+
+  - package-ecosystem: docker
+    directory: /src/frontend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3

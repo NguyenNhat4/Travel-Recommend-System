@@ -29,6 +29,7 @@ vi.mock('../../src/services/recsys', () => recsys);
 vi.mock('../../src/context/TravelContext', () => ({ useTravel: () => travel }));
 
 import { ProductDetailView } from '../../src/components/detail/ProductDetailView';
+import { productFromApi } from '../../src/services/catalog';
 import { ApiError } from '../../src/services/http';
 
 const hotelProperty = () => JSON.parse(JSON.stringify(propertyFixture));
@@ -156,6 +157,9 @@ describe('ProductDetailView', () => {
     api.getProduct.mockResolvedValue(hotelProperty());
     render(<ProductDetailView productId="nt-h-10" />);
     await findRoomButtons();
+    // Ngày nhận/trả được đặt bởi useEffect sau khi phòng hiện ra; chờ hết báo lỗi ngày trước khi bấm tìm,
+    // nếu không onSubmit thấy ngày trống và return sớm (lỗi flaky khi CI chạy song song).
+    await waitFor(() => expect(screen.queryByTestId('date-error')).toBeNull(), WAIT);
     const input = screen.getByRole('combobox', { name: 'Địa điểm hoặc tên khách sạn' }) as HTMLInputElement;
     expect(input.value).toBe('Vinpearl Resort & Spa Nha Trang Bay');
     fireEvent.change(input, { target: { value: 'Đà Nẵng' } });
@@ -277,7 +281,7 @@ describe('ProductDetailView', () => {
     api.listVariants.mockResolvedValue({ ...variantsFixture, results: [], total: 0 });
     render(<ProductDetailView productId="nt-h-10" />);
     // Không có hạng phòng nào: trang vẫn hiện, không có thanh ngày, không có nút Đặt ngay lẫn nút thêm giỏ.
-    expect(await screen.findByText(/chưa có hạng phòng nào trên V-OTA/)).toBeTruthy();
+    expect(await screen.findByText(/chưa có hạng phòng nào trên Sota/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: /^Đặt ngay/ })).toBeNull();
     expect(screen.queryByTestId('hotel-trip-bar')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Thêm vào giỏ hàng' })).toBeNull();
@@ -390,10 +394,10 @@ describe('ProductDetailView', () => {
     expect(travel.startBooking).not.toHaveBeenCalled();
   });
 
-  it('shows the "no longer on V-OTA" page with popular products on 404', async () => {
-    api.getProduct.mockRejectedValue(new ApiError('Sản phẩm này không còn trên V-OTA.', 'PRODUCT_NOT_FOUND', 404, false));
+  it('shows the "no longer on Sota" page with popular products on 404', async () => {
+    api.getProduct.mockRejectedValue(new ApiError('Sản phẩm này không còn trên Sota.', 'PRODUCT_NOT_FOUND', 404, false));
     render(<ProductDetailView productId="nt-hotel-01" />);
-    expect(await screen.findByText('Sản phẩm này không còn trên V-OTA')).toBeTruthy();
+    expect(await screen.findByText('Sản phẩm này không còn trên Sota')).toBeTruthy();
     expect(await screen.findByText(popularFixture.results[0].name)).toBeTruthy();
     expect(api.trackProductView).not.toHaveBeenCalled();
   });
@@ -412,6 +416,97 @@ describe('ProductDetailView', () => {
     render(<ProductDetailView productId="nt-h-01" />);
     await screen.findByRole('heading', { level: 1, name: ticketFixture.name });
     expect(api.trackProductView).not.toHaveBeenCalled();
+  });
+
+  describe('khung chờ (product.md §4.3.4)', () => {
+    const pendingPromise = <T,>() => {
+      let resolve!: (value: T) => void;
+      const promise = new Promise<T>((r) => { resolve = r; });
+      return { promise, resolve };
+    };
+    const tripRecs = () => ({
+      strategy: 'cross_vertical', destination: 'Nha Trang',
+      recommendations: [1, 3, 4].map((i, rank) => ({
+        product: productFromApi(popularFixture.results[i] as never), score: 0.8, rank: rank + 1, because: [],
+      })),
+      diagnostics: { eventsUsed: 2, coldStart: false, excludedVerticals: [], modelVersion: 't' }, generatedAt: '',
+    });
+
+    it('trang đang tải: ba dòng tiêu đề, ảnh lớn kèm bốn ảnh nhỏ và khung hộp đặt; sản phẩm về thì thay bằng nội dung thật', async () => {
+      const detail = pendingPromise<typeof ticketFixture>();
+      api.getProduct.mockReturnValue(detail.promise);
+      render(<ProductDetailView productId="nt-h-01" />);
+      const skeleton = screen.getByRole('status', { name: 'Đang tải sản phẩm' });
+      expect(skeleton.querySelector('.grid-rows-2')!.children).toHaveLength(5);
+      expect(skeleton.querySelectorAll('.h-11.w-full')).toHaveLength(2);
+      expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
+
+      await act(async () => { detail.resolve(ticketFixture); });
+      expect(await screen.findByRole('heading', { level: 1, name: ticketFixture.name }, WAIT)).toBeTruthy();
+      expect(screen.queryByRole('status', { name: 'Đang tải sản phẩm' })).toBeNull();
+    });
+
+    it('khách sạn: danh sách hạng phòng đang tải hiện ba thẻ phòng dạng khung thay cho dòng chữ, rồi các thẻ thật', async () => {
+      const rooms = pendingPromise<typeof variantsFixture>();
+      api.getProduct.mockResolvedValue(hotelProperty());
+      api.listVariants.mockReturnValue(rooms.promise);
+      render(<ProductDetailView productId="nt-h-10" />);
+      const skeleton = await screen.findByRole('status', { name: 'Đang tải hạng phòng' }, WAIT);
+      expect(skeleton.querySelectorAll(':scope > [aria-hidden="true"]')).toHaveLength(3);
+      expect(screen.queryByText(/Đang tải hạng phòng…/)).toBeNull();
+
+      await act(async () => { rooms.resolve(variantsFixture); });
+      expect(await findRoomButtons()).toHaveLength(2);
+      expect(screen.queryByRole('status', { name: 'Đang tải hạng phòng' })).toBeNull();
+    });
+
+    it('tuyến bay: danh sách chuyến đang tải hiện ba dòng khung', async () => {
+      api.getProduct.mockResolvedValue({ ...hotelProperty(), taxonomy: 'flight', level: 'route', name: 'Hà Nội → Nha Trang' });
+      api.listVariants.mockReturnValue(new Promise(() => {}));
+      render(<ProductDetailView productId="hn-nt" />);
+      const skeleton = await screen.findByRole('status', { name: 'Đang tải chuyến bay' }, WAIT);
+      expect(skeleton.querySelectorAll(':scope > [aria-hidden="true"]')).toHaveLength(3);
+    });
+
+    it('đã đăng nhập: khối "Hoàn thiện chuyến" giữ chỗ bằng bốn thẻ khung tới khi gợi ý về', async () => {
+      const recs = pendingPromise<ReturnType<typeof tripRecs>>();
+      api.getProduct.mockResolvedValue(ticketFixture);
+      recsys.fetchRecommendations.mockReturnValue(recs.promise);
+      render(<ProductDetailView productId="nt-h-01" />);
+      const skeleton = await screen.findByRole('status', { name: 'Đang tải gợi ý cho chuyến đi' }, WAIT);
+      expect(skeleton.querySelectorAll('[aria-hidden="true"].rounded-xl')).toHaveLength(4);
+
+      await act(async () => { recs.resolve(tripRecs()); });
+      expect(await screen.findByRole('heading', { name: 'Hoàn thiện chuyến Nha Trang' }, WAIT)).toBeTruthy();
+      expect(screen.queryByRole('status', { name: 'Đang tải gợi ý cho chuyến đi' })).toBeNull();
+    });
+
+    it('gợi ý lỗi thì bỏ khung, không để khối rỗng; khách vãng lai không có khung gợi ý', async () => {
+      api.getProduct.mockResolvedValue(ticketFixture);
+      render(<ProductDetailView productId="nt-h-01" />);
+      await screen.findByRole('heading', { level: 1, name: ticketFixture.name }, WAIT);
+      await waitFor(() => expect(screen.queryByRole('status', { name: 'Đang tải gợi ý cho chuyến đi' })).toBeNull(), WAIT);
+      expect(screen.queryByRole('heading', { name: /Hoàn thiện chuyến/ })).toBeNull();
+
+      cleanup();
+      travel.currentPersona = null;
+      render(<ProductDetailView productId="nt-h-01" />);
+      await screen.findByRole('heading', { level: 1, name: ticketFixture.name }, WAIT);
+      expect(screen.queryByRole('status', { name: 'Đang tải gợi ý cho chuyến đi' })).toBeNull();
+    });
+
+    it('404: khối phổ biến hiện khung bốn thẻ trong lúc tải', async () => {
+      const popular = pendingPromise<typeof popularFixture>();
+      api.getProduct.mockRejectedValue(new ApiError('Sản phẩm này không còn trên Sota.', 'PRODUCT_NOT_FOUND', 404, false));
+      api.listProducts.mockReturnValue(popular.promise);
+      render(<ProductDetailView productId="nt-hotel-01" />);
+      const skeleton = await screen.findByRole('status', { name: 'Đang tải sản phẩm phổ biến' }, WAIT);
+      expect(skeleton.querySelectorAll('[aria-hidden="true"].rounded-xl')).toHaveLength(4);
+
+      await act(async () => { popular.resolve(popularFixture); });
+      expect(await screen.findByText(popularFixture.results[0].name, {}, WAIT)).toBeTruthy();
+      expect(screen.queryByRole('status', { name: 'Đang tải sản phẩm phổ biến' })).toBeNull();
+    });
   });
 
   it('offers retry on a retryable error', async () => {

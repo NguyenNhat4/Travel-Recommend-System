@@ -14,15 +14,52 @@ H_SHORT_DAYS, H_LONG_DAYS = 30.0, 365.0
 #: 60 → 14 đo trên temporal đóng băng (docs/spec/bench/recsys-offline-eval.md §4.14 v5: Recall@20 0,196 → 0,216, LLBO không
 #: đổi; grid §4.13 với luật tuổi đơn thuần N = 14 cho 0,225); trip có `usingDate` không dùng N (xem `trip_is_open`).
 ACTIVE_TRIP_MAX_AGE_DAYS = 14
-DORMANT_AFTER_DAYS = 180
+#: `strategy = dormant` khi chuyến gần nhất > N ngày. 180 → 365 chốt 2026-10-09 (persona P3_dormant,
+#: `docs/prd/update-archive/2026-10-09-persona-trang-thai-cold-start-va-phong-cach-du-lich.md`); `diagnostics.dormant` (90 ngày,
+#: contract) không đổi.
+DORMANT_AFTER_DAYS = 365
 MAX_REPEAT_PER_TRIP = 3
+#: Cap lặp chỉ đếm event yếu (view / search); purchase và add_to_cart luôn vào vector chuyến (P1 phần còn lại, 09/10/2026:
+#: `docs/spec/bench/recsys-bam-so-thich-tong-hop.md` §3.D — không đổi số đo, đúng nghiệp vụ).
+CAP_EXEMPT_EVENTS = ("purchase", "add_to_cart")
 #: Chốt 2026-10-07 (docs/prd/update-archive/2026-10-06-recsys-trong-so-ngan-han-pho-bien.md): 0,6/0,25/0,15 → 0,7/0,15/0,15.
 W_SHORT, W_POP, W_LONG = 0.7, 0.15, 0.15
 MMR_LAMBDA, MAX_PER_VERTICAL = 0.7, 2
+#: Ô khám phá khi có chuyến mở (FR-REC-02, chốt 09/10/2026, đề xuất `2026-10-08-recsys-o-kham-pha-khi-co-chuyen-mo`): ô còn trống
+#: sau khi hết món tại X được lấp bằng món ở điểm đến khác, xếp theo cos(u_long, v), mỗi điểm đến 1 món, chỉ ba loại này.
+EXPLORE_TAXONOMIES = ("hotel", "attraction", "combo")
+EXPLORE_MAX_PER_DESTINATION = 1
+#: Chốt 2026-10-09 (đề xuất `update-archive/2026-10-09-recsys-diem-xuat-phat-va-phien-xem.md`, FR-REC-02 / FR-REC-04):
+#: - chuyến bay có điểm xuất phát khác điểm xuất phát của chuyến bay khách vừa xem / đặt gần nhất bị trừ `W_ORIGIN` khi có chuyến
+#:   mở, bị loại khi không có chuyến mở (chọn trên 30 % khách, kiểm một lần trên 70 %: `src/evaluation/reports/
+#:   eval-2026-10-09-recsys-cong-thuc-oph.md`);
+#: - không có chuyến đã đặt mở mà có ≥ 2 chuyến chỉ-xem / giỏ đang mở → gộp thành một chuyến ảo, trọng số `2^(−tuổi/H_SESSION)`
+#:   × độ tin cậy, điểm đến = nơi có tổng trọng số lớn nhất.
+W_ORIGIN = 0.15
+H_SESSION_DAYS = 7.0
+#: Chốt 2026-10-09 (đề xuất `update-archive/2026-10-08-recsys-chuan-hoa-so-thich-giua-hai-chuyen.md`, FR-REC-04 / FR-REC-02): khi
+#: không có chuyến mở, cos(u_long, v) được chuẩn hoá phân vị cố định về cùng thang với pop (F14c) rồi kết hợp
+#: `W_NEXT_SHORT · s + W_NEXT_POP · pop + W_NEXT_LONG · s`; danh sách tối đa `MAX_PER_DESTINATION` món mỗi điểm đến. Ngưỡng calibrate
+#: trên khách giả lập seed 99, gắn với model embedding + text builder (`SEMANTIC_CALIBRATION_MODEL_VERSION`): lệch tag thì dùng
+#: công thức production cũ (tầng application ghi WARNING).
+SEMANTIC_Q_LOW, SEMANTIC_Q_HIGH = 0.8529, 0.9387
+SEMANTIC_CALIBRATION_MODEL_VERSION = "intfloat/multilingual-e5-small:catalog-text-v2"
+W_NEXT_SHORT, W_NEXT_POP, W_NEXT_LONG = 0.50, 0.35, 0.15
+MAX_PER_DESTINATION = 2
+SESSION_TRIP_ID = "_session_"
+FLIGHT_TAXONOMY = "flight"
 #: Phiên bản luật của engine (không phải tham số): đổi khi hành vi đổi mà không có hằng nào đổi, để bench tách hai bộ số.
 #: Từ 01/10/2026 (nhãn giữ "2026-10-02" để khớp configHash của bench): trip đang mở = chưa kết thúc theo `usingDate`
 #: (FR-REC-02, spec §4.4–4.5); trước đó chỉ theo tuổi event.
-ENGINE_RULES_VERSION = "2026-10-02-trip-ended"
+#: 2026-10-09 (PR-A): độ tin cậy chuyến trong u_long (P2), purchase / cart không bị cap lặp, loại trừ combo ↔ thành phần đã
+#: mua, ô khám phá khi có chuyến mở (hai luật sau ở tầng application nhưng đổi list nên đổi nhãn).
+#: 2026-10-09 (đề xuất `update-archive/2026-10-09-recsys-uu-tien-chuyen-da-dat.md`): chuyến đã đặt còn mở được ưu tiên làm
+#: `active_trip` hơn lượt xem / giỏ lẻ đến sau (sửa I-3).
+#: 2026-10-09 (đề xuất `update-archive/2026-10-09-recsys-diem-xuat-phat-va-phien-xem.md`): điểm xuất phát chuyến bay, chuyến ảo
+#: gộp các lượt xem gần đây.
+#: 2026-10-09 (đề xuất `update-archive/2026-10-08-recsys-chuan-hoa-so-thich-giua-hai-chuyen.md`, PR-B): F14c + 2 món / điểm đến khi
+#: không có chuyến mở.
+ENGINE_RULES_VERSION = "2026-10-09-next-trip-f14c"
 
 
 @dataclass
@@ -45,6 +82,9 @@ class Trip:
     destination: str
     ends_on: date | None = None      # max(usingDate) của trip; None khi không event nào có ngày sử dụng
     ended: bool = False              # chuyến đã diễn ra xong (spec §4.3 tripFactor): ends_on < hôm nay
+    #: Độ tin cậy của chuyến trong u_long (P2, 09/10/2026): min(1, Σ W_TYPE của event sau cap) — một lượt xem lẻ 0,2, một
+    #: lần mua 1,0; chuyến không bị chuẩn hoá thành nặng bằng nhau nữa. Vector chuyến mở (`vec`) không nhân hệ số này.
+    confidence: float = 1.0
 
 
 #: Múi giờ của `usingDate` (ngày địa phương Việt Nam, như seed và `domain/booking`); không phải tham số xếp hạng
@@ -108,9 +148,10 @@ def build_profile(events: list[ResolvedEvent], E: np.ndarray, taxonomy: np.ndarr
     seen: Counter = Counter()
     for e in sorted(events, key=lambda x: -x.days_ago):
         every[e.trip_id].append(e)
-        seen[(e.trip_id, e.unit)] += 1
-        if seen[(e.trip_id, e.unit)] > MAX_REPEAT_PER_TRIP:
-            continue
+        if e.event_name not in CAP_EXEMPT_EVENTS:
+            seen[(e.trip_id, e.unit)] += 1
+            if seen[(e.trip_id, e.unit)] > MAX_REPEAT_PER_TRIP:
+                continue
         by_trip[e.trip_id].append(e)
 
     trips: dict[str, Trip] = {}
@@ -128,38 +169,126 @@ def build_profile(events: list[ResolvedEvent], E: np.ndarray, taxonomy: np.ndarr
             purchased_taxonomies={str(taxonomy[e.unit]) for e in all_evs if e.event_name == "purchase"},
             destination=str(Counter(destination[e.unit] for e in evs).most_common(1)[0][0]),
             ends_on=ends_on, ended=ends_on is not None and today is not None and ends_on < today,
+            confidence=min(1.0, sum(W_TYPE.get(e.event_name, 0.1) for e in evs)),
         )
 
     if not trips:
         return Profile(trips={}, u_long=np.zeros(E.shape[1], dtype=np.float32), active_trip=None, n_events=0)
 
-    u_long = sum(2 ** (-t.age_days / H_LONG_DAYS) * t.vec for t in trips.values())
+    u_long = sum(2 ** (-t.age_days / H_LONG_DAYS) * t.confidence * t.vec for t in trips.values())
     u_long = u_long / (np.linalg.norm(u_long) or 1)
     active = [t for t in trips.values() if trip_is_open(t.age_days, t.ends_on, today)]
-    active_trip = min(active, key=lambda t: t.age_days) if active else None
+    # FR-REC-02 (09/10): chuyến đã đặt còn mở (có purchase) đứng trước lượt xem / giỏ lẻ đến sau; nhiều chuyến đã đặt → trẻ nhất.
+    # Không có chuyến đã đặt mà ≥ 2 chuyến chỉ-xem / giỏ đang mở → một chuyến ảo (một ý định), không chỉ chuyến xem sau cùng.
+    booked = [t for t in active if t.purchased_taxonomies]
+    browse = [t for t in active if not t.purchased_taxonomies]
+    if booked:
+        active_trip = min(booked, key=lambda t: t.age_days)
+    elif len(browse) >= 2:
+        active_trip = session_trip(browse)
+    else:
+        active_trip = min(active, key=lambda t: t.age_days) if active else None
     bought = {e.unit for evs in every.values() for e in evs if e.event_name == "purchase"}
     return Profile(trips=trips, u_long=u_long, active_trip=active_trip,
                    n_events=sum(len(t.events) for t in trips.values()), bought_units=bought)
 
 
-def score_candidates(profile: Profile, E: np.ndarray, pop: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Trả (score, u) với u là vector dùng để giải thích."""
+def session_trip(trips: list[Trip]) -> Trip:
+    """Chuyến ảo gộp các chuyến chỉ-xem / giỏ đang mở (không phải chuyến thật: không nằm trong `Profile.trips`)."""
+    w = {t.trip_id: 2 ** (-t.age_days / H_SESSION_DAYS) * t.confidence for t in trips}
+    vec = sum(w[t.trip_id] * t.vec for t in trips).astype(np.float32)
+    n = float(np.linalg.norm(vec))
+    vec = vec / n if n else vec
+    dest_w: dict[str, float] = defaultdict(float)
+    for t in trips:
+        dest_w[t.destination] += w[t.trip_id]
+    youngest = min(trips, key=lambda t: t.age_days)
+    top = max(dest_w.values())
+    # hoà trọng số → điểm đến của chuyến trẻ nhất, rồi theo thứ tự tên (ổn định)
+    dest = youngest.destination if dest_w[youngest.destination] == top else sorted(d for d, v in dest_w.items() if v == top)[0]
+    ends = [t.ends_on for t in trips if t.ends_on is not None]
+    events = sorted((e for t in trips for e in t.events), key=lambda e: -e.days_ago)
+    return Trip(trip_id=SESSION_TRIP_ID, events=events, vec=vec, age_days=youngest.age_days, purchased_taxonomies=set(),
+                destination=dest, ends_on=max(ends) if ends else None, ended=False,
+                confidence=min(1.0, sum(t.confidence for t in trips)))
+
+
+@dataclass(frozen=True)
+class ScoreContext:
+    """Thuộc tính của các unit trong không gian chấm điểm (cùng chỉ số với E) mà công thức cần ngoài vector."""
+    taxonomy: np.ndarray
+    origin_city: np.ndarray            # "" (hoặc None) với unit không phải chuyến bay
+    origin: str | None = None          # điểm xuất phát của khách (`infer_origin`); None = chưa có lịch sử chuyến bay
+
+
+def infer_origin(events: list[ResolvedEvent], taxonomy: np.ndarray, origin_city: np.ndarray) -> str | None:
+    """Điểm xuất phát của chuyến bay mà khách xem / thêm giỏ / mua gần nhất; None khi chưa có event chuyến bay nào."""
+    best = None
+    for e in events:
+        if str(taxonomy[e.unit]) != FLIGHT_TAXONOMY:
+            continue
+        oc = str(origin_city[e.unit] or "")
+        if oc and (best is None or e.days_ago < best[0]):
+            best = (e.days_ago, oc)
+    return best[1] if best else None
+
+
+def origin_mismatch(context: ScoreContext) -> np.ndarray:
+    """Chuyến bay có điểm xuất phát đã biết và khác `context.origin` (mảng bool theo không gian chấm điểm)."""
+    if context.origin is None or len(context.taxonomy) == 0:
+        return np.zeros(len(context.taxonomy), dtype=bool)
+    oc = np.asarray([str(x or "") for x in context.origin_city], dtype=object)
+    return (context.taxonomy == FLIGHT_TAXONOMY) & (oc != "") & (oc != context.origin)
+
+
+def calibration_applies(model_version: str | None) -> bool:
+    """Ngưỡng `SEMANTIC_Q_*` chỉ đúng với model + text builder đã calibrate."""
+    return model_version == SEMANTIC_CALIBRATION_MODEL_VERSION
+
+
+def calibrated_similarity(cos: np.ndarray) -> np.ndarray:
+    """cos → [0, 1] theo phân vị cố định (F14c), cùng thang với pop."""
+    return np.clip((cos - SEMANTIC_Q_LOW) / (SEMANTIC_Q_HIGH - SEMANTIC_Q_LOW), 0.0, 1.0)
+
+
+def score_candidates(profile: Profile, E: np.ndarray, pop: np.ndarray, context: ScoreContext | None = None,
+                     next_trip_scoring: bool = False) -> tuple[np.ndarray, np.ndarray]:
+    """Trả (score, u) với u là vector dùng để giải thích.
+
+    - Không có chuyến mở và `next_trip_scoring` (FR-REC-04, 09/10): `W_NEXT_SHORT · s + W_NEXT_POP · pop + W_NEXT_LONG · s` với
+      `s = calibrated_similarity(cos(u_long, v))`; ngược lại công thức 0,7 / 0,15 / 0,15.
+    - `context` có điểm xuất phát của khách thì chuyến bay sai điểm xuất phát bị trừ `W_ORIGIN` (có chuyến mở) hoặc loại hẳn —
+      điểm −∞, MMR không bao giờ chọn (không có chuyến mở)."""
     u = profile.active_trip.vec if profile.active_trip is not None else profile.u_long
-    s_short, s_long = E @ u, E @ profile.u_long
-    return W_SHORT * s_short + W_POP * pop + W_LONG * s_long, u
+    if profile.active_trip is None and next_trip_scoring:
+        s = calibrated_similarity(E @ u)
+        score = W_NEXT_SHORT * s + W_NEXT_POP * pop + W_NEXT_LONG * s
+    else:
+        s_short, s_long = E @ u, E @ profile.u_long
+        score = W_SHORT * s_short + W_POP * pop + W_LONG * s_long
+    if context is not None and context.origin is not None:
+        mis = origin_mismatch(context)
+        score = score - W_ORIGIN * mis if profile.active_trip is not None else np.where(mis, -np.inf, score)
+    return score, u
 
 
 def mmr_select(score: np.ndarray, E: np.ndarray, candidates: list[int], taxonomy: np.ndarray, k: int,
-               max_per_vertical: int | None = MAX_PER_VERTICAL) -> list[int]:
+               max_per_vertical: int | None = MAX_PER_VERTICAL, destination: np.ndarray | None = None,
+               max_per_destination: int | None = None) -> list[int]:
     """MMR (λ = MMR_LAMBDA) + giới hạn cứng `max_per_vertical` món mỗi taxonomy; `None` = không giới hạn (chỉ cho đánh giá
-    offline với k = 20 — 5 taxonomy × 2 không thể đủ 20; production giữ MAX_PER_VERTICAL)."""
+    offline với k = 20 — 5 taxonomy × 2 không thể đủ 20; production giữ MAX_PER_VERTICAL). `max_per_destination` (cùng
+    `destination`, mảng điểm đến theo chỉ số của `score`): tối đa N món mỗi điểm đến — FR-REC-04 khi không có chuyến mở."""
     chosen: list[int] = []
     per_vertical: Counter = Counter()
+    per_dest: Counter = Counter()
+    cap_dest = max_per_destination is not None and destination is not None
     cand = list(candidates)
     while cand and len(chosen) < k:
         best, best_val = None, -1e9
         for i in cand:
             if max_per_vertical is not None and per_vertical[str(taxonomy[i])] >= max_per_vertical:
+                continue
+            if cap_dest and per_dest[str(destination[i])] >= max_per_destination:
                 continue
             div = max((float(E[i] @ E[j]) for j in chosen), default=0.0)
             val = MMR_LAMBDA * float(score[i]) - (1 - MMR_LAMBDA) * div
@@ -169,17 +298,22 @@ def mmr_select(score: np.ndarray, E: np.ndarray, candidates: list[int], taxonomy
             break
         chosen.append(best)
         per_vertical[str(taxonomy[best])] += 1
+        if cap_dest:
+            per_dest[str(destination[best])] += 1
         cand.remove(best)
     return chosen
 
 
-def explain(profile: Profile, item: int, E: np.ndarray, min_share: float = 0.15, top: int = 3) -> list[dict]:
-    """because[] = phân rã tuyến tính của u·v_item theo từng event."""
-    src = [profile.active_trip] if profile.active_trip is not None else list(profile.trips.values())
+def explain(profile: Profile, item: int, E: np.ndarray, min_share: float = 0.15, top: int = 3,
+            long_term: bool = False) -> list[dict]:
+    """because[] = phân rã tuyến tính của u·v_item theo từng event. `long_term=True`: phân rã theo u_long dù đang có chuyến mở
+    (món ở ô khám phá được chọn theo u_long nên lý do phải lấy từ mọi chuyến, không chỉ chuyến mở)."""
+    use_long = long_term or profile.active_trip is None
+    src = list(profile.trips.values()) if use_long else [profile.active_trip]
     contribs = []
     Z = 0.0
     for t in src:
-        wt = 1.0 if profile.active_trip is not None else 2 ** (-t.age_days / H_LONG_DAYS)
+        wt = 2 ** (-t.age_days / H_LONG_DAYS) * t.confidence if use_long else 1.0
         for e in t.events:
             c = wt * W_TYPE.get(e.event_name, 0.1) * 2 ** (-e.days_ago / H_SHORT_DAYS)
             contribs.append((c, e))

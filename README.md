@@ -132,7 +132,7 @@ Lưu ý:
 
 - Dùng `make web` / `make chat` / `make backend-local`. `make backend` chạy trong Docker, không đọc `DATABASE_URL` của `.env` và không thấy tunnel.
 - Replica chỉ dành cho đường đọc thuần; ghi vào replica báo `cannot execute ... in a read-only transaction`.
-- Weaviate và Redis vẫn là local. Nếu catalog staging khác catalog local, chạy `make index-vectors` để embed lại vào Weaviate local.
+- Redis vẫn là local. Weaviate phụ thuộc `.env`: khi `WEAVIATE_URL` trỏ staging thì dùng Weaviate Cloud của nhóm (`eu-central-1`), không phải local. Nếu catalog staging khác catalog local và cần embed lại vào Weaviate local, chạy `make index-vectors` (chỉ ghi vào Weaviate local của compose). Không chạy `embed_products`/`index-vectors` khi `.env` đang trỏ Weaviate Cloud dùng chung, vì ghi vào collection dùng chung.
 - `make db-migrate`, seed và `--reset` sẽ ghi vào staging dùng chung khi `.env` đang trỏ staging. Chỉ job seed của CI hoặc một người được `--reset` staging.
 - Muốn về DB local: bỏ comment các dòng local, comment các dòng staging.
 

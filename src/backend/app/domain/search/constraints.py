@@ -525,6 +525,11 @@ def _vertical_exclusions(toks: list[_Tok], negated: list[tuple[str, Span]],
 
 
 # ====================================================================================== F4: taxonomy từ cue ngành dọc
+def vertical_cue_spans(text: str) -> tuple[tuple[str, Span], ...]:
+    """Mọi cue loại sản phẩm trong câu → (taxonomy, span), không xét ngữ cảnh — plan 2026-10-13 dùng để tách cue khỏi residual."""
+    return tuple(_vertical_hits(_toks(text)))
+
+
 HOTEL, FLIGHT, ATTRACTION, COMBO, GOLF = "hotel", "flight", "attraction", "combo", "golf"
 #: Cụm (fold) → taxonomy (enum `schemas/common.yaml`). Khớp dài nhất trước: "ve may bay" thắng "ve"; "ve" trần không là cue.
 VERTICAL_CUES: dict[str, str] = {

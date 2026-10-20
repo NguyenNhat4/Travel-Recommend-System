@@ -1,0 +1,57 @@
+{
+  "asOf": "2026-10-08T00:00:00+00:00",
+  "user": "VP0000004",
+  "historyEvents": 0,
+  "strategy": "popular",
+  "destination": null,
+  "nextVertical": null,
+  "diagnostics": {
+    "eventsUsed": 0,
+    "coldStart": true,
+    "excludedVerticals": [],
+    "popularitySource": "events",
+    "latencyMs": 47
+  },
+  "extraFields": [
+    "sections"
+  ],
+  "items": [
+    {
+      "rank": 1,
+      "productId": "0171db25-0c70-5126-add8-d837e9216545",
+      "name": "Vé máy bay Hà Nội - Nha Trang",
+      "taxonomy": "flight",
+      "destination": "Nha Trang",
+      "because": 0,
+      "becauseDaysAgo": []
+    },
+    {
+      "rank": 2,
+      "productId": "211e2eed-7047-530a-b61f-c7d76137bb9d",
+      "name": "Vé máy bay TP. Hồ Chí Minh - Nha Trang",
+      "taxonomy": "flight",
+      "destination": "Nha Trang",
+      "because": 0,
+      "becauseDaysAgo": []
+    },
+    {
+      "rank": 3,
+      "productId": "bfc1d7fa-5a0b-5b49-aa07-78ad02fe5ac9",
+      "name": "Vinpearl Resort & Spa Nha Trang Bay",
+      "taxonomy": "hotel",
+      "destination": "Nha Trang",
+      "because": 0,
+      "becauseDaysAgo": []
+    },
+    {
+      "rank": 4,
+      "productId": "83b5cf28-6d82-5037-9b05-f4bf2feb6edb",
+      "name": "[Vinpearl Golf Nha Trang] - Voucher Golf không giới hạn",
+      "taxonomy": "golf",
+      "destination": "Nha Trang",
+      "because": 0,
+      "becauseDaysAgo": []
+    }
+  ],
+  "contractErrors": []
+}

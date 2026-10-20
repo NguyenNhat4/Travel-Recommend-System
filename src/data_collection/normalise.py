@@ -44,6 +44,7 @@ from pathlib import Path
 
 from collectors import mapexport
 from collectors.common import Paths, default_data_dir, read_jsonl, setup_logging
+from collectors.airlines import airline_logo
 from collectors.geo import AIRPORTS, DESTINATION_ALIASES, DESTINATION_CENTERS, clean_coords, destination_in_text, destination_radius_km, km_from_destination, normalise_destination
 from collectors.plan import TARGET_MAX, TARGET_MIN, Budget, budget_with, select_destinations
 from collectors.textutil import clean_text, detect_lang, first_int, fold, iso_date, trip_combo_dates, uniq
@@ -754,6 +755,27 @@ def booking_hotel(r: dict, rates: dict[str, float]) -> tuple[dict | None, list[d
     return prop, rooms
 
 
+# Tên tour hay ghi nơi khởi hành trước nơi đến ("From Hanoi: Pu Luong…", "Hue to DMZ…", "Hanoi: Ha Long Bay…"); điểm đến
+# là địa danh đầu tiên nên tour bị gán về thành phố đón khách. Che phần nơi khởi hành rồi mới tìm điểm đến (12/10/2026).
+_TOUR_FROM = re.compile(r"(?i)\b(?:departing |departure |depart |pick-?up |pickup )?from\s+(?:(?!\bto\b| - | – )[^:;,()|])+")
+_TOUR_TO = re.compile(r"(?i)(?:^|:\s*)([^:]{1,40}?)\s+to\s+")
+_TOUR_PREFIX = re.compile(r"^([^:]{1,25}):")
+# Trong địa chỉ "Điện Biên Phủ" một mình là tên đường (geo._NOT_FOLLOWED_BY); trong tên tour là thành phố Điện Biên Phủ.
+_TOUR_DIEN_BIEN_PHU = re.compile(r"(?i)\b(?:dien bien phu|điện biên phủ)\b")
+
+
+def tour_destination(name: str | None) -> str | None:
+    """Điểm đến của tour theo tên, bỏ qua nơi khởi hành; None nếu phần còn lại không nêu điểm đến nào."""
+    if not name:
+        return None
+    text = _TOUR_FROM.sub(" ", _TOUR_DIEN_BIEN_PHU.sub("Điện Biên", name))
+    text = _TOUR_TO.sub(lambda m: m.group(0).replace(m.group(1), " ") if destination_in_text(m.group(1)) else m.group(0), text)
+    prefix = _TOUR_PREFIX.match(text)
+    if prefix and destination_in_text(prefix.group(1)) and destination_in_text(text[prefix.end():]):
+        text = text[prefix.end():]
+    return destination_in_text(text)
+
+
 def booking_attraction_product(r: dict, rates: dict[str, float]) -> dict | None:
     name = r.get("name")
     if not name:
@@ -764,7 +786,7 @@ def booking_attraction_product(r: dict, rates: dict[str, float]) -> dict | None:
         parts.append("Điểm nổi bật:\n" + "\n".join(f"- {h}" for h in r["highlights"]))
     description = "\n\n".join(x for x in parts if x)
     fname = fold(name)
-    destination = normalise_destination(name, r.get("subtitle"), r.get("city"))
+    destination = tour_destination(name) or normalise_destination(name, r.get("subtitle"), r.get("city"))
     # parse_attraction_html() (collectors/booking_attractions.py) không lấy toạ độ — trang chỉ có bản đồ
     # tương tác (JS), không thấy toạ độ tĩnh trong HTML lúc kiểm tra (23/09/2026). Lỗ hổng có sẵn từ trước, không
     # phải mới hôm nay — dùng cùng fallback tâm điểm đến đã duyệt cho trip_combo_product(), tránh bị
@@ -1346,13 +1368,27 @@ def trip_roundtrip_products(record: dict, route: dict) -> list[dict]:
     return out
 
 
+def _route_city(city: str, airports: list | None, code: str | None) -> str:
+    """Điểm đến chuẩn của một đầu tuyến bay: alias của tên thành phố, rồi điểm đến của sân bay (kế hoạch), rồi tên gốc."""
+    found = destination_in_text(city)
+    if found:
+        return found
+    from collectors.plan import DESTINATIONS
+    by_airport = {a: d.name for d in DESTINATIONS for a in d.airports}
+    for airport in [*(airports or []), code]:
+        if airport and str(airport).upper() in by_airport:
+            return by_airport[str(airport).upper()]
+    return city
+
+
 def trip_route_products(r: dict, flights_per_route: int) -> list[dict]:
     from_city, to_city = r.get("fromCity"), r.get("toCity")
     if not from_city or not to_city:
         return []
-    # tên hiển thị theo điểm đến chuẩn ("Đảo Phú Quốc" → "Phú Quốc"); giữ tên gốc nếu không khớp
-    from_city = normalise_destination(from_city) or from_city
-    to_city = normalise_destination(to_city) or to_city
+    # tên hiển thị theo điểm đến chuẩn ("Đảo Phú Quốc" → "Phú Quốc"); tên không khớp alias nào ("Điện Biên Phủ" — alias bỏ
+    # qua vì trùng tên đường) thì lấy điểm đến của sân bay trong kế hoạch, để originCity khớp /destinations; không có thì giữ tên gốc
+    from_city = _route_city(from_city, r.get("fromAirports"), r.get("fromCode"))
+    to_city = _route_city(to_city, r.get("toAirports"), r.get("toCode"))
     flights = [f for f in r.get("flights") or [] if f.get("flightNumber")]
     prices = [f["price"] for f in flights if f.get("price")]
     one_way = r.get("oneWay") or {}
@@ -2033,6 +2069,55 @@ def load_excluded_products(path: Path | None = None) -> dict[str, str]:
     return out
 
 
+def excluded_reason(ref: str, excluded: dict[str, str]) -> str | None:
+    """Lý do loại của một sourceRef: chính nó trong danh sách, hoặc khách sạn cha của hạng phòng (`<khách sạn>:room:<id>`)
+    trong danh sách. Hạng phòng phải đi cùng khách sạn: còn phòng đặt được thì job bật lại khách sạn đã ẩn (FR-CAT-02)."""
+    if ref in excluded:
+        return excluded[ref]
+    parent = ref.split(":room:", 1)[0] if ":room:" in ref else None
+    return f"khách sạn cha đã loại: {excluded[parent]}" if parent in excluded else None
+
+
+NAME_OVERRIDES_CSV = Path(__file__).resolve().parent / "collectors" / "name_overrides.csv"
+
+
+def load_name_overrides(path: Path | None = None) -> dict[str, tuple[str, str]]:
+    """Tên đúng theo sourceRef khi tên của nguồn sai hoặc khó hiểu (vd. trip.com đặt "Halong Bay Cruises" cho Động Trung
+    Trang); bắt buộc ghi bằng chứng. Job giữ tên đã có trong DB nên bảng này lo cho dòng mới và catalog dựng lại."""
+    path = path or NAME_OVERRIDES_CSV
+    if not path.exists():
+        return {}
+    out = {}
+    with open(path, encoding="utf-8-sig", newline="") as f:
+        for n, row in enumerate(csv.DictReader(f), 2):
+            ref, name, evidence = (str(row.get(k) or "").strip() for k in ("sourceRef", "name", "evidence"))
+            if not ref or not name or not evidence:
+                log.warning("%s dòng %d: thiếu sourceRef/tên/bằng chứng – bỏ qua", path.name, n)
+                continue
+            out[ref] = (name, evidence)
+    return out
+
+
+def apply_name_overrides(products: list[dict], overrides: dict[str, tuple[str, str]]) -> int:
+    """Đổi tên theo name_overrides.csv; mô tả dựng sẵn bắt đầu bằng tên cũ ("Nguyễn Huệ. Loại hình: …") đổi theo."""
+    changed = 0
+    for p in products:
+        if p["sourceRef"] not in overrides:
+            continue
+        name, evidence = overrides[p["sourceRef"]]
+        a = p["attributes"]
+        if p["name"] != name:
+            old = p["name"]
+            a["originalName"] = old
+            p["name"] = name
+            if p.get("description") and p["description"].startswith(old + "."):
+                p["description"] = name + p["description"][len(old):]
+            changed += 1
+        a["nameSource"] = "reviewed: collectors/name_overrides.csv"
+        a["nameEvidence"] = evidence
+    return changed
+
+
 # Trip xếp cả văn phòng bảo hiểm, hãng taxi, phòng khám... vào danh sách "điểm tham quan". Danh sách tay
 # (excluded_products.csv) không theo kịp khi mở rộng ra nhiều thành phố, nên loại thêm theo quy tắc trên tên đã bỏ dấu.
 # Quy tắc cố ý hẹp (từ khoá rõ nghĩa) và chỉ áp cho điểm tham quan của trip.com; sản phẩm bị loại được ghi ra
@@ -2060,6 +2145,57 @@ def non_tourism_reason(name: str | None) -> str | None:
         if pattern.search(folded):
             return reason
     return None
+
+
+GOLF_PRICES_CSV = Path(__file__).resolve().parent / "collectors" / "golf_prices.csv"
+
+
+def load_golf_prices(path: Path | None = None) -> dict[str, dict]:
+    """Giá sân golf mà Trip không hiện giá, lấy từ nền tảng đặt tee time công khai giá và cho phép cào, kèm URL và thời
+    điểm quan sát (người dùng chốt 12/10/2026: chỉ giá hiện hành; sân không tìm được giá thì để trống, không dùng giá
+    tham khảo cũ)."""
+    path = path or GOLF_PRICES_CSV
+    if not path.exists():
+        return {}
+    out = {}
+    with open(path, encoding="utf-8-sig", newline="") as f:
+        for n, row in enumerate(csv.DictReader(f), 2):
+            ref, price, source, url, observed = (str(row.get(k) or "").strip() for k in
+                                                 ("sourceRef", "unitPrice", "priceSource", "priceSourceUrl", "observedAt"))
+            if not ref or not price.isdigit() or int(price) <= 0 or not source or not url or not observed:
+                log.warning("%s dòng %d: thiếu sourceRef/giá/nguồn/URL/thời điểm quan sát – bỏ qua", path.name, n)
+                continue
+            out[ref] = {"unitPrice": int(price), "priceSource": source, "observedAt": observed}
+    return out
+
+
+def apply_golf_prices(products: list[dict], prices: dict[str, dict]) -> int:
+    """Sân golf chưa có giá nhận giá ở golf_prices.csv; giá của chính nguồn (nếu có) luôn thắng."""
+    changed = 0
+    for p in products:
+        price = prices.get(p["sourceRef"])
+        if not price or p["taxonomy"] != "golf" or p.get("unitPrice") is not None:
+            continue
+        attrs = p["attributes"]
+        p["unitPrice"] = price["unitPrice"]
+        attrs["priceObservedAt"] = price["observedAt"]
+        attrs["fieldSources"] = dict(attrs.get("fieldSources") or {}, unitPrice=price["priceSource"])
+        changed += 1
+    return changed
+
+
+def apply_airline_logos(products: list[dict]) -> int:
+    """Vé máy bay (`level: flight`) chưa có ảnh: logo hãng của chặng đi (collectors/airlines.py; người dùng chốt 12/10/2026,
+    như các OTA). Tuyến bay để trống: ảnh thành phố đến đặt trên DB. Upsert của job không ghi đè image_url nên chỉ dòng mới nhận."""
+    changed = 0
+    for p in products:
+        attrs = p.get("attributes") or {}
+        if p["taxonomy"] == "flight" and attrs.get("level") == "flight" and not p.get("imageUrl"):
+            logo = airline_logo(attrs.get("airline"))
+            if logo:
+                p["imageUrl"] = logo
+                changed += 1
+    return changed
 
 
 DESTINATION_OVERRIDES_CSV = Path(__file__).resolve().parent / "collectors" / "destination_overrides.csv"
@@ -3341,13 +3477,19 @@ def merge_catalog(a: argparse.Namespace, clock: StepClock, paths: Paths, entries
     stage_report["rowsBuilt"] = len(products)
     stages.snapshot("merged", products)
     clock.begin("lọc", len(products), done=len(products))
+    # Tên đã soát tay: trên mọi sản phẩm của lượt (cả tour booking.com, combo — không chỉ khách sạn / vé / điểm trip.com).
+    stage_report["namesOverridden"] = apply_name_overrides(products, load_name_overrides())
     excluded = load_excluded_products()
     if excluded:
         before = len(products)
-        stages.drop("excluded", [(p, excluded[p["sourceRef"]]) for p in products if p["sourceRef"] in excluded])
-        products = [p for p in products if p["sourceRef"] not in excluded]
+        reasons = {p["sourceRef"]: excluded_reason(p["sourceRef"], excluded) for p in products}
+        stages.drop("excluded", [(p, reasons[p["sourceRef"]]) for p in products if reasons[p["sourceRef"]]])
+        products = [p for p in products if not reasons[p["sourceRef"]]]
         if before - len(products):
             dropped["đã soát tay và loại (collectors/excluded_products.csv)"] += before - len(products)
+
+    apply_airline_logos(products)
+    stage_report["golfPricesApplied"] = apply_golf_prices(products, load_golf_prices())
 
     auto_excluded = [(p, non_tourism_reason(p["name"])) for p in products
                      if p["taxonomy"] == "attraction" and p["sourceRef"].startswith("trip:attraction:")]

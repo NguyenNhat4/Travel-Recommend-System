@@ -1,0 +1,19 @@
+{
+  "conversationId": "fixture-conversation",
+  "runId": "fixture-run",
+  "turnKind": "answer",
+  "message": "Các sản phẩm trong dữ liệu kiểm thử.",
+  "recommendations": {
+    "hotel": [],
+    "flight": [],
+    "attraction": [],
+    "combo": [],
+    "golf": []
+  },
+  "alternatives": [],
+  "itinerary": null,
+  "planEffect": "keep",
+  "planRevision": 0,
+  "warnings": [],
+  "suggestions": []
+}

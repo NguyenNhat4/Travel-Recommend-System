@@ -21,7 +21,7 @@ export function registerTripRoutes(app: Application, sharedTripsStore: SharedTri
       const tripItem: SharedTripRecord = {
         id: shareId,
         plan,
-        senderName: senderName || 'Du khách V-OTA',
+        senderName: senderName || 'Du khách Sota',
         note: note || '',
         createdAt: new Date().toISOString(),
         views: 1,

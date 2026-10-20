@@ -54,6 +54,7 @@ resource "google_compute_instance" "weaviate" {
   machine_type = var.weaviate_machine_type
   zone         = var.weaviate_zone
   tags         = ["${var.name_prefix}-weaviate"]
+  # Không gắn lịch tắt/bật: staging-ha chạy 24/7 (xác nhận 2026-10-12). Policy ở scheduler.tf giữ lại nhưng không gắn vào VM.
 
   boot_disk {
     initialize_params {

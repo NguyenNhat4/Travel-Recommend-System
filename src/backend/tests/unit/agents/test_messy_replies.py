@@ -7,7 +7,7 @@ from datetime import date
 
 from src.backend.app.agents.models import ConversationalAnswer
 from src.backend.app.agents.nodes import intake_node
-from src.backend.app.agents.steps import conversation, exploration, guardrails
+from src.backend.app.agents.steps import conversation, guardrails
 from src.backend.app.agents.steps.classification import trip_details_missing
 from src.backend.app.domain.itinerary import flights
 
@@ -36,18 +36,6 @@ class DestinationButtonTests(unittest.TestCase):
         update = conversation.conversational_update(state, ConversationalAnswer(
             title='Chọn điểm đến có biển', message='Bạn có thể chọn Phú Quốc, Nha Trang, Đà Nẵng hoặc Quy Nhơn.'))
         self.assertEqual(update['response']['suggestions'], ['Phú Quốc', 'Nha Trang', 'Đà Nẵng'])
-
-
-class FallbackLineTests(unittest.TestCase):
-    def test_a_card_without_description_uses_catalog_tags_or_address(self):
-        state = intake_node({'query': 'chán, chỗ khác'})
-        tagged = {'productId': 't', 'name': 'hòn Thơm', 'taxonomy': 'attraction', 'attributes': {'tags': ['Cảnh đêm']}}
-        self.assertEqual(exploration.card_line(state, {'product': tagged, 'reasons': ['also_popular']}),
-                         '[hòn Thơm](product:t): cảnh đêm, cũng được nhiều người ghé.')
-        bare = {'productId': 'b', 'name': 'Bảo tàng Gấu Teddy', 'taxonomy': 'attraction',
-                'attributes': {'address': 'Grand World, khu Bãi Dài, Gành Dầu, Phú Quốc'}}
-        self.assertIn('ở Grand World, khu Bãi Dài',
-                      exploration.card_line(state, {'product': bare, 'reasons': ['most_reviewed']}))
 
 
 class JointDateTests(unittest.TestCase):

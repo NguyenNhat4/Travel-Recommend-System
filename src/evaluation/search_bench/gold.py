@@ -31,7 +31,7 @@ from typing import Any, Optional
 import numpy as np
 from pydantic import BaseModel, ConfigDict
 
-from .gold_schema import (CHILD_FILTER_FIELDS, LABELERS, OUT_OF_CATALOG_SLICE, PARENT_CHILD_SLICE, SLICES, Child, GoldRecord,
+from .gold_schema import (CHILD_FILTER_FIELDS, LABELERS, NO_RESULT_SLICES, OUT_OF_CATALOG_SLICE, PARENT_CHILD_SLICE, SLICES, Child, GoldRecord,
                           LabelRow, MergedRow, PoolFile, PoolMeta, PoolRow, SchemaError, atomic_write_text,
                           children_visible, file_sha256, read_labels_csv, read_pool_csv, read_pool_meta,
                           validate_label_against_pool, write_gold_jsonl, write_pool_csv, write_pool_meta)
@@ -1283,16 +1283,21 @@ def check_gold(records: list[GoldRecord], min_per_slice: int, configured_slices:
         per_slice.setdefault(r.slice, Counter()).update(labels)
         if r.slice not in SLICES:
             problems.append(f"{r.qid}: slice lạ {r.slice!r}")
-        if r.slice == OUT_OF_CATALOG_SLICE:
+        if r.slice in NO_RESULT_SLICES:
             if 2 in labels:
-                problems.append(f"{r.qid}: out_of_catalog nhưng có nhãn 2 ({[p for p, v in r.judgments.items() if v == 2]})")
+                problems.append(f"{r.qid}: {r.slice} nhưng có nhãn 2 ({[p for p, v in r.judgments.items() if v == 2]})")
             if not r.expected_no_result:
-                problems.append(f"{r.qid}: out_of_catalog thiếu expected_no_result")
+                problems.append(f"{r.qid}: {r.slice} thiếu expected_no_result")
+        elif r.slice == "name_collision":
+            if r.expected_no_result and 2 in labels:
+                problems.append(f"{r.qid}: name_collision expected_no_result=true nhưng có nhãn 2")
+            elif not r.expected_no_result and 2 not in labels:
+                problems.append(f"{r.qid}: name_collision expected_no_result=false nhưng không có nhãn 2")
         else:
             if 2 not in labels:
                 problems.append(f"{r.qid} [{r.slice}]: không có nhãn 2")
             if r.expected_no_result:
-                warnings.append(f"{r.qid} [{r.slice}]: expected_no_result=true ngoài out_of_catalog")
+                warnings.append(f"{r.qid} [{r.slice}]: expected_no_result=true ngoài {'/'.join(NO_RESULT_SLICES)}")
         if r.slice == PARENT_CHILD_SLICE:
             problems += [f"{r.qid}/{p}: nhãn 2 ở parent_child thiếu expected_children" for p, v in r.judgments.items()
                          if v == 2 and not r.expected_children.get(p)]

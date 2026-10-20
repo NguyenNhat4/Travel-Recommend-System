@@ -45,7 +45,6 @@ PREFERENCES: tuple[Preference, ...] = (
     Preference("breakfast", "Có bữa sáng", ("bua sang", "an sang", "breakfast"), "bữa sáng", ("breakfast",)),
     Preference("spa", "Spa", ("spa", "massage", "mat xa"), "spa và massage", ("spa",), "spa"),
 )
-_BY_KEY = {item.key: item for item in PREFERENCES}
 
 
 def labels() -> list[str]:
@@ -109,7 +108,3 @@ def preferred(hotels: list[Product], wanted: list[Preference], minimum: int = MI
 
 def hints(wanted: list[Preference]) -> list[str]:
     return [item.hint for item in wanted]
-
-
-def by_key(key: str) -> Preference | None:
-    return _BY_KEY.get(key)

@@ -168,6 +168,7 @@ export function useFloatingWidget() {
         id: item.id,
         sender: item.sender,
         text: item.text,
+        progress: item.progress,
         plan,
         products,
         stayOptions,

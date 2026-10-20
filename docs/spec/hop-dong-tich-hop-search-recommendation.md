@@ -40,7 +40,8 @@
 
 - Gọi engine trong process, không để Web gọi trực tiếp tầng vector.
 - Cung cấp `cdpUserId` từ JWT; **không tin** `userId` do client gửi.
-- Vô hiệu hóa cache user vector **đồng bộ** khi ghi `purchase` (§5).
+- Cache kết quả gợi ý trên Redis (chốt 12/10/2026, §5). Khoá chứa dấu vân tay các event vừa đọc từ CDP, nên ghi
+  `purchase` không cần xoá cache: lần gọi kế tiếp tự trượt và tính lại.
 
 **Team Agent**
 
@@ -308,6 +309,8 @@ search:           { mode: HYBRID_CANDIDATE_SCORE, cutoff: 0.84, candidateK: 200,
                     fuzzyK: 0, fuzzyCandidateK: 50, fuzzyMinSim: 0.75, rrfWeights: { dense: 1, lexical: 1, fuzzy: 1 },
                     llmFallback: off,                                                                        # 2026-10-06, §2.2 (contract 1.17.0)
                     durationFilter: false, poiResolve: false, entityFilter: false,                           # 2026-10-07, §2.2 (contract 1.18.0)
+                    evidenceGate: false, durationMask: false, embedResidual: false, unexplainedEmpty: false,
+                    emitBackground: false,                     # 2026-10-13, plan 2026-10-13-search-evidence-gate-no-answer (contract 1.30.0)
                     logQueries: false }                                                                      # 2026-10-06, §7.3
 similar:          { mode: ANN_CANDIDATE_SCORE, topK: 20 }
 recommendations:  { mode: ANN_CANDIDATE_SCORE, candidateK: 200 }
@@ -333,6 +336,14 @@ vẫn nằm trong metadata nhưng Weaviate chưa trả nó cho tới khi job ind
 có vector của text cũ dùng tạm vector đó. Engine chỉ từ chối (tương đương
 `SEARCH_UNAVAILABLE` ở §6) khi dưới một nửa search unit có vector đúng model —
 collection rỗng, chưa index, hoặc vừa đổi text builder.
+
+**Cập nhật 12/10/2026 (người dùng chốt, `docs/plan/2026-10-12-goi-y-trang-chu-cache-redis-va-ke-pho-bien.md`).**
+
+- **Nạp sẵn vector theo id vào RAM.** Sau mỗi lần nạp, backend nạp ở nền vector của mọi search unit vào RAM (`PreloadedVectorSearch`, `RECOMMEND_PRELOAD_VECTORS`, mặc định bật). Khởi động không chờ. Dung lượng khoảng 4.000 × 384 float32, cỡ 6 MB mỗi tiến trình. Lần này khác lần 24/09: chỉ tải vector e5 384 chiều, qua gRPC, ở nền.
+- **Phần nào dùng RAM:** lấy vector theo id (`vectors()`), và vector đính kèm hit của `nearVector` (gọi Weaviate với `include_vector=false`). Chưa nạp xong thì vẫn hỏi Weaviate như trên.
+- **ANN vẫn qua Weaviate** (NFR-PERF-03). Không quét tuần tự.
+- **Khi index đổi:** mục có `modelVersion`/`textHash` khác ở lần nạp sau thì bỏ ngay và lấy lại ở nền. Vector trong RAM trễ so với Weaviate tối đa một chu kỳ nạp, khi job index ghi lại object.
+- **Gọi song song:** các lượt độc lập của `/recommendations` (ANN ngắn hạn, ANN dài hạn, vector món phổ biến) chạy trên pool riêng `recsys-io` (`RECOMMEND_IO_WORKERS`). Kết quả ghép đúng thứ tự cũ, nên output y hệt chạy tuần tự.
 
 Vì chỉ có top-K, sản phẩm ngoài tập ứng viên vẫn có thể vượt cutoff. Do đó bốn
 trường sau là **bắt buộc**:
@@ -583,7 +594,7 @@ decay(Δt) = exp( −ln(2) · Δt / halfLifeDays )
 | `w(product_view)` | 1.0 | |
 | `halfLifeDays` | 30 | |
 | `finishedTripFactor` | 0.2 | |
-| `dormantDays` | 90 | Khớp `hop-dong-tich-hop-backend.md` §6.2 |
+| `dormantDays` | 365 | Ngưỡng `strategy = dormant` (chuyến gần nhất), chốt 2026-10-09; `diagnostics.dormant` vẫn 90 ngày theo contract |
 
 **`Δt` tính bằng NGÀY, kiểu số thực.** Đây là lỗi âm thầm nguy hiểm nhất của cả
 engine: tính bằng giây thì `decay ≈ 0` cho mọi event, `u_raw` gần vector 0, sau
@@ -602,12 +613,21 @@ tripFactor = 1.0  nếu trip chưa kết thúc (max(usingDate) >= hôm nay)
 
 Không có nó thì hệ thống gợi ý Nha Trang mãi cho người đã đi xong từ tháng trước.
 
+**Bổ sung 2026-10-09 (PR-A, `ENGINE_RULES_VERSION = "2026-10-09-p2-combo-explore"`) — vector dài hạn có độ tin cậy chuyến.**
+Engine hiện hành (`domain/recommendation/profile.py`) dựng vector mỗi chuyến `vec_t` (chuẩn hoá) rồi
+`u_long = Σ_t 2^(−tuổi_t / H_LONG) · confidence_t · vec_t`, với `confidence_t = min(1, Σ W_TYPE của event trong chuyến sau cap)`:
+một lượt xem lẻ nặng 0,2, một lần mua 1,0, ba lượt xem 0,6. Trước đó mọi chuyến nặng như nhau sau chuẩn hoá nên một lượt xem
+vu vơ kéo `u_long` mạnh bằng cả chuyến đã mua (P2 trong `docs/spec/bench/recsys-bam-so-thich-tong-hop.md` §3.A; số đo
+`src/evaluation/reports/eval-2026-10-09-recsys-g6-so-thich-do-lai.md`). Vector chuyến đang mở (`u_short`) không nhân hệ số này.
+Cap lặp `MAX_REPEAT_PER_TRIP = 3` chỉ đếm event yếu (view / search); `purchase` và `add_to_cart` luôn vào vector chuyến
+(`CAP_EXEMPT_EVENTS`). `because[]` ở nhánh không chuyến mở phân rã đúng theo trọng số này (§4.6).
+
 ### 4.4. Quy tắc chọn `strategy`
 
 ```
 có trip đang mở + đã purchase ít nhất 1 taxonomy  → cross_vertical
 >= 3 event dùng được, không có trip đang mở       → recent_activity
-event gần nhất > 90 ngày                          → dormant
+chuyến gần nhất > 365 ngày (từ 09/10)             → dormant
 < 3 event, không JWT, hoặc CDP lỗi                → popular
 có trip đang mở, chưa purchase trong trip,
   tổng < 3 event dùng được                        → cold_start_content
@@ -624,8 +644,9 @@ engine và chưa sửa**, đang chờ Team Recommendation/Search cùng Web quy�
   trị này khi **có** trip đang mở, trip đó chưa purchase và tổng ≥ 3 event dùng được. Engine
   coi trip đang mở là trip có event gần nhất trong 60 ngày (`ACTIVE_TRIP_MAX_AGE_DAYS`) — *luật tới 01/10/2026; từ đó theo
   bổ sung bên dưới (`usingDate`, N = 14).*
-- `dormant`: bảng này và `hop-dong-tich-hop-backend.md` §6.2 ghi 90 ngày; engine
-  dùng 180 ngày (`DORMANT_AFTER_DAYS`).
+- `dormant`: trước 09/10 bảng này và `hop-dong-tich-hop-backend.md` §6.2 ghi 90 ngày, engine dùng 180. Từ 2026-10-09
+  (đề xuất `update-archive/2026-10-09-persona-trang-thai-cold-start-va-phong-cach-du-lich.md`) cả hai là **365 ngày tính từ
+  chuyến gần nhất** (`DORMANT_AFTER_DAYS`); `diagnostics.dormant` (event gần nhất > 90 ngày) của contract không đổi nghĩa.
 - `< 3 event → popular`: engine trả `popular` khi không còn event nào dùng
   được (kể cả khách ẩn danh và CDP lỗi). Dưới 3 event mà có trip đang mở thì ra
   `cold_start_content`; chỉ có trip cũ thì ra `long_term` hoặc `dormant`.
@@ -647,6 +668,19 @@ riêng, chưa có). Tuổi trip, ngày kết thúc và món đã mua xét trên 
 trọng số vector. "Hôm nay" lấy theo giờ Việt Nam (UTC+7, `profile.local_today`) để khớp `usingDate` là ngày địa phương.
 Engine ghi `ENGINE_RULES_VERSION` vào cấu hình để bench phân biệt hai luật.
 
+**Bổ sung 2026-10-09 (FR-REC-02, đề xuất `update-archive/2026-10-09-recsys-uu-tien-chuyen-da-dat.md`, đã chốt).** Khi có nhiều
+trip đang mở, trip **có purchase** (chuyến đã đặt) trẻ nhất là trip mở; chỉ khi không có trip đã đặt nào đang mở thì mới lấy trip
+mở trẻ nhất như cũ. Trước đó một view / giỏ lẻ đến sau (`_solo_<productId>`, tuổi nhỏ hơn) chiếm chỗ chuyến đã đặt nên khách mất
+`cross_vertical` và luật loại loại sản phẩm đã mua (lỗi I-3, `docs/spec/bench/recsys-offline-eval.md`). `ENGINE_RULES_VERSION =
+"2026-10-09-booked-first"`; gương harness: `ceiling.engine_view`, `splits.excluded_taxonomies`, `arms.trip_destination`.
+
+**Bổ sung 2026-10-09 (FR-REC-02, đề xuất `update-archive/2026-10-09-recsys-diem-xuat-phat-va-phien-xem.md`, đã chốt).** Không có
+trip đã đặt nào đang mở nhưng có **≥ 2 trip chỉ-xem / giỏ đang mở** → engine gộp chúng thành **một chuyến ảo** (`_session_`):
+vector = chuẩn hoá Σ `2^(−tuổi/H_SESSION_DAYS)` · độ tin cậy · vector trip (`H_SESSION_DAYS = 7`); điểm đến = điểm đến có tổng trọng
+số lớn nhất (hoà → điểm đến của trip trẻ nhất); `purchasedTaxonomies` rỗng; event = hợp event các trip (dùng cho `because[]`).
+Chuyến ảo không nằm trong `diagnostics.trips` và không đổi `eventsUsed`. Một trip chỉ-xem → giữ nguyên trip đó.
+`ENGINE_RULES_VERSION = "2026-10-09-origin-session"`; gương harness như bổ sung trên.
+
 **Ràng buộc bắt buộc:**
 
 1. `cross_vertical` ⟹ `nextVertical` **và** `destination` khác `null`
@@ -661,11 +695,27 @@ trước** — client map từng giá trị sang một tiêu đề section riên
 
 ```
 bookedThisTrip = { taxonomy của mọi purchase trong eventGroupId đang mở }
-excluded       = bookedThisTrip, mở rộng: combo kéo theo hotel
+excluded       = bookedThisTrip
 ```
 
 Áp làm **hard filter trong câu truy vấn**, không phải phép trừ vector. Ngoài ra
-loại mọi `productId` khách đã từng mua.
+loại mọi `productId` khách đã từng mua (luật dưới).
+
+**Không gợi lại sản phẩm đã mua + combo ↔ thành phần (FR-REC-02, chốt 2026-10-09, đề xuất
+`docs/prd/update-archive/2026-10-08-recsys-loai-san-pham-da-mua-va-combo.md`).** Trong **mọi** nhánh (chuyến mở, chuyến kế
+tiếp, request khoá `destination`), engine loại khỏi ứng viên:
+
+- mọi search unit khách đã mua trên **toàn bộ lịch sử** (`purchase`, kể cả sản phẩm chưa có vector), theo search unit: mua một
+  hạng phòng là đã mua khách sạn đó, mua một chuyến bay là đã mua tuyến đó;
+- **đóng một bậc qua combo**: mua một sản phẩm → mọi combo chứa nó; mua một combo → mọi thành phần của combo đó. Không bắc
+  cầu: mua combo A không loại combo B chỉ vì B chung thành phần với A.
+
+Quan hệ combo → thành phần lấy từ `catalog.combo_items` và chỉ tin dòng **đã map** (`item_product_id NOT NULL`) với
+`confidence ≥ 0,8` **hoặc** `source = 'manual'` (`infrastructure/vectors/postgres_store.combo_members_of`,
+`COMBO_MEMBER_MIN_CONFIDENCE`); dòng chỉ khớp theo địa điểm (0,60) không dùng. Tập đã mua tính ở
+`application/recommendation/use_cases.bought_units` → `UnitIndex.purchase_closure`; harness bench dùng cùng hàm. Luật cũ "combo
+kéo theo hotel" (loại *taxonomy* hotel khi mua combo) **không** nằm trong luật này và chưa cài — ngoài phạm vi. Cold start
+(`popular`) không có lịch sử nên không đổi.
 
 **Chỉ áp cho trip đang mở** theo định nghĩa §4.4 (bổ sung 2026-10-01): chuyến đã kết thúc (`usingDate` đã qua) thì không
 loại taxonomy đã mua và không khoá điểm đến — đó là gợi ý cho chuyến kế tiếp (PRD FR-REC-02). Lý do: trên split temporal
@@ -708,7 +758,27 @@ final = W_SHORT · cos(u_short, v_c) + W_POP · pop_D(c) + W_LONG · cos(u_long,
 W_SHORT / W_POP / W_LONG = 0.7 / 0.15 / 0.15
 ```
 
-`u_short` = vector chuyến đang mở (không có chuyến mở thì dùng `u_long`); `pop_D` = mức phổ biến của ứng viên. Hằng nằm ở
+`u_short` = vector chuyến đang mở (không có chuyến mở thì dùng `u_long`); `pop_D` = mức phổ biến của ứng viên. **Điểm xuất phát
+chuyến bay (FR-REC-04, chốt 2026-10-09):** `origin` = `originCity` của route bay mà khách xem / thêm giỏ / mua gần nhất
+(`profile.infer_origin`); route bay có `originCity` khác rỗng và khác `origin` bị trừ `W_ORIGIN = 0.15` khi có chuyến mở, bị loại
+(điểm −∞, MMR không chọn) khi không có chuyến mở; chưa có event chuyến bay → không áp dụng. `use_cases` truyền
+`ScoreContext(taxonomy, originCity, origin)` cho `score_candidates`.
+
+**Không có chuyến mở (FR-REC-04 / FR-REC-02, chốt 2026-10-09, đề xuất
+`update-archive/2026-10-08-recsys-chuan-hoa-so-thich-giua-hai-chuyen.md`, PR-B):**
+
+```
+s     = clip((cos(u_long, v_c) − SEMANTIC_Q_LOW) / (SEMANTIC_Q_HIGH − SEMANTIC_Q_LOW), 0, 1)     # 0.8529 / 0.9387
+final = W_NEXT_SHORT · s + W_NEXT_POP · pop_D(c) + W_NEXT_LONG · s                               # 0.50 / 0.35 / 0.15
+```
+
+Ngưỡng calibrate trên 120 request khách giả lập `between` (seed 99) theo phân vị p10 / p99 của cos trên không gian ứng viên của
+engine; gắn với `SEMANTIC_CALIBRATION_MODEL_VERSION = "intfloat/multilingual-e5-small:catalog-text-v2"`. `index.model_version`
+khác tag → dùng công thức 0.7 / 0.15 / 0.15 và ghi WARNING `recsys.next_trip_scoring.model_mismatch` (một lần mỗi model). Đổi
+model / text builder thì calibrate lại bằng `python -m src.evaluation.recsys_bench.theme_study.calibrate`. MMR khi đó giới hạn
+`MAX_PER_DESTINATION = 2` món mỗi điểm đến (`mmr_select(..., destination, max_per_destination)`, điểm đến lấy tại thời điểm MMR);
+**không** áp khi request khoá `destination`. Luật điểm xuất phát chuyến bay ở trên vẫn áp sau F14c. Rollback không redeploy:
+`RECOMMEND_NEXT_TRIP_SCORING=false`, `RECOMMEND_MAX_PER_DESTINATION=0`. `ENGINE_RULES_VERSION = "2026-10-09-next-trip-f14c"`. Hằng nằm ở
 `src/backend/app/domain/recommendation/profile.py` (`W_SHORT, W_POP, W_LONG`). Trọng số chốt 2026-10-07, thay 0.6 / 0.25 / 0.15
 (`docs/prd/update-archive/2026-10-06-recsys-trong-so-ngan-han-pho-bien.md`; số đo: `src/evaluation/reports/eval-2026-10-06-recsys-search-tong-hop.md`
 phần A §4, `eval-2026-10-07-recsys-grid-llbo-coldstart.md`).
@@ -719,18 +789,43 @@ Sau đó MMR re-rank với `λ = 0.7`, cộng giới hạn cứng tối đa 2 k�
 Lấy trung bình vector kéo kết quả về cùng một cụm; không có bước này thì top-5
 hay là 5 biến thể của một resort.
 
+**Ô khám phá khi có chuyến mở (FR-REC-02, chốt 2026-10-09, đề xuất
+`docs/prd/update-archive/2026-10-08-recsys-o-kham-pha-khi-co-chuyen-mo.md`).** Khi khách có chuyến mở tại X và sau MMR danh
+sách tại X còn **ít hơn `k` món** (hết món hợp lệ tại X), engine lấp các ô còn trống bằng món ở điểm đến khác:
+
+```
+mask_B = recommendable ∧ destination ≠ X ∧ taxonomy ∈ {hotel, attraction, combo} ∧ ∉ đã mua (kể cả closure combo)
+xếp theo cos(u_long, v) qua một lượt near_vector(u_long, mask_B, EXPLORE_CANDIDATE_K = 50)
+tối đa EXPLORE_MAX_PER_DESTINATION = 1 món mỗi điểm đến; lấy đúng k − |món tại X| món
+```
+
+Món tại X **không bị thay** và đứng trước; món khám phá nối sau với `rank` liên tục, `score = cos(u_long, v)`, `because[]` phân
+rã theo `u_long` (mọi chuyến, không chỉ chuyến mở). `strategy`, `destination`, `nextVertical`, `excludedVerticals` vẫn tính trên
+món tại X. Request khoá `destination = X` cũng lấp (trang xác nhận: khách thấy cả hai nhóm). Không chuyến mở → không lấp
+(nhánh chuyến kế tiếp vốn không khoá điểm đến). `diagnostics.exploreFilled` = số ô đã lấp (0 khi không lấp; trường chỉ có ở
+nhánh có lịch sử). Công tắc `RECOMMEND_EXPLORE_FILL=false` (Settings) tắt luật mà không redeploy → list y hệt trước 09/10. Chi
+phí: thêm một lượt `near_vector` chỉ khi còn ô trống — đo đầu-cuối ở `src/evaluation/reports/` (latency TRƯỚC / SAU PR-A).
+Số nghiên cứu (`eval-2026-10-08-recsys-g2-va-wp4.md`, `--how ulong`): hit@4 không đổi, +1 điểm đến ở 29 % khách có chuyến mở.
+
 ### 4.8. Cold start, dormant, ẩn danh
 
 **Cold start** (dưới 3 event) — fallback theo thứ tự:
 
 ```
-1. Có destination trong request → phổ biến nhất trong điểm đến đó
+1. Có destination trong request → phổ biến nhất trong điểm đến đó, tối đa 2 mỗi taxonomy
 2. Có profile.homeCity          → điểm đến phổ biến từ thành phố đó
 3. Còn lại                      → most-popular toàn hệ thống, tối đa 2 mỗi taxonomy
 ```
 
-**Dormant** (event gần nhất > 90 ngày): vẫn dựng user vector nhưng
-`halfLifeDays × 3`, ưu tiên `lastDestination`.
+Trần "tối đa 2 mỗi taxonomy" (`MAX_PER_VERTICAL`, chốt 2026-10-12) áp cho cả danh sách của từng điểm đến, danh sách phẳng
+ghép từ các section điểm đến, và nhánh xếp theo `reviewCount` khi chưa có bảng phổ biến. Lý do: lượt mua chuyến bay dồn về
+tuyến, nên khi không có trần thì 2–3 món đầu ở các điểm đến lớn đều là tuyến bay. Trần đi theo taxonomy của engine
+(golf là taxonomy riêng), khác các nhóm của `GET /products?diversify=taxonomy` (backend §4.1). Harness eval
+(`max_per_vertical=None`) không có trần.
+
+**Dormant** (chuyến gần nhất > 365 ngày, từ 09/10): vẫn dựng user vector như khách có lịch sử. `halfLifeDays × 3` và
+`lastDestination` của bản thiết kế ban đầu **không** cài — bench 09/10 (`src/evaluation/reports/eval-2026-10-09-recsys-cong-thuc-oph.md`)
+không thấy tác dụng của `H_LONG × 3` và `lastDestination` lấy từ snapshot lộ đáp án.
 
 **Ẩn danh**: `strategy: "popular"`, `cdpUserId: null`, `200` — không `401`.
 
@@ -748,16 +843,31 @@ chỉ khác chữ.
 ```
 checkout thành công
   → Backend ghi purchase sang CDP (đồng bộ, trước commit)
-  → Backend vô hiệu hóa cache user vector (ĐỒNG BỘ, cùng transaction)   [P3]
-  → lần gọi /recommendations kế tiếp dựng lại vector
+  → lần gọi /recommendations kế tiếp đọc lại lịch sử từ CDP (có purchase mới)
+  → dấu vân tay event đổi → khoá cache mới → trượt, tính lại
   → strategy chuyển sang cross_vertical, nextVertical khác null
 ```
 
-**Vô hiệu hóa cache phải đồng bộ.** Để chạy nền là hỏng K1 — người demo bấm
-"Về trang chủ" trong vòng một giây sau khi đặt, và gợi ý vẫn là cái cũ.
+**Cache gợi ý trên Redis (chốt 12/10/2026, `docs/prd/update-archive/2026-10-12-cache-goi-y-tren-redis.md`; PRD
+`architecture.md` §4).** Bản `[P3]` cũ định cache user vector và xoá cache đồng bộ khi ghi `purchase`. Bản đã chốt cache
+**kết quả** gợi ý và không cần xoá:
+
+- **Khoá** = mã băm của: namespace theo mã nguồn engine, phiên bản engine (catalog + metadata vector Weaviate, model,
+  bảng phổ biến, các tham số của engine), `cdpUserId`, `k`, `destination`, ngày theo giờ Việt Nam, và **dấu vân tay
+  các event vừa đọc** (tối đa 500, đúng thứ tự đọc). Redis không chứa `cdpUserId` ở dạng rõ.
+- **Mọi request vẫn đọc CDP** (cùng vùng, vài ms) để dựng dấu vân tay. Event mới bất kỳ (`purchase`, `product_view`…)
+  hay `cancel_purchases` xoá event đều đổi khoá, nên không bao giờ trả kết quả tính từ lịch sử cũ. Không có bước xoá
+  cache nào để quên, kể cả khi ghi event ở nền.
+- **TTL** 15 phút (`RECOMMEND_CACHE_TTL_SECONDS`); không lưu giá trị quá 64 KB.
+- **Redis lỗi hoặc chậm quá 100 ms** thì tính trực tiếp (ngắt mạch 5 giây). **CDP lỗi** thì đường lui `popular` không
+  bao giờ được ghi vào cache.
+- **Chống tính trùng:** request đầu lấy khoá `SET NX`; request cùng khoá chờ kết quả (tối đa 10 giây) thay vì tính lần hai.
+  Frontend huỷ request thì backend vẫn tính xong và ghi, để lần "Thử lại" trúng.
+- **Làm ấm sau đăng nhập:** `/auth/login` và `/auth/session` thành công thì tính trước `(k=4, không destination)` — đúng
+  request của trang chủ — trên pool riêng.
 
 `diagnostics.userVectorCacheHit: false` ở lần gọi ngay sau checkout là **hành vi
-đúng**, không phải lỗi hiệu năng.
+đúng**, không phải lỗi hiệu năng. `true` nghĩa là kết quả lấy từ cache gợi ý.
 
 ---
 
@@ -786,8 +896,8 @@ khác hẳn nhau.
 |---|---:|
 | `POST /search` | 300 ms (Weaviate cùng mạng nội bộ; qua Weaviate Cloud từ mạng dev thì mỗi lượt thêm 0,5–2 s) |
 | `GET /products/{id}/similar` | 300 ms |
-| `GET /recommendations`, cache hit | 300 ms |
-| `GET /recommendations`, cache miss (đọc 500 event từ CDP) | 800 ms |
+| `GET /recommendations`, cache hit (đọc tối đa 500 event từ CDP + một lần GET Redis) | 300 ms |
+| `GET /recommendations`, cache miss (thêm ANN và tra vector, §5) | 800 ms |
 | Embed một truy vấn | p95 ≈ 11 ms khi `embedCache = miss` (e5-small trên CPU laptop; Cohere trước đây ≈ 60 ms, p95 437 ms trên VM); hit ≈ 0 ms — từ 30/09 vector truy vấn được cache (§2.2), số đo thật ở `docs/spec/bench/search-eval-results.md` |
 
 Đo thật 01/10/2026 trên VM (`release-mvp-v2`, contract 1.12.0; Weaviate Cloud ở `eu-central-1`, VM ở `asia-southeast1`):
@@ -795,9 +905,16 @@ khác hẳn nhau.
 Ngân sách 300 ms ở bảng trên chỉ đạt được khi kho vector cùng vùng với backend — số và nguyên nhân ở
 `docs/spec/bench/search-eval-results.md` §2–3, report `src/evaluation/reports/eval-2026-10-01-search-cloud-latency.md`.
 
-Dòng "cache miss" là thừa nhận thẳng: đường đó phải gọi HTTP sang CDP clone rồi
-tra tối đa 500 vector. Nó chỉ xảy ra sau `purchase` hoặc khi cache trống.
-Tỉ lệ cache miss cao là dấu hiệu quy tắc vô hiệu hóa đang sai, không phải engine chậm.
+Dòng "cache miss" là thừa nhận thẳng: đường đó phải gọi ANN và tra vector của
+lịch sử. Từ 12/10/2026 các lượt Weaviate độc lập chạy song song và vector theo id
+lấy từ RAM (§2.4), nhưng ANN vẫn qua Weaviate Cloud khác vùng, nên trên VM hiện
+tại đường miss chưa đạt 800 ms.
+
+Trượt cache xảy ra khi: khách có event mới từ lần tính trước (kể cả `product_view`),
+hết TTL 15 phút, sang ngày mới theo giờ Việt Nam, catalog hay index vector đổi,
+hoặc vừa deploy bản mới (namespace theo mã nguồn). Tỉ lệ trúng đọc ở log
+`recsys.recommend` (trường `cache`: `hit`, `wait_hit`, `miss`…; `docs/spec/logging-schema.md`),
+thời gian từng bước ở `stage_ms`. Chưa có số đo thật: ghi nhận sau lần deploy đầu.
 
 ### 7.2. Tracing
 
@@ -894,6 +1011,17 @@ Team Search cung cấp:
     `search("vé lẻ VinWonders Nam Hội An, không lấy combo")` (F3 bật) → `applied` có `mustNot` và `entity`, không có combo;
     `search("không lấy VinWonders, vé Safari")` → `hard.entity == ["safari"]`. Cả ba cờ tắt → response không có
     `queryPlan.duration` / `location` / `entity`, y như 1.17.0.
+10g. (13/10, contract 1.30.0; FR-SRC-03/04 chốt 13/10; plan `docs/plan/2026-10-13-search-evidence-gate-no-answer.md`)
+    Cờ `SEARCH_UNEXPLAINED_EMPTY`: `search("Nguyễn Khắc Tiệp")`, `search("khách sạn Nguyễn Khắc Tiệp")` → `total 0`,
+    `queryPlan.emptyReason == "unexplained"`, `queryPlan.unexplained == ["Nguyễn Khắc Tiệp"]`, không gọi embed;
+    `search("khách sạn Đà Lạt rẻ bèo")` vẫn có kết quả; `search("Nguyễn Khắc Tiệp gần biển")` → `unparsed == ["Nguyễn Khắc Tiệp"]`.
+    Cờ `SEARCH_EVIDENCE_GATE`: `search("Trần Thị Mai")` không vớt "Thị trấn Hoàng Hôn" (khớp phải là cặp âm tiết liền nhau,
+    đúng thứ tự, giữ dấu); `diagnostics.evidenceGate == true`. Cờ `SEARCH_DURATION_MASK`: `search("2 ngày 1 đêm")` →
+    `queryPlan.duration.role == gate`, chỉ vé tham quan / combo có "2 ngày"; cùng câu với `taxonomy=hotel` → `emptyReason ==
+    duration`; `search("khách sạn Đà Lạt 2 ngày 1 đêm")` → `role == stay`, khách sạn vẫn còn. Cờ `SEARCH_EMBED_RESIDUAL`:
+    `queryPlan.denseText` là câu đem embed; residual rỗng + gate → `diagnostics.filterOnly`, `cutoff 0`.
+    `SEARCH_NO_DIACRITICS_MODE=restore`: `diagnostics.accentRestored`, không nới cutoff. `SEARCH_EMIT_BACKGROUND`:
+    `backgroundScore` = trung vị cosine top-K dense trong F (xấp xỉ §3.4 khi |F| > candidateK). Mọi cờ tắt → như 1.27.0.
 11. p95 dưới 300 ms trên catalog đầy đủ, đo với Weaviate cùng mạng nội bộ (local hoặc cùng region).
     *(Bổ sung 2026-09-29: PRD NFR-PERF-01 đặt ngưỡng chặt hơn, ≤ 250 ms; báo p95 tổng kèm p95 từng bước theo
     `diagnostics.stageMs` để thấy phần nào là embed, phần nào là Weaviate. Bổ sung 2026-09-30: báo p95 riêng cho
@@ -924,7 +1052,15 @@ Team Search cung cấp:
     → kết quả thiên về **Đà Nẵng**. *(Kiểm tra `tripFactor` thực sự chạy.)*
 24. Tắt CDP clone → `200` `strategy: "popular"`, không phải `500`.
 25. Ngay sau checkout → `strategy` hoặc `nextVertical` đã đổi (**K1**).
-26. p95 dưới 300 ms khi cache hit.
+26. p95 dưới 300 ms khi cache hit. *(Cache gợi ý trên Redis, chốt 12/10/2026, §5; đo bằng log `recsys.recommend`
+    với `cache=hit`.)*
+27. Khách đã mua phòng của khách sạn H (bất kỳ lúc nào) → không có H lẫn combo chứa phòng/khách sạn H trong list; khách đã
+    mua combo C → không có C lẫn các thành phần đã map tin cậy của C; combo khác chung thành phần với C vẫn có thể xuất hiện
+    (§4.5, AC-REC-02/03; unit test `test_recommendation_combo_exclusion.py`).
+28. Khách có chuyến mở tại X mà X còn ít hơn `k` món hợp lệ → list = món tại X trước, rồi món ở điểm đến khác (mỗi điểm đến
+    ≤ 1, chỉ hotel / attraction / combo), `rank` liên tục, `strategy` / `nextVertical` không đổi so với khi không lấp,
+    `diagnostics.exploreFilled` = số ô lấp; `RECOMMEND_EXPLORE_FILL=false` → không lấp (§4.7; unit test
+    `test_recommendation_explore_fill.py`).
 
 Bốn tiêu chí **20, 21, 22, 23** là quan trọng nhất trong cả danh sách. Chúng bắt
 đúng bốn lỗi chạy được nhưng sai — sai đơn vị thời gian, quên normalize,
@@ -941,7 +1077,7 @@ Bốn tiêu chí **20, 21, 22, 23** là quan trọng nhất trong cả danh sác
 | S2 | `WEAK_RESULT_TOP_SCORE` / `MARGIN` chưa đo | `0.70` / `0.06` |
 | S3 | Quy tắc 2 tầng chưa duyệt · `[C5]` | Code theo `includeVariants: false` |
 | S4 | Soft delete chưa duyệt · `[U1]` | `because[].productName` giả định sản phẩm còn hàng trong `products` |
-| S5 | Cache user vector chưa duyệt · `[P3]` | Không cache thì p95 `/recommendations` là 800 ms, không phải 300 ms |
+| S5 | ~~Cache user vector chưa duyệt · `[P3]`~~ — **đã chốt 12/10/2026** | Cache **kết quả** gợi ý trên Redis dùng chung, khoá theo dấu vân tay event, TTL 15 phút, không cần xoá khi ghi `purchase` (§5; `docs/prd/update-archive/2026-10-12-cache-goi-y-tren-redis.md`, PRD `architecture.md` §4, contract 1.27.0) |
 | S6 | Công thức `popularity_score` chưa chốt · `[C7]` | Tạm dùng `log(1 + review_count)` |
 | S7 | ~~Model embedding chưa chốt~~ — **đổi 06/10/2026** | `intfloat/multilingual-e5-small`, **384 chiều**, chạy local trong backend, tiền tố `query: ` / `passage: `, collection `ProductE5Small` (`VECTOR_COLLECTION`) (thay Cohere `embed-multilingual-v3.0` 1024 chiều chốt 22/09; Cohere bỏ hẳn, không còn đường lui). Xem `docs/prd/architecture.md` §4–§5, `docs/prd/update-archive/2026-10-05-fr-src-02-embedding-local-e5-small.md`, `docs/prd/update-archive/2026-10-06-bo-duong-lui-cohere.md`. Kéo theo S8. |
 | S8 | ~~`EXACT_FILTER_SCORE` cần duyệt lại~~ — **đã chốt 24/09/2026, hướng (b)** | Đổi cam kết `total`/`facets` thành xấp xỉ trên tập ứng viên, khai báo qua `approximate`/`totalExact`/`facetsExact`. `/similar`, `/recommendations` chạy `ANN_CANDIDATE_SCORE`; `/search` chạy `HYBRID_CANDIDATE_SCORE` từ 25/09 (§2.4). |
@@ -956,8 +1092,8 @@ Bốn tiêu chí **20, 21, 22, 23** là quan trọng nhất trong cả danh sác
 | S18 | Thời lượng F7, địa danh gazetteer → F1, cổng entity cứng (contract 1.18.0, 07/10; spec `docs/spec/bench/tong-hop-chinh-sua-luong-search-ota.md`, plan `docs/plan/2026-10-07-search-duration-entity-poi.md`) — **chưa đo**: probe fixture c0736–c0756 rồi `gold_v6` (slice `duration_false_positive`, `poi_resolution`), arm `APP.e5s.prod_f12356_dur` / `_poi` / `_ent` / `_dur_poi_ent` | Ba cờ `SEARCH_DURATION_FILTER` / `SEARCH_POI_RESOLVE` / `SEARCH_ENTITY_FILTER` tắt tới khi bench WIN/TIE trên test + Forbidden@10 = 0 + guard + 12 qid hồi quy + p95 không tăng > 30 %; `SEARCH_ENTITY_FILTER` còn cần Web xác nhận (tab Lưu trú có thể 0, `docs/spec/product.md` §4.2.3). Gazetteer là bảng tay trong repo — địa danh ngoài bảng không resolve (Data/Search bổ sung khi có hole) |
 | S11 | Kích thước cache vector truy vấn (10.000), danh sách prewarm (131 câu gold_v1 + head query `app.search_logs` — bảng này chưa có code ghi) và pacing 2.000 câu/phút chưa đo | Dùng mặc định trong `core/config.py`; đo hit/miss bằng `sb latency http` (bench Part 9) trên Cloud; đổi số qua biến môi trường `SEARCH_EMBED_CACHE_*`, `SEARCH_PREWARM_*` |
 
-S5 là phụ thuộc nặng nhất: không duyệt `[P3]` thì tiêu chí nghiệm thu 26 không
-đạt được, và ngân sách §7.1 phải sửa.
+S5 đã chốt 12/10/2026, nên tiêu chí nghiệm thu 26 đo được trên đường cache hit.
+Đường cache miss vẫn phụ thuộc độ trễ tới Weaviate Cloud (§7.1).
 
 ---
 

@@ -82,8 +82,14 @@ Không tự chọn phương án cho các mục đang "chờ xác nhận" trong b
 - Tuân thủ quy tắc phụ thuộc backend, quy tắc frontend và quy ước thêm module trong `docs/prd/architecture.md` (§2, §6).
 - Code mới đặt theo cấu trúc trong `docs/prd/architecture.md` §6.1 (`src/backend`, `src/frontend`...). Các thư mục/file cũ ở gốc `src/` (`src/agents`, `src/api`, `src/models`, `src/services`, `src/main.py`, `src/config.py`) đã bị xoá; không tạo lại. Backend theo cây thư mục và quy tắc 1–11 ở `docs/prd/architecture.md` §2; `src/backend/tests/architecture/` kiểm tự động các quy tắc này.
 - Grounding: mọi sản phẩm, giá, `productId` phải đến từ Search/Recommendation/Catalog; không để LLM tạo dữ liệu sản phẩm. Tỷ lệ grounding bắt buộc 100% (`docs/prd/requirements.md` NFR-REL-01).
+- **Itinerary Agent: orchestrator là luồng duy nhất** (chốt 13/10/2026, `docs/prd/architecture.md` §3). Luồng phân loại
+  cũ (`classify` bằng LLM, node `explore`, `converse` bằng LLM) và cờ `ITINERARY_ORCHESTRATOR` đã gỡ; không tạo lại. Hiểu câu
+  sửa ở orchestrator (`ORCHESTRATOR_PROMPT`, `agents/steps/orchestration.py`), việc chỉ đọc ở `jobs.py`, câu vé ở `fares.py`,
+  gác cổng ở `domain/itinerary/gatekeeper.py`; luật trước LLM ở `precheck`. Ý AC trước đây chỉ luồng cũ đáp ứng được kiểm và
+  làm lại trên orchestrator theo `docs/plan/2026-10-12-go-luong-cu-orchestrator-chinh.md` (mục 1.5).
 - Không tự làm các hạng mục PRD đã ghi **ngoài phạm vi** (`docs/prd/project-brief.md` §4.2): cổng thanh toán ngân hàng thật, tồn kho thời gian thực nối hãng bay/khách sạn ngoài, app di động native. Người dùng yêu cầu thì xác nhận lại rằng đây là mở rộng phạm vi trước khi code.
 - Không commit hoặc log secret, API key, JWT. Biến bí mật theo bảng ở `docs/prd/deployment-plan.md` §2.
+- Secret key và cấu hình môi trường chạy trên VM (kể cả biến không bí mật như `ITINERARY_DATA_MODE`) được quản lý trong GCP Secret Manager. Không đặt giá trị trong repo, `docker-compose`, Terraform hay sửa tay `/etc/vota/*.env` trên VM. Staging-HA dùng secret `vota-ha-backend-env` (project `vinpearl-508801`). Đổi giá trị = thêm version mới của secret, rồi deploy backend để `slot-deploy.sh` làm mới env. Agent không in giá trị secret ra chat, log hay file trong repo; khi cần kiểm tra thì chỉ đọc đúng khoá cần thiết.
 
 ## 4. Trước khi báo hoàn thành
 
@@ -143,7 +149,7 @@ Sửa schema = sửa file .sql, **thêm migration idempotent tương ứng** và
 ### 6.4. Còn chờ chốt
 
 - Tên cột opt-in trong `cdp.profiles` (chờ reviewer CDP) · mọi route có ≥ 1 chuyến? (Data kiểm tra trên `products.jsonl`).
-- **Bộ persona lệch giữa PRD và bản đã triển khai — không tự đồng bộ.** DDL và `docs/spec/DATABASE_SCHEMA.md` dùng cột `app.users.persona` với 4 giá trị trạng thái cold-start: `P1_frequent`, `P2_first_time`, `P3_dormant`, `P4_no_history` (mỗi persona kích hoạt một nhánh khác nhau của recommendation — bảng persona ở `DATABASE_SCHEMA.md` §8 Kế hoạch mock data). PRD lại mô tả 4 persona phong cách du lịch `P1_family`, `P2_biz`, `P3_explorer`, `P4_deal` trên cột `persona_tag` / trường `personaTag` (`docs/prd/project-brief.md` §5, `data-model.md` §2.2, `api-contract.md` §2.1), trong khi contract không có trường persona nào (`personaLabel` đã gỡ cùng `/auth/demo-accounts` ngày 2026-09-24). Khi code: theo DDL + contract. Việc hợp nhất hai bộ persona cần người dùng quyết định.
+- Persona đã hợp nhất (chốt 2026-10-09, `docs/prd/update-archive/2026-10-09-persona-trang-thai-cold-start-va-phong-cach-du-lich.md`): persona = 4 trạng thái cold-start `P1_frequent`, `P2_first_time`, `P3_dormant` (chuyến gần nhất > 365 ngày), `P4_no_history` theo DDL; phong cách du lịch (biển, núi, thành phố…) là đặc trưng của khách, không phải persona. `diagnostics.dormant` của contract vẫn là 90 ngày.
 
 ### 6.5. Nhiệm vụ tuần 1 — tạo bảng và mock data (spec đầy đủ: `docs/spec/MOCK_DATA_SPEC.md`)
 
@@ -152,7 +158,7 @@ Thứ tự, mỗi bước là một module trong `src/data_collection/seed/`, ch
 2. Ưu tiên `data/products.jsonl` khi Data đang phát triển local; bản clone sạch tự dùng snapshot nén có version trong `src/data_collection/snapshots/`. Snapshot được kiểm checksum, bung vào `data/` ignored và kèm mapping combo đã duyệt. Chỉ sinh `products.synthetic.jsonl` khi cả runtime catalog lẫn snapshot đều không có.
 3. `load_products.py` — `products.jsonl` → `cdp.products`; cửa sổ 30 ngày theo `as_of`, `attributes.availability`, combo attrs.
 4. `parse_combos.py` — description → `catalog.combo_items` (source/confidence/evidence).
-5. `seed_histories.py` — 2.000 `cdp.profiles`, ~7.000 `cdp.events` theo chuyến, power-law, cạnh lộn xộn; profiles suy từ event.
+5. `seed_histories.py` — 2.000 `cdp.profiles`, ~7.000 `cdp.events` theo chuyến, power-law, cạnh lộn xộn; profiles suy từ event. Profile `g6-pref-v1` (`MOCK_DATA_SPEC.md` §4.3, sở thích chủ đề ẩn) chỉ dành cho database nghiên cứu RecSys qua `append_histories prepare --profile`; seed demo không đổi.
 6. `seed_app.py` — 4 persona + 50 user test; `app.bookings` chỉ cho P1.
 7. `seed_insider.py` — database `insider`: partners, profiles, identifiers, events (TTL), channel_events.
 8. `db/verify.sql` và `db/verify_insider.sql` phải toàn PASS, chạy bằng `SEED_DATABASE_URL` (superuser — `DATABASE_URL` không đọc được `cdp.events`/`profiles`). Kết quả tóm tắt ghi vào khối `<!-- seed-report:start -->`…`<!-- seed-report:end -->` trong `src/data_collection/README.md`, không ghi DB.

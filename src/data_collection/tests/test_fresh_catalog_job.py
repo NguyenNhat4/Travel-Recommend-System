@@ -124,15 +124,29 @@ class ApplyWindowTests(unittest.TestCase):
         with_room = apply_window([row('h2', start=AS_OF, end=HI), row('r2', attributes={'level': 'room', 'parentProductId': 'h2'})], AS_OF)
         self.assertNotIn('h2', with_room)  # có phòng đặt được: giữ nguyên
 
-    def test_hidden_hotel_without_marker_or_merged_is_not_reopened(self):
-        room = row('room', attributes={'level': 'room', 'parentProductId': 'hotel'})
-        sold = row('hotel', available=False, start=AS_OF, end=HI)  # tắt vì lý do khác, không có dấu
+    def test_hotel_hidden_without_marker_reopens_with_cheapest_room_price_but_merged_stays_hidden(self):
+        """FR-CAT-02: khách sạn có hạng phòng đặt được thì bán, kể cả khi lượt cào trước tắt nó vì nguồn không trả giá cho
+        đúng ngày hỏi (không có dấu noBookableRoom; 12/10/2026). Dòng đã gộp, giá quá hạn vẫn ẩn."""
+        rooms = [row('cheap', attributes={'level': 'room', 'parentProductId': 'hotel'}, unit_price=750000),
+                 row('dear', attributes={'level': 'room', 'parentProductId': 'hotel'}, unit_price=900000),
+                 row('closed', attributes={'level': 'room', 'parentProductId': 'hotel'}, unit_price=500000, available=False)]
+        sold = row('hotel', available=False, start=AS_OF, end=HI, unit_price=None)
         merged = row('merged', available=False, start=AS_OF, end=HI,
                      attributes={'level': 'property', 'noBookableRoom': True, 'mergedInto': 'x'})
         merged_room = row('mroom', attributes={'level': 'room', 'parentProductId': 'merged'})
-        changed = apply_window([sold, room, merged, merged_room], AS_OF)
-        self.assertNotIn('hotel', changed)
+        stale = row('stale', available=False, start=AS_OF, end=HI, attributes={'level': 'property', 'priceFreshness': 'stale'})
+        stale_room = row('sroom', attributes={'level': 'room', 'parentProductId': 'stale'})
+        changed = apply_window([sold, *rooms, merged, merged_room, stale, stale_room], AS_OF)
+        self.assertEqual((changed['hotel']['available'], changed['hotel']['unit_price']), (True, 750000))
         self.assertFalse(changed['merged']['available'])
+        self.assertNotIn('stale', {pid for pid, r in changed.items() if r['available']})
+
+    def test_available_hotel_with_bookable_room_but_no_price_gets_the_cheapest_room_price(self):
+        hotel = row('hotel', start=AS_OF, end=HI, unit_price=None)
+        room = row('room', attributes={'level': 'room', 'parentProductId': 'hotel'}, unit_price=620000)
+        changed = apply_window([hotel, room], AS_OF)
+        self.assertEqual(changed['hotel']['unit_price'], 620000)
+        self.assertNotIn('hotel', apply_window([changed['hotel'], room], AS_OF))  # lần sau không ghi lại
 
     def test_rows_already_inside_the_window_are_not_rewritten(self):
         # combo: không có lịch, không phụ thuộc phòng con (khách sạn không phòng bị tắt theo FR-CAT-02).
@@ -374,14 +388,22 @@ class MaintainCatalogTests(unittest.TestCase):
         conn = _Conn([stale, seeded, current])
         sync = Mock(return_value={'simulatedBusiness': 0})
         combos = Mock(return_value={'combos': 2, 'combosChanged': 0})
+        demo = Mock(return_value={'simulatedRooms': 3})
+        order = Mock()
+        order.attach_mock(combos, 'combos')
+        order.attach_mock(demo, 'demo')
         with patch('psycopg.connect', return_value=conn), \
                 patch('data_collection.seed.simulated_business.sync', sync), \
+                patch('data_collection.seed.demo_data.sync', demo), \
                 patch('fresh_catalog_db.sync_combo_items', combos):
             counts = maintain_catalog('postgresql://unused', today=AS_OF,
                                       now=datetime(2026, 9, 24, tzinfo=timezone.utc))
         updates = {params[-1]: params for params in conn.updates}
-        self.assertEqual(counts, {'staleTrip': 1, 'windowRows': 1, 'simulatedBusiness': 0, 'combos': 2, 'combosChanged': 0})
+        self.assertEqual(counts, {'staleTrip': 1, 'windowRows': 1, 'simulatedBusiness': 0, 'combos': 2, 'combosChanged': 0,
+                                  'simulatedRooms': 3})
         sync.assert_called_once_with(conn)  # simulated business fares follow the rolled window (data-model.md §3)
+        demo.assert_called_once_with(conn, AS_OF)  # dữ liệu mô phỏng theo cửa sổ mới (data-model.md §3.1)
+        self.assertEqual([c[0] for c in order.mock_calls], ['combos', 'demo'])  # sau parse combo
         # combo được parse lại trên trạng thái catalog sau các cập nhật của chính transaction này
         state = {r['product_id']: r for r in combos.call_args.kwargs['rows']}
         self.assertEqual(combos.call_args.args, (conn,))
@@ -520,6 +542,26 @@ class RunJobTests(unittest.TestCase):
         self.assertEqual(len(fresh), 1)
         self.assertIn(fresh[0]['state'], {'ok', 'late', 'none'})
         self.assertIn('max_age_hours', fresh[0])
+
+    def test_due_mode_emits_catalog_freshness_every_tick_even_while_a_run_is_busy(self):
+        """Tick cron chỉ chạy `due` (run_fresh_catalog_container.sh): dòng freshness phải có ở mỗi tick, kể cả khi đang
+        có lượt chạy (lock bận), và đi qua stderr vì stdout của `due` là tên chế độ."""
+        env = {k: v for k, v in self.env.items() if k.startswith('CATALOG_')}
+        (Path(env['CATALOG_STATE_DIR']) / 'settings.json').write_text(json.dumps({'values': {'schedule.enabled': False}}),
+                                                                       encoding='utf-8')
+        for busy in (False, True):
+            events = []
+            with patch.dict(os.environ, env, clear=True), \
+                    patch.object(fresh_catalog, 'lock_busy', lambda *a: busy), \
+                    patch.object(fresh_catalog.log, 'emit', lambda name, *a, **kw: events.append((name, kw))), \
+                    patch.object(fresh_catalog.alerts, 'sla_status', lambda *a: {'rules': [
+                        {'rule': 'catalogAge', 'state': 'ok', 'hours': 1.0}]}), \
+                    contextlib.redirect_stdout(io.StringIO()) as out:
+                self.assertEqual(fresh_catalog.run_job('due'), 0)
+            self.assertEqual(out.getvalue().strip(), '')            # stdout trống: chỉ có tên chế độ (rỗng khi không có lượt)
+            names = [name for name, _ in events]
+            self.assertEqual(names.count('catalog.freshness'), 1, busy)
+            self.assertIn('catalog.due', names)
 
     def test_late_catalog_is_emitted_as_error_severity(self):
         severities = []

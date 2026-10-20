@@ -76,8 +76,8 @@ def gold_version_of(path: Path, tags: list[str] | None = None) -> str | None:
     tags = list_gold_tags() if tags is None else tags
     if not tags:
         return None
-    blob = _git("hash-object", "--", str(path))
     rel = repo_relpath(path)
+    blob = _git("hash-object", "--", rel)
     for tag in reversed(tags):
         r = subprocess.run(["git", "rev-parse", "--verify", "-q", f"{tag}:{rel}"], cwd=paths.repo_root(),
                            capture_output=True, text=True, timeout=15)

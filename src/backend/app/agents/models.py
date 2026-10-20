@@ -92,41 +92,61 @@ class FareQuestion(StrictModel):
                                description="Hỏi ngày nào có, ngày nào không có chuyến, mở bán tới khi nào.")
 
 
-class TurnRoute(StrictModel):
-    """Nhãn của `classify` và ý định đã hiểu của lượt này.
-
-    `explore` (FR-AGT-06): hỏi một điểm đến có gì, khách sạn, điểm tham quan ở đó, khi chưa xin lập lịch.
-    `fare`: hỏi giá hoặc giờ vé máy bay, trả lời bằng luật ở nhánh giá vé (`fare` chứa nơi đi, nơi đến…).
-    `plan_request`: người dùng xin lập lịch hoặc đồng ý lời mời lập lịch; luật trong `classification.plan_consented`
-    nhận các câu đồng ý ngắn trước, LLM chỉ bổ sung cho cách nói khác.
-    Các trường còn lại chỉ là cách LLM hiểu câu chữ (tên nơi, thành phố, loại nơi, có hỏi giá không); code đối chiếu với
-    catalog rồi mới dùng, không trường nào là dữ liệu sản phẩm.
-    """
-    route: Literal["travel", "explore", "fare", "vague", "conversation", "out_of_scope"]
-    plan_request: bool = Field(
-        default=False,
-        description="true khi tin nhắn xin lập lịch trình/kế hoạch, hoặc đồng ý lời mời lập lịch của trợ lý.")
+class Job(StrictModel):
+    """Read-only work requested by the orchestrator; product identifiers stay in code."""
+    kind: Literal["explore", "fare"]
+    intent: Literal["new", "more", "about_shown", "cheaper", "dearer"] = "new"
+    refers_to: list[str] = Field(default_factory=list, max_length=40)
+    continue_from: int | None = Field(default=None, ge=1)
+    replaces: int | None = Field(default=None, ge=1)
+    scope_mode: Literal["inherit", "replace"] = Field(default="inherit",
+        description="inherit giữ điều kiện chưa đổi; replace chỉ dùng phạm vi khai ở việc này, kể cả destination=null.")
+    destination: str | None = Field(default=None, max_length=150)
+    excluded_destinations: list[str] = Field(default_factory=list, max_length=40,
+        description="Điểm đến không xét trong việc này; không đánh dấu người dùng chê nơi đó cho cả hội thoại.")
+    requested_count: int | None = Field(default=None, ge=1,
+        description="Số sản phẩm người dùng yêu cầu ở lượt này; không nêu thì null. Khai nguyên số, code giới hạn đầu ra 20.")
+    taxonomy: Literal["attraction", "hotel", "combo", "golf"] | None = None
+    query: str | None = Field(default=None, max_length=500)
+    near: str | None = Field(default=None, max_length=150)
+    sort: Literal["relevance", "price_asc", "price_desc"] = "relevance"
     fare: FareQuestion | None = None
-    place: str | None = Field(
-        default=None, max_length=120,
-        description="Nơi cụ thể (điểm tham quan, chợ, khách sạn) mà tin nhắn hỏi tới, viết bằng tên đầy đủ thường dùng.")
-    city: str | None = Field(
-        default=None, max_length=60,
-        description="Thành phố/điểm đến mà tin nhắn nói tới, kể cả khi chỉ nhắc lại qua ngữ cảnh ('ở đó', 'chỗ đó').")
-    focus: Literal["hotels", "sights"] | None = Field(
-        default=None, description="Tin nhắn chỉ hỏi về chỗ ở (hotels) hoặc chỉ về chỗ chơi (sights).")
-    price: Literal["asks", "cheap", "dear"] | None = Field(
-        default=None, description="asks: hỏi giá, phí, có mất tiền không; cheap: muốn lựa chọn giá rẻ; "
-                                  "dear: hỏi chỗ đắt nhất, sang nhất.")
-    form_request: bool = Field(
-        default=False, description="true khi người dùng xin form/bảng để tự điền thông tin chuyến ('cho mình cái form').")
-    other_questions: list[str] = Field(
-        default_factory=list, max_length=3,
-        description="Câu hỏi khác trong cùng tin nhắn chưa thuộc nhãn đã chọn, viết lại ngắn như lời người dùng.")
+
+
+class Pending(StrictModel):
+    kind: Literal["explore", "fare"]
+    goal: str = Field(max_length=300)
+
+
+class Question(StrictModel):
+    about: Literal["destination", "trip_kind", "which_place", "other"]
+
+
+class PlanOffer(StrictModel):
+    destination: str = Field(max_length=150)
+    text: str = Field(max_length=300)
+
+
+class OrchestratorTurn(StrictModel):
+    action: Literal["answer", "ask", "plan", "execute"]
+    jobs: list[Job] = Field(default_factory=list, max_length=3)
+    pending: list[Pending] = Field(default_factory=list, max_length=3)
+    fare_only: bool = False
+    title: str | None = Field(default=None, max_length=200)
+    message: str | None = Field(default=None, max_length=2000)
+    refers_to: list[str] = Field(default_factory=list, max_length=40)
+    cards: list[str] = Field(default_factory=list, max_length=20)
+    question: Question | None = None
+    offer: PlanOffer | None = None
+    suggestions: list[str] = Field(default_factory=list, max_length=6)
+    plan_reason: Literal["accepts_offer", "asks_plan", "trip_details", "form"] | None = None
+    rejected: list[str] = Field(default_factory=list, max_length=40)
+    declines_offer: bool = False
+    stop: bool = False
 
 
 class Extraction(StrictModel):
-    """Output của `extract`: chỉ chạy khi `classify` đã xếp lượt này là `travel`."""
+    """Output của `extract`: chỉ chạy khi lượt này là lập lịch (orchestrator chọn `plan` hoặc luật của `precheck`)."""
     patch: IntentUpdate = Field(default_factory=IntentUpdate)
     constraints: ConstraintUpdate = Field(default_factory=ConstraintUpdate)
     end_date: date | None = None
@@ -157,14 +177,7 @@ class ConversationalAnswer(StrictModel):
     #: Cho phép dài hơn mức hiển thị một chút: `titled()` cắt, không để tiêu đề dài làm hỏng cả câu.
     title: str | None = Field(default=None, max_length=200)
     message: str = Field(min_length=1, max_length=1000)
-    #: Nút gợi ý LLM đề xuất (FR-AGT-06); code kiểm và cắt còn tối đa 3 (`exploration.checked_suggestions`).
-    suggestions: list[str] = Field(default_factory=list, max_length=6)
-
-
-class ExploreNarration(StrictModel):
-    """Output của `explore`: lời dẫn cho các thẻ code đã chọn; số do code điền vào placeholder."""
-    title: str | None = Field(default=None, max_length=200)
-    message: str = Field(min_length=1, max_length=2000)
+    #: Nút gợi ý LLM đề xuất (FR-AGT-06); code kiểm và cắt còn tối đa 3 (`replies.checked_suggestions`).
     suggestions: list[str] = Field(default_factory=list, max_length=6)
 
 

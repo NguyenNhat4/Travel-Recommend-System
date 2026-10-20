@@ -22,8 +22,12 @@ export interface VerticalTab {
 }
 
 export interface SheetConfig {
-  location: { label: string; placeholder: string };
-  /** Chỉ vé máy bay. */
+  /**
+   * `destinations`: điểm đến phổ biến (tour, golf). `famous-hotels`: khách sạn nổi tiếng khi bấm ô (`/hotels`, `/combos`).
+   * `airports`: sân bay hiện hành của catalog, chỉ nhận sân bay thật (`/flights`, spec ui-dia-diem-san-bay-va-khach-san-noi-tieng).
+   */
+  location: { label: string; placeholder: string; suggest: 'destinations' | 'famous-hotels' | 'airports' };
+  /** Chỉ vé máy bay: ô điểm đi, chọn sân bay hiện hành như ô điểm đến. */
   origin?: { label: string; placeholder: string };
   dates: {
     mode: 'range' | 'single' | 'single-or-return';
@@ -39,13 +43,12 @@ export interface VerticalConfig {
   route: string;
   title: string;
   subtitle: string;
-  heroImage: string;
+  /** Mã ảnh Unsplash (tên file trong `public/images/unsplash/`); LandingHero đọc ảnh từ mã này. */
+  heroPhoto: string;
   tabs: VerticalTab[];
   sheet: SheetConfig;
   promo: { title: string; body: string; cta: string; prompt: string };
 }
-
-const heroUrl = (photo: string) => `https://images.unsplash.com/photo-${photo}?q=80&w=2000&auto=format&fit=crop`;
 
 const PROMO_BODY = 'Nói với trợ lý AI chuyến đi bạn muốn: trợ lý lập lịch từng ngày bằng khách sạn, vé và trải nghiệm có thật trong hệ thống.';
 
@@ -55,13 +58,13 @@ export const VERTICALS: Record<VerticalId, VerticalConfig> = {
     route: '/hotels',
     title: 'Khách sạn & resort',
     subtitle: 'Tìm nơi nghỉ phù hợp cho chuyến đi tiếp theo của bạn',
-    heroImage: heroUrl('1582719508461-905c673771fd'),
+    heroPhoto: '1582719508461-905c673771fd',
     tabs: [{
       taxonomy: 'hotel', label: 'Khách sạn', noun: 'khách sạn', atWord: 'tại',
       popularTitle: 'Khách sạn và resort phổ biến', cheapTitle: 'Khách sạn giá tốt nhất',
     }],
     sheet: {
-      location: { label: 'Địa điểm', placeholder: 'Nhập điểm đến' },
+      location: { label: 'Địa điểm', placeholder: 'Nhập điểm đến', suggest: 'famous-hotels' },
       dates: { mode: 'range', startLabel: 'Ngày đi', endLabel: 'Ngày về' },
       guestsLabel: 'Số lượng',
       rooms: true,
@@ -76,14 +79,14 @@ export const VERTICALS: Record<VerticalId, VerticalConfig> = {
     route: '/flights',
     title: 'Vé máy bay',
     subtitle: 'Chọn chặng bay và ngày đi thuận tiện cho hành trình của bạn',
-    heroImage: heroUrl('1436491865332-7a61a109cc05'),
+    heroPhoto: '1436491865332-7a61a109cc05',
     tabs: [{
       taxonomy: 'flight', label: 'Vé máy bay', noun: 'vé máy bay', atWord: 'đến',
       popularTitle: 'Chặng bay phổ biến', cheapTitle: 'Vé giá tốt nhất',
     }],
     sheet: {
-      origin: { label: 'Điểm đi', placeholder: 'Nhập nơi khởi hành' },
-      location: { label: 'Điểm đến', placeholder: 'Nhập điểm đến' },
+      origin: { label: 'Điểm đi', placeholder: 'Chọn sân bay đi' },
+      location: { label: 'Điểm đến', placeholder: 'Chọn sân bay đến', suggest: 'airports' },
       dates: { mode: 'single-or-return', startLabel: 'Ngày đi', endLabel: 'Ngày về' },
       guestsLabel: 'Hành khách',
       rooms: false,
@@ -98,7 +101,7 @@ export const VERTICALS: Record<VerticalId, VerticalConfig> = {
     route: '/experiences',
     title: 'Tour và trải nghiệm',
     subtitle: 'Vé tham quan, vui chơi và sân golf tại điểm đến của bạn',
-    heroImage: heroUrl('1530789253388-582c481c54b0'),
+    heroPhoto: '1530789253388-582c481c54b0',
     tabs: [
       {
         taxonomy: 'attraction', label: 'Vé tham quan', noun: 'vé tham quan', atWord: 'tại',
@@ -110,7 +113,7 @@ export const VERTICALS: Record<VerticalId, VerticalConfig> = {
       },
     ],
     sheet: {
-      location: { label: 'Điểm đến', placeholder: 'Nhập điểm đến' },
+      location: { label: 'Điểm đến', placeholder: 'Nhập điểm đến', suggest: 'destinations' },
       dates: { mode: 'single', startLabel: 'Ngày sử dụng' },
       guestsLabel: 'Số khách',
       rooms: false,
@@ -125,13 +128,13 @@ export const VERTICALS: Record<VerticalId, VerticalConfig> = {
     route: '/combos',
     title: 'Combo du lịch',
     subtitle: 'Gói kết hợp lưu trú, vé và vui chơi trong một lần đặt',
-    heroImage: heroUrl('1506929562872-bb421503ef21'),
+    heroPhoto: '1506929562872-bb421503ef21',
     tabs: [{
       taxonomy: 'combo', label: 'Combo', noun: 'combo', atWord: 'tại',
       popularTitle: 'Combo được chọn nhiều', cheapTitle: 'Combo giá tốt nhất',
     }],
     sheet: {
-      location: { label: 'Điểm đến', placeholder: 'Nhập điểm đến' },
+      location: { label: 'Điểm đến', placeholder: 'Nhập điểm đến', suggest: 'famous-hotels' },
       dates: { mode: 'single', startLabel: 'Ngày bắt đầu' },
       guestsLabel: 'Số khách',
       rooms: false,

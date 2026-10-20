@@ -1,43 +1,22 @@
 """Hỏi giá vé máy bay trước khi lập lịch (kịch bản bản 5 cảnh 6, người dùng chốt 2026-10-10).
 
-`classify` (LLM) nhận câu hỏi vé và đọc ra nơi đi, nơi đến (`FareQuestion`); test giả lập phần LLM hiểu đó, phần còn
-lại (đối chiếu tên với catalog, hỏi lại chỗ thiếu, tra chuyến) chạy thật.
+Orchestrator (LLM) nhận câu hỏi vé và khai một job `fare` với nơi đi, nơi đến (`FareQuestion`); test giả lập phần LLM
+hiểu đó, phần còn lại (đối chiếu tên với catalog, hỏi lại chỗ thiếu, tra chuyến, câu trả lời do code viết) chạy thật.
 """
 
 import unittest
 
-from src.backend.app.agents.models import FareQuestion, TurnRoute
-from src.backend.app.agents.nodes import intake_node
-from src.backend.app.agents.steps.classification import route_result
+from src.backend.app.agents.models import FareQuestion, Job, OrchestratorTurn
 from src.backend.app.infrastructure.persistence.conversation_store import InMemoryConversationStore
 
 from . import test_itinerary_runtime as runtime
 from .test_itinerary_runtime import START, FlightClients, ScriptedLlm
 
 
-def fare_llm(other_questions=(), **slots):
-    """LLM của `classify` hiểu lượt này là câu hỏi vé máy bay với các trường `slots`."""
-    return ScriptedLlm(turn=TurnRoute(route='fare', fare=FareQuestion(**slots), other_questions=list(other_questions)))
-
-
-class FareRouteTests(unittest.TestCase):
-    def test_a_fare_label_goes_to_the_fare_branch_with_what_the_llm_understood(self):
-        state = intake_node({'query': 'vé sg ra hn bao nhiu'})
-        update = route_result(state, TurnRoute(route='fare', fare=FareQuestion(origin='sg', destination='hn')))
-        self.assertEqual(update['decision'], 'explore')
-        self.assertTrue(update['fare_question'])
-        self.assertEqual(update['fare_ask']['origin'], 'sg')
-        self.assertEqual(update['missing_fields'], [])
-
-    def test_other_labels_are_not_fare_questions(self):
-        update = route_result(intake_node({'query': 'Hà Nội có gì chơi?'}), TurnRoute(route='explore', city='Hà Nội'))
-        self.assertFalse(update.get('fare_question'))
-        self.assertEqual(update['explore_city'], 'Hà Nội')
-
-    def test_overlong_other_questions_are_not_turned_into_buttons(self):
-        update = route_result(intake_node({'query': 'x'}),
-                              TurnRoute(route='fare', fare=FareQuestion(), other_questions=['Hà Nội có gì chơi?', 'x' * 61]))
-        self.assertEqual(update['other_questions'], ['Hà Nội có gì chơi?'])
+def fare_llm(**slots):
+    """Orchestrator hiểu lượt này chỉ hỏi vé máy bay với các trường `slots`: một job `fare`, đi đường tắt câu vé."""
+    return ScriptedLlm(turn=OrchestratorTurn(action='execute', fare_only=True,
+                                             jobs=[Job(kind='fare', fare=FareQuestion(**slots))]))
 
 
 class FareFlowTests(unittest.IsolatedAsyncioTestCase):
@@ -78,7 +57,7 @@ class FareFlowTests(unittest.IsolatedAsyncioTestCase):
         clients, store = self.clients(), InMemoryConversationStore()
         first = await self.run_graph(fare_llm(destination='Nha Trang'), clients, store=store, owner='u',
                                      state={'query': 'Vé máy bay ra Nha Trang bao nhiêu?'})
-        llm = ScriptedLlm(turn=TurnRoute(route='explore', city='Hà Nội'))
+        llm = ScriptedLlm(route='nút vé không gọi LLM')  # gọi LLM là test fail
         second = await self.run_graph(llm, clients, store=store, owner='u',
                                       state={'query': 'Từ Hà Nội', 'conversation_id': first['conversation_id']})
         self.assertIn('Vé một chiều Hà Nội → Nha Trang rẻ nhất', second['response']['question'])
@@ -105,16 +84,6 @@ class FareFlowTests(unittest.IsolatedAsyncioTestCase):
         result = await self.run_graph(fare_llm(origin='Cần Thơ', destination='Nha Trang'), self.clients(),
                                       state={'query': 'vé từ Cần Thơ ra Nha Trang bao nhiêu'})
         self.assertIn('Mình chưa thấy chuyến bay còn vé từ Cần Thơ đến Nha Trang', result['response']['question'])
-
-    async def test_other_questions_in_the_same_message_become_buttons(self):
-        llm = fare_llm(origin='Hà Nội', destination='Nha Trang',
-                       other_questions=['Nha Trang có gì chơi?', 'Khách sạn nào gần biển?'])
-        result = await self.run_graph(llm, self.clients(),
-                                      state={'query': 'nha trang có gì chơi, vé bay từ hà nội bao nhiêu, ks nào gần biển'})
-        response = result['response']
-        self.assertIn('1.000.000 ₫/khách', response['question'])
-        self.assertIn('các câu còn lại bạn bấm nút', response['question'])
-        self.assertEqual(response['suggestions'][:2], ['Nha Trang có gì chơi?', 'Khách sạn nào gần biển?'])
 
 
 if __name__ == '__main__':

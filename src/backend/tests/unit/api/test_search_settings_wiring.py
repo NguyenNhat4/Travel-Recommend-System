@@ -26,19 +26,23 @@ def test_defaults_are_off_and_identity(data_dir):
     assert (engine.hybrid.dense_weight, engine.hybrid.lexical_weight, engine.hybrid.fuzzy_weight) == (1.0, 1.0, 1.0)
 
 
-def test_v118_flags_default_off_and_reach_the_engine(data_dir):
-    """07/10 (contract 1.18.0): ba cờ mặc định tắt (tắt không parse → response y hệt 1.17.0) và được truyền tới engine."""
+def test_v118_flags_defaults_and_reach_the_engine(data_dir):
+    """07/10 (contract 1.18.0): ba cờ được truyền tới engine; tắt thì không parse (response y hệt 1.17.0). Từ 14/10 thời lượng và
+    địa danh bật mặc định; entity bật (team Web chốt 14/10)."""
     s, engine = _build(data_dir)
-    assert (s.search_duration_filter, s.search_poi_resolve, s.search_entity_filter) == (False, False, False)
-    assert (engine.duration_filter, engine.poi_resolve, engine.entity_filter) == (False, False, False)
-    r = engine("VinWonders 3 ngày 2 đêm", limit=50)
+    assert (s.search_duration_filter, s.search_poi_resolve, s.search_entity_filter) == (True, True, True)
+    assert (engine.duration_filter, engine.poi_resolve, engine.entity_filter) == (True, True, True)
+    _, off = _build(data_dir, search_duration_filter=False, search_poi_resolve=False, search_entity_filter=False,
+                    search_duration_mask=False)
+    r = off("VinWonders 3 ngày 2 đêm", limit=50)
     assert not {"duration", "entity", "location"} & set(r["diagnostics"].get("queryPlan", {}))
-    _, on = _build(data_dir, search_duration_filter=True, search_poi_resolve=True, search_entity_filter=True)
+    _, on = _build(data_dir, search_duration_filter=True, search_poi_resolve=True, search_entity_filter=True,
+                   search_duration_mask=False)
     assert (on.duration_filter, on.poi_resolve, on.entity_filter) == (True, True, True)
     qp = on("VinWonders 3 ngày 2 đêm", limit=50)["diagnostics"]["queryPlan"]
     assert qp["duration"] == {"days": 3, "nights": 2, "source": "query"} and qp["entity"]["role"] == "gate"
     # mỗi cờ độc lập: bật một cờ không kéo hai cờ kia
-    _, one = _build(data_dir, search_poi_resolve=True)
+    _, one = _build(data_dir, search_duration_filter=False, search_poi_resolve=True, search_entity_filter=False)
     assert (one.duration_filter, one.poi_resolve, one.entity_filter) == (False, True, False)
 
 
@@ -49,12 +53,19 @@ def test_production_defaults_restored(data_dir):
     assert (s.search_dest_filter, s.search_negation_filter, s.search_route_filter, s.search_numeric_filter) == (
         True, True, True, True)
     assert s.search_taxonomy_filter is False
-    assert (s.search_no_diacritics_mode, s.search_no_diacritics_cutoff) == ("relax", 0.80)
+    # 14/10 (bench gold_v7, plan 2026-10-13): câu không dấu phục hồi dấu thay vì nới cutoff; cổng bằng chứng + câu không giải
+    # thích được bật; thời lượng / embed residual / backgroundScore vẫn tắt.
+    assert (s.search_no_diacritics_mode, s.search_no_diacritics_cutoff) == ("restore", 0.80)
+    assert (s.search_evidence_gate, s.search_unexplained_empty) == (True, True)
+    assert (s.search_duration_mask, s.search_embed_residual, s.search_emit_background) == (True, True, False)
+    # 14/10: địa danh gazetteer + thời lượng + entity gate bật (team Web chốt).
+    assert (s.search_poi_resolve, s.search_duration_filter, s.search_entity_filter) == (True, True, True)
     assert (s.search_llm_fallback, s.search_llm_fallback_min_confidence, s.search_llm_fallback_timeout_ms) == (
         "off", 0.75, 1500)
     assert (engine.dest_filter, engine.negation_filter, engine.route_filter, engine.numeric_filter) == (
         True, True, True, True)
-    assert engine.taxonomy_filter is False and engine.no_diacritics is not None and engine.no_diacritics_cutoff == 0.80
+    assert engine.taxonomy_filter is False and engine.no_diacritics is None and engine.no_diacritics_cutoff is None
+    assert engine.no_diacritics_restore and engine.unexplained_empty and engine.hybrid.evidence_gate
     assert engine.llm_fallback == "off" and engine.hypothesizer is None and engine._llm is None
     # Chuỗi rỗng từ .env = "không đặt" cho cutoff câu không dấu (Settings._OPTIONAL_BLANK_IS_NONE).
     assert Settings(_env_file=None, search_no_diacritics_cutoff="").search_no_diacritics_cutoff is None

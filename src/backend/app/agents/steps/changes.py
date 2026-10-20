@@ -65,7 +65,7 @@ def _stay_change(state: dict) -> dict | None:
         return None
     return {"decision": "missing_info", "clarification_reason": CHOOSE_STAY, "interaction_type": "travel",
             "refusal": False, "missing_fields": [], "change_request": {"kind": "stay"},
-            "events": [event("classify", "route clarify (change hotel without direction)")]}
+            "events": [event("precheck", "route clarify (change hotel without direction)")]}
 
 
 def _names(text: str, number: str | None) -> bool:
@@ -104,7 +104,7 @@ def _pick(state: dict, direction: str, alternative: dict) -> dict:
     constraints["chosen_flights"] = {**(constraints.get("chosen_flights") or {}), direction: alternative["productId"]}
     return {"decision": "tool", "interaction_type": "travel", "refusal": False, "plan_consent": True,
             "constraints": constraints,
-            "events": [event("classify", "route tool (flight picked)", direction=direction)]}
+            "events": [event("precheck", "route tool (flight picked)", direction=direction)]}
 
 
 def _flight_change(state: dict) -> dict | None:
@@ -131,11 +131,11 @@ def _flight_change(state: dict) -> dict | None:
             request["unmatched"] = want
     return {"decision": "missing_info", "clarification_reason": CHOOSE_FLIGHT, "interaction_type": "travel",
             "refusal": False, "missing_fields": [], "change_request": request,
-            "events": [event("classify", "route clarify (change flight)", want=want)]}
+            "events": [event("precheck", "route clarify (change flight)", want=want)]}
 
 
 def detected(state: dict) -> dict | None:
-    """Update của `classify` khi câu là đổi khách sạn hoặc chuyến bay xử lý được bằng luật; None thì đi luồng thường."""
+    """Update của `precheck` khi câu là đổi khách sạn hoặc chuyến bay xử lý được bằng luật; None thì đi orchestrator."""
     return _flight_change(state) or _stay_change(state)
 
 

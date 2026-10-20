@@ -102,6 +102,29 @@ describe('assistant widget history (FR-AGT-01)', () => {
     expect(mocks.loadConversation).not.toHaveBeenCalled();
   });
 
+  it('while the archive loads, shows skeleton conversation rows; the real list replaces them', async () => {
+    let answer!: (value: unknown) => void;
+    mocks.listAssistantConversations.mockReturnValue(new Promise((resolve) => { answer = resolve; }));
+    openHistory();
+    const skeleton = await screen.findByRole('status', { name: 'Đang tải lịch sử…' });
+    expect(skeleton.querySelectorAll(':scope > div')).toHaveLength(4);
+    expect(screen.queryByText('Chưa có lịch sử hội thoại nào')).toBeNull();
+
+    answer({
+      data: [summary('c-1', 'Đà Lạt cuối tuần', '2026-10-06T04:00:00Z')],
+      pagination: { page: 1, pageSize: 20, totalItems: 1, totalPages: 1 },
+    });
+    expect(await screen.findByRole('button', { name: 'Mở hội thoại Đà Lạt cuối tuần' })).toBeTruthy();
+    expect(screen.queryByRole('status', { name: 'Đang tải lịch sử…' })).toBeNull();
+  });
+
+  it('an empty archive ends on the empty message, not on the skeleton', async () => {
+    mocks.listAssistantConversations.mockResolvedValue({ data: [], pagination: { page: 1, pageSize: 20, totalItems: 0, totalPages: 0 } });
+    openHistory();
+    expect(await screen.findByText('Chưa có lịch sử hội thoại nào')).toBeTruthy();
+    expect(screen.queryByRole('status', { name: 'Đang tải lịch sử…' })).toBeNull();
+  });
+
   it('does not call the archive for guests and asks them to sign in', () => {
     mocks.persona = null;
     openHistory();

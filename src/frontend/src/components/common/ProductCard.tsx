@@ -2,10 +2,11 @@ import React from 'react';
 import Link from 'next/link';
 import { Product, BecauseItem, Strategy, Taxonomy } from '../../types/travel';
 import { PriceTag } from './PriceTag';
+import { TaxonomyBadge } from './TaxonomyBadge';
 import { useTravel } from '../../context/TravelContext';
 import { flightProductHref } from '../../features/flights/results/flightHref';
 import { placeholderImage } from '../../services/catalog';
-import { MapPin, Star, Plus, ArrowRight, ExternalLink, Loader2, Check } from 'lucide-react';
+import { MapPin, Star, ShoppingCart, ArrowRight, ExternalLink, Loader2, Check } from 'lucide-react';
 
 interface ProductCardProps {
   product: Product;
@@ -30,6 +31,11 @@ interface ProductCardProps {
   /** compact: hiện điểm đánh giá (nếu có) và địa chỉ thay cho điểm đến. */
   showRatingAndAddress?: boolean;
   quickAddState?: 'adding' | 'added';
+  /**
+   * tile: gắn nhãn loại ở góc ảnh. Chỉ bật ở kệ trộn nhiều loại (product.md §4.0; ngoại lệ của quyết định bỏ nhãn
+   * ngày 2026-10-01); các biến thể khác bỏ qua prop này.
+   */
+  showTaxonomy?: boolean;
 }
 
 export const ProductCard: React.FC<ProductCardProps> = ({
@@ -50,6 +56,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   priceLabel,
   showRatingAndAddress = false,
   quickAddState,
+  showTaxonomy = false,
 }) => {
   const { navigate, debugMode, recordEvent } = useTravel();
 
@@ -87,6 +94,13 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             referrerPolicy="no-referrer"
             className={`h-full w-full object-cover transition-transform duration-500 group-hover:scale-105 ${!product.available ? 'grayscale' : ''}`}
           />
+          {showTaxonomy && (
+            // Chữ nhãn nằm trong tên truy cập của liên kết (không aria-hidden): trình đọc màn hình cũng cần biết loại,
+            // vì có combo tên mở đầu bằng "Vé máy bay khứ hồi … +".
+            <div className="absolute left-3 top-3">
+              <TaxonomyBadge taxonomy={product.taxonomy} size="sm" className="shadow-sm" />
+            </div>
+          )}
           {!product.available && (
             <div className="absolute inset-0 flex items-center justify-center bg-slate-900/55 text-xs font-bold uppercase tracking-wider text-white">
               Tạm hết chỗ
@@ -105,7 +119,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             <p className="text-xs text-slate-600">
               <span className="font-bold text-slate-800">★ {product.aggregateRating.score}</span>
               {product.aggregateRating.count > 0 && (
-                <span className="text-slate-400"> · {product.aggregateRating.count.toLocaleString('vi-VN')} đánh giá</span>
+                <span className="text-slate-500"> · {product.aggregateRating.count.toLocaleString('vi-VN')} đánh giá</span>
               )}
             </p>
           )}
@@ -150,7 +164,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                   ✨ Hợp với bạn
                 </span>
               )}
-              {product.aggregateRating && (
+              {/* `showRatingAndAddress` có dòng "x/5 · n đánh giá" dưới tên rồi, không hiện điểm lần thứ hai. */}
+              {product.aggregateRating && !showRatingAndAddress && (
                 <span className="flex items-center text-[11px] font-medium text-amber-600">
                   <Star className="w-3 h-3 fill-amber-400 text-amber-400 mr-0.5" />
                   {product.aggregateRating.score}
@@ -169,7 +184,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
               <p className="text-[11px] text-slate-600">
                 <span className="font-semibold text-slate-800">{product.aggregateRating.score}/5</span>
                 {product.aggregateRating.count > 0 && (
-                  <span className="text-slate-400"> · {product.aggregateRating.count.toLocaleString('vi-VN')} đánh giá</span>
+                  <span className="text-slate-500"> · {product.aggregateRating.count.toLocaleString('vi-VN')} đánh giá</span>
                 )}
               </p>
             )}
@@ -195,6 +210,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             <button
               disabled={Boolean(quickAddState)}
               aria-busy={quickAddState === 'adding'}
+              aria-label={quickAddState ? undefined : `Thêm ${product.name} vào giỏ`}
               onClick={(e) => {
                 e.stopPropagation();
                 onQuickAdd(product);
@@ -202,8 +218,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({
               className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md border transition-colors disabled:cursor-default ${quickAddState === 'added' ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-brand-700 bg-brand-50 hover:bg-brand-100 border-brand-200'}`}
             >
               {quickAddState === 'adding' ? <Loader2 className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-                : quickAddState === 'added' ? <Check className="w-3.5 h-3.5" aria-hidden="true" /> : <Plus className="w-3.5 h-3.5" aria-hidden="true" />}
-              <span aria-live="polite">{quickAddState === 'adding' ? 'Đang thêm…' : quickAddState === 'added' ? 'Đã thêm' : 'Thêm'}</span>
+                : quickAddState === 'added' ? <Check className="w-3.5 h-3.5" aria-hidden="true" /> : <ShoppingCart className="w-3.5 h-3.5" aria-hidden="true" />}
+              <span aria-live="polite" className="whitespace-nowrap">{quickAddState === 'adding' ? 'Đang thêm…' : quickAddState === 'added' ? 'Đã thêm vào giỏ' : 'Thêm vào giỏ'}</span>
             </button>
           )}
           {openInNewTab && (
@@ -262,7 +278,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                   <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400 mr-1" />
                   {product.aggregateRating.score}
                   {product.aggregateRating.count > 0 && (
-                    <span className="ml-1 font-normal text-slate-400">({product.aggregateRating.count.toLocaleString('vi-VN')} đánh giá)</span>
+                    <span className="ml-1 font-normal text-slate-500">({product.aggregateRating.count.toLocaleString('vi-VN')} đánh giá)</span>
                   )}
                 </div>
               )}

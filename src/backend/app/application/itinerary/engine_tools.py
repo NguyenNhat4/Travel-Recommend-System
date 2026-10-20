@@ -133,7 +133,8 @@ class InProcessItineraryTools:
         result = await use_case(destination=params.get("destination"), taxonomy=params.get("taxonomy"),
                                 available_only=bool(params.get("availableOnly")), sort=params.get("sort", "popular"),
                                 limit=params.get("limit", 20), offset=params.get("offset", 0),
-                                parent_product_id=params.get("parentProductId"))
+                                parent_product_id=params.get("parentProductId"),
+                                **({"free_only": True} if params.get("freeOnly") else {}))
         return {**result, "requestId": current_request_id() or "catalog"}
 
     async def _list_destinations(self) -> dict[str, Any]:

@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { Briefcase, Check, ChevronRight, Plane, ShoppingBag } from 'lucide-react';
+import { SkeletonBlock } from '../../../components/common/Skeleton';
 import { AirlineBadge } from './AirlineBadge';
 import { dateOfIso, dayTag, groupDigits } from './flightFormat';
 import { formatDuration, type FareOption, type FlightOption } from './flightModel';
@@ -12,6 +13,7 @@ interface FlightCardProps {
   chosen: FareOption | null;
   expanded: boolean;
   onToggleExpanded: () => void;
+  preferredFareId?: string | null;
   onPick: (option: FlightOption, fare: FareOption) => void;
   onClear: () => void;
 }
@@ -28,13 +30,55 @@ const TimeBox: React.FC<{ clock: string; tag: string; code: string }> = ({ clock
   </div>
 );
 
+/** Khung thẻ chuyến bay trong lúc tải: hai ô giờ hai bên đường bay, dòng hãng và hạng, số hiệu, cột giá kèm nút Chọn. */
+export const FlightCardSkeleton: React.FC = () => (
+  <div aria-hidden="true" className="@container rounded-[20px] border-[1.5px] border-slate-100 bg-white">
+    <div className="grid @min-[40rem]:grid-cols-[minmax(0,1fr)_12rem]">
+      <div className="flex min-w-0 flex-col gap-3 p-3.5 @min-[30rem]:px-5 @min-[30rem]:py-4">
+        <div className="grid grid-cols-[auto_minmax(4rem,1fr)_auto] items-center gap-2 @min-[30rem]:gap-3.5">
+          <SkeletonBlock className="h-[58px] w-28 rounded-2xl" />
+          <div className="flex flex-col items-center gap-1.5">
+            <SkeletonBlock className="h-1.5 w-full max-w-[7.5rem] rounded-full" />
+            <SkeletonBlock className="h-3.5 w-20 rounded" />
+          </div>
+          <SkeletonBlock className="h-[58px] w-28 rounded-2xl" />
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <SkeletonBlock className="h-4 w-32 rounded" />
+          <SkeletonBlock className="h-5 w-24 rounded-full" />
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <SkeletonBlock className="h-5 w-20 rounded" />
+          <SkeletonBlock className="h-4 w-36 rounded" />
+        </div>
+      </div>
+      <div className="mx-3.5 flex items-center justify-between gap-3 border-t border-slate-200 py-3.5 @min-[30rem]:mx-5 @min-[40rem]:mx-0 @min-[40rem]:my-4 @min-[40rem]:flex-col @min-[40rem]:items-end @min-[40rem]:justify-center @min-[40rem]:border-l @min-[40rem]:border-t-0 @min-[40rem]:px-5 @min-[40rem]:py-0">
+        <div className="space-y-1.5 @min-[40rem]:flex @min-[40rem]:flex-col @min-[40rem]:items-end">
+          <SkeletonBlock className="h-6 w-28 rounded" />
+          <SkeletonBlock className="h-3 w-12 rounded" />
+        </div>
+        <SkeletonBlock className="h-11 w-[8.25rem] rounded-full" />
+      </div>
+    </div>
+  </div>
+);
+
+/** Khung dải ngày phía trên danh sách chuyến: bảy ô ngày kèm giá thấp nhất. */
+export const FlightDateStripSkeleton: React.FC = () => (
+  <div aria-hidden="true" className="flex gap-2 overflow-hidden rounded-[20px] border border-slate-100 bg-white px-3 py-4 sm:px-5">
+    {[0, 1, 2, 3, 4, 5, 6].map((i) => <SkeletonBlock key={i} className="h-[76px] min-w-[74px] shrink-0 rounded-[13px]" />)}
+  </div>
+);
+
 /**
  * Một hành trình bay: giờ đi, giờ đến, hãng, thời lượng, hạng vé, giá và nút Chọn. Hành lý chỉ hiện khi nguồn có số liệu
  * (`null` là chưa biết, không hiện "0 kg"). Có từ hai hạng thì chọn hạng ngay trong thẻ, giá và nút theo hạng đó.
  */
-export const FlightCard: React.FC<FlightCardProps> = ({ option, chosen, expanded, onToggleExpanded, onPick, onClear }) => {
-  const [fareId, setFareId] = useState(option.fares[0].productId);
-  const fare = option.fares.find((f) => f.productId === (chosen?.productId ?? fareId)) ?? option.fares[0];
+export const FlightCard: React.FC<FlightCardProps> = ({ option, chosen, preferredFareId, expanded, onToggleExpanded, onPick, onClear }) => {
+  const defaultFare = option.fares.find((fare) => fare.productId === preferredFareId)
+    ?? [...option.fares].sort((a, b) => a.price - b.price)[0];
+  const [fareId, setFareId] = useState(defaultFare.productId);
+  const fare = option.fares.find((f) => f.productId === (chosen?.productId ?? fareId)) ?? defaultFare;
   const selected = chosen !== null;
   const detailId = `flight-detail-${option.key.replace(/[^a-zA-Z0-9]/g, '')}`;
   const stopLabel = option.nonstop === true ? 'Bay thẳng' : option.nonstop === false ? 'Có điểm dừng' : null;

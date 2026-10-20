@@ -195,7 +195,7 @@ function WidgetTitle({ title }: { title?: string }) {
       </span>
       <div className="min-w-0">
         <h2 className="font-sans truncate text-sm font-semibold text-slate-900">Trợ lý du lịch AI</h2>
-        <p className="mt-0.5 truncate text-xs text-slate-500">{title || 'Lên kế hoạch cùng V-OTA'}</p>
+        <p className="mt-0.5 truncate text-xs text-slate-500">{title || 'Lên kế hoạch cùng Sota'}</p>
       </div>
     </div>
   );

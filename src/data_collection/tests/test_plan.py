@@ -15,6 +15,11 @@ class PlanConfigTests(unittest.TestCase):
             self.assertIn(d.name, DESTINATION_ALIASES, f"{d.name}: thiếu alias trong geo.py")
             self.assertIn(d.name, DESTINATION_CENTERS, f"{d.name}: thiếu toạ độ tâm trong geo.py")
 
+    def test_every_alias_destination_has_a_center(self):
+        # 12/10/2026: Tuyên Quang có alias mà thiếu tâm → không kiểm được toạ độ, bộ cào BFS bỏ qua điểm đến này.
+        self.assertEqual([d for d in DESTINATION_ALIASES if d not in DESTINATION_CENTERS], [])
+        self.assertEqual([d for d in DESTINATION_CENTERS if d not in DESTINATION_ALIASES], [])
+
     def test_names_are_unique_and_sources_not_duplicated(self):
         names = [d.name for d in DESTINATIONS]
         self.assertEqual(len(names), len(set(names)))

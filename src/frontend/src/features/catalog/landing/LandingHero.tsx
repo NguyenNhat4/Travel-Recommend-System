@@ -6,6 +6,8 @@ import { LandingSearchSheet } from './LandingSearchSheet';
 import type { FlightSearchInput } from '../../flights/results/flightHref';
 import type { TripContext } from '../../search/tripContext';
 import type { VerticalConfig, VerticalTab } from './verticals';
+import Image from 'next/image';
+import { unsplashPath } from '../../../lib/unsplash';
 
 interface LandingHeroProps {
   config: VerticalConfig;
@@ -38,7 +40,14 @@ export function LandingHero({ config, tab, activeGroup, destination, search, ini
   return (
     <section className={`relative flex items-end pb-14 pt-28 ${compact ? 'min-h-[400px] lg:min-h-[380px] lg:pb-14' : 'min-h-[520px] lg:min-h-[500px] lg:pb-16'}`}>
       <div className="absolute inset-0 overflow-hidden bg-slate-800">
-        <img src={config.heroImage} alt="" fetchPriority="high" loading="eager" decoding="async" className="h-full w-full object-cover object-center" />
+        <Image
+          src={unsplashPath(config.heroPhoto)}
+          fill
+          sizes="100vw"
+          alt=""
+          priority
+          className="object-cover object-center"
+        />
         <div className="absolute inset-0 bg-black/36" />
       </div>
 

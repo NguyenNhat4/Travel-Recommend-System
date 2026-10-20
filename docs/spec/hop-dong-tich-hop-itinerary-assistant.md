@@ -348,9 +348,15 @@ Accept: text/event-stream
 
 Request giống `POST /assistant/itineraries`. Stream phát lần lượt `run.started`, `graph.topology`, các `node.completed`, rồi `run.completed` hoặc `run.failed`. Event chỉ chứa ID node, thứ tự, trạng thái, thời lượng và response công khai; không chứa raw graph state, prompt, token hoặc credential. Vì HTTP status đã được gửi khi mở SSE, lỗi phát sinh sau đó nằm trong payload `run.failed.httpStatus`.
 
+**Tiến trình 1.27.0 (AC-AGT-09, chốt Phần A/C 13/10/2026).** Stream bổ sung `node.activity` ngay khi node bắt đầu hoặc đang tìm/tra vé/kiểm giá; `node.completed.progress` có loại lượt, bước hoàn thành, thông tin đã hiểu, nhóm tìm kiếm và thông báo bằng mã. Nhóm cập nhật thay toàn bộ theo `groupId`; số là cộng dồn do code đếm tại nơi lọc. Thông báo thay theo `(code, groupId, date)`, không cộng; nhóm `superseded` bị ẩn cùng thông báo. Không đếm được đúng phạm vi (ví dụ câu vé kèm ngày/giờ và thẻ ngày lân cận) thì bỏ số đó, không dùng tổng nguồn để ước lượng. `run.preview` không còn phát (bỏ thẻ xem trước, chốt 2026-10-14, `../prd/update-archive/2026-10-14-bo-the-xem-truoc-trong-tien-trinh.md`); schema giữ cho client cũ. Chẩn đoán mức 1 chỉ dùng stream công khai; không có chi tiết tool/LLM theo khoá (Phần B chưa chốt). Tiến trình không được lưu vào hội thoại. Collector theo request, không đổi response JSON, payload LLM, tham số tool hoặc state lưu; `application` nhận bộ đếm/callback tuỳ chọn và không import `agents`.
+
 `GET /api/v1/assistant/status` trả readiness, graph version, data mode (`fixture` | `inprocess` | `http` | `disabled`) và số sản phẩm nếu adapter biết (`fixture`: 50; `inprocess`: số search unit trong index RecSys đang phục vụ, `null` khi RecSys chưa nạp). `fixture` chỉ được bật mặc định ở development/test; ngoài development/test mặc định là `disabled`, nên staging/production phải đặt `ITINERARY_DATA_MODE` tường minh (`inprocess` khi chạy dữ liệu thật).
 
 #### API lịch sử hội thoại
+
+Tiến trình 1.28.0: scope công khai có thêm `scopeMode`, `excludedDestinations`, `requestedCount` trong nhóm tìm
+và công việc đã hiểu, để Web giải thích thay phạm vi và mục tiêu số lượng. Không gửi `query` hay suy luận thô.
+`requestedCount` là số lượng người dùng yêu cầu đã hiểu; số tìm thấy/giới thiệu chỉ lấy từ `counts`.
 
 - `GET /api/v1/assistant/conversations?page=1&pageSize=20`: danh sách hội thoại mới nhất trước.
 - `GET /api/v1/assistant/conversations/{conversationId}`: transcript đầy đủ và response có cấu trúc đã lưu.
@@ -474,11 +480,12 @@ Backend đếm `clarification_rounds` theo hội thoại (0, 1, 2…), chỉ tă
   ```
 
   `clarificationForm.fields` liệt kê mọi trường bắt buộc của chuyến đi (không chỉ trường còn thiếu), để người dùng sửa lại cả
-  những gì đã nói nếu muốn. `defaults` ưu tiên giá trị người dùng đã cung cấp; trường còn lại dùng gợi ý: `days` = 1,
-  `startDate` = hôm nay theo giờ Việt Nam (không được sớm hơn `startDateMin`), `party` = 2 người lớn, `budget` = `null`
-  (không giới hạn), `destination` = điểm đến đầu tiên trong `supported_destinations` nếu hội thoại đã từng gọi tool.
+  những gì đã nói nếu muốn. `defaults` ưu tiên giá trị người dùng đã cung cấp; trường còn lại: `days` = 1, `party` = 2
+  người lớn (stepper luôn hiện một số và form gửi đúng số đang hiện), `budget` = `null` (không giới hạn); `startDate` và
+  `destination` người dùng chưa nói thì để `null`, không tự điền hôm nay hay một điểm của catalog (cập nhật 2026-10-12,
+  review UX: form hiện sẵn ngày hôm nay làm người dùng tưởng đã chọn). Ngày đã qua cũng để `null`.
   Frontend tự nạp danh sách điểm đến cho ô chọn (`GET /destinations`, chỉ hiện vài điểm đến tiêu biểu, không đổ hết catalog)
-  và chặn tại chỗ: số ngày trong 1–7, `startDate ≥ startDateMin`. Bấm xác nhận dựng một câu yêu cầu hoàn chỉnh và **gửi
+  và chặn tại chỗ: số ngày trong 1–7, `startDate ≥ startDateMin`, chưa chọn điểm đến hoặc ngày đi thì chưa xác nhận được. Bấm xác nhận dựng một câu yêu cầu hoàn chỉnh và **gửi
   ngay** như một lượt chat bình thường (không dùng `intentOverride`). `suggestedValues` giữ nguyên hành vi cũ, không đổi.
 
 **Giá trị không hợp lệ thì hỏi lại (đề xuất `docs/prd/update-archive/2026-09-30-bao-loi-dau-vao-khong-hop-le.md`, đã áp dụng; thay `2026-09-30-hoi-lai-khi-ngay-di-da-qua.md`).**
@@ -502,7 +509,7 @@ trước. Ngày đi quá xa (ngoài cửa sổ mở bán) không thuộc nhóm n
 - **Gợi ý theo trường:** ngày đi → "chọn từ hôm nay (dd/mm/yyyy) trở đi"; điểm đến → danh sách điểm đến hỗ trợ (kèm
   `suggestedValues.destination`); số ngày → khoảng 1–7 (kèm `suggestedValues.days`); số người/ngân sách → giá trị tối thiểu hợp lệ.
 - **Còn thiếu điểm đến/số ngày:** câu vẫn nêu giá trị sai (ví dụ "di ngay 28 thang9" khi hôm nay là 30/9); `clarification_rounds`
-  vẫn tăng và từ vòng 2 vẫn kèm `clarificationForm` (điền sẵn hôm nay, không dùng ngày đã qua).
+  vẫn tăng và từ vòng 2 vẫn kèm `clarificationForm` (ô ngày đi để trống, không dùng ngày đã qua).
 - Số người lớn rất lớn hay ngân sách rất cao vẫn hợp lệ theo contract và vẫn lập lịch.
 - Ngày năm cũ LLM trích (ví dụ "20/9" thành 2023-09-20) vẫn sửa về năm nay trước khi kiểm, nên "20/9" nói vào ngày 30/9 là ngày
   đã qua và bị hỏi lại, không tự đẩy sang năm sau.
@@ -531,6 +538,7 @@ câu**, các dòng sau là phần chi tiết. Không có field mới: tiêu đ�
 | `NO_RESULTS` do ngày đi ngoài thời gian mở bán (chỉ khi cũng không có điểm tham quan nào để dựng lịch tham khảo, §4.4) | Chưa có sản phẩm mở bán cho ngày này | Cố định |
 | `FALLBACK` | Chưa dựng được lịch trình hoàn chỉnh | Cố định |
 | Chào hỏi, cảm ơn | Không có tiêu đề | — |
+| Không muốn đi hay lên lịch nữa ("ko đi nữa"): cảm ơn, hẹn gặp lại | Không có tiêu đề | LLM (dự phòng cố định) |
 | `COMPLETED` | Do LLM đặt theo chuyến đi (dự phòng: "Lịch trình {days} ngày ở {destination}"); nằm ở dòng đầu `message` và ở `itinerary.title` | LLM (dự phòng cố định) |
 | Các lỗi hệ thống khác | Không áp dụng (khung lỗi riêng) | — |
 
@@ -539,16 +547,17 @@ câu**, các dòng sau là phần chi tiết. Không có field mới: tiêu đ�
 - Backend cắt dòng tiêu đề khỏi tin nhắn trợ lý cũ khi đưa lịch sử lại cho LLM (`llm_context`), để mô hình không bắt chước hay trả
   lời tiêu đề; bản lưu và `final_answer` giữ nguyên tiêu đề.
 
-**Giọng văn.** Mọi câu LLM viết ở `clarify` và `converse` ấm áp, 2–4 câu (từ chối và trò chuyện 1–3 câu): nói ngắn vì sao cần
+**Giọng văn.** Mọi câu LLM viết (orchestrator, `clarify`) ấm áp, 2–4 câu (từ chối và trò chuyện 1–3 câu): nói ngắn vì sao cần
 thông tin, cho ví dụ cách trả lời khi cần, không nêu tên sản phẩm. `ConversationalAnswer.message` tối đa 1.000 ký tự. Câu của
 `compose` (COMPLETED/NO_RESULTS/FALLBACK) không đổi; lời diễn giải của `COMPLETED` do `narrate` viết (xem §4.2), giọng ấm áp như một người lập kế hoạch du lịch, mỗi lựa chọn có lý do cụ thể.
 
 **Lượt trò chuyện và khám phá (contract 1.24.0, FR-AGT-06, chốt 2026-10-10).** Trước khi người dùng đồng ý lập lịch, trợ lý
 không hỏi thông tin chuyến và không gửi `clarificationForm`:
 
-- Câu hỏi về một nơi ("Hà Nội có gì?", "khách sạn nào có hồ bơi?") trả `NEEDS_CLARIFICATION` có `searchResults`: tối đa 4 sản
-  phẩm thật từ Search của lượt đó (hỏi chung thì 2 điểm tham quan và 2 khách sạn, hỏi riêng chỗ ở thì 4 khách sạn), mỗi thẻ
-  một lý do đúng trên toàn bộ kết quả (nhiều đánh giá nhất, điểm cao nhất, giá thấp nhất, tham quan tự do). `question` nhắc từng
+- Câu hỏi về một nơi ("Hà Nội có gì?", "khách sạn nào có hồ bơi?") trả `NEEDS_CLARIFICATION` có `searchResults`: sản phẩm
+  thật từ tool của lượt đó; khi không nêu số lượng, tối đa 3 điểm tham quan/tour và 2 khách sạn khi hỏi chung, 4 khi hỏi riêng chỗ ở (đoạn
+  "Orchestrator" dưới đây), mỗi thẻ một lý do đúng trên toàn bộ kết quả (nhiều đánh giá nhất, điểm cao nhất, giá thấp nhất,
+  tham quan tự do). `question` nhắc từng
   sản phẩm bằng `[Tên](product:<productId>)`; client đặt thẻ ngay sau dòng đầu tiên nhắc nó. Số trong câu do backend điền.
   Lần đầu khám phá một điểm đến, câu cuối hỏi "Bạn có muốn mình lên lịch … không?".
 - Lượt trò chuyện, khám phá và việc ngoài phạm vi có `suggestions` (tối đa 3 nút, khác mẫu câu, không lặp lượt trước, luôn có
@@ -557,14 +566,38 @@ không hỏi thông tin chuyến và không gửi `clarificationForm`:
 - Đồng ý lập lịch: câu xin lập lịch, nút lập lịch, sửa form/chip, "ok" sau lời mời, hoặc câu có thông tin chuyến ngoài điểm
   đến ("Hà Nội 3 ngày"). Sau đó đi luồng hỏi gộp và form như trên. Đổi sang nơi khác ngay sau lời mời ("Thôi, Hà Nội thì
   sao?") không phải đồng ý: trợ lý khám phá nơi mới.
-- Form có ô `interests` (sở thích khách sạn, chọn nhiều, không bắt buộc) với lựa chọn trong `clarificationForm.interestOptions`;
-  Web ghép lựa chọn vào câu xác nhận "ưu tiên khách sạn có …". Sở thích là ưu tiên khi tìm khách sạn, không loại khách sạn
-  thiếu dữ liệu tiện ích.
+- Form có ô `interests` (không bắt buộc; contract 1.26.0, AC-AGT-01 chốt 12/10): 5 lựa chọn cố định trong
+  `clarificationForm.interestOptions` (chọn nhiều) và một ô tự nhập tối đa 150 ký tự; không có nút AI. Web ghép lựa chọn
+  vào câu xác nhận "ưu tiên khách sạn có …", phần tự nhập đi sau đó. Sở thích là ưu tiên khi tìm khách sạn, không loại
+  khách sạn thiếu dữ liệu tiện ích.
 - Nơi người dùng chê ("chán, Đà Nẵng đi rồi") không được gợi ý lại trong hội thoại, kể cả trong `suggestions`.
+- Người dùng không muốn đi hay lên lịch nữa ("ko đi nữa", "thôi huỷ lịch trình"; AC-AGT-01, chốt 2026-10-12), ở cả trước và
+  sau khi đồng ý lập lịch: `NEEDS_CLARIFICATION` chỉ có `question` cảm ơn, hẹn gặp lại (không tiêu đề, không `missingFields`,
+  `suggestedValues`, `clarificationForm` hay `suggestions`), không gọi tool. Chuyến đang lên và việc đã đồng ý lập lịch được
+  giữ để "thôi đi tiếp" nối lại; lời mời lập lịch đang chờ bị bỏ.
 - Sau khi có lịch, "đổi khách sạn" chưa nói hướng thì trả `NEEDS_CLARIFICATION` liệt kê các phương án khách sạn đã tính, kèm
   `suggestions` "Lấy phương án N: …" (gửi lại câu này là đổi ngay như `selectStayOption`). "Đổi chuyến bay" thì liệt kê chuyến
   khác cùng ngày của từng chặng, mỗi chuyến một nút ("Về chuyến VJ167 lúc 21:45"); gửi nút đó, hoặc "chuyến về muộn hơn/sớm
   hơn/rẻ hơn", thì trả `COMPLETED` với chuyến đã chọn. Không còn chuyến nào khác trong ngày thì gợi ý đổi ngày.
+
+**Orchestrator (chốt 2026-10-12, luồng duy nhất từ 2026-10-13; FR-AGT-01/06/07, AC-AGT-05/06/07/08, NFR-REL-01).**
+Schema nội bộ OrchestratorTurn, Job; không đổi OpenAPI hay field công khai. Luật trước LLM nằm ở `precheck`; tin bị chặn
+nhận câu cố định từ `converse`, không gọi LLM. Một LLM quyết answer/ask/plan/execute; explore là nhóm tool code chạy,
+không LLM riêng, nhánh lập lịch và narrate giữ nguyên. Không nêu số lượng: tối đa 3 thẻ tham quan/tour, 2 khách sạn khi hỏi chung
+hoặc 4 khi chỉ hỏi chỗ ở. Contract 1.28.0/AC-AGT-06 (chốt 13/10): nêu số lượng thì dùng `Job.requested_count`, code
+áp trần tổng 20, trả một phần và nói rõ khi thiếu dữ liệu/ngân sách. `NEEDS_CLARIFICATION.searchResults` dùng schema
+`ExplorationSearchResults`, tối đa 20 mỗi nhóm (flight vẫn 4); backend kiểm tổng 20 trước finalize. Không nới số
+hoạt động của lịch trình. More loại thẻ đã hiện cả hội thoại theo điểm đến + taxonomy, chỉ kế thừa điều kiện chung
+trong via; null destination là tìm không giới hạn thành phố. `scope_mode=replace` bỏ kế thừa khi tin mới đổi phạm vi,
+`excluded_destinations` chỉ áp cho việc đó và lượt tìm thêm kế thừa, không đánh dấu chê nơi cho cả hội thoại.
+About_shown chỉ tra lại đúng mã được hỏi. So rẻ/đắt hơn tra lại mốc giá cùng đơn vị, giữ các điều kiện chưa đổi.
+Tin nhiều việc gộp trong question/searchResults; code chèn khối vé nguyên văn. Một câu hỏi; các việc vé asked khác chờ
+đúng một lượt sau. Chỉ thay asked khi việc sau khai replaces và chỉ điền đúng trường thiếu; giữ các yêu cầu độc lập.
+Thẻ/link/số chỉ từ dữ liệu tra và đưa vào bản rút gọn của lượt; LLM dùng #n và placeholder; so mốc ghi job. Không tra chỉ
+nhắc tên đã gợi ý lúc trước. Code có phanh 3 việc/vòng, 3 vòng execute, 10 tool và thời gian, nêu việc chưa làm.
+Từ chối/dừng xoá pending_offer ngay lượt; chỉ câu mời được chèn tạo lời mời, nút không tạo. Đồng ý kiểm trước extract,
+trip_details kiểm thông tin trích được trước clarify/tool. Finalize kiểm lại bản trước điền số và ghi shown từ response
+cuối; cap 40 dòng facts mỗi nơi không xoá bộ nhớ ID/mã/phạm vi của thẻ từng hiện. Model riêng cấu hình trong Backend README.
 
 **Tư vấn vé máy bay (contract 1.25.0, FR-AGT-07, chốt 2026-10-11).** Câu hỏi vé máy bay trả `NEEDS_CLARIFICATION`, không lập
 lịch (kể cả khi đã có lịch):
@@ -705,6 +738,40 @@ Lỗi thực sự không nằm trong `ItineraryResponse` và không dùng `statu
 
 ---
 
+### 4.7. Assistant v2 (orc tự chủ)
+
+Phục vụ FR-AGT-01–07, NFR-REL-01; PRD `architecture.md` §3, plan `docs/plan/2026-10-13-orc-tu-chu-goi-tool-va-chon-san-pham.md`.
+Entry riêng `src/shared/contracts/assistant-v2.openapi.yaml`, prefix `/api/v2`; v1 giữ nguyên cho client cũ.
+
+- Request: `clientTurnId` (gửi lại cùng mã và cùng nội dung thì nhận lại câu trả lời đã có; đang chạy thì 409
+  `TURN_IN_PROGRESS` kèm `Retry-After`; cùng mã khác nội dung thì 409 `IDEMPOTENCY_CONFLICT`), `basePlanRevision`
+  (revision lịch đang hiển thị), `message`, `intentOverride` (form), `uiAction` (chỉ lệnh server đã cấp ở lượt trước:
+  nút hỏi vé `fare_query`, xác nhận phương án `select_alternative`; lệnh lạ trả 422).
+- Response: `turnKind`, `message`, `recommendations` theo loại (tối đa 10 mỗi loại, không trần tổng), `alternatives`
+  (mỗi thẻ kèm `uiAction` xác nhận), `itinerary` (ngày → hoạt động có giờ, `stays` có thể rỗng, `nights` có thể 0,
+  `costs` có tổng/ngân sách/vượt hoặc unknown), `planEffect` (`keep` giữ lịch, `replace` thay lịch và tăng
+  `planRevision`; revision lệch thì 409 `PLAN_REVISION_CONFLICT`), `warnings` (câu báo do code viết), `suggestions`.
+- `message` nhắc sản phẩm bằng `[Tên](product:id)` như lời diễn giải v1, để widget đặt thẻ ngay sau câu đó. Code
+  xuống đoạn sau câu chứa sản phẩm (và trước sản phẩm đứng đầu câu) để thẻ không dồn thành danh sách cuối câu trả lời
+  (AC-AGT-07). Khách xin lịch trình mà thiếu ngày đi: `clarification`, hỏi gộp một câu, không phác lịch theo ngày bằng
+  chữ (AC-AGT-01). Điểm `free`/`assumed_free` được giới thiệu là điểm tham quan tự do; câu lưu ý
+  `FREE_ENTRY_ASSUMED` do code viết một lần, orc không lặp ở từng điểm.
+- Lịch mới (`itinerary`/`replace`) kể theo ngày như wireframe PRD `user-flow.md` §4.2: tiêu đề `**Ngày N — dd/mm**`,
+  mỗi buổi một câu nhắc đúng sản phẩm của buổi đó (thẻ ngay dưới), rồi nơi nghỉ; orc không viết lại nội dung
+  `warnings`. Code tách tiêu đề đậm đứng đầu đoạn/sau dấu kết câu/sau link sản phẩm thành dòng riêng, vì widget chỉ coi
+  dòng chỉ có `**…**` là tiêu đề. Trẻ em không bắt buộc (mặc định 0, không hỏi riêng); câu cụt ngay sau câu hỏi của
+  trợ lý là câu trả lời cho câu hỏi đó, không phải dừng.
+- Khách né câu hỏi thông tin chuyến ("ko biết", "tùy bạn"): orc đề xuất lựa chọn phổ biến cho mọi trường còn thiếu,
+  hỏi một câu có/không kèm một nút đồng ý nêu đủ giá trị; không form, không lặp câu cũ (AC-AGT-07, chốt 14/10/2026,
+  `../prd/update-archive/2026-10-14-de-xuat-lua-chon-pho-bien-khi-khach-khong-tra-loi.md`). Code kiểm: lịch chỉ lưu
+  khi `destination`, `start_date`, `days`, `adults` của lịch trùng ngữ cảnh đã lưu (giá trị có căn cứ từ tin khách);
+  thiếu thì `plan_itinerary` trả trường đó trong `needs_update_trip` và `respond` replace bị trả
+  `TRIP_FIELD_UNCONFIRMED` (`domain/itinerary/orc_guardrails.py::unconfirmed_trip_fields`).
+- SSE: `start` → Think (`activity.kind=think`, `explanation` công khai đã kiểm) → Act (`activity` của tool) → Observe (`tool-completed`, `outcome` và số đếm thật) → Think tiếp theo hoặc `final`/`error`. Các call độc lập chạy song song; Observe phát khi từng call xong. Cập nhật số chọn/hiển thị của cùng group thay số cũ, không thêm vòng giả. `preview` không còn phát (bỏ thẻ xem trước, chốt 2026-10-14, `../prd/update-archive/2026-10-14-bo-the-xem-truoc-trong-tien-trinh.md`). Mất kết nối không huỷ lượt. Không thêm model call để viết tiến trình.
+- Lỗi theo §4.6: `LLM_UNAVAILABLE` 503 (model lỗi, hết giới hạn lượt), `ITINERARY_VALIDATION_FAILED` 500 (câu trả lời
+  vẫn sai sau một lần sửa), `VALIDATION_ERROR` 400 (đầu vào bị chặn, NFR-SEC-04) hoặc 422 (request sai).
+- Chưa có: ghi archive Postgres cho user đăng nhập và endpoint đọc lại lịch sử v2 (làm cùng lúc chuyển widget).
+
 ## 5. Cam kết grounding từ Team Agent
 
 1. Mọi `productId` khác `null` đều đến từ kết quả tool Search/Recommendation, hoặc Similar khi đổi một sản phẩm đã hiển thị (§2.5; engine trong tiến trình hoặc API HTTP, tuỳ data mode).
@@ -726,7 +793,7 @@ Lỗi thực sự không nằm trong `ItineraryResponse` và không dùng `statu
 
 - Mỗi conversation lưu trip intent đã chuẩn hóa gần nhất và lịch sử chat user/assistant gần đây.
 - Lịch sử chat chỉ nhận role `user`/`assistant`, tối đa 20 message, 1.000 ký tự/message và 8.000 ký tự tổng; khi vượt giới hạn thì bỏ message cũ nhất trước.
-- **Mọi** lượt gọi LLM (`classify`, `extract`, chọn tên điểm đến và lập tool plan ở `tool`, `converse`, `clarify`) nhận cùng ngữ cảnh hội thoại: lịch sử chat trong giới hạn trên, chuyến đi đã chốt (intent, ràng buộc), sản phẩm đã cho xem và câu hỏi gần nhất của trợ lý. Nhờ phần tóm tắt, thông tin của lượt cũ vẫn còn khi message cũ bị cắt. Ngữ cảnh là dữ liệu không tin cậy, không phải instruction, và message mới nhất vẫn có quyền cao hơn. Ngữ cảnh được diễn giải sẵn: chuyến đi đã chốt là một dòng tóm tắt, tin trợ lý cũ là ghi chú ngắn theo nghĩa ("gửi lịch trình Hà Nội 3 ngày: …") thay vì cả bài kèm giá; câu hỏi gần nhất giữ nguyên văn khi ngắn (`docs/spec/agent/langgraph-nodes.md`, mục "Ngữ cảnh cho LLM").
+- **Mọi** lượt gọi LLM (`orchestrate`, `extract`, chọn tên điểm đến và lập tool plan ở `tool`, `clarify`, `filter`, `narrate`) nhận cùng ngữ cảnh hội thoại: lịch sử chat trong giới hạn trên, chuyến đi đã chốt (intent, ràng buộc), sản phẩm đã cho xem trong cả hội thoại (mỗi sản phẩm một mã `#n` và một dòng thông tin, kèm lịch gần nhất tóm theo mã; tối đa 2.000 ký tự) và câu hỏi gần nhất của trợ lý. Nhờ phần tóm tắt, thông tin của lượt cũ vẫn còn khi message cũ bị cắt. Ngữ cảnh là dữ liệu không tin cậy, không phải instruction, và message mới nhất vẫn có quyền cao hơn. Ngữ cảnh được diễn giải sẵn: chuyến đi đã chốt là một dòng tóm tắt, tin trợ lý cũ là ghi chú ngắn theo nghĩa ("gửi lịch trình Hà Nội 3 ngày: …") thay vì cả bài kèm giá; câu hỏi gần nhất giữ nguyên văn khi ngắn (`docs/spec/agent/langgraph-nodes.md`, mục "Ngữ cảnh cho LLM").
 - Hội thoại lưu thêm giai đoạn trò chuyện/khám phá (FR-AGT-06): đã đồng ý lập lịch chưa, lời mời đang chờ, điểm đến đã mời,
   số lần "không biết" liên tiếp và nút gợi ý lượt trước (`docs/spec/agent/state-fields.md`). Hội thoại lưu trước 2026-10-10
   đã hỏi gộp hoặc đã có lịch thì coi như đã đồng ý.
@@ -734,6 +801,7 @@ Lỗi thực sự không nằm trong `ItineraryResponse` và không dùng `statu
 - “Đổi thành Đà Nẵng” chỉ thay `destination`.
 - “Tăng ngân sách lên 20 triệu” chỉ thay `budget`.
 - Thực hiện tìm kiếm lại khi điểm đến, ngày, ngân sách, số người hoặc sở thích thay đổi.
+- Mọi lượt lưu thêm `shown`: sản phẩm response vừa hiện (thẻ khám phá, thẻ vé, sản phẩm của lịch), mỗi cái một mã `#n` giữ suốt hội thoại, tối đa 40 mục mỗi điểm đến hoặc tuyến bay (`docs/spec/agent/state-fields.md`). Chỉ để nhớ, loại, so; không phải nguồn sản phẩm hay giá của response.
 - Lượt `COMPLETED` lưu thêm `previous_selection` (`productId`, `name`, `taxonomy` của sản phẩm đã hiển thị). Lượt sau dùng danh sách này làm danh sách cho phép khi loại sản phẩm người dùng muốn đổi và khi chọn sản phẩm gốc cho Similar (§2.5).
 - Không dùng trạng thái hội thoại làm nguồn chính thức cho giá và availability.
 - Working memory trong Redis hết hạn sau 24 giờ; archive Postgres của user đăng nhập không tự xoá.
@@ -869,3 +937,94 @@ OpenAPI 1.2.0 đã khóa phiên bản đầu tiên của:
 3. `ItineraryResponse` — Agent trả về cho Web.
 
 Ba schema được tham chiếu từ `src/shared/contracts/openapi.yaml`. Frontend tạo mock/client từ contract này; backend dùng cùng contract cho validation và contract test. Mọi thay đổi required field, enum hoặc HTTP behavior phải sửa OpenAPI trước, cập nhật fixture và chạy validator.
+
+### Tương tác và phòng trong assistant v2 (chốt 2026-10-13)
+
+Thứ tự hiểu phủ định trong prompt v2 (làm rõ FR-AGT-01/06, AC-AGT-01/07, 14/10/2026):
+
+- Yêu cầu ngừng tư vấn rõ ràng ưu tiên cả khi đang hỏi thông tin: `stop`, giữ lịch, hủy consent, không gọi tool
+  nghiệp vụ, thẻ/phương án/nút/câu hỏi. Trạng thái được ghi cùng `respond.context_patch` có evidence.
+- `ko`/`không`/`k` theo câu hỏi ngay trước: hỏi trẻ em thì ghi `children=0`, giữ thông tin và consent, đủ điều kiện
+  thì lập lịch; hỏi muốn lập lịch thì chỉ hủy lời mời, không tự chuyển sang dừng toàn bộ tư vấn. Lượt từ chối lời mời
+  không tra thêm, không hỏi thông tin chuyến hay lặp lời mời/nút lập lịch. `k` sau câu hỏi mở không tự là số 0.
+- “Chán quá, không muốn đi nữa” là mất hứng, không tự là lệnh ngừng tư vấn. Ngừng lập lịch, giữ lịch đã có; có thể
+  khơi gợi một lần theo giới hạn trên. Sau lần đó, từ chối tiếp thì dừng; bổ sung đúng thông tin được hỏi không phải
+  từ chối tiếp. Quy tắc nghỉ nhẹ “không muốn đi chơi” vẫn giữ; yêu cầu dừng rõ luôn ưu tiên.
+- Hiểu câu vẫn do model; không thêm bộ phân loại hoặc bảng từ khóa vào code. Kiểm model thật tách khỏi unit test.
+
+FR-AGT-01/06, AC-AGT-01/04/07/09: context_patch.engagement phân biệt rekindle (mất hứng, khơi tò mò một lần), stop (dừng rõ/từ chối tiếp), continue (chủ động khám phá tiếp). Khi dừng, consent lập lịch bị hủy; khám phá tiếp không tự cấp lại consent. curiosity_offered chỉ commit sau final hợp lệ. Một lần khơi tò mò tối đa một sản phẩm đã tra, một nút; prompt giới hạn hai câu, không tạo classifier/agent riêng. Khách chưa biết gì được gợi mở từ catalog/recommendation.
+
+Giá lưu trú dùng priceAdults theo PRD; maxOccupancy được kiểm riêng cho cả người lớn/trẻ em, không lấy sức chứa thay số khách giá đã gồm. V2 plan_itinerary: số phòng = ceil(tổng khách/priceAdults); thiếu priceAdults dùng maxOccupancy kèm PRICE_CAPACITY_UNKNOWN. Thiếu cả hai thì rooms=null và tổng tiền unknown; không ghi “tính tạm một phòng”. V1 giữ luật cũ. Thiếu maxOccupancy có cảnh báo ROOM_CAPACITY_UNKNOWN; vượt sức chứa là violation ROOM_CAPACITY_EXCEEDED để orc chọn lại. Giờ sáng/chiều giữ qua response/UI; prompt phác lịch trọn ngày theo cửa sổ thực tế và giải thích khi chỉ có sáng. Chất lượng model thật do người dùng eval sau kiểm kỹ thuật.
+
+
+### Function calling và lập lịch theo buổi v2 (chốt 2026-10-13)
+
+Lời chat, nhãn nút và Think công khai dùng ngôn ngữ về chuyến đi/điểm tham quan. Catalog, cursor, offset,
+registry, taxonomy, tên tool và cơ chế phân trang chỉ ở payload nội bộ; final có nội dung này được trả về orc
+để sửa trong quota hiện có (`INTERNAL_IMPLEMENTATION_DETAILS`). Think của tool chứa thông tin nội bộ bị bỏ.
+Kết quả rỗng nhưng còn cursor: orc tự quyết tra tiếp trong quota trước khi trả lời, không bắt khách xác nhận chỉ
+để đọc trang khác. Chưa kiểm đủ thì nói giới hạn xác minh bằng lời cho khách, không kết luận không có điểm phù hợp.
+Việc ngoài du lịch (xin/mượn tiền, nhờ đặt chỗ/thanh toán thay) trả lời 200: nói rõ chỉ hỗ trợ du lịch, chỉ việc
+gần nhất kèm nút, không gọi tool tra. Số tiền/giờ trong lời văn vẫn phải qua fact; ngoại lệ duy nhất là câu trả lời
+không có sản phẩm, dữ kiện, thẻ hay phương án nào được nhắc lại đúng con số khách viết trong tin hiện tại.
+Phục vụ FR-AGT-02/04/06, NFR-REL-01, AC-AGT-06/07.
+
+FR-AGT-02/03, NFR-REL-01; đề xuất A–G `../prd/update-archive/2026-10-13-thiet-ke-lai-bo-tool-orc.md`,
+plan `../plan/2026-10-13-orc-function-calling-va-tool-lap-lich.md`.
+Năm function nghiệp vụ: find_products, get_products, recommend, lookup_flights, plan_itinerary; hai function điều khiển
+update_trip (evidence) và respond. Response và SSE v2 giữ nguyên; kind vẫn search/recommend/detail/flights/itinerary.
+Trong một lượt, các message chỉ nối thêm, ToolMessage gắn đúng provider call id và có mã cN do server cấp cho fact/plan.
+Một lượt chạy mọi call nghiệp vụ orc gửi; request nguồn sau deadline lượt trả TIME_LIMIT. Hết bốn lượt chỉ còn respond;
+respond sai schema hoặc guard cũng chỉ được sửa một lần. Model tối đa sáu lần, không trần request nguồn, chỉ deadline lượt (mỗi ref của get_products một request)
+(chốt 2026-10-14, `../prd/update-archive/2026-10-14-orc-4-luot-tool-khong-tran-call-moi-luot.md`,
+`../prd/update-archive/2026-10-14-bo-tran-request-nguon.md`).
+Khách sạn kèm phòng vẫn tính request nguồn mỗi trang phòng; báo rõ room_errors/coverage nếu đọc thiếu, không nhận đã
+có đủ phòng. Get nhiều refs báo lỗi từng sản phẩm và giữ kết quả thành công. Không tự tiếp trang.
+
+Orc chọn một ref mỗi buổi sáng 08–12, chiều 13–18, tối 18:30–22; cùng ref sáng/chiều là hoạt động cả ngày, tính một lần.
+Code tính giờ từ durationMinutes, thiếu thì 120 phút kèm giả định. Giờ phải nằm trong buổi/giờ mở/cửa sổ bay với đệm
+90/150 phút; không vừa trả violations với fix_hint, không tự chuyển buổi. Khách chỉ định giờ vẫn được kiểm/giữ.
+Lưu trú mặc định nhận ngày đầu, trả ngày cuối (N−1 đêm), chia khách sạn bằng from_day/to_day. Số phòng khách nói rõ
+được giữ và kiểm sức chứa, tối đa chín. Thiếu giá không cộng thành không đồng; vượt ngân sách chỉ là cảnh báo.
+Chi phí từng dòng, tỷ trọng và savings từ registry của lượt để orc cân nhắc; không tự thay refs đã khoá. Combo gợi ý
+riêng trong cards.combo; không nằm trong lịch. Ngày trọn vẹn ưu tiên hai–ba hoạt động; ngày bay hoặc hoạt động cả ngày
+có thể ít hơn; thiếu dữ liệu thì nói rõ. Nghiệm thu model thật ghi riêng trong report, không suy từ test model giả.
+Khách muốn phương án tiết kiệm hơn khi đã có lịch: orc tra lại ref của lịch định giữ (ref cũ là STALE_REF nếu chưa
+tra), tìm ứng viên rẻ hơn cho dòng tốn nhất (khách sạn price_asc dưới giá đang dùng, hoạt động free_only/price_asc),
+rồi plan_itinerary thay dòng đó, giữ ngày, số khách và ref đã khoá; trả itinerary/replace với chi phí mới qua fact.
+Một tra cứu lỗi không chặn dựng lịch bằng ứng viên đã có; không rẻ hơn được thì nói lý do và giữ lịch.
+Vé máy bay là phần tuỳ chọn như khách sạn (AC-AGT-01 nơi đi không bắt buộc, AC-AGT-02 công bố phạm vi): lookup_flights
+empty/`route_found=false` (ví dụ Phan Thiết không có sân bay) vẫn dựng lịch không flights, trả itinerary/replace kèm một
+câu chưa tìm thấy chuyến bay; không bịa phương tiện khác. Khách nói nơi đi sau khi đã có lịch: tra vé cùng tra lại ref
+của lịch, rồi plan_itinerary giữ schedule/stays cũ (kèm flights nếu có) để lịch hiện lại cùng kết quả vé. Lập lịch
+tra cả điểm tham quan tự do (free_only) vì nhiều nơi tour trả phí kéo dài cả ngày, không vừa buổi; thiếu ứng viên
+thì để trống buổi, không lặp điểm. Lượt tool cuối mà chưa có lịch hợp lệ dùng để dựng lịch với ứng viên đã có.
+
+### Hội thoại tiếp nối và tư vấn trải nghiệm v2 (chốt 2026-10-14)
+
+Phục vụ FR-AGT-01/02/04/06, AC-AGT-01/06/07, NFR-REL-01; đề xuất đã áp dụng
+`../prd/update-archive/2026-10-14-sua-hoi-thoai-thu-luc-mot-gio.md`.
+
+- `respond.context_patch` là tham số function nội bộ, không đổi response HTTP/SSE. Lượt hỏi lại ghi ngay ngày,
+  số khách, số ngày vừa hiểu cùng final; `update_trip` vẫn dùng khi cần cập nhật trước tool nghiệp vụ. Cả hai
+  kiểm evidence từ tin nhắn/nút/form hiện tại. Bỏ trường/null giữ giá trị cũ; chỉ commit sau final hợp lệ. Guard
+  repair/hết lượt chỉ còn respond vẫn có thể lưu phần bổ sung, không cần thêm model call hoặc classifier.
+- Ví dụ ngày hiện tại Việt Nam 14/10/2026: “t6 tuần này” → 16/10; “3 người lớn” giữ ngày, chỉ thêm adults;
+  “đi 2 ngày” giữ ngày và khách, bổ sung days rồi lập lịch nếu đã đủ điều kiện. Kiểm code qua runtime + store
+  với model viết sẵn; hiểu đúng ngôn ngữ phải kiểm riêng bằng model thật.
+- `find_products.name_contains` là bộ lọc cụm tên theo ranh giới từ, không phân biệt dấu/hoa thường; “Le Phan”
+  nhận “Khách sạn Lê Phan”, không nhận “Le Aqua” hay “Le Phanorama”. Đây không phải chứng nhận danh tính cơ sở.
+  `excluded_destinations` loại điểm đến đúng tên catalog (không dấu/hoa thường), chỉ trong lời gọi này. Lọc trước
+  cấp ref, không áp tên property lên tên phòng con. Coverage/cursor vẫn theo trang nguồn, không giả hết kết quả
+  khi một trang bị lọc rỗng; orc tự quyết định tra tiếp trong quota. Cursor đổi điều kiện bị từ chối.
+- “Tìm ngoài Phan Thiết” sau câu hỏi khách sạn giữ đối tượng khách sạn và cụm tên, tìm toàn danh mục và loại Phan
+  Thiết; không hiểu thành “ngoài trời”, không đổi điểm đến lịch. Bỏ khách sạn khỏi lịch không cấm hỏi địa chỉ
+  khách sạn. Không thấy đúng tên thì nói chưa thấy, không giới thiệu kết quả khác tên như một kết quả đúng.
+- Khám phá chung ưu tiên điểm tham quan tự do phổ biến qua tool hiện có; không ghi thành `context.free_only`
+  trừ yêu cầu rõ “chỉ miễn phí”. Recommendation được dùng nhưng độ phổ biến không thay thế căn cứ entryPolicy.
+  Cảnh báo assumed_free giữ nguyên; dịch vụ trả phí cụ thể vẫn được tìm theo nhu cầu.
+- Giọng hướng dẫn mô tả trải nghiệm bằng dữ kiện, không quảng cáo hay suy giờ mở cửa từ cửa sổ bán. Widget lược
+  dòng chỉ có tham chiếu tên ngay trước thẻ (kể cả bọc đậm), giữ câu có nghĩa, tên lạ và thao tác mở chi tiết.
+- “Không muốn đi chơi” được chuyển sang vài ý tưởng nghỉ nhẹ, hỏi một câu khu vực nếu chưa biết; không tự coi
+  điểm đến cũ là nơi đang ở, không bịa cơ sở/dịch vụ. Lượt ý tưởng không cần tool vẫn đánh dấu đã khơi gợi một
+  lần. Dừng rõ hoặc từ chối tiếp thì không gợi ý/nút/thẻ/câu hỏi, consent lập lịch được hủy, lịch cũ giữ nguyên.

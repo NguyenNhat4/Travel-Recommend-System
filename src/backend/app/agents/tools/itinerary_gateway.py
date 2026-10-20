@@ -59,6 +59,11 @@ class ItineraryToolGateway:
         if similar is not None:
             self._handlers[SIMILAR_PRODUCTS] = lambda args: similar.get_similar_products(
                 args["productId"], args["limit"])
+        # Bundle contract (≈1,3 s lần đầu, lru_cache) dựng ngay ở đây, ngoài timeout của từng lời gọi tool: để lười thì lời gọi
+        # tool đầu tiên sau khởi động trả timeout (bench 14/10: test_catalog_hydration_is_concurrent_and_bounded).
+        contracts()
+        for name in ("ProductDetail", "DestinationListResponse"):
+            valid(name, None)
 
     def definitions(self) -> list[ToolDefinition]:
         return [definition for definition in definitions() if definition["name"] in self._handlers]
@@ -83,7 +88,7 @@ class ItineraryToolGateway:
         """Chuyến bay cho chặng bay của lịch trình (AC-AGT-02). Như `get_product_detail`: application gọi, planner không thấy."""
         if self._catalog is None:
             raise ToolError("CATALOG_NOT_CONFIGURED")
-        allowed = {"parentProductId", "destination", "taxonomy", "availableOnly", "sort", "limit", "offset"}
+        allowed = {"parentProductId", "destination", "taxonomy", "availableOnly", "freeOnly", "sort", "limit", "offset"}
         if not set(params) <= allowed:
             raise ToolError("INVALID_ARGUMENTS")
         # Code gọi (không qua planner) nhưng vẫn là một span `tool` riêng, để trace thấy được catalog trả gì.

@@ -1,0 +1,28 @@
+{
+ "rows": [
+  " B0->B0+orig:pen:0.15+sess    llbo      target new  n= 1347 h@20 0.7906->0.7936 (+4)  h@4 0.4774->0.4774 (+0)",
+  " B0->B0+orig:pen:0.15+sess    llbo      target seen n= 1446 h@20 0.8278->0.8783 (+73)  h@4 0.5712->0.6238 (+76)",
+  " B0->B0+orig:pen:0.15+sess    temporal  target new  n=  492 h@20 0.0813->0.0915 (+5)  h@4 0.0407->0.0407 (+0)",
+  " B0->B0+orig:pen:0.15+sess    temporal  target seen n=   61 h@20 0.8689->0.9344 (+4)  h@4 0.8197->0.8689 (+3)",
+  " B0->B0+orig:pen:0.15+sess    nexttrip  target new  n= 1229 h@20 0.0830->0.0887 (+7)  h@4 0.0236->0.0293 (+7)",
+  " B0->B0+orig:pen:0.15+sess    nexttrip  target seen n=   24 h@20 0.3750->0.4167 (+1)  h@4 0.2917->0.3750 (+2)",
+  " B0->B0+orig:pen:0.15+sess    coldstart target new  n=   36 h@20 0.7222->0.7222 (+0)  h@4 0.5556->0.5556 (+0)",
+  " B0->B0+orig:pen:0.15+sess    coldstart target seen n= 3594 h@20 0.8086->0.9822 (+624)  h@4 0.6995->0.7899 (+325)",
+  "B1p->B1p+orig:pen:0.15+sess   llbo      target new  n= 1347 h@20 0.7906->0.7929 (+3)  h@4 0.4759->0.4759 (+0)",
+  "B1p->B1p+orig:pen:0.15+sess   llbo      target seen n= 1446 h@20 0.8257->0.8741 (+70)  h@4 0.5705->0.6238 (+77)",
+  "B1p->B1p+orig:pen:0.15+sess   temporal  target new  n=  492 h@20 0.0793->0.0874 (+4)  h@4 0.0366->0.0346 (-1)",
+  "B1p->B1p+orig:pen:0.15+sess   temporal  target seen n=   61 h@20 0.8525->0.9344 (+5)  h@4 0.8197->0.8689 (+3)",
+  "B1p->B1p+orig:pen:0.15+sess   nexttrip  target new  n= 1229 h@20 0.0797->0.0871 (+9)  h@4 0.0244->0.0285 (+5)",
+  "B1p->B1p+orig:pen:0.15+sess   nexttrip  target seen n=   24 h@20 0.3750->0.4167 (+1)  h@4 0.2917->0.3750 (+2)",
+  "B1p->B1p+orig:pen:0.15+sess   coldstart target new  n=   36 h@20 0.7222->0.6667 (-2)  h@4 0.5556->0.5000 (-2)",
+  "B1p->B1p+orig:pen:0.15+sess   coldstart target seen n= 3594 h@20 0.8083->0.9772 (+607)  h@4 0.6989->0.7746 (+272)",
+  " B0->B2+orig:pen:0.15+sess    llbo      target new  n= 1347 h@20 0.7906->0.7929 (+3)  h@4 0.4774->0.4759 (-2)",
+  " B0->B2+orig:pen:0.15+sess    llbo      target seen n= 1446 h@20 0.8278->0.8741 (+67)  h@4 0.5712->0.6238 (+76)",
+  " B0->B2+orig:pen:0.15+sess    temporal  target new  n=  492 h@20 0.0813->0.0589 (-11)  h@4 0.0407->0.0305 (-5)",
+  " B0->B2+orig:pen:0.15+sess    temporal  target seen n=   61 h@20 0.8689->0.9344 (+4)  h@4 0.8197->0.8689 (+3)",
+  " B0->B2+orig:pen:0.15+sess    nexttrip  target new  n= 1229 h@20 0.0830->0.0529 (-37)  h@4 0.0236->0.0212 (-3)",
+  " B0->B2+orig:pen:0.15+sess    nexttrip  target seen n=   24 h@20 0.3750->0.4167 (+1)  h@4 0.2917->0.3750 (+2)",
+  " B0->B2+orig:pen:0.15+sess    coldstart target new  n=   36 h@20 0.7222->0.6667 (-2)  h@4 0.5556->0.5000 (-2)",
+  " B0->B2+orig:pen:0.15+sess    coldstart target seen n= 3594 h@20 0.8086->0.9769 (+605)  h@4 0.6995->0.7743 (+269)"
+ ]
+}

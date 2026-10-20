@@ -460,6 +460,25 @@ SearchResultsByTaxonomy:
     maxItems: 6
     items:
       $ref: ../openapi.yaml#/components/schemas/ProductSummary
+ExplorationSearchResults:
+  type: object
+  description: >-
+    (1.28.0, AC-AGT-06) Số lượng theo yêu cầu, tổng tối đa 20 thẻ do backend kiểm. Không nêu số lượng:
+    tối đa 3 điểm tham quan/tour, 2 khách sạn hỏi chung hoặc 4 khi chỉ hỏi chỗ ở. Thiếu dữ liệu/ngân sách thực thi
+    thì trả số thực chọn và giải thích trong question. Không áp dụng cho lịch trình đã xếp.
+  propertyNames:
+    $ref: ../openapi.yaml#/components/schemas/Taxonomy
+  properties:
+    flight:
+      type: array
+      maxItems: 4
+      items:
+        $ref: ../openapi.yaml#/components/schemas/ProductSummary
+  additionalProperties:
+    type: array
+    maxItems: 20
+    items:
+      $ref: ../openapi.yaml#/components/schemas/ProductSummary
 ItineraryWarning:
   type: object
   required:
@@ -681,8 +700,9 @@ ItineraryNeedsClarification:
           type: array
           minItems: 1
           description: >-
-            Ô hiển thị theo thứ tự. `interests` (1.24.0, FR-AGT-06): ô sở thích khách sạn chọn nhiều, không bắt buộc;
-            lựa chọn lấy từ `interestOptions`, lựa chọn đã tích sẵn nằm trong `defaults.interests`.
+            Ô hiển thị theo thứ tự. `interests` (1.24.0, FR-AGT-06; 1.26.0 AC-AGT-01): không bắt buộc, gồm các lựa
+            chọn cố định trong `interestOptions` (chọn nhiều, tích sẵn theo `defaults.interests`) và một ô tự nhập tối
+            đa 150 ký tự, điền sẵn bằng phần `defaults.interests` không thuộc `interestOptions`.
           items:
             type: string
             enum:
@@ -699,13 +719,16 @@ ItineraryNeedsClarification:
           type: string
           format: date
           description: Ngày khởi hành sớm nhất được phép chọn; hôm nay theo giờ Việt Nam.
+        autoOpen:
+          type: boolean
+          description: Tuỳ chọn (1.26.0). Mở ngay khi người dùng trực tiếp xin form; mặc định chỉ hiện nút mở.
         interestOptions:
           type: array
           maxItems: 8
           description: >-
             Tuỳ chọn (1.24.0, FR-AGT-06). Nhãn sở thích khách sạn đã có dữ liệu (ví dụ "Hồ bơi", "Phù hợp trẻ nhỏ"). Sở
             thích là ưu tiên khi tìm khách sạn, không loại khách sạn thiếu dữ liệu tiện ích. Client ghép lựa chọn vào câu
-            xác nhận ("ưu tiên khách sạn có Hồ bơi, Phù hợp trẻ nhỏ").
+            xác nhận ("ưu tiên khách sạn có Hồ bơi, Phù hợp trẻ nhỏ"); nội dung ô tự nhập đi sau đó (1.26.0).
           items:
             type: string
     suggestions:
@@ -722,7 +745,8 @@ ItineraryNeedsClarification:
     searchResults:
       description: >-
         Tuỳ chọn (1.24.0, FR-AGT-06). Lượt khám phá trước khi lập lịch ("Hà Nội có gì?", "khách sạn nào có hồ bơi?"):
-        sản phẩm thật lấy từ Search của chính lượt này, nhóm theo loại, tối đa 4 mỗi loại. `question` nhắc từng sản
+        sản phẩm thật lấy từ Search của chính lượt này, nhóm theo loại. Từ 1.28.0 số lượng theo AC-AGT-06,
+        tổng tối đa 20 thẻ/lượt; `flight` giữ tối đa 4. `question` nhắc từng sản
         phẩm bằng link `[Tên](product:<productId>)` với `productId` có trong đây; client đặt thẻ ngay sau dòng đầu tiên
         nhắc sản phẩm, như lời diễn giải lịch trình. Không có trường này thì lượt hỏi lại như trước.
         Từ 1.25.0 còn có ở lượt hỏi giá vé máy bay (FR-AGT-07): `flight` là các chuyến một chiều thật của tuyến được hỏi,
@@ -730,7 +754,7 @@ ItineraryNeedsClarification:
         chuyến một ngày bay; hỏi một ngày cụ thể thì có thể nhiều chuyến cùng ngày). Client gom các chuyến này thành một
         hàng thẻ ngày–giá đặt tại dòng đầu tiên nhắc chuyến, mỗi thẻ mở trang vé máy bay của đúng tuyến và ngày bay đó.
       allOf:
-      - $ref: ../openapi.yaml#/components/schemas/SearchResultsByTaxonomy
+      - $ref: ../openapi.yaml#/components/schemas/ExplorationSearchResults
     metadata:
       $ref: ../openapi.yaml#/components/schemas/ItineraryMetadata
 ItineraryNoResults:
@@ -952,8 +976,470 @@ AssistantStreamEvent:
       - run.started
       - graph.topology
       - node.completed
+      - node.activity
+      - run.preview
       - run.completed
       - run.failed
     data:
       type: object
       additionalProperties: true
+
+AssistantProgressCounts:
+  type: object
+  additionalProperties: false
+  properties:
+    sourceTotal:
+      type: integer
+      minimum: 0
+    received:
+      type: integer
+      minimum: 0
+    inScope:
+      type: integer
+      minimum: 0
+    eligible:
+      type: integer
+      minimum: 0
+    chosen:
+      type: integer
+      minimum: 0
+    outOfScope:
+      type: object
+      additionalProperties: false
+      properties:
+        DESTINATION:
+          type: integer
+          minimum: 0
+        TAXONOMY:
+          type: integer
+          minimum: 0
+        FLIGHT:
+          type: integer
+          minimum: 0
+        QUERY:
+          type: integer
+          minimum: 0
+        DISTANCE:
+          type: integer
+          minimum: 0
+        PRICE_COMPARISON:
+          type: integer
+          minimum: 0
+        PRODUCT_DROPPED_DESTINATION:
+          type: integer
+          minimum: 0
+        PRODUCT_DROPPED_EXCLUDED:
+          type: integer
+          minimum: 0
+        PRODUCT_DROPPED_TAXONOMY:
+          type: integer
+          minimum: 0
+        PRODUCT_DROPPED_DATE:
+          type: integer
+          minimum: 0
+        PRODUCT_DROPPED_UNAVAILABLE:
+          type: integer
+          minimum: 0
+        PRODUCT_DROPPED_PRICE:
+          type: integer
+          minimum: 0
+        PRODUCT_DROPPED_PRICE_BASIS:
+          type: integer
+          minimum: 0
+        PRODUCT_DROPPED_ATTRIBUTES:
+          type: integer
+          minimum: 0
+        PRODUCT_DROPPED_NAMED_REQUIREMENT:
+          type: integer
+          minimum: 0
+        SEEN:
+          type: integer
+          minimum: 0
+        DUPLICATE:
+          type: integer
+          minimum: 0
+        PREFERENCE:
+          type: integer
+          minimum: 0
+    dropped:
+      type: object
+      additionalProperties: false
+      properties:
+        DESTINATION:
+          type: integer
+          minimum: 0
+        TAXONOMY:
+          type: integer
+          minimum: 0
+        FLIGHT:
+          type: integer
+          minimum: 0
+        QUERY:
+          type: integer
+          minimum: 0
+        DISTANCE:
+          type: integer
+          minimum: 0
+        PRICE_COMPARISON:
+          type: integer
+          minimum: 0
+        PRODUCT_DROPPED_DESTINATION:
+          type: integer
+          minimum: 0
+        PRODUCT_DROPPED_EXCLUDED:
+          type: integer
+          minimum: 0
+        PRODUCT_DROPPED_TAXONOMY:
+          type: integer
+          minimum: 0
+        PRODUCT_DROPPED_DATE:
+          type: integer
+          minimum: 0
+        PRODUCT_DROPPED_UNAVAILABLE:
+          type: integer
+          minimum: 0
+        PRODUCT_DROPPED_PRICE:
+          type: integer
+          minimum: 0
+        PRODUCT_DROPPED_PRICE_BASIS:
+          type: integer
+          minimum: 0
+        PRODUCT_DROPPED_ATTRIBUTES:
+          type: integer
+          minimum: 0
+        PRODUCT_DROPPED_NAMED_REQUIREMENT:
+          type: integer
+          minimum: 0
+        SEEN:
+          type: integer
+          minimum: 0
+        DUPLICATE:
+          type: integer
+          minimum: 0
+        PREFERENCE:
+          type: integer
+          minimum: 0
+    sourceMore:
+      type: boolean
+AssistantSearchGroup:
+  type: object
+  additionalProperties: false
+  required:
+  - groupId
+  - kind
+  - status
+  properties:
+    groupId:
+      type: string
+      pattern: ^(plan:[a-z]+|job:[1-9][0-9]*)$
+    kind:
+      $ref: ../openapi.yaml#/components/schemas/Taxonomy
+    status:
+      type: string
+      enum:
+      - running
+      - ok
+      - empty
+      - partial
+      - failed
+      - asked
+      - answered
+      - unavailable
+      - superseded
+    scope: &id001
+      type: object
+      additionalProperties: false
+      properties:
+        destination:
+          type: string
+        near:
+          type: string
+        origin:
+          type: string
+        sort:
+          type: string
+          enum:
+          - relevance
+          - price_asc
+          - price_desc
+        intent:
+          type: string
+          enum:
+          - new
+          - more
+          - about_shown
+          - cheaper
+          - dearer
+        date:
+          type: string
+          format: date
+        returnDate:
+          type: string
+          format: date
+        scopeMode:
+          type: string
+          enum:
+          - inherit
+          - replace
+          description: (1.28.0) Giữ điều kiện chưa đổi hay dùng phạm vi mới của lượt này.
+        excludedDestinations:
+          type: array
+          maxItems: 40
+          items:
+            type: string
+          description: Điểm đến không xét trong việc này, không phải danh sách nơi bị chê cho cả hội thoại.
+        requestedCount:
+          type: integer
+          minimum: 1
+          description: Số lượng đã hiểu từ yêu cầu; code áp trần tổng 20. Không phải số kết quả tìm được.
+    counts:
+      $ref: ../openapi.yaml#/components/schemas/AssistantProgressCounts
+AssistantProgressNotice:
+  type: object
+  additionalProperties: false
+  required:
+  - code
+  properties:
+    code:
+      type: string
+      enum:
+      - DESTINATION
+      - TAXONOMY
+      - FLIGHT
+      - QUERY
+      - DISTANCE
+      - PRICE_COMPARISON
+      - PRODUCT_DROPPED_DESTINATION
+      - PRODUCT_DROPPED_EXCLUDED
+      - PRODUCT_DROPPED_TAXONOMY
+      - PRODUCT_DROPPED_DATE
+      - PRODUCT_DROPPED_UNAVAILABLE
+      - PRODUCT_DROPPED_PRICE
+      - PRODUCT_DROPPED_PRICE_BASIS
+      - PRODUCT_DROPPED_ATTRIBUTES
+      - PRODUCT_DROPPED_NAMED_REQUIREMENT
+      - SEEN
+      - DUPLICATE
+      - PREFERENCE
+      - RETRYING
+      - NO_FLIGHT
+      - NOT_ON_SALE
+      - OVER_BUDGET
+      - NOTHING_NEW
+      - PLACE_NOT_FOUND
+      - LOOKUP_FAILED
+      - PARTIAL_RESULTS
+    groupId:
+      type: string
+      pattern: ^(plan:[a-z]+|job:[1-9][0-9]*)$
+    kind:
+      $ref: ../openapi.yaml#/components/schemas/Taxonomy
+    count:
+      type: integer
+      minimum: 1
+    date:
+      type: string
+      format: date
+AssistantUnderstood:
+  type: object
+  additionalProperties: false
+  properties:
+    intent:
+      $ref: ../openapi.yaml#/components/schemas/TripIntentPatch
+    missing:
+      type: array
+      maxItems: 12
+      items:
+        type: string
+    jobs:
+      type: array
+      maxItems: 12
+      items:
+        type: object
+        additionalProperties: false
+        required:
+        - groupId
+        - kind
+        properties:
+          groupId:
+            type: string
+          kind:
+            $ref: ../openapi.yaml#/components/schemas/Taxonomy
+          scope: *id001
+    assumptions:
+      type: array
+      maxItems: 8
+      items:
+        type: object
+        additionalProperties: false
+        required:
+        - code
+        properties:
+          code:
+            type: string
+            enum:
+            - NO_BUDGET
+            - NO_ORIGIN
+            - DAY_TRIP
+            - FLIGHT_EXCLUDED
+            - SAME_CITY
+            - NAME_MATCHED
+            - KIDS_COUNT_UNKNOWN
+            - ROOM_MIN_GUESTS
+          from:
+            type: string
+          to:
+            type: string
+          count:
+            type: integer
+            minimum: 1
+AssistantArrangeSummary:
+  type: object
+  additionalProperties: false
+  properties:
+    criteria:
+      type: array
+      maxItems: 4
+      items:
+        type: string
+        enum:
+        - SHORTEST_DISTANCE
+        - MAX_TWO_ACTIVITIES_PER_DAY
+        - FLIGHT_TIMES
+        - STAY_PREFERENCE
+    distanceKm:
+      type: number
+      minimum: 0
+    stayOptions:
+      type: integer
+      minimum: 0
+    budgetStatus:
+      type: string
+      enum:
+      - WITHIN_BUDGET
+      - OVER_BUDGET
+      - NO_BUDGET
+      - UNKNOWN
+AssistantProgressUpdate:
+  type: object
+  additionalProperties: false
+  properties:
+    turnKind:
+      type: string
+      enum:
+      - plan
+      - clarify
+      - explore
+      - fare
+      - converse
+      - blocked
+    steps:
+      type: array
+      maxItems: 4
+      items:
+        type: string
+        enum:
+        - understand
+        - search
+        - arrange
+        - write
+    completedStep:
+      type: string
+      enum:
+      - understand
+      - search
+      - arrange
+      - write
+    understood:
+      $ref: ../openapi.yaml#/components/schemas/AssistantUnderstood
+    searches:
+      type: array
+      maxItems: 12
+      items:
+        $ref: ../openapi.yaml#/components/schemas/AssistantSearchGroup
+    arranged:
+      $ref: ../openapi.yaml#/components/schemas/AssistantArrangeSummary
+    notices:
+      type: array
+      maxItems: 10
+      items:
+        $ref: ../openapi.yaml#/components/schemas/AssistantProgressNotice
+  description: Updates replace understood, arranged, turnKind and steps. Searches
+    replace by groupId; missing groups remain. Notices replace by (code, groupId,
+    date), never add counts. Superseded groups and their notices are hidden. Counts
+    are cumulative per group.
+AssistantNodeCompletedData:
+  type: object
+  additionalProperties: false
+  required:
+  - sequence
+  - nodeId
+  - outcome
+  - message
+  - durationMs
+  properties:
+    sequence:
+      type: integer
+      minimum: 1
+    nodeId:
+      type: string
+    outcome:
+      type: string
+    message:
+      type: string
+    durationMs:
+      type: integer
+      minimum: 0
+    progress:
+      $ref: ../openapi.yaml#/components/schemas/AssistantProgressUpdate
+AssistantNodeActivity:
+  type: object
+  additionalProperties: false
+  required:
+  - nodeId
+  - code
+  properties:
+    nodeId:
+      type: string
+    code:
+      type: string
+      enum:
+      - STARTED
+      - PLANNING_SEARCH
+      - SEARCHING
+      - SEARCHING_FLIGHTS
+      - CHECKING_AVAILABILITY
+      - READING_SHOWN
+    round:
+      type: integer
+      minimum: 1
+    groupId:
+      type: string
+      pattern: ^(plan:[a-z]+|job:[1-9][0-9]*)$
+    kinds:
+      type: array
+      maxItems: 5
+      items:
+        $ref: ../openapi.yaml#/components/schemas/Taxonomy
+    destination:
+      type: string
+    origin:
+      type: string
+    date:
+      type: string
+      format: date
+AssistantRunPreview:
+  type: object
+  description: Deprecated 2026-10-14 — server không còn phát run.preview; giữ schema cho client cũ.
+  additionalProperties: false
+  required:
+  - runId
+  - products
+  properties:
+    runId:
+      type: string
+    products:
+      type: array
+      maxItems: 6
+      items:
+        $ref: ../openapi.yaml#/components/schemas/ProductSummary

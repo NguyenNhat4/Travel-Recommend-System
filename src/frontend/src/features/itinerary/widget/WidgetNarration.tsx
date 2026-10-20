@@ -1,3 +1,4 @@
+import { WidgetComboCard } from './WidgetComboCard';
 import React from 'react';
 import { AssistantText, parseAssistantText } from '../../../components/assistant/inlineBold';
 import { ProductCard } from '../../../components/common/ProductCard';
@@ -54,7 +55,12 @@ export function narrationBlocks(
       continue;
     }
     if (!buffer.length && blocks[blocks.length - 1]?.kind !== 'text' && blocks.length && !line.trim()) continue;
-    buffer.push(line);
+    // A product-only heading repeats the name on its card. Keep meaningful sentences and unknown refs.
+    const references = parts.filter((part) => part.kind === 'product');
+    const cardTitleOnly = references.length === 1 && isKnown(references[0].productId)
+      && !shown.has(references[0].productId) && !fareIds.has(references[0].productId)
+      && parts.every((part) => part.kind === 'product' || !part.text.replace(/[\s*#•\-–—:.,()]/g, ''));
+    if (!cardTitleOnly) buffer.push(line);
     const fresh: NarrationBlock[] = [];
     for (const part of parts) {
       if (part.kind !== 'product' || shown.has(part.productId) || slotIds.has(part.productId) || !isKnown(part.productId)) continue;
@@ -141,6 +147,12 @@ export function WidgetNarration({ text, products, onOpen, quickAddIds, onQuickAd
             </div>
           );
         }
+        if (product.taxonomy === 'combo') return <div key={index} className="my-4 whitespace-normal">
+          <WidgetComboCard product={product} peers={Object.values(products)} onOpen={() => onOpen(product.id)}
+            onBook={onBookNow && bookableIds?.has(product.id) ? () => onBookNow(product.id) : undefined}
+            onAdd={onQuickAdd && quickAddIds?.has(product.id) ? () => onQuickAdd(product.id) : undefined}
+            addState={cartAddStates?.[product.id]} />
+        </div>;
         return (
           <div key={index} className="my-4 whitespace-normal">
             <ProductCard

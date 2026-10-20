@@ -6,6 +6,7 @@ tuyến bay, combo và biến thể giá thành viên.
 """
 import contextlib
 import datetime as dt
+import gzip
 import io
 import json
 import shutil
@@ -261,6 +262,42 @@ class PerSourceRunTests(SampleRun):
         mapped = {line.split('name=')[1].split()[0] for line in logs.output if 'normalise.source.done' in line}
         self.assertEqual(mapped, {'booking_hotels', 'trip_flights'})
         self.assertEqual(read_lines(path / 'products.jsonl'), read_lines(EXPECTED))
+
+# ---------------------------------------------------------------------------------------------------- soát tay 13/10/2026
+
+
+class ReviewedOverridesTests(SampleRun):
+    """Chạy trọn normalise trên mẫu: khách sạn bị loại thì hạng phòng cũng không còn (job không bật lại khách sạn đã ẩn),
+    tên trong name_overrides.csv được áp cho mọi loại sản phẩm (cả tour booking.com)."""
+
+    def test_excluded_hotel_loses_its_rooms_and_reviewed_name_is_applied(self):
+        excluded = self.root / 'excluded.csv'
+        excluded.write_text('sourceRef,reason,evidence\nbooking:hotel:13399754,thử loại khách sạn,test\n', encoding='utf-8')
+        names = self.root / 'names.csv'
+        names.write_text('sourceRef,name,evidence\nbooking:attraction:prxty9xfoiyk,Tour văn hoá Sài Gòn buổi tối,test\n',
+                         encoding='utf-8')
+        path = self.data_dir()
+        with patch.object(normalise, 'EXCLUDED_PRODUCTS_CSV', excluded), patch.object(normalise, 'NAME_OVERRIDES_CSV', names), \
+                contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(self.run_normalise(path), 0)
+        products = [json.loads(line) for line in read_lines(path / 'products.jsonl')]
+        refs = {p['sourceRef'] for p in products}
+        expected = {json.loads(line)['sourceRef'] for line in read_lines(EXPECTED)}
+        dropped = {r for r in expected if r == 'booking:hotel:13399754' or r.startswith('booking:hotel:13399754:room:')}
+        self.assertEqual(len(dropped), 6)  # khách sạn + 5 hạng phòng
+        self.assertEqual(refs, expected - dropped)
+        # hạng phòng bị loại ngay ở bước soát tay, cùng lý do với khách sạn cha (drop_orphans về sau chỉ là lưới an toàn)
+        with gzip.open(path / 'normalise_stages' / 'dropped.jsonl.gz', 'rt', encoding='utf-8') as f:
+            reasons = {d['product']['sourceRef']: (d['step'], d['reason']) for d in map(json.loads, f)
+                       if d['product'].get('sourceRef') in dropped}
+        self.assertEqual(set(reasons), dropped)
+        self.assertEqual({step for step, _ in reasons.values()}, {'excluded'})
+        rooms = {r for r in dropped if ':room:' in r}
+        self.assertTrue(all(reasons[r][1] == 'khách sạn cha đã loại: thử loại khách sạn' for r in rooms))
+        tour = next(p for p in products if p['sourceRef'] == 'booking:attraction:prxty9xfoiyk')
+        self.assertEqual(tour['name'], 'Tour văn hoá Sài Gòn buổi tối')
+        self.assertEqual(tour['attributes']['nameSource'], 'reviewed: collectors/name_overrides.csv')
+
 
 if __name__ == '__main__':
     unittest.main()

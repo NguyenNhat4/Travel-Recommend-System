@@ -16,7 +16,7 @@ def test_trip_is_open_rules():
     assert trip_is_open(5, date(2026, 9, 21), TODAY) is True           # kết thúc hôm nay vẫn mở (usingDate >= hôm nay)
     assert trip_is_open(300, date(2026, 10, 5), TODAY) is True         # mua từ lâu, sắp đi → mở
     assert trip_is_open(5, date(2026, 9, 20), None) is True            # không có today → luật cũ theo tuổi
-    assert ENGINE_RULES_VERSION == "2026-10-02-trip-ended"
+    assert ENGINE_RULES_VERSION == "2026-10-09-next-trip-f14c"
 
 
 def _world():
@@ -43,14 +43,15 @@ def test_build_profile_uses_using_date_to_close_and_open_trips():
 
 
 def test_repeat_cap_does_not_shorten_trip_or_drop_purchases():
-    """Cap `MAX_REPEAT_PER_TRIP` chỉ giới hạn trọng số vector: purchase thứ 4 cùng unit (bị cap) vẫn quyết định ngày kết thúc,
-    tuổi trip và món đã mua (review PR M6, 01/10)."""
+    """Cap `MAX_REPEAT_PER_TRIP` chỉ giới hạn trọng số vector của event yếu; purchase / add_to_cart không bị cap (09/10,
+    `CAP_EXEMPT_EVENTS`) và trong mọi trường hợp event thứ 4 cùng unit vẫn quyết định ngày kết thúc, tuổi trip và món đã mua
+    (review PR M6, 01/10)."""
     E, tax, dest = _world()
     # 4 vé cùng chuyến bay (unit 1) mua cách nhau; vé cuối (mới nhất, bị cap) là chặng về 25/09 — chuyến chưa xong tại 21/09
     legs = [ResolvedEvent(1, "purchase", d, "T3", "F1", date(2026, 9, 15)) for d in (12.0, 11.0, 10.0)]
     back = [ResolvedEvent(1, "purchase", 2.0, "T3", "F1", date(2026, 9, 25))]
     p = build_profile(legs + back, E, tax, dest, today=TODAY)
-    assert len(p.trips["T3"].events) == 3                                # vector vẫn chỉ gồm 3 event cũ nhất
+    assert len(p.trips["T3"].events) == 4                                # purchase không bị cap: cả 4 vé vào vector
     assert p.trips["T3"].ends_on == date(2026, 9, 25) and p.trips["T3"].age_days == 2.0
     assert p.active_trip is not None and p.active_trip.trip_id == "T3" and p.strategy == "cross_vertical"
     assert p.active_trip.purchased_taxonomies == {"flight"} and 1 in p.bought_units
@@ -71,3 +72,22 @@ def test_local_today_and_parse_using_date():
     assert parse_using_date(None) is None and parse_using_date("") is None and parse_using_date("hôm qua") is None
     assert parse_using_date("2026-13-01") is None
     assert parse_using_date(20260921) == date(2026, 9, 21)      # số → chuỗi "20260921" là ISO dạng cơ bản, vẫn đọc được
+
+
+def test_booked_trip_stays_active_over_later_stray_view():
+    """FR-REC-02 (chốt 09/10, đề xuất `update-archive/2026-10-09-recsys-uu-tien-chuyen-da-dat.md`, sửa I-3): lượt xem lẻ đến
+    sau không thay chuyến đã đặt còn mở; nhiều chuyến đã đặt còn mở → chuyến đặt gần nhất."""
+    E, tax, dest = _world()
+    booked = ResolvedEvent(0, "purchase", 10.0, "T1", "R1", date(2026, 10, 1))
+    view = ResolvedEvent(2, "product_view", 1.0, "_solo_A1", "A1")
+    p = build_profile([booked, view], E, tax, dest, today=TODAY)
+    assert p.active_trip.trip_id == "T1" and p.strategy == "cross_vertical"
+    assert p.active_trip.purchased_taxonomies == {"hotel"}
+    later = ResolvedEvent(1, "purchase", 3.0, "T2", "F1", date(2026, 10, 3))
+    p2 = build_profile([booked, view, later], E, tax, dest, today=TODAY)
+    assert p2.active_trip.trip_id == "T2"
+    # không có chuyến đã đặt còn mở: một chuyến chỉ-xem → chính nó; từ hai chuyến → chuyến ảo (đề xuất
+    # `update-archive/2026-10-09-recsys-diem-xuat-phat-va-phien-xem.md`, test riêng ở test_recommendation_origin_session.py)
+    assert build_profile([view], E, tax, dest, today=TODAY).active_trip.trip_id == "_solo_A1"
+    view2 = ResolvedEvent(1, "product_view", 2.0, "_solo_F1", "F1")
+    assert build_profile([view, view2], E, tax, dest, today=TODAY).active_trip.trip_id == "_session_"

@@ -45,12 +45,18 @@ def bounds(name: str, *path: str) -> tuple[int | float | None, int | float | Non
     return node.get("minimum"), node.get("maximum")
 
 
+@lru_cache(maxsize=None)
+def validator(name: str) -> Draft202012Validator:
+    """Validator dựng một lần cho mỗi schema (dựng lại mỗi lần gọi tốn ≈1 s với bundle đầy đủ, vượt timeout của tool)."""
+    return Draft202012Validator(schema(name), format_checker=FormatChecker())
+
+
 def valid(name: str, value: Any) -> bool:
     try:
         json.dumps(value, allow_nan=False)
     except (ValueError, TypeError):
         return False
-    return not any(Draft202012Validator(schema(name), format_checker=FormatChecker()).iter_errors(value))
+    return not any(validator(name).iter_errors(value))
 
 
 def error_response(code: str, message: str, request_id: str, retryable: bool = False) -> dict:

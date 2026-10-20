@@ -8,6 +8,7 @@ import type { ApiCartItem } from '../../services/booking';
 import type { Taxonomy } from '../../types/travel';
 import { TaxonomyBadge } from '../common/TaxonomyBadge';
 import { FlightSummary } from '../common/FlightSummary';
+import { SkeletonBlock, SkeletonStatus } from '../common/Skeleton';
 import { Trash2, ShoppingBag, ArrowRight, ShieldCheck, Sparkles, Loader2, AlertTriangle, Pencil } from 'lucide-react';
 import { formatVnd } from '../confirmation/bookingLabels';
 import { cartStateOf, guestsOfItem, sameCartState, type CartState } from '../checkout/allocation';
@@ -78,6 +79,58 @@ const GuestEditor: React.FC<{ item: ApiCartItem; onClose: () => void }> = ({ ite
   );
 };
 
+/** Khung chờ của giỏ: tiêu đề, một nhóm "Chuyến …" hai mục và hộp tóm tắt, đúng bố cục khi đã tải. */
+const CartSkeleton: React.FC = () => (
+  <SkeletonStatus label="Đang tải giỏ hàng" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-10">
+    <div className="flex items-baseline justify-between border-b border-slate-200 pb-4">
+      <SkeletonBlock className="h-8 w-64 rounded-lg" />
+      <SkeletonBlock className="hidden h-4 w-56 rounded sm:block" />
+    </div>
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+      <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+        <div className="px-5 py-3.5 bg-slate-50 border-b border-slate-200/80 flex items-center justify-between">
+          <SkeletonBlock className="h-4 w-36 rounded" />
+          <SkeletonBlock className="h-4 w-16 rounded" />
+        </div>
+        <div className="divide-y divide-slate-100 p-2">
+          {[0, 1].map((i) => (
+            <div key={i} className="p-3 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                <SkeletonBlock className="w-16 h-16 rounded-lg shrink-0" />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <SkeletonBlock className="h-4 w-28 rounded" />
+                  <SkeletonBlock className="h-4 w-3/4 rounded" />
+                  <SkeletonBlock className="h-3 w-1/2 rounded" />
+                </div>
+              </div>
+              <div className="flex flex-col items-end gap-2 shrink-0">
+                <SkeletonBlock className="h-5 w-24 rounded" />
+                <SkeletonBlock className="h-4 w-20 rounded" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xl space-y-5">
+        <SkeletonBlock className="h-5 w-44 rounded" />
+        <div className="space-y-3">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="flex justify-between gap-4">
+              <SkeletonBlock className="h-4 w-24 rounded" />
+              <SkeletonBlock className="h-4 w-20 rounded" />
+            </div>
+          ))}
+          <div className="pt-3 border-t border-slate-200 flex justify-between gap-4">
+            <SkeletonBlock className="h-5 w-32 rounded" />
+            <SkeletonBlock className="h-6 w-28 rounded" />
+          </div>
+        </div>
+        <SkeletonBlock className="h-11 w-full rounded-xl" />
+      </div>
+    </div>
+  </SkeletonStatus>
+);
+
 export const CartView: React.FC = () => {
   const { openFloatingWidget } = useAssistant();
   // Giỏ dùng được cả khi chưa đăng nhập: khách chưa đăng nhập có giỏ riêng giữ 3 ngày (spec dat-truc-tiep-theo-don-nhap.md §8).
@@ -94,13 +147,7 @@ export const CartView: React.FC = () => {
     return groups;
   }, [items]);
 
-  if (!cart) {
-    return (
-      <div className="max-w-4xl mx-auto px-4 py-16 flex justify-center text-slate-400">
-        <Loader2 className="w-6 h-6 animate-spin" aria-label="Đang tải giỏ hàng" />
-      </div>
-    );
-  }
+  if (!cart) return <CartSkeleton />;
 
   if (items.length === 0) {
     return (
@@ -278,7 +325,7 @@ export const CartView: React.FC = () => {
           <div className="text-center text-[11px] text-slate-500 space-y-1">
             <div className="flex items-center justify-center gap-1 text-slate-600 font-medium">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Thanh toán qua Stripe — V-OTA không lưu thông tin thẻ</span>
+              <span>Thanh toán qua Stripe — Sota không lưu thông tin thẻ</span>
             </div>
           </div>
         </div>

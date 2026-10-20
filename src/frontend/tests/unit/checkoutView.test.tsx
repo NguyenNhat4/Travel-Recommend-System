@@ -54,6 +54,7 @@ vi.mock('../../src/context/TravelContext', async () => {
 });
 
 import { CheckoutView } from '../../src/components/checkout/CheckoutView';
+import { getProduct } from '../../src/services/catalog';
 import { ApiError } from '../../src/services/http';
 
 // File nặng (47 test, form ba bước): chạy riêng test chậm nhất ~3 s, nhưng khi CI chạy song song mọi file thì vài test vượt
@@ -126,7 +127,7 @@ function Harness({ accountName = 'Nguyễn Minh Anh', cart = null, signedIn = tr
   // Phần khung quanh trang thanh toán: logo của header (gọi `navigate`) và hai liên kết như ở chân trang.
   return (
     <shared.Ctx.Provider value={value}>
-      <button type="button" onClick={() => guardedNavigate('/')}>V-OTA</button>
+      <button type="button" onClick={() => guardedNavigate('/')}>Sota</button>
       <CheckoutView />
       <a href="/hotels">Khách sạn</a>
       <a href="#checkout-top">Lên đầu trang</a>
@@ -198,6 +199,21 @@ describe('CheckoutView — ba bước', () => {
     mockDraftApi();
   });
   afterEach(() => cleanup());
+
+  it('đơn nháp chưa về: hiện khung trang (thanh ba bước, hai thẻ khách, hộp tóm tắt) thay cho vòng xoay, rồi bước Hành khách', async () => {
+    let answer!: (draft: unknown) => void;
+    api.getBookingDraft.mockImplementation(() => new Promise((resolve) => { answer = resolve; }));
+    render(<Harness />);
+    const skeleton = screen.getByRole('status', { name: 'Đang tải thông tin thanh toán' });
+    expect(skeleton.querySelector(':scope > .border-b')!.querySelectorAll('.w-7.h-7.rounded-full')).toHaveLength(3);   // thanh ba bước
+    expect(skeleton.querySelectorAll('.rounded-xl.border')).toHaveLength(2);
+    expect(document.querySelector('.animate-spin')).toBeNull();
+    expect(screen.queryByRole('navigation', { name: 'Các bước thanh toán' })).toBeNull();
+
+    await act(async () => { answer(clone(familyDraft)); });
+    expect(await screen.findByRole('heading', { level: 2, name: 'Hành khách' })).toBeTruthy();
+    expect(screen.queryByRole('status', { name: 'Đang tải thông tin thanh toán' })).toBeNull();
+  });
 
   it('mở ở bước Hành khách với đoàn mặc định lấy từ giỏ và người lớn 1 điền sẵn từ tài khoản', async () => {
     await open(clone(familyDraft));
@@ -309,6 +325,29 @@ describe('CheckoutView — ba bước', () => {
     expect(screen.getByTestId('summary-total').textContent).toContain('6.960.384');       // = tổng ở ví dụ spec §4.5
     const flight = cards.find((c) => c.textContent?.includes('VJ601'))!;
     expect(flight.textContent).toContain('Chưa có giá vé trẻ em riêng');
+  });
+
+  it('điều kiện vé trẻ em: mở mục thì hiện khung ba dòng thay cho chữ "Đang tải…", rồi văn bản điều kiện', async () => {
+    const policy = { attributes: { policies: { 'Quy định': 'Trẻ em dưới 100 cm miễn phí.' } } };
+    let answer!: (detail: unknown) => void;
+    const pending = new Promise((resolve) => { answer = resolve; });
+    await open(clone(familyDraft));
+    await goToServices();
+    vi.mocked(getProduct).mockReturnValue(pending as never);
+    try {
+      const ticket = screen.getAllByTestId('service-card').find((c) => c.textContent?.includes('VinWonders'))!;
+      const details = within(ticket).getByText('Điều kiện vé trẻ em của điểm đến').closest('details')!;
+      details.open = true;
+      fireEvent(details, new Event('toggle'));
+      const skeleton = await within(ticket).findByRole('status', { name: 'Đang tải điều kiện vé trẻ em' });
+      expect(skeleton.querySelectorAll(':scope > [aria-hidden="true"]')).toHaveLength(3);
+      expect(within(ticket).queryByText('Đang tải…')).toBeNull();
+      await act(async () => { answer(policy); });
+      expect(within(ticket).getByText('Trẻ em dưới 100 cm miễn phí.')).toBeTruthy();
+      expect(within(ticket).queryByRole('status', { name: 'Đang tải điều kiện vé trẻ em' })).toBeNull();
+    } finally {
+      vi.mocked(getProduct).mockResolvedValue(policy as never);
+    }
   });
 
   it('bỏ chọn trẻ em ở vé tham quan: đợi 400 ms rồi PATCH số khách của đúng mục đó và giá cập nhật', async () => {
@@ -717,7 +756,7 @@ describe('CheckoutView — hỏi lại trước khi rời trang (AC-BKG-20)', ()
   const dialog = () => screen.queryByRole('alertdialog');
   const stayButton = () => screen.getByRole('button', { name: 'Ở lại thanh toán' });
   const leaveButton = () => screen.getByRole('button', { name: 'Rời trang' });
-  const logo = () => screen.getByRole('button', { name: 'V-OTA' });
+  const logo = () => screen.getByRole('button', { name: 'Sota' });
   const lastNameOfAdult2 = () => screen.getByLabelText('Họ (Người lớn 2)') as HTMLInputElement;
   /** Nút Back của trình duyệt, rồi chờ `popstate`. */
   const pressBack = () => act(async () => { window.history.back(); await new Promise((r) => setTimeout(r, 50)); });

@@ -8,6 +8,7 @@ Team Agent dùng bộ này để phát triển và kiểm thử; Team Web dùng 
 | `search-request.json` | Request Agent gửi sang Search | Agent, Search/Backend |
 | `completed.json` | Response Agent trả lịch trình | Agent, Web |
 | `needs-clarification.json` | Response Agent hỏi thêm thông tin | Agent, Web |
+| `explore-ten.json` | Lượt yêu cầu 10 khách sạn; sản phẩm từ sample, kiểm contract 1.28.0 và danh sách 10 thẻ trên Web | Agent, Web |
 | `no-results.json` | Response Agent không có kết quả phù hợp | Agent, Web |
 | `fallback.json` | Response Agent trả ứng viên khi chưa dựng được lịch trình | Agent, Web |
 

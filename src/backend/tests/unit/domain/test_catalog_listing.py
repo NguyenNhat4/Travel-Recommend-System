@@ -1,6 +1,20 @@
+import random
+from collections import Counter
+
 import pytest
 
-from src.backend.app.domain.catalog import ListingItem, Product, filter_items, sort_items, summarize_variants
+from src.backend.app.domain.catalog import (
+    DIVERSIFY_GROUPS,
+    PRODUCT_SORTS,
+    TAXONOMIES,
+    ListingItem,
+    Product,
+    filter_items,
+    interleave_by_taxonomy,
+    precompute_orders,
+    sort_items,
+    summarize_variants,
+)
 
 
 def product(pid, price=100_000, *, taxonomy="attraction", destination="Nha Trang", available=True, **attrs):
@@ -66,6 +80,18 @@ def test_filter_by_destination_taxonomy_and_availability():
     assert ids(filter_items(items)) == ["a1", "a2", "g1", "a3"]
 
 
+def test_free_only_retains_source_evidence_or_disclosed_assumption():
+    items = [ListingItem(p) for p in (
+        product("priced"), product("zero", 0), product("public", None),
+        product("not-ticketed", 90, ticketed=False), product("ticketed-unknown", None, ticketed=True),
+        product("room", None, taxonomy="hotel"), product("package", None, taxonomy="combo"),
+    )]
+    assert ids(filter_items(items, free_only=True)) == ["zero", "public", "not-ticketed"]
+    assert items[2].product.entry_policy == "assumed_free"
+    assert items[3].product.entry_policy == "free"
+    assert items[4].product.entry_policy == "unknown"
+
+
 def test_price_sorts_put_unpriced_last_both_ways():
     items = [ListingItem(product("free", None)), ListingItem(product("cheap", 1)), ListingItem(product("dear", 9))]
     assert ids(sort_items(items, "price_asc")) == ["cheap", "dear", "free"]
@@ -88,3 +114,86 @@ def test_variants_have_no_popularity_so_popular_means_cheapest_first():
 def test_unknown_sort_is_rejected():
     with pytest.raises(ValueError):
         sort_items([], "newest")
+
+
+# --- diversify=taxonomy (contract 1.27.0) ----------------------------------------------------
+
+TAX = {"h": "hotel", "a": "attraction", "g": "golf", "c": "combo", "f": "flight", "x": "cruise"}
+
+
+def items_of(*pids):
+    """`h1` là khách sạn, `a1` vé tham quan, `g1` golf, `c1` combo, `f1` tuyến bay; `x1` là loại ngoài bảng nhóm."""
+    return [ListingItem(product(pid, taxonomy=TAX[pid[0]])) for pid in pids]
+
+
+def test_filter_accepts_several_taxonomies():
+    items = items_of("h1", "a1", "g1", "c1")
+    assert ids(filter_items(items, taxonomy={"attraction", "golf"})) == ["a1", "g1"]
+    assert ids(filter_items(items, taxonomy=["golf"])) == ["g1"]
+
+
+def test_diversify_groups_cover_every_taxonomy_once():
+    members = [t for _, group in DIVERSIFY_GROUPS for t in group]
+    assert sorted(members) == sorted(TAXONOMIES) and len(members) == len(set(members))
+    assert [name for name, _ in DIVERSIFY_GROUPS] == ["hotel", "experience", "combo", "flight"]
+
+
+def test_interleave_round_robins_groups_in_fixed_order():
+    # Đầu vào đã xếp popular: vé bay đứng đầu như kệ Phổ biến trên prod.
+    ordered = items_of("f1", "f2", "f3", "c1", "g1", "h1", "a1", "h2", "c2", "f4")
+    assert ids(interleave_by_taxonomy(ordered)) == ["h1", "g1", "c1", "f1", "h2", "a1", "c2", "f2", "f3", "f4"]
+
+
+def test_interleave_puts_golf_in_the_attraction_group():
+    assert ids(interleave_by_taxonomy(items_of("g1", "g2", "a1", "c1", "c2"))) == ["g1", "c1", "g2", "c2", "a1"]
+
+
+def test_interleave_is_a_permutation_keeping_order_inside_groups():
+    ordered = items_of("f1", "h1", "a1", "f2", "g1", "c1", "h2", "a2", "c2", "f3", "h3")
+    mixed = interleave_by_taxonomy(ordered)
+    assert Counter(ids(mixed)) == Counter(ids(ordered))
+    for _, group in DIVERSIFY_GROUPS:
+        inside = lambda xs: [i for i in ids(xs) if TAX[i[0]] in group]  # noqa: E731
+        assert inside(mixed) == inside(ordered)
+
+
+def test_interleave_of_one_group_is_identity():
+    ordered = items_of("a2", "g1", "a1", "g2")
+    assert ids(interleave_by_taxonomy(ordered)) == ids(ordered)
+
+
+def test_interleave_keeps_unknown_taxonomy_last():
+    assert ids(interleave_by_taxonomy(items_of("x1", "h1", "x2", "f1"))) == ["h1", "f1", "x1", "x2"]
+
+
+def test_precomputed_order_gives_the_same_page_as_sorting_after_filtering():
+    """Kế hoạch cache và presort §4: `sort(filter(items))` và `filter(precomputed)` giống hệt nhau, kể cả khi khoá trùng.
+
+    Dữ liệu sinh ngẫu nhiên với seed cố định: tên và giá trùng nhiều để có khoá bằng nhau, có sản phẩm chưa có giá,
+    có sản phẩm hết chỗ và có điểm lượt mua trùng.
+    """
+    rng = random.Random(20261013)
+    names = ["Vinpearl", "Bien", "Golf", "Combo"]
+    destinations = ["Nha Trang", "Phu Quoc", "Da Nang"]
+    prices = [None, 100_000, 200_000, 200_000, 350_000]
+    for _ in range(1000):
+        items = [
+            ListingItem(Product(
+                product_id=f"p{k}", name=rng.choice(names), taxonomy=rng.choice(TAXONOMIES),
+                destination=rng.choice(destinations), description="", attributes={},
+                unit_price=rng.choice(prices), available=rng.random() < 0.7), rng.random() < 0.6)
+            for k in range(rng.randint(0, 40))
+        ]
+        popularity = {f"p{k}": rng.choice([0.0, 0.5, 1.0]) for k in range(len(items)) if rng.random() < 0.8}
+        orders = precompute_orders(items, popularity)
+        destination = rng.choice([None, *destinations])
+        taxonomy = rng.choice([None, {rng.choice(TAXONOMIES)}])
+        available_only = rng.random() < 0.5
+        for sort in PRODUCT_SORTS:
+            expected = sort_items(
+                filter_items(items, destination=destination, taxonomy=taxonomy, available_only=available_only),
+                sort, popularity)
+            actual = filter_items(orders[sort], destination=destination, taxonomy=taxonomy,
+                                  available_only=available_only)
+            assert ids(actual) == ids(expected)
+            assert ids(interleave_by_taxonomy(actual)) == ids(interleave_by_taxonomy(expected))

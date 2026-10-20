@@ -1,4 +1,4 @@
-# gold_v4 721f164d37fd11e77b8a8c84b183fb06335c9935a5a378501f350c465b1dfe1a 2026-10-05 — 154 câu gold active của search bench (src/evaluation/search_bench/gold/gold.jsonl);
+# gold_v7 c2150ef3c7c2bf4ce1f194914fed342f3740e3de10e2c635d6b82f1ea242f803 2026-10-14 — 252 câu gold active của search bench (src/evaluation/search_bench/gold/gold.jsonl);
 # nạp sẵn vector truy vấn lúc khởi động (SEARCH_PREWARM). Mỗi dòng một câu; '#' là chú thích. Không sửa tay:
 # sinh lại khi gold đổi tag; test phía evaluation (search_bench/tests/test_prewarm_list.py) đối chiếu.
 tìm khách sạn nghỉ dưỡng tại Hạ Long
@@ -155,3 +155,101 @@ khách sạn ở Lạng Sơn
 resort Bạc Liêu
 tour hồ Ba Bể
 homestay Tà Xùa
+vinwonder 3 ngay 2 dem
+VinWonders 3 ngày 2 đêm
+combo VinWonders 3N2Đ
+khách sạn Đà Lạt 2 đêm
+ks da lat 2 dem 3 ngay
+Dalat hotel 3 days 2 nights
+khách sạn gần chợ đêm Đà Lạt
+tour VinWonders Phú Quốc 3 tiếng
+phòng dưới 2 triệu/đêm Nha Trang
+khách sạn gần Hồ Hoàn Kiếm
+ks gan ho guom
+hotel near Hoan Kiem lake
+khách sạn gần Cầu Rồng
+ks gan cau rong da nang
+resort gần biển Mỹ Khê
+vé Bà Nà Hills
+homestay phố cổ Hội An
+khach san gan san bay Noi Bai
+khách sạn gần VinWonders Nam Hội An
+khách sạn gần Hồ Gươm hoặc Hồ Tây
+khách sạn gần Hồ Gươm hoặc Cầu Rồng
+khách sạn ở Cao Bằng
+resort Hà Giang
+homestay Lai Châu
+Nguyễn Văn A
+Trần Thị B
+Lê Văn C
+Phạm Hoàng Long
+Đặng Thuỳ Trang
+Võ Minh Trí
+Bùi Quỳnh Hoa
+Hoàng Kim Ngân
+Đỗ Quốc Bảo
+Ngô Kiến Huy
+Doraemon
+Songoku
+Harry Potter
+Sherlock Holmes
+Iron Man
+Naruto Shippuden
+Pikachu
+Optimus Prime
+Hogwarts Castle
+Vương quốc Wakanda
+tháp Eiffel Hà Nội
+tượng nữ thần tự do Đà Nẵng
+vạn lý trường thành Nha Trang
+núi Phú Sĩ Sài Gòn
+Kim tự tháp Giza Phú Quốc
+khách sạn Burj Al Arab Sapa
+nhà hát con sò Sydney Vũng Tàu
+đấu trường Colosseum Huế
+cung điện Buckingham Đà Lạt
+bảo tàng Louvre Hội An
+asdfghjkl
+qwertyuiop
+zxcvbnm
+xyz123456
+abcxyz random query
+ks ks ks ks
+tour tour tour
+aaaaaaaaaa
+test search query 123
+chjklsdfmn
+Trần Thị Mai
+Phạm Văn Đồng
+Lê Văn Tám
+Võ Thị Sáu
+Nguyễn Văn Cừ
+Trương Định
+Hoàng Văn Thụ
+Lý Tự Trọng
+Nguyễn Tri Phương
+Phan Đăng Lưu
+Huỳnh Thúc Kháng
+Đinh Tiên Hoàng
+2 ngày 1 đêm
+tour 2 ngày 1 đêm
+combo 2 ngày 1 đêm
+3 ngày 2 đêm
+tour 3 ngày 2 đêm
+combo 3N2Đ
+tour 1 ngày
+combo 1 ngày
+khách sạn Đà Lạt 2 ngày 1 đêm
+resort Phú Quốc 3 ngày 2 đêm
+khách sạn Nha Trang 2 ngày 1 đêm
+homestay Đà Lạt 3 ngày 2 đêm
+khách sạn Hà Nội 2 ngày 1 đêm
+resort Đà Nẵng 3 ngày 2 đêm
+khách sạn Đà Lạt rẻ bèo
+homestay Đà Lạt sống ảo view đồi
+resort Phú Quốc chanh sả
+khách sạn Nha Trang giá hạt dẻ
+combo Phú Quốc chill hết nấc
+vé vui chơi Đà Nẵng quẩy banh nóc
+khách sạn Hạ Long view xịn sò
+homestay Sa Pa săn mây cực phẩm

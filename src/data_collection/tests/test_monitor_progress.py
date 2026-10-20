@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import fresh_catalog
 import monitor
+import pipeline_graph as graph
 from fresh_run_log import write_json
 from stage_log import Stages
 
@@ -29,15 +30,16 @@ class StagesTests(unittest.TestCase):
         self.assertIsNotNone(sink[0]['seconds'])
         self.assertTrue(saves)  # mỗi lần đổi đều gọi lưu run.json (monitor thấy bước con đang chạy)
 
-    def test_each_finished_substep_writes_one_log_line(self):
+    def test_each_substep_logs_when_it_starts_and_when_it_ends(self):
         lines = []
         stages = Stages([], step='db', emit=lines.append)
         with stages.stage('ghép với DB', inp=10) as stage:
+            self.assertEqual(lines, ['catalog.substep name=db:ghép với DB status=running in=10'])  # tab Log thấy ngay
             stage.update(out=11, ok=9, total=10, note='mới 1')
         stages.add('cửa sổ 30 ngày', changed=4)
-        self.assertEqual(lines[0].split(' seconds=')[0], 'catalog.substep name=db:ghép với DB status=ok in=10 out=11 ok=9/10')
-        self.assertTrue(lines[0].endswith('— mới 1'))
-        self.assertEqual(lines[1], 'catalog.substep name=db:cửa sổ 30 ngày status=ok changed=4')
+        self.assertEqual(lines[1].split(' seconds=')[0], 'catalog.substep name=db:ghép với DB status=ok in=10 out=11 ok=9/10')
+        self.assertTrue(lines[1].endswith('— mới 1'))
+        self.assertEqual(lines[2], 'catalog.substep name=db:cửa sổ 30 ngày status=ok changed=4')  # bước suy ra: một dòng
         from stage_log import substep_line
         self.assertEqual(substep_line('normalise', {'name': 'lọc', 'status': 'ok', 'rowsIn': 96, 'rowsOut': 95, 'seconds': 0.1}),
                          'catalog.substep name=normalise:lọc status=ok in=96 out=95 seconds=0.1')
@@ -171,8 +173,9 @@ class GraphProgressTests(unittest.TestCase):
     def test_running_crawl_and_big_steps_show_work_done(self):
         self.write([{'name': 'vinpearl', 'status': 'running', 'detail': {}},
                     {'name': 'validate', 'status': 'running',
-                     'detail': {'substeps': [{'name': 'a', 'status': 'ok'}, {'name': 'b', 'status': 'ok'},
-                                             {'name': 'c', 'status': 'running'}]}}], status='running')
+                     'detail': {'substeps': [{'name': name, 'status': status} for name, status in
+                                             zip(graph.SUBSTEPS['validate'], ('ok', 'ok', 'running'))]}}],
+                   status='running')
         with patch.object(self.monitor, '_is_running', lambda run_id: True):
             nodes = self.nodes()
         vinpearl = nodes['vinpearl']
@@ -181,7 +184,9 @@ class GraphProgressTests(unittest.TestCase):
         self.assertEqual(vinpearl['substep'], 'khách sạn')
         validate = nodes['validate']['progress']
         self.assertEqual((validate['done'], validate['total'], validate['kind']), (2, 6, 'progress'))
-        self.assertEqual(len(nodes['validate']['substeps']), 3)
+        chain = nodes['validate']['substeps']
+        self.assertEqual([s['status'] for s in chain], ['ok', 'ok', 'running', 'waiting', 'waiting', 'waiting'])
+        self.assertEqual([bool(s.get('planned')) for s in chain], [False] * 3 + [True] * 3)
 
     def test_finished_big_steps_use_their_main_rule(self):
         rules = [{'name': 'khách sạn Trip đủ mốc ngày giá', 'status': 'skipped'},
@@ -197,8 +202,67 @@ class GraphProgressTests(unittest.TestCase):
         nodes = self.nodes()
         self.assertEqual((nodes['validate']['progress']['done'], nodes['validate']['progress']['total']), (1, 2))
         self.assertEqual(nodes['db']['progress']['percent'], 99.0)
-        self.assertEqual(nodes['normalise']['substeps'][0]['in'], 96)
+        merge = {s['name']: s for s in nodes['normalise']['substeps']}
+        self.assertEqual(merge['lọc']['in'], 96)
+        self.assertEqual(merge['ghi output']['status'], 'notRun')  # bước đã xong: bước con không có số liệu là Không chạy
         self.assertEqual(nodes['normalise']['progress']['percent'], 100.0)
+        self.assertEqual(len(nodes['validate']['substeps']), len(graph.SUBSTEPS['validate']))
+
+    def test_steps_not_run_yet_still_show_their_substeps(self):
+        self.write([{'name': 'maintain', 'status': 'ok', 'detail': {'substeps': [
+            {'name': 'đọc catalog', 'status': 'ok', 'out': 5}, {'name': 'hết hạn giá Trip', 'status': 'ok'}]}}],
+            status='running')
+        with patch.object(self.monitor, '_is_running', lambda run_id: True):
+            nodes = self.nodes()
+        for step in ('normalise', 'validate', 'db', 'index'):
+            chain = nodes[step]['substeps']
+            self.assertEqual(nodes[step]['status'], 'waiting')
+            self.assertEqual([s['name'] for s in chain], list(graph.SUBSTEPS[step]), step)
+            self.assertTrue(all(s['planned'] and s['status'] == 'waiting' and s['percent'] is None for s in chain), step)
+            self.assertIsNone(nodes[step]['progress']['percent'], step)  # chưa chạy: không tô
+        maintain = {s['name']: s for s in nodes['maintain']['substeps']}
+        self.assertEqual(list(maintain), list(graph.SUBSTEPS['maintain']))
+        self.assertEqual((maintain['đọc catalog']['out'], maintain['đọc catalog'].get('planned')), (5, None))
+        self.assertEqual(maintain['danh sách làm mới']['status'], 'notRun')  # lượt này không chạy bước con này
+        self.assertEqual(nodes['maintain']['progress']['percent'], 100.0)  # % chỉ tính bước con có số liệu
+
+    def test_draft_merge_shows_the_merge_only_chain(self):
+        self.write([{'name': 'normalise.preview', 'status': 'running', 'detail': {}}], status='running')
+        (self.run / 'preview.next' / 'normalise_stages').mkdir(parents=True)
+        write_json(self.run / 'preview.next' / 'normalise_stages' / 'steps.json',
+                   {'steps': [{'name': 'đọc checkpoint', 'status': 'ok'},
+                              {'name': 'sửa điểm đến, toạ độ', 'status': 'running'}]})
+        with patch.object(self.monitor, '_is_running', lambda run_id: True):
+            merge = self.nodes()['normalise']
+        self.assertEqual(merge['status'], 'draft')
+        self.assertEqual([s['name'] for s in merge['substeps']], list(graph.planned_substeps('normalise', merge_only=True)))
+        self.assertEqual([s['status'] for s in merge['substeps']][:3], ['ok', 'running', 'waiting'])
+
+    def test_finished_run_marks_missing_substeps_not_run_and_keeps_extras(self):
+        self.write([{'name': 'index', 'status': 'partial', 'detail': {'substeps': [
+            {'name': 'embed + ghi Weaviate', 'status': 'partial', 'note': 'hoãn: quota'}]}}], status='partial')
+        nodes = self.nodes()
+        chain = nodes['index']['substeps']
+        self.assertEqual([s['status'] for s in chain[:-1]], ['notRun'] * len(graph.SUBSTEPS['index']))
+        self.assertEqual((chain[-1]['name'], chain[-1]['status']), ('embed + ghi Weaviate', 'partial'))
+        self.assertEqual(nodes['validate']['status'], 'notRun')  # lượt kết thúc trước khi tới bước Kiểm tra
+        self.assertEqual({s['status'] for s in nodes['validate']['substeps']}, {'notRun'})
+
+    def test_finished_step_without_recorded_substeps_says_no_data_not_not_run(self):
+        # lượt trước 08/10: Kiểm tra chạy xong nhưng job chưa ghi bước con → "Chưa ghi số liệu", không phải "Không chạy"
+        self.write([{'name': 'validate', 'status': 'ok', 'detail': {'products': 3578}}], status='ok')
+        chain = self.nodes()['validate']['substeps']
+        self.assertEqual([s['name'] for s in chain], list(graph.SUBSTEPS['validate']))
+        self.assertEqual({(s['status'], s['planned']) for s in chain}, {('noData', True)})
+
+    def test_merge_tab_lists_the_planned_substeps_before_the_first_merge(self):
+        self.write([], status='running')
+        steps = self.monitor.substeps(RUN_ID, 'normalise')['steps']
+        self.assertEqual([s['name'] for s in steps], list(graph.SUBSTEPS['normalise']))
+        self.assertTrue(all(s['planned'] and s['status'] == 'waiting' for s in steps))
+        self.assertTrue(steps[0]['description'])
+        self.write([], status='ok')
+        self.assertEqual({s['status'] for s in self.monitor.substeps(RUN_ID, 'normalise')['steps']}, {'notRun'})
 
 
 if __name__ == '__main__':

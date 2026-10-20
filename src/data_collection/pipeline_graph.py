@@ -109,6 +109,24 @@ STREAMS: tuple[Stream, ...] = (
     Stream("stream.db", "db", "Nạp DB theo phần", "Chạy liên tục: nạp DB theo phần"),
     Stream("stream.index", "index", "Index theo phần", "Chạy liên tục: index theo phần"),
 )
+# Bước con của các bước lớn, theo thứ tự chạy: stage_log.Stages (maintain, validate, db, index) và normalise.StepClock
+# (normalise). Monitor hiện đủ danh sách này cả khi bước chưa chạy hoặc bước con không chạy ở lượt này;
+# tests/test_pipeline_graph.py đối chiếu tên với code. Thêm / đổi tên bước con thì sửa cả ở đây.
+SUBSTEPS: dict[str, tuple[str, ...]] = {
+    "maintain": ("đọc catalog", "danh sách làm mới", "hết hạn giá Trip", "cuộn cửa sổ 30 ngày", "ghi DB",
+                 "parse thành phần combo"),
+    "normalise": ("đọc interim", "ánh xạ nguồn", "đọc checkpoint", "sửa điểm đến, toạ độ", "gộp trùng khách sạn",
+                  "vé và điểm tham quan", "vé máy bay, combo", "lọc", "làm giàu", "kiểm vị trí, giá", "ghi output"),
+    "validate": ("khách sạn Trip đủ mốc ngày giá", "13 trường đúng thứ tự", "id, sourceRef, thông tin hiển thị",
+                 "đủ nhóm sản phẩm", "catalog không giảm quá ngưỡng", "độ phủ làm mới khách sạn đang có"),
+    "db": ("đọc catalog lượt này", "thuộc tính combo", "đọc DB", "ghép với DB", "cửa sổ 30 ngày", "ghi cdp.products",
+           "parse thành phần combo"),
+    "index": ("đọc search unit từ DB", "giữ vector không đổi text", "embed mới / đổi text + ghi Weaviate",
+              "xoá vector mồ côi", "chỉ mục từ khoá (lexical)"),
+}
+# Bước con chỉ có ở trường hợp đặc biệt nên không hiện sẵn: index bị hoãn (hết quota) thay cả chuỗi bằng một bước.
+SUBSTEP_EXTRAS: dict[str, tuple[str, ...]] = {"index": ("embed + ghi Weaviate",)}
+MERGE_ONLY_FROM = "đọc checkpoint"  # gộp nháp / chạy lại chỉ gộp (--merge-only) bắt đầu từ bước con này
 NORMALISE_SOURCE = "normalise.source:"   # tiền tố bước chuẩn hoá một file interim: normalise.source:<file>
 NORMALISE_ALL = "normalise.sources"      # ô chung của sơ đồ khi lượt không chuẩn hoá theo nguồn (lượt daily, lượt cũ)
 # `resume --from crawl --source <nguồn>` (P4): cào lại riêng một nguồn của lượt rồi chạy tiếp mọi bước sau cào.
@@ -149,6 +167,13 @@ def deps_of(name: str) -> tuple[str, ...]:
     if step is None:
         return ()
     return tuple(dep for d in step.deps for dep in (CRAWL_STEPS if d == CRAWL else (d,)))
+
+
+def planned_substeps(name: str, merge_only: bool = False) -> tuple[str, ...]:
+    """Bước con dự kiến của bước lớn `name` (rỗng: bước không có bước con). `merge_only`: bước Gộp chỉ gộp từ checkpoint
+    (bản nháp trong lúc cào, chạy lại từ bước gộp) nên không đọc interim / ánh xạ nguồn."""
+    plan = SUBSTEPS.get(name, ())
+    return plan[plan.index(MERGE_ONLY_FROM):] if merge_only and MERGE_ONLY_FROM in plan else plan
 
 
 def downstream(name: str) -> tuple[str, ...]:

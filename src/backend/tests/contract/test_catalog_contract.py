@@ -14,7 +14,7 @@ from src.backend.app.application.catalog.use_cases import GetProductDetail, GetS
 from src.backend.app.application.search import SimilarProducts
 from src.backend.app.application.tracking.behaviour import BehaviourTracker, CatalogProduct
 from src.backend.app.main import app
-from src.backend.tests.contract.test_booking_contract import assert_contract
+from src.backend.tests.contract.test_booking_contract import DOC, assert_contract
 from src.backend.tests.fakes.booking import PRINCIPAL
 from src.backend.tests.fakes.catalog import InMemoryProductQuery
 from src.backend.tests.unit.application.test_catalog_use_cases import ROWS_WITH_ROOMS
@@ -86,6 +86,67 @@ def test_listing_and_variants_match_contract(client):
 def test_bad_listing_query_is_400_validation_error(client):
     body = assert_contract(client.get("/api/v1/products", params={"limit": 99}), "/products", "get")
     assert body["error"]["code"] == "VALIDATION_ERROR" and body["error"]["details"] == {"fields": ["limit"]}
+
+
+def test_listing_is_publicly_cacheable_and_errors_are_not(client):
+    # Danh mục công khai, không đọc người dùng: giống nhau cho mọi người nên cache chung được.
+    ok = client.get("/api/v1/products", params={"sort": "popular", "limit": 5})
+    assert ok.status_code == 200
+    assert ok.headers["cache-control"] == "public, max-age=60, s-maxage=300"
+    bad = client.get("/api/v1/products", params={"limit": 99})
+    assert bad.status_code == 400 and "cache-control" not in bad.headers
+
+
+def test_detail_and_similar_are_publicly_cacheable_and_errors_are_not(client):
+    detail = client.get("/api/v1/products/H1")
+    assert detail.status_code == 200
+    assert detail.headers["cache-control"] == "public, max-age=60, s-maxage=300"
+    similar = client.get("/api/v1/products/R1/similar", params={"limit": 4})
+    assert similar.status_code == 200
+    assert similar.headers["cache-control"] == "public, max-age=60, s-maxage=300"
+    missing = client.get("/api/v1/products/khong-co")
+    assert missing.status_code == 404 and "cache-control" not in missing.headers
+    unknown = client.get("/api/v1/products/khong-co/similar")
+    assert unknown.status_code == 404 and "cache-control" not in unknown.headers
+
+
+# --- nhiều taxonomy và diversify=taxonomy (contract 1.27.0) -----------------------------------
+
+def test_listing_query_parameters_are_declared_in_contract():
+    params = {p["name"]: p for p in DOC["paths"]["/products"]["get"]["parameters"] if "name" in p}
+    taxonomy, diversify = params["taxonomy"], params["diversify"]
+    assert (taxonomy["style"], taxonomy["explode"], taxonomy["schema"]["type"]) == ("form", False, "array")
+    assert diversify["schema"]["enum"] == ["taxonomy"]
+    assert params["freeOnly"]["schema"] == {"type": "boolean", "default": False}
+
+
+def test_free_entry_filter_and_evidence_match_the_public_contract(client):
+    page = assert_contract(client.get("/api/v1/products", params={"freeOnly": True, "limit": 1}), "/products", "get")
+    assert page["total"] == 1 and page["results"][0]["productId"] == "A2"
+    assert page["results"][0]["entryPolicy"] == "free"
+    assert "ticketed" not in page["results"][0]["attributes"]
+
+
+def test_diversified_listing_matches_contract(client, state):
+    state["list_products"].popularity = {"F1": 1.0, "C1": 0.9, "G1": 0.8, "A1": 0.7, "H3": 0.6}
+    page = assert_contract(client.get("/api/v1/products", params={"diversify": "taxonomy", "sort": "popular",
+                                                                   "limit": 4}), "/products", "get")
+    assert [r["taxonomy"] for r in page["results"]] == ["hotel", "golf", "combo", "flight"] and page["total"] == 8
+
+
+@pytest.mark.parametrize("query", ["taxonomy=attraction,golf&limit=50", "taxonomy=attraction%2Cgolf&limit=50"])
+def test_comma_separated_taxonomies_match_contract(client, query):
+    page = assert_contract(client.get(f"/api/v1/products?{query}"), "/products", "get")
+    assert page["total"] == 3 and {r["taxonomy"] for r in page["results"]} == {"attraction", "golf"}
+
+
+@pytest.mark.parametrize("params, field", [
+    ({"diversify": "taxonomy", "sort": "price_asc"}, "diversify"),
+    ({"taxonomy": "hotel,"}, "taxonomy"),
+])
+def test_bad_diversify_or_taxonomy_list_is_400_validation_error(client, params, field):
+    body = assert_contract(client.get("/api/v1/products", params=params), "/products", "get")
+    assert body["error"]["code"] == "VALIDATION_ERROR" and body["error"]["details"] == {"fields": [field]}
 
 
 def test_similar_matches_contract(client):

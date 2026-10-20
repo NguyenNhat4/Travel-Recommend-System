@@ -52,7 +52,7 @@ variable "frontend_image" {
 variable "boot_image" {
   description = "Boot image for the instance template."
   type        = string
-  default     = "projects/cos-cloud/global/images/family/cos-stable"
+  default     = "projects/debian-cloud/global/images/family/debian-12"
 }
 
 variable "backend_env_secret" {
@@ -68,51 +68,57 @@ variable "uvicorn_workers" {
 }
 
 variable "min_replicas" {
-  description = "Số VM tối thiểu. 3 (một VM mỗi zone) để mất 1 VM chỉ đẩy phần còn lại lên N/(N-1) = 150% tải thay vì 200%."
+  description = "Số VM tối thiểu của nhóm app. Quy tắc chốt 2026-10-08: 1 VM tối thiểu, tối đa 2 VM. Mất VM duy nhất là mất dịch vụ app (chấp nhận có chủ đích)."
   type        = number
-  default     = 3
+  default     = 1
 
   validation {
-    condition     = var.min_replicas >= 2
-    error_message = "min_replicas must be >= 2, otherwise the group is not highly available."
+    condition     = var.min_replicas >= 1
+    error_message = "min_replicas must be >= 1."
   }
 }
 
 variable "max_replicas" {
-  type    = number
-  default = 4
+  description = "Số VM tối đa của nhóm app. 2 theo quy tắc chốt 2026-10-08 (ngân sách kết nối DB: 2 × 2 × 12 + 10 = 58 <= max_connections 100)."
+  type        = number
+  default     = 2
+
+  validation {
+    condition     = var.max_replicas >= var.min_replicas
+    error_message = "max_replicas phải >= min_replicas."
+  }
 }
 
 variable "cpu_target" {
-  description = "Autoscaler target CPU utilization (0-1). Để sống sót khi mất 1 trong N VM, mức dùng ở trạng thái ổn định phải <= (N-1)/N: N=3 -> 0.667, N=2 -> 0.5."
+  description = "Autoscaler target CPU utilization (0-1). Với min_replicas = 1 không còn đảm bảo sống sót khi mất VM; ràng buộc (N-1)/N đã gỡ theo quy tắc chốt 2026-10-08."
   type        = number
-  default     = 0.55
+  default     = 0.9
 
   validation {
-    condition     = var.cpu_target <= (var.min_replicas - 1) / var.min_replicas
-    error_message = "cpu_target phải <= (min_replicas-1)/min_replicas, nếu không mất 1 VM làm các VM còn lại quá tải (docs/plan/2026-10-07-ha-vung-crawler-rolling.md §5.2)."
+    condition     = var.cpu_target > 0 && var.cpu_target <= 1
+    error_message = "cpu_target phải trong khoảng (0, 1]."
   }
 }
 
 variable "memory_target_percent" {
-  description = "Autoscaler target memory percent_used (needs Ops Agent on the VM). 0 disables the memory signal. Cùng công thức (N-1)/N với CPU."
+  description = "Autoscaler target memory percent_used (needs Ops Agent on the VM). 0 disables the memory signal."
   type        = number
-  default     = 60
+  default     = 90
 
   validation {
-    condition     = var.memory_target_percent == 0 || var.memory_target_percent <= 100 * (var.min_replicas - 1) / var.min_replicas
-    error_message = "memory_target_percent phải <= 100*(min_replicas-1)/min_replicas (hoặc 0 để tắt)."
+    condition     = var.memory_target_percent >= 0 && var.memory_target_percent <= 100
+    error_message = "memory_target_percent phải trong khoảng [0, 100]."
   }
 }
 
 variable "boot_to_ready_seconds" {
-  description = "Thời gian từ lúc VM tạo đến lúc /health/ready = 200 (kéo image, nạp RecSys). Dùng cho min_ready_sec của rolling update, cooldown autoscaler và initial_delay autohealing. CHƯA đo trên GCP: đo lại sau lần apply đầu (log startup.recsys.ready so với thời điểm tạo VM) rồi chỉnh."
+  description = "Thời gian từ lúc VM tạo đến lúc /health/ready = 200 (kéo image, nạp RecSys). Dùng cho cooldown autoscaler và initial_delay autohealing (không còn là min_ready_sec của rolling update từ 2026-10-09). Đã đo 2026-10-09 trên Debian 12: tạo VM -> startup.recsys.ready ~230 giây (2 lần, VM thử và VM MIG gsc1). Đặt 300 để có dự phòng ~25%."
   type        = number
   default     = 360
 
   validation {
-    condition     = var.boot_to_ready_seconds >= 360
-    error_message = "boot_to_ready_seconds < 360 thấp hơn thời gian boot-to-ready ước tính (4-6 phút)."
+    condition     = var.boot_to_ready_seconds >= 240
+    error_message = "boot_to_ready_seconds < 240 thấp hơn thời gian boot-to-ready đã đo (~230 giây, Debian 12, 2026-10-09)."
   }
 }
 
@@ -213,6 +219,12 @@ variable "require_secret_versions" {
   default     = false
 }
 
+variable "ci_runner_instance_name" {
+  description = "VM chạy GitHub Actions runner tự host (mọi CI/CD chạy trên nó). Alert khi VM không gửi metric uptime."
+  type        = string
+  default     = "vota-ci-runner"
+}
+
 variable "alert_emails" {
   description = "Emails that receive HA alerts. Empty = alert policies exist but notify nobody (see notification_channel_ids)."
   type        = list(string)
@@ -230,10 +242,73 @@ variable "alert_p95_latency_ms" {
   default = 800
 }
 
+# Mẫu tối thiểu cho p95: chỉ chặn cửa sổ rất thấp tải (ban đêm). Ca 03:19 UTC 14/10 (p95 3,2 s) có khoảng 1.000 request trong 10 phút nên không bị chặn.
+variable "alert_p95_min_requests" {
+  description = "Tổng request LB trong 10 phút phải lớn hơn mức này thì mới cảnh báo p95 độ trễ. Đo 72 giờ: trung vị 175 request/10 phút, 5% cửa sổ thấp nhất dưới 46. Ngưỡng chỉ chặn cửa sổ tải rất thấp, không chặn nhiễu ở tải bình thường."
+  type        = number
+  default     = 100
+}
+
 variable "alert_5xx_ratio" {
   description = "Fraction of LB requests answered 5xx (over 5 minutes) that raises an alert."
   type        = number
   default     = 0.02
+}
+
+variable "alert_memory_percent" {
+  description = "Memory used (percent) on any one app VM above this for 5 minutes raises an alert. Must stay above memory_target_percent: the autoscaler keeps memory near that target, so a threshold at or below it would fire during normal scaling."
+  type        = number
+  default     = 95
+}
+
+variable "alert_disk_percent" {
+  description = "Disk used (percent, per device) on any one app VM above this for 5 minutes raises an alert."
+  type        = number
+  default     = 90
+}
+
+# Ngưỡng RAM, đĩa, CPU của cụm DB và job cào. Mức đặt trên đỉnh đo được 7 ngày gần nhất (2026-10-14), xem
+# history/2026-10-14-canh-bao-tai-nguyen-db-va-crawler.md.
+variable "alert_db_memory_percent" {
+  description = "RAM đã dùng (%) trên một node DB (pg-a, pg-b) vượt mức này trong 10 phút thì báo. Đỉnh 7 ngày: 66,6%."
+  type        = number
+  default     = 85
+}
+
+variable "alert_db_disk_percent" {
+  description = "Đĩa đã dùng (%) trên một thiết bị của một node DB vượt mức này trong 5 phút thì báo. Đỉnh 7 ngày: 19,5%."
+  type        = number
+  default     = 80
+}
+
+variable "alert_db_cpu_percent" {
+  description = "CPU (%) của một node DB (pg-a, pg-b, pg-w) trung bình vượt mức này trong 15 phút thì báo. Đỉnh 7 ngày: 12,6%."
+  type        = number
+  default     = 70
+}
+
+variable "alert_crawler_memory_percent" {
+  description = "RAM đã dùng (%) của VM job cào vượt mức này trong 10 phút thì báo. Đỉnh 7 ngày: 57,8%."
+  type        = number
+  default     = 85
+}
+
+variable "alert_crawler_disk_percent" {
+  description = "Đĩa boot (%) của VM job cào vượt mức này trong 5 phút thì báo. Đĩa 15 GB, một image crawler khoảng 3 GB; đỉnh 7 ngày: 77,7%, nên mức 80% sát đỉnh."
+  type        = number
+  default     = 80
+}
+
+variable "alert_crawler_cpu_percent" {
+  description = "CPU (%) của VM job cào vượt mức này liên tục trong alert_crawler_cpu_minutes phút thì báo. Mỗi lượt cào chạy khoảng 1 giờ ở gần 100%, nên ngưỡng thời gian phải dài hơn lượt bình thường."
+  type        = number
+  default     = 95
+}
+
+variable "alert_crawler_cpu_minutes" {
+  description = "Số phút CPU của VM job cào phải liên tục trên alert_crawler_cpu_percent thì báo. Đặt 180: lượt cào bình thường chỉ kéo dài khoảng 1 giờ ở đỉnh."
+  type        = number
+  default     = 180
 }
 
 # --- Tầng DB tự failover (Patroni) -------------------------------------------------------------------------------
@@ -321,14 +396,50 @@ variable "patroni_clone_from_host" {
 }
 
 variable "db_client_tags" {
-  description = "Network tag BỔ SUNG được nối tới Postgres qua load balancer nội bộ. App VM của nhóm HA và job cào (tag vota-crawler) luôn được phép."
+  description = "Network tag BỔ SUNG được nối tới Postgres qua load balancer nội bộ. App VM của nhóm HA và job cào (tag vota-crawler) luôn được phép. ci-runner: runner tự host chạy CD, cần tới Postgres để áp db/migrations (2026-10-12)."
   type        = list(string)
-  default     = []
+  default     = ["ci-runner"]
 }
 
 # --- Cảnh báo job cào (chạy bằng cron trên VM) ---
 variable "crawler_alerts_enabled" {
-  description = "Bật cảnh báo catalog không đổi / job không chạy / lượt thất bại (cron trên VM phát catalog.freshness từ bản crawler mới). Chỉ bật SAU KHI crawler bản có catalog.freshness đã deploy, nếu không cảnh báo vắng mặt kêu giả."
+  description = "Bật cảnh báo job không chạy (heartbeat catalog.due, phát ở mỗi tick cron) và lượt cào thất bại (run.end status=failed). Cả hai đã kiểm trên log thật (2026-10-12)."
+  type        = bool
+  default     = true
+}
+
+variable "crawler_late_alert_enabled" {
+  description = "Bật cảnh báo catalog quá hạn (catalog.freshness state=late). Chỉ bật SAU KHI bản crawler có sửa freshness trong nhánh due (src/data_collection/fresh_catalog.py) đã build và deploy; bản đang chạy chưa phát dòng này đều mỗi tick."
   type        = bool
   default     = false
+}
+
+variable "origin_tls_enabled" {
+  description = "Thêm listener HTTPS :443 trên LB bằng chứng chỉ Cloudflare Origin CA (Secret Manager). Dùng khi Cloudflare proxy với SSL mode Full (strict)."
+  type        = bool
+  default     = false
+}
+
+variable "origin_cert_secret" {
+  description = "Secret Manager secret id chứa PEM chứng chỉ Origin CA."
+  type        = string
+  default     = "praxis-origin-cert"
+}
+
+variable "origin_key_secret" {
+  description = "Secret Manager secret id chứa PEM private key của chứng chỉ Origin CA."
+  type        = string
+  default     = "praxis-origin-key"
+}
+
+variable "alert_container_disk_bytes" {
+  description = "Dung lượng đĩa của một container (byte, p99 trong 10 phút) vượt mức này thì cảnh báo. Mặc định 5 GiB."
+  type        = number
+  default     = 5368709120
+}
+
+variable "alert_log_spike_bytes_per_hour" {
+  description = "Lượng log nạp vào Cloud Logging trong 1 giờ (byte, cả project) vượt mức này thì cảnh báo. Mặc định 0,25 GiB."
+  type        = number
+  default     = 268435456
 }

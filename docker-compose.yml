@@ -59,8 +59,13 @@ services:
       APP_PORT: 8000
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ITINERARY_USE_LLM: ${ITINERARY_USE_LLM:-true}
       ITINERARY_LLM_MODEL: ${ITINERARY_LLM_MODEL:-}
+      ITINERARY_LLM_TEMPERATURE: ${ITINERARY_LLM_TEMPERATURE:-0}
       ITINERARY_LLM_REASONING_EFFORT: ${ITINERARY_LLM_REASONING_EFFORT:-}
+      ITINERARY_ORCHESTRATOR_MODEL: ${ITINERARY_ORCHESTRATOR_MODEL:-}
+      ITINERARY_ORCHESTRATOR_PROVIDER: ${ITINERARY_ORCHESTRATOR_PROVIDER:-}
+      ITINERARY_ORCHESTRATOR_REASONING_EFFORT: ${ITINERARY_ORCHESTRATOR_REASONING_EFFORT:-}
       # fixture | inprocess | http | disabled (xem .env.example). Compose giữ fixture để chạy được khi RecSys chưa nạp.
       ITINERARY_DATA_MODE: ${ITINERARY_DATA_MODE:-fixture}
       ITINERARY_TOOL_TIMEOUT_SECONDS: ${ITINERARY_TOOL_TIMEOUT_SECONDS:-1}
@@ -89,6 +94,8 @@ services:
       VECTOR_COLLECTION: ${VECTOR_COLLECTION:-ProductE5Small}
       WEAVIATE_GRPC_PORT: ${BACKEND_WEAVIATE_GRPC_PORT:-50051}
       CATALOG_REFRESH_SECONDS: ${CATALOG_REFRESH_SECONDS:-900}
+      # Cache kết quả gợi ý (PRD architecture §4): DB index riêng của Redis compose; trống = tắt.
+      RECOMMEND_CACHE_REDIS_URL: ${BACKEND_RECOMMEND_CACHE_REDIS_URL:-redis://:devpass@redis:6379/4}
       # Stripe test mode (docs/prd/deployment-plan.md §2). Webhook: `stripe listen --forward-to
       # localhost:${BACKEND_PORT:-8000}/api/v1/payments/stripe/webhook` chạy trên máy host.
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}

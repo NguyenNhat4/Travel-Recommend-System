@@ -1,0 +1,29 @@
+{
+ "parity_mismatch_llbo200": 0,
+ "parity_mismatch_by_field": {},
+ "F14_calibration": {
+  "profile": "P2_confidence",
+  "calSeed": 99,
+  "requests": 120,
+  "q_low_p10": 0.8529405653476715,
+  "q_high_p99": 0.9387040108442306,
+  "q_display": [
+   0.8529,
+   0.9387
+  ]
+ },
+ "P2_confidence/stats": {
+  "trips_p50": 4.0,
+  "share_trips_without_purchase": 0.635,
+  "share_open": 1.0
+ },
+ "P2_confidence+F14c_betweenQuantilePop35+destCap2": {
+  "coldstart": {
+   "n": 5243,
+   "hit@20": 0.81,
+   "ndcg@10": 0.6113,
+   "hit@4": 0.6962,
+   "destHit@20": 0.9943
+  }
+ }
+}

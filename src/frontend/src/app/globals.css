@@ -110,12 +110,6 @@ body {
   position: relative;
 }
 
-/* Subtle luxury overlay image on right side */
-.hero-resort-layer {
-  background: url('https://images.unsplash.com/photo-1571896349842-33c89424de2d?auto=format&fit=crop&w=1200&q=80') center right/cover no-repeat;
-  opacity: 0.18;
-  mix-blend-mode: overlay;
-}
 
 /* Floating search card shadow */
 .floating-search-card {
@@ -189,6 +183,18 @@ body {
 }
 @media (prefers-reduced-motion: reduce) {
   .message-send-in { animation: none; }
+}
+
+/* Tiến trình trợ lý (AC-AGT-09): mỗi bước hiện dần khi được mở ra, đọc lần lượt thay vì cả khối cùng lúc */
+@keyframes progressStepIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.progress-step-in {
+  animation: progressStepIn 0.25s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .progress-step-in { animation: none; }
 }
 
 /* Đổi khách sạn bằng hàng thẻ "Phương án khác" (AC-AGT-04): lịch mới ở cột phải trượt vào từ bên phải */

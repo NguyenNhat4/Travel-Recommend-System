@@ -114,6 +114,18 @@ describe('ProfileView — hồ sơ cá nhân', () => {
     fireEvent.click(screen.getByRole('button', { name: /Đăng nhập/ }));
     expect(travel.openLoginModal).toHaveBeenCalledTimes(1);
     expect(screen.queryByLabelText('Họ và tên')).toBeNull();
+    expect(screen.queryByRole('status', { name: 'Đang tải hồ sơ' })).toBeNull();
+  });
+
+  it('phiên đang khôi phục: hiện khung hồ sơ (ba ô, hai thẻ), chưa mời đăng nhập và chưa có form', () => {
+    travel.currentPersona = null as never;
+    travel.authReady = false;
+    render(<ProfileView />);
+    const skeleton = screen.getByRole('status', { name: 'Đang tải hồ sơ' });
+    expect(skeleton.querySelectorAll(':scope > .rounded-2xl')).toHaveLength(2);
+    expect(skeleton.querySelectorAll('.h-11.w-full')).toHaveLength(3);
+    expect(screen.queryByRole('button', { name: /Đăng nhập/ })).toBeNull();
+    expect(screen.queryByLabelText('Họ và tên')).toBeNull();
   });
 });
 

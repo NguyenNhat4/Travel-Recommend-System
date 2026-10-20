@@ -134,8 +134,8 @@
           - Trợ lý cho biết còn thiếu ngày khởi hành, số người hoặc ngân sách và mời người dùng bổ sung trên form.
           - Trợ lý không trình bày lịch trình ở lượt này.
 
-# TC-10 — Không trả lời được ngày đi, số người, ngân sách thì hiện form (AC-AGT-01, đề xuất 2026-10-05-classify-route-clarify:
-# câu không thêm được thông tin được `classify` gắn `vague` và đi thẳng `clarify`).
+# TC-10 — Không trả lời được ngày đi, số người, ngân sách thì hiện form (AC-AGT-01). Từ 13/10/2026 orchestrator là luồng
+# duy nhất: câu không thêm được thông tin vẫn phải tới `clarify` kèm form, không lập lịch với trường trống.
 # Lỗi gốc 05/10 (LangSmith nhat-10-1, conversation 9841548a): T3 "không biết" lập lịch ngay với ba trường trống, không có form.
 - id: TC-10
   category: details_form
@@ -146,7 +146,7 @@
         httpStatus: 200
         status: [NEEDS_CLARIFICATION]
         toolCalled: false
-        nodesInclude: [classify, clarify]
+        nodesInclude: [orchestrate, extract, clarify]
         intent: {destination: Đà Nẵng, days: 3}
         missingFieldsInclude: [startDate, party, budget]
     - message: không biết
@@ -154,7 +154,7 @@
         httpStatus: 200
         status: [NEEDS_CLARIFICATION]
         toolCalled: false
-        nodesInclude: [classify, clarify]
+        nodesInclude: [clarify]
         intent: {destination: Đà Nẵng, days: 3}
         missingFieldsInclude: [startDate, party, budget]
         formMatchesAnswer: true
@@ -194,7 +194,7 @@
       expect:
         httpStatus: 200
         status: [NEEDS_CLARIFICATION]
-        nodesInclude: [explore]
+        nodesInclude: [run_jobs]
         nodesExclude: [clarify]
         intent: {destination: Hà Nội}
         judge:
@@ -205,7 +205,7 @@
         httpStatus: 200
         status: [NEEDS_CLARIFICATION]
         nodesInclude: [extract]
-        nodesExclude: [explore]
+        nodesExclude: [run_jobs]
         intent: {destination: Hà Nội}
         judge:
           - Trợ lý bắt đầu lập lịch Hà Nội bằng cách hỏi thông tin chuyến còn thiếu (ví dụ số ngày); không giới thiệu lại các điểm tham quan.
@@ -219,12 +219,12 @@
       expect:
         httpStatus: 200
         status: [NEEDS_CLARIFICATION]
-        nodesInclude: [explore]
+        nodesInclude: [run_jobs]
     - message: chán, Đà Nẵng đi rồi
       expect:
         httpStatus: 200
         status: [NEEDS_CLARIFICATION]
-        nodesInclude: [explore]
+        nodesInclude: [run_jobs]
         judge:
           - Trợ lý chấp nhận ngắn gọn, không gợi ý lại Đà Nẵng (kể cả trong nút gợi ý) và giới thiệu một nơi khác.
     - message: đặt vé máy bay giúp mình
@@ -253,3 +253,45 @@
         status: [NEEDS_CLARIFICATION, COMPLETED]
         judge:
           - Nếu lượt trước có vé máy bay thì trợ lý liệt kê các chuyến khác cùng ngày của từng chặng (số hiệu, giờ bay, giá, chênh giá) với nút chọn, hoặc nói rõ ngày đó không còn chuyến khác và gợi ý đổi ngày; không lập lại đúng lịch cũ.
+
+# TC-15 — Không muốn đi nữa thì cảm ơn, hẹn gặp lại (AC-AGT-01, chốt 2026-10-12). Lỗi gốc (báo lỗi 12/10): "ko đi du lịch
+# nữa" từng bị xếp là lập lịch nên hiện form thông tin chuyến; đủ thông tin thì lập lại lịch.
+# Mong đợi: câu dừng chắc chắn nhận bằng luật ở `precheck`, orchestrator viết lời chào (`gatekeep`), không form, không hỏi
+# thêm; chuyến giữ nguyên để "đi tiếp" nối lại được. Câu dừng nói cách khác do orchestrator hiểu: chạy kèm --repeat.
+- id: TC-15
+  category: stop_planning
+  fr: [FR-AGT-01]
+  turns:
+    - message: Lập lịch Đà Nẵng 3 ngày cho mình
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        toolCalled: false
+        intent: {destination: Đà Nẵng, days: 3}
+    - message: ko đi du lịch nữa
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        toolCalled: false
+        nodesInclude: [precheck, orchestrate, gatekeep]
+        nodesExclude: [extract, run_jobs, clarify]
+        intent: {destination: Đà Nẵng, days: 3}
+        forbiddenText: [clarificationForm, missingFields]
+        judge:
+          - Trợ lý cảm ơn và hẹn gặp lại; không hỏi ngày đi, số người, ngân sách hay thông tin chuyến đi nào.
+          - Trợ lý không thuyết phục người dùng đi tiếp và không trình bày lịch trình hay gợi ý sản phẩm.
+    - message: thôi mình đi tiếp, khởi hành {today+3}, 2 người lớn
+      expect:
+        httpStatus: 200
+        status: [COMPLETED, FALLBACK, NO_RESULTS]
+        intent: {destination: Đà Nẵng, days: 3, startDate: "{today+3:iso}", party.adults: 2}
+    - message: thôi không đi nữa đâu
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        toolCalled: false
+        nodesInclude: [precheck, orchestrate, gatekeep]
+        nodesExclude: [extract, tool]
+        forbiddenText: [clarificationForm]
+        judge:
+          - Trợ lý cảm ơn và hẹn gặp lại, không lập lại lịch trình và không hỏi thêm.

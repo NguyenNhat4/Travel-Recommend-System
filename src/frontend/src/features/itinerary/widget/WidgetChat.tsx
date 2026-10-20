@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { isCartEligible } from '../../../services/booking';
 import Image from 'next/image';
 import { AlertCircle, Maximize2, RotateCcw, Sparkles } from 'lucide-react';
@@ -8,6 +8,9 @@ import { TripDetailsForm } from '../../../components/assistant/TripDetailsForm';
 import { WidgetOpening } from './WidgetOpening';
 import { WidgetNarration } from './WidgetNarration';
 import { WidgetComposer } from './WidgetComposer';
+import { WidgetProgressSummary } from './WidgetProgressSummary';
+import { productFromApi } from '../../../services/catalog';
+import { useTravel } from '../../../context/TravelContext';
 import { WidgetProgress } from './WidgetProgress';
 import { WidgetStayOptions } from './WidgetStayOptions';
 import { WidgetBudget } from './WidgetBudget';
@@ -20,7 +23,7 @@ function AssistantHeader() {
       <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-ai-50">
         <Image src="/mascot_welcome.webp" alt="" width={28} height={28} className="h-7 w-7 object-contain" />
       </span>
-      <span className="text-xs font-semibold tracking-wide text-slate-500">Trợ lý du lịch V-OTA</span>
+      <span className="text-xs font-semibold tracking-wide text-slate-500">Trợ lý du lịch Sota</span>
     </div>
   );
 }
@@ -29,6 +32,7 @@ export function WidgetChat({ widget }: { widget: FloatingWidgetController }) {
   const { messages, assistantState, isRunning, isExpanded, setIsExpanded, chatScrollRef,
     inputVal, setInputVal, handleSendMessage, handleConfirmTripDetails, retry, abort, openProductDetail, addPlanItemToCart,
     selectingStay, chooseStayOption, previewedStay, previewStayOption, bookPlanItem } = widget;
+  const { debugMode } = useTravel();
   const isInitial = messages.length === 0 && !isRunning;
   const lastMessageId = messages.length > 0 ? messages[messages.length - 1].id : null;
 
@@ -41,6 +45,7 @@ export function WidgetChat({ widget }: { widget: FloatingWidgetController }) {
             <div key={message.id} data-message-id={message.id} className={`flex min-w-0 ${message.sender === 'user' ? 'justify-end' : 'flex-col gap-3'}`}>
               {message.sender === 'assistant' && <AssistantHeader />}
               <div className={`min-w-0 whitespace-pre-wrap break-words text-sm leading-7 sm:text-base ${message.sender === 'user' ? 'message-send-in max-w-[88%] rounded-2xl rounded-tr-md bg-ai-600 px-4 py-3 text-white' : 'w-full text-slate-700'}`}>
+                {message.progress && <WidgetProgressSummary view={message.progress} />}
                 {message.sender === 'assistant'
                   ? (message.products
                     ? <WidgetNarration text={message.text} products={message.products}
@@ -70,14 +75,16 @@ export function WidgetChat({ widget }: { widget: FloatingWidgetController }) {
                 {message.plan?.budgetSummary && (
                   <WidgetBudget summary={message.plan.budgetSummary} days={message.plan.intent.days} />
                 )}
+                {/* Dưới lg cột lịch trình và bản đồ chưa có (PRD user-flow §4.2: giao diện mobile ngoài phạm vi), nên không
+                    hiện nút không làm gì; đề xuất `docs/prd/update/2026-10-12-lich-trinh-ban-do-man-hep.md`. */}
                 {message.plan && !isExpanded && (
-                  <button onClick={() => setIsExpanded(true)} className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-ai-600 hover:bg-ai-50">
+                  <button onClick={() => setIsExpanded(true)} className="mt-3 hidden lg:flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-ai-600 hover:bg-ai-50">
                     <Sparkles className="h-4 w-4" aria-hidden="true" />Xem lộ trình & Bản đồ song song<Maximize2 className="h-4 w-4" aria-hidden="true" />
                   </button>
                 )}
                 {/* Chỉ hiện form ở tin nhắn mới nhất: người dùng xác nhận thì lượt sau đã có câu trả lời khác. */}
                 {message.clarificationForm && message.id === lastMessageId && (
-                  <TripDetailsForm form={message.clarificationForm} onConfirm={handleConfirmTripDetails} disabled={isRunning} />
+                  <TripFormFollowup form={message.clarificationForm} onConfirm={handleConfirmTripDetails} disabled={isRunning} />
                 )}
                 {message.suggestions && message.id === lastMessageId && (
                   <SuggestionChips suggestions={message.suggestions} onSelect={handleSendMessage} disabled={isRunning} />
@@ -90,7 +97,7 @@ export function WidgetChat({ widget }: { widget: FloatingWidgetController }) {
         {isRunning && (
           <div className="flex flex-col gap-3">
             <AssistantHeader />
-            <WidgetProgress progress={assistantState.progress} isSlow={assistantState.isSlow} />
+            <WidgetProgress progress={assistantState.progress} model={assistantState.progressModel} activity={assistantState.activities.at(-1)} isSlow={assistantState.isSlow} debugMode={debugMode} />
           </div>
         )}
         {assistantState.error && (
@@ -115,9 +122,22 @@ export function WidgetChat({ widget }: { widget: FloatingWidgetController }) {
       {!isInitial && (
         <div className="shrink-0 border-t border-slate-100 bg-slate-50/80 px-4 pb-4 pt-4 sm:px-6">
           <WidgetComposer value={inputVal} onChange={setInputVal} onSend={handleSendMessage} busy={isRunning} onStop={abort} />
-          <p className="mt-2 text-xs text-slate-500">{assistantState.conversationId ? 'Đang tiếp tục cuộc trò chuyện' : 'Trợ lý AI V-OTA'}</p>
+          <p className="mt-2 text-xs text-slate-500">{assistantState.conversationId ? 'Đang tiếp tục cuộc trò chuyện' : 'Trợ lý AI Sota'}</p>
         </div>
       )}
     </div>
   );
+}
+
+
+function TripFormFollowup(props: React.ComponentProps<typeof TripDetailsForm>) {
+  const [open, setOpen] = useState(props.form.autoOpen === true);
+  const [visited, setVisited] = useState(props.form.autoOpen === true);
+  return <div className="mt-3">
+    <button type="button" aria-expanded={open} disabled={props.disabled} onClick={() => { setVisited(true); setOpen((value) => !value); }}
+      className="min-h-11 rounded-xl border border-ai-200 bg-ai-50 px-4 text-sm font-semibold text-ai-700 hover:bg-ai-100 disabled:opacity-50">
+      {open ? 'Thu gọn thông tin chuyến đi' : 'Điền thông tin chuyến đi'}
+    </button>
+    <div hidden={!open}>{visited && <TripDetailsForm {...props} />}</div>
+  </div>;
 }
