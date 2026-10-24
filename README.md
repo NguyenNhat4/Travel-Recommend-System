@@ -1,6 +1,6 @@
 # Travel Recommendation Product
 
-V-OTA là nền tảng đặt tour du lịch, gồm tìm kiếm ngữ nghĩa, gợi ý cá nhân hoá và trợ lý lịch trình AI.
+S-OTA là nền tảng đặt tour du lịch, gồm tìm kiếm ngữ nghĩa, gợi ý cá nhân hoá và trợ lý lịch trình AI.
 
 - Yêu cầu sản phẩm: [docs/prd/README.md](docs/prd/README.md)
 - Quy tắc làm việc trong repo (cho cả người và AI agent): [AGENTS.md](AGENTS.md)
