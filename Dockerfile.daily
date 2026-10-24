@@ -3,7 +3,7 @@
 # Chạy qua src/data_collection/run_daily_docker.sh; dữ liệu làm việc (interim, cache, sqlite tiến độ, catalog, version)
 # nằm trên ổ VPS, mount vào /data. Image không chứa data/, .env hay secret — kết nối DB/Weaviate đến từ --env-file.
 # Embedding: model local e5-small có sẵn trong image (FR-SRC-02), không cần khoá embedding.
-FROM python:3.11-slim
+FROM python:3.15-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

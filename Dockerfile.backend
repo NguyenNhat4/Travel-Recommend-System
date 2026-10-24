@@ -6,7 +6,7 @@ ARG EMBED_MODEL_REVISION=614241f622f53c4eeff9890bdc4f31cfecc418b3
 
 # Stage model: tải e5-small một lần. Stage này không phụ thuộc requirements, nên đổi requirements không tải và đẩy lại
 # ~470 MB model. BuildKit chạy stage này song song với bước cài torch.
-FROM python:3.11-slim@sha256:e88e9763f943ec1834f992a4b51e0f24500486803e8bc534e5767af9ea65f6ce AS model
+FROM python:3.15-slim@sha256:2da676046630d7bf14c6764ae1143dc7fa0377a53f94bf5a642f0b214aca5bce AS model
 ARG EMBED_MODEL
 ARG EMBED_MODEL_REVISION
 ENV HF_HOME=/opt/hf
@@ -15,7 +15,7 @@ RUN python -m pip install --no-cache-dir "huggingface_hub>=1.31,<3" \
     && python -c "from huggingface_hub import snapshot_download; snapshot_download('${EMBED_MODEL}', revision='${EMBED_MODEL_REVISION}', allow_patterns=['*.json', '*.safetensors', 'sentencepiece.bpe.model'])" \
     && chmod -R a+rX /opt/hf
 
-FROM python:3.11-slim@sha256:e88e9763f943ec1834f992a4b51e0f24500486803e8bc534e5767af9ea65f6ce
+FROM python:3.15-slim@sha256:2da676046630d7bf14c6764ae1143dc7fa0377a53f94bf5a642f0b214aca5bce
 ARG EMBED_MODEL
 ARG EMBED_MODEL_REVISION
 
